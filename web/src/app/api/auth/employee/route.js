@@ -5,7 +5,25 @@ export async function POST(request) {
   try {
     const { email, password } = await request.json();
     
-    // Check if employee exists
+    // Bypass DB completely for default employee credentials
+    // This allows login on Vercel even if database is not connected
+    const EMP_EMAIL = process.env.EMP_EMAIL || 'employee@cecube.com';
+    const EMP_PASSWORD = process.env.EMP_PASSWORD || 'password123';
+
+    if (email === EMP_EMAIL && password === EMP_PASSWORD) {
+      return NextResponse.json({ 
+        success: true, 
+        employee: {
+          id: 1,
+          empId: 'EMP-001',
+          name: 'Demo Employee',
+          email: EMP_EMAIL,
+          department: 'Engineering'
+        }
+      });
+    }
+
+    // Check if employee exists in DB
     const employee = await prisma.employee.findUnique({ where: { email } });
     
     if (!employee) {
