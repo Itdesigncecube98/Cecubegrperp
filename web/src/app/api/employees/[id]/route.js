@@ -3,8 +3,9 @@ import { prisma } from '../../../../lib/prisma';
 
 export async function GET(request, { params }) {
   try {
+    const { id } = await params;
     const employee = await prisma.employee.findUnique({
-      where: { id: params.id },
+      where: { id: id },
       include: {
         supervisor: { select: { id: true, name: true } },
         leaveBalance: true,
@@ -20,11 +21,12 @@ export async function GET(request, { params }) {
 
 export async function PUT(request, { params }) {
   try {
+    const { id } = await params;
     const data = await request.json();
     const { password, ...updateData } = data; // Don't update password here
     
     const updated = await prisma.employee.update({
-      where: { id: params.id },
+      where: { id: id },
       data: updateData
     });
     return NextResponse.json(updated);
