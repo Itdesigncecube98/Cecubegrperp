@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "employeeId": "cmseg25zg0000j2949ji3nfeh",
+    "type": "IN",
+    "time": "10:41",
+    "date": "2026-08-05",
+    "shiftType": "Day",
+    "status": "PENDING",
+    "createdAt": "2026-08-05T05:11:00.865Z",
+    "employee": {
+      "id": "cmseg25zg0000j2949ji3nfeh",
+      "empId": "E-001",
+      "name": "ADITYA YADAV",
+      "email": "adityayadavwork88@gmail.com",
+      "password": "adityayadav@12",
+      "department": "Tech IT",
+      "role": "EMPLOYEE",
+      "supervisorId": null,
+      "createdAt": "2026-08-04T09:16:56.907Z"
+    }
+  }
+]

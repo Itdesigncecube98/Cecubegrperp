@@ -1,0 +1,49 @@
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.date-picker-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1.25rem;
+  box-shadow: var(--card-shadow);
+}
+
+.date-picker-wrapper label {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.date-input {
+  width: auto;
+  padding: 0.5rem;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  box-shadow: none;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 4rem !important;
+  color: var(--text-secondary);
+}
+
+.emp-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.status-select {
+  width: 140px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  box-shadow: none;
+}

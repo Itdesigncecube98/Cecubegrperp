@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id         Int    @id @default(autoincrement())
+  adminId    String?
+  name       String
+  email      String @unique
+  department String
+  password   String
+}
+
+model Employee {
+  id           String       @id @default(cuid())
+  empId        String?
+  name         String
+  email        String       @unique
+  password     String
+  department   String
+  role         String       @default("EMPLOYEE")
+  supervisorId String?
+  // Extended profile fields
+  phone        String?
+  designation  String?
+  branch       String?
+  organisation String?
+  gender       String?
+  maritalStatus String?
+  nationality  String?
+  joinedDate   String?
+  photoUrl     String?
+  address      String?
+  emergencyContact String?
+  emergencyPhone   String?
+  supervisor   Employee?    @relation("SupervisorRelation", fields: [supervisorId], references: [id])
+  subordinates Employee[]   @relation("SupervisorRelation")
+  createdAt    DateTime     @default(now())
+  attendances  Attendance[]
+  punchRequests PunchRequest[]
+  leaveBalance  LeaveBalance?
+  leaveRequests LeaveRequest[]
+}
+
+model Attendance {
+  id         Int      @id @default(autoincrement())
+  employeeId String
+  date       String   // stored as YYYY-MM-DD
+  status     String   // Present, Absent, Late
+  shiftType  String   @default("Day") // Day, Night
+  timeSlots  String?  @db.Text // stores JSON array string e.g. [{"in":"09:30","out":"12:00"}]
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])
+}
+
+model PunchRequest {
+  id           Int      @id @default(autoincrement())
+  employeeId   String
+  type         String   // "IN" or "OUT"
+  time         String   // "09:30"
+  date         String   // "YYYY-MM-DD"
+  shiftType    String   @default("Day") // Day, Night
+  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt    DateTime @default(now())
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model LeaveBalance {
+  id           Int      @id @default(autoincrement())
+  employeeId   String   @unique
+  casualLeaves Float    @default(12)
+  sickLeaves   Float    @default(12)
+  earnedLeaves Float    @default(15)
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model LeaveRequest {
+  id           Int      @id @default(autoincrement())
+  employeeId   String
+  leaveType    String   // "Casual", "Sick", "Earned", "Unpaid"
+  startDate    String   // "YYYY-MM-DD"
+  endDate      String   // "YYYY-MM-DD"
+  reason       String   @db.Text
+  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  appliedOn    DateTime @default(now())
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Holiday {
+  id           Int      @id @default(autoincrement())
+  name         String
+  date         String   @unique // "YYYY-MM-DD"
+  type         String   @default("Public") // Public, Optional
+}
+
+model AccountSettings {
+  id                     Int      @id @default(autoincrement())
+  companyName            String   @default("Cecube Engineering India Pvt Ltd")
+  holidayPunchHandling   String   @default("PROCESS_AS_REGULAR")
+  weekOffPunchHandling   String   @default("PROCESS_AS_REGULAR")
+  enableOvertime         Boolean  @default(false)
+  computeOvertimeBasedOn String   @default("WORKED_HOURS")
+  otStartMinutes         Int      @default(0)
+  otDailyCapHours        Int      @default(0)
+  updatedAt              DateTime @updatedAt
+}
+
+model WorkWeek {
+  id         Int     @id @default(autoincrement())
+  day        String  @unique
+  isWorking  Boolean @default(true)
+}
+
+model LeaveType {
+  id                Int     @id @default(autoincrement())
+  name              String
+  isPaid            Boolean @default(false)
+  isActive          Boolean @default(true)
+  includeWeeklyOff  Boolean @default(false)
+  includeHoliday    Boolean @default(false)
+  considerAsPresent Boolean @default(false)
+}
+
+model GpsLocation {
+  id           Int     @id @default(autoincrement())
+  name         String
+  address      String?
+  latitude     Float
+  longitude    Float
+  radiusMeters Int     @default(100)
+  locationType String  @default("Office") // Office, Site, Client
+  isActive     Boolean @default(true)
+  createdAt    DateTime @default(now())
+}
