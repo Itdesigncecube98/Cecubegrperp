@@ -302,3 +302,27 @@ export const pingLocation = async (requestId, latitude, longitude) => {
   });
   return await res.json();
 };
+
+export const getDocuments = async (employeeId = '', type = '') => {
+  let url = '/api/documents?';
+  if (employeeId) url += `employeeId=${employeeId}&`;
+  if (type) url += `type=${type}`;
+  const res = await fetch(url);
+  return await res.json();
+};
+
+export const createDocument = async (data) => {
+  const res = await fetch('/api/documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return await res.json();
+};
+
+export const deleteDocument = async (id) => {
+  const res = await fetch(`/api/documents?id=${id}`, {
+    method: 'DELETE'
+  });
+  return await res.json();
+};

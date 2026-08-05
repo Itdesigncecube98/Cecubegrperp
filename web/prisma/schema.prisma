@@ -46,6 +46,7 @@ model Employee {
   leaveBalance  LeaveBalance?
   leaveRequests LeaveRequest[]
   locationRequests LocationRequest[]
+  documents     EmployeeDocument[]
 }
 
 model Attendance {
@@ -171,5 +172,19 @@ model LocationPing {
   longitude  Float
   timestamp  DateTime        @default(now())
   request    LocationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+model EmployeeDocument {
+  id             Int      @id @default(autoincrement())
+  employeeId     String
+  documentType   String   // "Personal" or "Dependent"
+  documentName   String   // e.g. "Aadhar Card"
+  documentNumber String?
+  expiryDate     String?  // "YYYY-MM-DD"
+  fileData       String   @db.LongText // Base64 encoded file data
+  fileName       String
+  fileType       String   // e.g. "application/pdf", "image/png"
+  createdAt      DateTime @default(now())
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
