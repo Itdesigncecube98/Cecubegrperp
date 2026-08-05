@@ -24,7 +24,6 @@ export default function SetupPage() {
     considerAsPresent: false
   });
 
-  const router = useRouter();
 
   useEffect(() => {
     const adminData = sessionStorage.getItem('adminData');
