@@ -5,23 +5,20 @@ export async function POST(request) {
   try {
     const { email, password } = await request.json();
     
-    // Check if admin exists
+    // Bypass DB completely for default admin credentials
+    // This allows login on Vercel even if database is not connected
+    const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@cecube.com';
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password123';
+
+    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+      return NextResponse.json({ success: true, email: ADMIN_EMAIL, name: 'Super Admin' });
+    }
+    
+    // Check if admin exists in DB for other accounts
     let admin = await prisma.admin.findUnique({ where: { email } });
     
-    // If no admin exists in DB, create default for demo purposes
     if (!admin) {
-      if (email === 'admin@cecube.com' && password === 'password123') {
-        admin = await prisma.admin.create({
-          data: { 
-            name: 'Super Admin',
-            email: 'admin@cecube.com', 
-            department: 'Management',
-            password: 'password123' 
-          }
-        });
-      } else {
-        return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
-      }
+      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
     
     if (admin.password === password) {
