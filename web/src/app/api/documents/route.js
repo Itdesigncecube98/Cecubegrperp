@@ -66,7 +66,7 @@ export async function POST(request) {
     return NextResponse.json({ success: true, id: newDoc.id });
   } catch (error) {
     console.error('Error creating document:', error);
-    return NextResponse.json({ error: 'Failed to create document' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to create document' }, { status: 500 });
   }
 }
 
