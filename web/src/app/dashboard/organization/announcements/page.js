@@ -18,7 +18,7 @@ export default function Announcements() {
   const fetchData = async () => {
     try {
       const data = await getAnnouncements();
-      setAnnouncements(data || []);
+      setAnnouncements(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(e);
     } finally {

@@ -48,16 +48,22 @@ export default function EmployeeDashboard() {
     if (showLoader) setLoading(true);
     try {
       const data = await getEmployeeStats(id);
-      setStatsData(data);
+      setStatsData(Array.isArray(data) ? data : []);
+      
       const reqs = await getPunchRequests(null, id);
-      setPendingRequests(reqs.filter(r => r.status === 'PENDING' && r.date === new Date().toISOString().split('T')[0]));
+      setPendingRequests(Array.isArray(reqs) ? reqs.filter(r => r.status === 'PENDING' && r.date === new Date().toISOString().split('T')[0]) : []);
       
       const locReqs = await getLocationRequests(id);
-      setPendingLocationRequests(locReqs.filter(r => r.status === 'PENDING'));
-      setActiveLocationRequests(locReqs.filter(r => r.status === 'ACTIVE'));
+      if (Array.isArray(locReqs)) {
+        setPendingLocationRequests(locReqs.filter(r => r.status === 'PENDING'));
+        setActiveLocationRequests(locReqs.filter(r => r.status === 'ACTIVE'));
+      } else {
+        setPendingLocationRequests([]);
+        setActiveLocationRequests([]);
+      }
 
       const anns = await getAnnouncements();
-      setAnnouncements(anns || []);
+      setAnnouncements(Array.isArray(anns) ? anns : []);
       
       const allEmps = await getEmployees();
       const me = allEmps.find(e => e.id === id);
