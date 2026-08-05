@@ -28,17 +28,24 @@ export default function SupervisorDashboard() {
     }
   }, [router]);
 
-  const loadRequests = async (supervisorId) => {
+  async function loadRequests(supervisorId) {
     setLoading(true);
     try {
       const data = await getPunchRequests(supervisorId);
-      setRequests(data);
+      if (Array.isArray(data)) {
+        setRequests(data);
+      } else {
+        console.error('API returned non-array:', data);
+        setRequests([]);
+        showToast('Failed to load requests from server', 'error');
+      }
     } catch (e) {
       console.error('Failed to fetch requests', e);
+      setRequests([]);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const handleAction = async (id, status) => {
     try {

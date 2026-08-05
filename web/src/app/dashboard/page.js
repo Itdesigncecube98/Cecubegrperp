@@ -1,445 +1,462 @@
 'use client';
-import React, { useEffect, useState } from 'react';
-import { getEmployees, getAttendance, getAnalytics } from '../../lib/data';
+import React, { useState, useEffect } from 'react';
+import { 
+  Users, UserPlus, Mail, MapPin, PlusCircle, FileText, 
+  RefreshCw, Clock, CheckCircle, File, Building, PenTool, 
+  Map, BarChart2, Calendar
+} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, YAxis, CartesianGrid, PieChart, Pie, Legend } from 'recharts';
 import './dashboard.css';
-import { Users, UserCheck, Clock, Activity, User, Plane, FileText, MapPin, Wrench, Map, Settings, CalendarCheck, RefreshCw } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import oldStyles from '../employee/dashboard/dashboard.module.css';
+import { getEmployees, getAttendance } from '../../lib/data';
 
-// Custom Tooltip for Top Chart
-const CustomTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="custom-tooltip">
-        <p className="label">{label}</p>
-        {payload.map((entry, index) => (
-          <div key={`item-${index}`} className="item">
-            <span style={{ color: entry.color, fontWeight: 'bold' }}>{entry.name}:</span>
-            <span>{entry.value}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return null;
-};
-
-// Custom Legend
-const CustomLegend = (props) => {
-  const { payload } = props;
-  if (!payload) return null;
-  return (
-    <div className="custom-legend">
-      {payload.map((entry, index) => (
-        <div key={`item-${index}`} className="custom-legend-item">
-          <div className="legend-dot" style={{ backgroundColor: entry.color }} />
-          <span>{entry.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-export default function Dashboard() {
-  const [stats, setStats] = useState({ total: 0, present: 0, late: 0 });
-  const [analytics, setAnalytics] = useState(null);
+export default function AdminDashboard() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [adminName, setAdminName] = useState('Admin');
-  const [todayAttendance, setTodayAttendance] = useState([]);
-  const [gpsCount, setGpsCount] = useState(0);
+  const [stats, setStats] = useState({
+    totalEmployees: 0,
+    presentToday: 0,
+    lateArrivals: 0,
+    activeEmployees: 0,
+    gpsLocations: 2
+  });
+
+  const [whoIsIn, setWhoIsIn] = useState([
+    { name: 'IN', value: 0 },
+    { name: 'OUT', value: 0 },
+    { name: 'NO PUNCH', value: 0 },
+    { name: 'ON LEAVE', value: 0 }
+  ]);
+
+  const [dailyTrend, setDailyTrend] = useState([]);
+  const [statusDistribution, setStatusDistribution] = useState([]);
+  const [topHours, setTopHours] = useState([]);
 
   useEffect(() => {
-    const data = sessionStorage.getItem('adminData');
-    if (data) {
-      const parsed = JSON.parse(data);
-      if (parsed.name) setAdminName(parsed.name);
+    const adminData = sessionStorage.getItem('adminData');
+    if (!adminData) {
+      router.push('/login');
+      return;
     }
+    loadDashboardData();
+  }, [router]);
 
-      const fetchData = async () => {
-      try {
-        const employees = await getEmployees();
-        const attendance = await getAttendance();
-        const analyticsData = await getAnalytics();
+  const loadDashboardData = async () => {
+    try {
+      const emps = await getEmployees();
+      const att = await getAttendance();
+      
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todaysAtt = att.filter(a => a.date === todayStr);
+
+      // Basic Stats
+      const totalEmps = emps.length;
+      const presentEmps = todaysAtt.length;
+      const lateEmps = todaysAtt.filter(a => a.status === 'LATE').length;
+      
+      setStats({
+        totalEmployees: totalEmps,
+        presentToday: presentEmps,
+        lateArrivals: lateEmps,
+        activeEmployees: totalEmps,
+        gpsLocations: 2
+      });
+
+      // Who Is In
+      const inCount = todaysAtt.filter(a => !a.checkOut).length;
+      const outCount = todaysAtt.filter(a => a.checkOut).length;
+      const noPunchCount = totalEmps - (inCount + outCount);
+      
+      setWhoIsIn([
+        { name: 'IN', value: inCount, color: '#22c55e' },
+        { name: 'OUT', value: outCount, color: '#3b82f6' },
+        { name: 'NO PUNCH', value: noPunchCount, color: '#ef4444' },
+        { name: 'ON LEAVE', value: 0, color: '#10b981' }
+      ]);
+
+      // Daily Attendance Trend (Last 10 days mock/calc)
+      const trend = [];
+      const pastDays = 10;
+      for (let i = pastDays - 1; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dStr = d.toISOString().split('T')[0];
+        const dateLabel = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}`;
         
-        const present = attendance.filter(a => a.status === 'Present').length;
-        const late = attendance.filter(a => a.status === 'Late').length;
-
-        setStats({
-          total: employees.filter(e => e.role !== 'SUPERVISOR').length,
-          present,
-          late
+        const dayAtt = att.filter(a => a.date === dStr);
+        trend.push({
+          date: dateLabel,
+          fullDate: dStr,
+          Present: dayAtt.length,
+          Absent: totalEmps - dayAtt.length,
+          Late: dayAtt.filter(a => a.status === 'LATE').length
         });
-        setTodayAttendance(attendance);
-        setAnalytics(analyticsData);
-        
-        // Fetch GPS count
-        try {
-          const locRes = await fetch('/api/locations');
-          const locs = await locRes.json();
-          setGpsCount(Array.isArray(locs) ? locs.length : 0);
-        } catch {}
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
       }
-    };
-    
-    fetchData();
-  }, []);
+      setDailyTrend(trend);
 
-  if (loading) {
-    return <div className="page-subtitle" style={{ padding: '2rem' }}>Loading dashboard data...</div>;
-  }
+      // Status Distribution (Pie Chart)
+      setStatusDistribution([
+        { name: 'Present', value: att.length, color: '#bbf7d0' },
+        { name: 'Late', value: att.filter(a=>a.status === 'LATE').length, color: '#fcd34d' },
+        { name: 'Absent', value: (totalEmps * 30) - att.length, color: '#fca5a5' }
+      ]);
 
-  // Colors based on the reference image
-  const COLORS = {
-    Present: '#B9FBC0', // Light green
-    Absent: '#FF6B6B',  // Red
-    Late: '#FFD166',    // Yellow
+      // Top Employees hours
+      if (emps.length > 0) {
+        // Calculate basic hours from today's attendance if available, else 0
+        const top = emps.map(emp => {
+          const empAtt = todaysAtt.find(a => a.employeeId === emp.id);
+          let hours = 0;
+          if (empAtt && empAtt.timeSlots) {
+            try {
+              const slots = JSON.parse(empAtt.timeSlots);
+              slots.forEach(slot => {
+                if (slot.in && slot.out) {
+                  const inT = new Date(`1970-01-01T${slot.in}:00`);
+                  const outT = new Date(`1970-01-01T${slot.out}:00`);
+                  hours += (outT - inT) / (1000 * 60 * 60);
+                }
+              });
+            } catch(e){}
+          }
+          return { name: emp.name.toUpperCase(), hours: Number(hours.toFixed(1)) };
+        }).sort((a, b) => b.hours - a.hours).slice(0, 5);
+        
+        setTopHours(top);
+      } else {
+        setTopHours([]);
+      }
+
+    } catch (e) {
+      console.error('Failed to load admin dashboard data', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="customTooltip">
+          <div className="tooltipLabel">{payload[0].payload.fullDate || label}</div>
+          {payload.map((entry, index) => (
+            <div key={index} className="tooltipItem" style={{ color: entry.color }}>
+              {entry.name}: {entry.value}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  if (loading) {
+    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading admin dashboard...</div>;
+  }
+
   return (
-    <div className="dashboard-wrapper">
-      <h1 className="page-title">Admin Dashboard</h1>
-      
-      {/* Top Widget Row - Bring Employees */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-        
-        {/* Bring Employees to HRMS */}
-        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #e5e7eb', padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#111827' }}>Bring Employees in to your HRMS</h3>
-          </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <a href="/dashboard/employees" style={{ flex: 1, textDecoration: 'none', textAlign: 'center', padding: '16px 8px', border: '1px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: '#fafafa', transition: '0.2s' }}>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: '#111827' }}>{stats.total}</div>
-              <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Active Employees</div>
-            </a>
-            <a href="/dashboard/employees" style={{ flex: 1, textDecoration: 'none', textAlign: 'center', padding: '16px 8px', border: '1px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: '#fafafa', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-              <UserCheck size={28} color="#374151" />
-              <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Add Employees</div>
-            </a>
-            <a href="/dashboard/employees" style={{ flex: 1, textDecoration: 'none', textAlign: 'center', padding: '16px 8px', border: '1px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: '#fafafa', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-              <Users size={28} color="#374151" />
-              <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Invite Employees</div>
-            </a>
+    <div className="dashboardContainer">
+      <h1 className="dashboardTitle">Admin Dashboard</h1>
+
+      {/* Row 1: Action Cards & Who Is In */}
+      <div className="topRow">
+        {/* Bring Employees */}
+        <div className="card actionCard">
+          <h2 className="cardTitle">Bring Employees in to your HRMS</h2>
+          <div className="actionGrid">
+            <div className="actionSquare" onClick={() => router.push('/dashboard/employees')}>
+              <div className="actionValue">{stats.activeEmployees}</div>
+              <div className="actionLabel">ACTIVE<br/>EMPLOYEES</div>
+            </div>
+            <div className="actionSquare" onClick={() => router.push('/dashboard/employees')}>
+              <UserPlus size={28} className="actionIcon" />
+              <div className="actionLabel">ADD<br/>EMPLOYEES</div>
+            </div>
+            <div className="actionSquare">
+              <Mail size={28} className="actionIcon" />
+              <div className="actionLabel">INVITE<br/>EMPLOYEES</div>
+            </div>
           </div>
         </div>
 
-        {/* GPS Checkin Setup */}
-        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #e5e7eb', padding: '20px' }}>
-          <div style={{ marginBottom: '16px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#111827' }}>Setup Mobile GPS Checkin</h3>
-          </div>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <a href="/dashboard/locations" style={{ flex: 1, textDecoration: 'none', textAlign: 'center', padding: '16px 8px', border: '1px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: '#fafafa' }}>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: '#111827' }}>{gpsCount}</div>
-              <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>GPS Locations</div>
-            </a>
-            <a href="/dashboard/locations" style={{ flex: 1, textDecoration: 'none', textAlign: 'center', padding: '16px 8px', border: '1px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: '#fafafa', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-              <MapPin size={28} color="#374151" />
-              <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Add GPS Location</div>
-            </a>
-            <a href="/dashboard/whoisin" style={{ flex: 1, textDecoration: 'none', textAlign: 'center', padding: '16px 8px', border: '1px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', background: '#fafafa', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-              <Clock size={28} color="#374151" />
-              <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Mobile Checkin Report</div>
-            </a>
+        {/* Setup GPS */}
+        <div className="card actionCard">
+          <h2 className="cardTitle">Setup Mobile GPS Checkin</h2>
+          <div className="actionGrid">
+            <div className="actionSquare" onClick={() => router.push('/dashboard/locations')}>
+              <div className="actionValue">{stats.gpsLocations}</div>
+              <div className="actionLabel">GPS<br/>LOCATIONS</div>
+            </div>
+            <div className="actionSquare" onClick={() => router.push('/dashboard/locations')}>
+              <MapPin size={28} className="actionIcon" />
+              <div className="actionLabel">ADD GPS<br/>LOCATION</div>
+            </div>
+            <div className="actionSquare">
+              <Clock size={28} className="actionIcon" />
+              <div className="actionLabel">MOBILE<br/>CHECKIN<br/>REPORT</div>
+            </div>
           </div>
         </div>
 
-        {/* Who is in? Widget */}
-        <div style={{ background: 'white', borderRadius: '10px', border: '1px solid #e5e7eb', padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#007bff' }}>Who is in?</h3>
-            <a href="/dashboard/whoisin" style={{ color: '#9ca3af', cursor: 'pointer' }}><RefreshCw size={14} /></a>
+        {/* Who is in? */}
+        <div className="card chartCard">
+          <div className="chartHeader">
+            <h2 className="chartTitle" style={{ color: '#3b82f6', marginBottom: 0 }}>Who is in?</h2>
+            <RefreshCw size={16} color="#9ca3af" style={{cursor: 'pointer'}} onClick={loadDashboardData} />
           </div>
-          <div style={{ height: '120px' }}>
+          <div style={{ height: '140px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={[
-                {
-                  name: 'All',
-                  IN: todayAttendance.filter(r => r.status === 'Present').length,
-                  OUT: todayAttendance.filter(r => r.status === 'Absent').length,
-                  NoPunch: todayAttendance.filter(r => r.status === 'Not Marked').length,
-                  OnLeave: todayAttendance.filter(r => r.status === 'On Leave').length,
-                }
-              ]} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip />
-                <Bar dataKey="IN" fill="#22c55e" radius={[3,3,0,0]} maxBarSize={30} />
-                <Bar dataKey="OUT" fill="#3b82f6" radius={[3,3,0,0]} maxBarSize={30} />
-                <Bar dataKey="NoPunch" fill="#f87171" radius={[3,3,0,0]} maxBarSize={30} />
-                <Bar dataKey="OnLeave" fill="#34d399" radius={[3,3,0,0]} maxBarSize={30} />
+              <BarChart data={[{ name: 'All', IN: whoIsIn[0].value, OUT: whoIsIn[1].value, 'NO PUNCH': whoIsIn[2].value, 'ON LEAVE': whoIsIn[3].value }]} margin={{ top: 0, right: 0, left: -20, bottom: 0 }} barSize={30}>
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} tickCount={5} domain={[0, 'dataMax + 1']} />
+                <Tooltip cursor={{fill: 'transparent'}} />
+                <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: '11px', fontWeight: 600 }} />
+                <Bar dataKey="IN" stackId="a" fill="#22c55e" />
+                <Bar dataKey="OUT" stackId="a" fill="#3b82f6" />
+                <Bar dataKey="NO PUNCH" stackId="a" fill="#ef4444" />
+                <Bar dataKey="ON LEAVE" stackId="a" fill="#10b981" />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '4px' }}>
-            {[['IN','#22c55e'],['OUT','#3b82f6'],['NO PUNCH','#f87171'],['ON LEAVE','#34d399']].map(([l,c]) => (
-              <div key={l} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', fontWeight: 600, color: '#374151' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: c }} />{l}
-              </div>
-            ))}
+        </div>
+      </div>
+
+      {/* Row 2: Stats */}
+      <div className="statsRow">
+        <div className="card statCard">
+          <div className="statIconWrapper" style={{ color: '#86efac' }}>
+            <Users size={28} />
+          </div>
+          <div className="statInfo">
+            <span className="statLabel">Total Employees</span>
+            <span className="statValue">{stats.totalEmployees}</span>
+          </div>
+        </div>
+        <div className="card statCard">
+          <div className="statIconWrapper" style={{ color: '#fcd34d' }}>
+            <CheckCircle size={28} />
+          </div>
+          <div className="statInfo">
+            <span className="statLabel">Present Today</span>
+            <span className="statValue">{stats.presentToday}</span>
+          </div>
+        </div>
+        <div className="card statCard">
+          <div className="statIconWrapper" style={{ color: '#fca5a5' }}>
+            <Clock size={28} />
+          </div>
+          <div className="statInfo">
+            <span className="statLabel">Late Arrivals</span>
+            <span className="statValue">{stats.lateArrivals}</span>
           </div>
         </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="stat-card glass-panel">
-          <div className="stat-icon" style={{ color: '#B9FBC0' }}>
-            <Users size={24} />
-          </div>
-          <div className="stat-info">
-            <h3>Total Employees</h3>
-            <p className="stat-value">{stats.total}</p>
-          </div>
-        </div>
-
-        <div className="stat-card glass-panel">
-          <div className="stat-icon" style={{ color: '#FFD166' }}>
-            <UserCheck size={24} />
-          </div>
-          <div className="stat-info">
-            <h3>Present Today</h3>
-            <p className="stat-value">{stats.present}</p>
-          </div>
-        </div>
-
-        <div className="stat-card glass-panel">
-          <div className="stat-icon" style={{ color: '#FF6B6B' }}>
-            <Clock size={24} />
-          </div>
-          <div className="stat-info">
-            <h3>Late Arrivals</h3>
-            <p className="stat-value">{stats.late}</p>
-          </div>
+      {/* Row 3: Daily Attendance Trend */}
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <h2 className="cardTitle">Daily Attendance Trend</h2>
+        <p className="cardSubtitle">Overview of presence across the last 10 working days</p>
+        <div style={{ height: '300px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={dailyTrend} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barSize={8}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} dy={10} />
+              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} domain={[0, 'auto']} />
+              <Tooltip content={<CustomTooltip />} cursor={{fill: '#f3f4f6'}} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+              <Bar dataKey="Absent" fill="#fca5a5" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Late" fill="#fcd34d" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Present" fill="#bbf7d0" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
-      {analytics && (
-        <div className="analytics-section">
-          
-          {/* Top Chart mimicking the Grouped Bar Chart from image */}
-          <div className="chart-card glass-panel" style={{ marginBottom: '1rem' }}>
-            <h3>Daily Attendance Trend</h3>
-            <p className="chart-desc">Overview of presence across the last 10 working days</p>
-            <div className="chart-container" style={{ height: '350px' }}>
-              <ResponsiveContainer width="100%" height={350}>
-                <BarChart data={analytics.dailyTrend} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eaeaea" />
-                  <XAxis dataKey="date" tickFormatter={(val) => (typeof val === 'string' && val.length >= 10) ? val.substring(8, 10) + '/' + val.substring(5,7) : val} axisLine={false} tickLine={false} dy={10} tick={{ fill: '#666666', fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666666', fontSize: 12 }} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-                  <Legend content={<CustomLegend />} />
-                  <Bar dataKey="Present" fill={COLORS.Present} radius={[4, 4, 0, 0]} maxBarSize={10} />
-                  <Bar dataKey="Absent" fill={COLORS.Absent} radius={[4, 4, 0, 0]} maxBarSize={10} />
-                  <Bar dataKey="Late" fill={COLORS.Late} radius={[4, 4, 0, 0]} maxBarSize={10} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="analytics-grid">
-            
-            {/* Bottom Left Chart: Donut Chart */}
-            <div className="chart-card glass-panel">
-              <h3>Attendance Status Distribution</h3>
-              <p className="chart-desc">Past 30 days distribution</p>
-              <div className="chart-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={analytics.statusDistribution}
-                      innerRadius={70}
-                      outerRadius={90}
-                      paddingAngle={5}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      {analytics.statusDistribution.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[entry.name]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-                {/* Custom Donut Legend underneath */}
-                <div style={{ display: 'flex', gap: '2rem', marginTop: '1rem' }}>
-                  {analytics.statusDistribution.map((entry, index) => (
-                    <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#666666', fontSize: '0.85rem' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: COLORS[entry.name] }}></div>
-                      {entry.name}
-                    </div>
+      {/* Row 4: Status Distribution & Top Hours */}
+      <div className="chartsRow">
+        <div className="card" style={{ flex: 1 }}>
+          <h2 className="cardTitle">Attendance Status Distribution</h2>
+          <p className="cardSubtitle">Past 30 days distribution</p>
+          <div style={{ height: '300px', display: 'flex', justifyContent: 'center' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie 
+                  data={statusDistribution} 
+                  innerRadius={80} 
+                  outerRadius={110} 
+                  paddingAngle={2} 
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {statusDistribution.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Right Chart: Segmented Bar/Gradient look */}
-            <div className="chart-card glass-panel">
-              <h3>Average Hours Devoted (Top Employees)</h3>
-              <p className="chart-desc">Average daily hours over the past month</p>
-              <div className="chart-container">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={analytics.timeDevoted.slice(0, 5)} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                    <defs>
-                      <linearGradient id="colorHours" x1="0" y1="1" x2="0" y2="0">
-                        <stop offset="5%" stopColor="#FF6B6B" stopOpacity={0.8}/>
-                        <stop offset="50%" stopColor="#FFD166" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#B9FBC0" stopOpacity={0.8}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eaeaea" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} dy={10} tick={{ fill: '#666666', fontSize: 12 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666666', fontSize: 12 }} />
-                    <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-                    <Bar dataKey="hours" fill="url(#colorHours)" radius={[10, 10, 10, 10]} maxBarSize={20} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
+                </Pie>
+                <Tooltip />
+                <Legend iconType="circle" verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px' }}/>
+              </PieChart>
+            </ResponsiveContainer>
           </div>
-          
         </div>
-      )}
 
-      {/* Administration & Reports Section */}
-      <div className="admin-reports-section">
-        <h2 className="admin-reports-header">Administration & Reports</h2>
-        <div className="admin-reports-grid">
-          
-          {/* Employee Management */}
-          <div className="report-card">
-            <div className="report-card-header">
-              <h3 className="report-card-title">Employee Management</h3>
-              <User className="report-card-icon" size={20} />
+        <div className="card" style={{ flex: 1 }}>
+          <h2 className="cardTitle">Average Hours Devoted (Top Employees)</h2>
+          <p className="cardSubtitle">Average daily hours over the past month</p>
+          <div style={{ height: '300px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topHours} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barSize={16}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#6b7280'}} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} tickCount={5} domain={[0, 1.2]} />
+                <Tooltip cursor={{fill: 'transparent'}} />
+                <Bar dataKey="hours" radius={[8, 8, 8, 8]}>
+                  {
+                    topHours.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill="url(#colorGradient)" />
+                    ))
+                  }
+                </Bar>
+                <defs>
+                  <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#bbf7d0" />
+                    <stop offset="100%" stopColor="#fca5a5" />
+                  </linearGradient>
+                </defs>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Links / Old Dashboard Grid */}
+      <div className="quickLinksSection">
+        <h2 className="quickLinksTitle">Quick Links</h2>
+        <div className={oldStyles.grid}>
+          {/* Web Checkin Card */}
+          <div className={`${oldStyles.card} ${oldStyles.checkinCard}`}>
+            <div className={oldStyles.cardHeader}>
+              <h2 className={oldStyles.cardTitle}>Web Checkin</h2>
             </div>
-            <div className="report-card-body">
-              <ul className="report-card-links">
-                <li><a href="/dashboard/employees" className="report-card-link">View All Employees</a></li>
-                <li><a href="/dashboard/employees" className="report-card-link">Add New Employee</a></li>
-                <li><a href="/dashboard/employees" className="report-card-link">Invite Employees</a></li>
-                <li><a href="/dashboard/employees" className="report-card-link">Employee Registration Requests</a></li>
-              </ul>
+            <div className={oldStyles.timeDisplay}>
+              <div className={oldStyles.dateText}>
+                <Calendar size={16} /> Wed 05 Aug 2026
+              </div>
+              <div className={oldStyles.timeText}>
+                14:49:25
+              </div>
             </div>
+            <button className={oldStyles.checkinButton}>
+              <Clock size={16} /> CHECK IN
+            </button>
           </div>
 
-          {/* Employee Punches */}
-          <div className="report-card">
-            <div className="report-card-header">
-              <h3 className="report-card-title">Employee Punches</h3>
-              <UserCheck className="report-card-icon" size={20} />
+          {/* Punches */}
+          <div className={`${oldStyles.card} ${oldStyles.punchesCard}`}>
+            <div className={oldStyles.cardHeader}>
+              <h2 className={oldStyles.cardTitle}>Punches</h2>
+              <Clock size={18} className={oldStyles.cardIcon} />
             </div>
-            <div className="report-card-body">
-              <ul className="report-card-links">
-                <li><a href="/dashboard/attendance" className="report-card-link">View All Punches</a></li>
-                <li><a href="/dashboard/whoisin" className="report-card-link">Who is in?</a></li>
-                <li><a href="/dashboard/whoisin" className="report-card-link">Mobile Checkin Report</a></li>
-              </ul>
-            </div>
-            <div className="report-card-footer" style={{ cursor: 'pointer' }} onClick={() => window.location.href = '/dashboard/setup'}>
-              <Settings size={14} /> Punch Settings
-            </div>
+            <ul className={oldStyles.linkList}>
+              <li><Link href="/dashboard/punches/my-punches" className={oldStyles.linkItem}>My Punches</Link></li>
+              <li><Link href="/dashboard/punches/team-punches" className={oldStyles.linkItem}>Team Punches</Link></li>
+              <li><Link href="/dashboard/punches/mobile-checkin" className={oldStyles.linkItem}>Mobile Checkin Report</Link></li>
+              <li><Link href="/dashboard/punches/whos-in" className={oldStyles.linkItem}>Who Is In?</Link></li>
+              <li><Link href="/dashboard/punches/supervisor-entry" className={oldStyles.linkItem}>Supervisor Entry</Link></li>
+            </ul>
           </div>
 
-          {/* Attendance & Shift Management */}
-          <div className="report-card">
-            <div className="report-card-header">
-              <h3 className="report-card-title">Attendance & Shift Management</h3>
-              <CalendarCheck className="report-card-icon" size={20} />
+          {/* Attendance */}
+          <div className={`${oldStyles.card} ${oldStyles.attendanceCard}`}>
+            <div className={oldStyles.cardHeader}>
+              <h2 className={oldStyles.cardTitle}>Attendance</h2>
+              <CheckCircle size={18} className={oldStyles.cardIcon} />
             </div>
-            <div className="report-card-body">
-              <ul className="report-card-links">
-                <li><a href="/dashboard/attendance" className="report-card-link">View Attendance Records</a></li>
-                <li><a href="/dashboard/regularization" className="report-card-link">View Regularization Requests</a></li>
-                <li><a href="/dashboard/attendance/summary" className="report-card-link">Attendance Summary Report</a></li>
-                <li><a href="/dashboard/attendance/grid" className="report-card-link">Advanced Attendance Grid (OT/HOT/LC/EG)</a></li>
-                <li><a href="/dashboard/attendance/summary" className="report-card-link">Manual OT/HOT</a></li>
-              </ul>
-            </div>
-            <div className="report-card-footer" style={{ cursor: 'pointer' }} onClick={() => window.location.href = '/dashboard/setup'}>
-              <Settings size={14} /> Attendance & Shift Settings
-            </div>
+            <ul className={oldStyles.linkList}>
+              <li><Link href="/dashboard/attendance/my-records" className={oldStyles.linkItem}>My Attendance Records</Link></li>
+              <li><Link href="/dashboard/attendance/team-records" className={oldStyles.linkItem}>Team Attendance Records</Link></li>
+              <li><Link href="/dashboard/attendance/my-regularization" className={oldStyles.linkItem}>My Regularization Requests</Link></li>
+              <li><Link href="/dashboard/attendance/team-regularization" className={oldStyles.linkItem}>Team Regularization Requests</Link></li>
+            </ul>
           </div>
 
-          {/* Leave Management */}
-          <div className="report-card">
-            <div className="report-card-header">
-              <h3 className="report-card-title">Leave Management</h3>
-              <Plane className="report-card-icon" size={20} />
+          {/* Leave */}
+          <div className={`${oldStyles.card} ${oldStyles.leaveCard}`}>
+            <div className={oldStyles.cardHeader}>
+              <h2 className={oldStyles.cardTitle}>Leave</h2>
+              <FileText size={18} className={oldStyles.cardIcon} />
             </div>
-            <div className="report-card-body">
-              <ul className="report-card-links">
-                <li><a href="/dashboard/leaves/requests" className="report-card-link">View Leave Requests</a></li>
-                <li><a href="/dashboard/leaves/assign" className="report-card-link">Assign Leave</a></li>
-                <li><a href="/dashboard/leaves/holidays" className="report-card-link">Manage Holidays</a></li>
-                <li><a href="/dashboard/leaves/entitlements" className="report-card-link">Entitlements</a></li>
-                <li><a href="/dashboard/leaves/report" className="report-card-link">Leave Entitlements and Usage Report</a></li>
-              </ul>
-            </div>
-            <div className="report-card-footer" style={{ cursor: 'pointer' }} onClick={() => window.location.href = '/dashboard/setup'}>
-              <Settings size={14} /> Leave Settings
-            </div>
+            <ul className={oldStyles.linkList}>
+              <li><Link href="/dashboard/leaves/apply" className={oldStyles.linkItem}>Apply Leave</Link></li>
+              <li><Link href="/dashboard/leaves/my-applications" className={oldStyles.linkItem}>My Applications</Link></li>
+              <li><Link href="/dashboard/leaves/team-applications" className={oldStyles.linkItem}>Team Applications</Link></li>
+              <li><Link href="/dashboard/leaves/balances" className={oldStyles.linkItem}>Leave Balances</Link></li>
+              <li><Link href="/dashboard/leaves/whos-on-leave" className={oldStyles.linkItem}>Who is on Leave?</Link></li>
+            </ul>
           </div>
 
-          {/* Employee Documents */}
-          <div className="report-card">
-            <div className="report-card-header">
-              <h3 className="report-card-title">Employee Documents</h3>
-              <FileText className="report-card-icon" size={20} />
+          {/* Organization */}
+          <div className={`${oldStyles.card} ${oldStyles.orgCard}`}>
+            <div className={oldStyles.cardHeader}>
+              <h2 className={oldStyles.cardTitle}>Organization</h2>
+              <Building size={18} className={oldStyles.cardIcon} />
             </div>
-            <div className="report-card-body">
-              <ul className="report-card-links">
-                <li><a href="#" className="report-card-link">Manage Personal Documents</a></li>
-                <li><a href="#" className="report-card-link">Manage Dependants Documents</a></li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Location Management */}
-          <div className="report-card">
-            <div className="report-card-header">
-              <h3 className="report-card-title">Location Management</h3>
-              <MapPin className="report-card-icon" size={20} />
-            </div>
-            <div className="report-card-body">
-              <ul className="report-card-links">
-                <li><a href="/dashboard/locations" className="report-card-link">Add New Location</a></li>
-                <li><a href="/dashboard/locations" className="report-card-link">View All Locations</a></li>
-                <li><a href="/dashboard/locations" className="report-card-link">Manage Location Categories</a></li>
-              </ul>
-            </div>
+            <ul className={oldStyles.linkList}>
+              <li><Link href="/dashboard/organization/holidays" className={oldStyles.linkItem}>Holidays</Link></li>
+              <li><Link href="/dashboard/organization/directory" className={oldStyles.linkItem}>Directory</Link></li>
+              <li><Link href="/dashboard/organization/announcements" className={oldStyles.linkItem}>Announcements</Link></li>
+            </ul>
           </div>
 
           {/* Tools */}
-          <div className="report-card">
-            <div className="report-card-header">
-              <h3 className="report-card-title">Tools</h3>
-              <Wrench className="report-card-icon" size={20} />
+          <div className={`${oldStyles.card} ${oldStyles.toolsCard}`}>
+            <div className={oldStyles.cardHeader}>
+              <h2 className={oldStyles.cardTitle}>Tools</h2>
+              <PenTool size={18} className={oldStyles.cardIcon} />
             </div>
-            <div className="report-card-body">
-              <ul className="report-card-links">
-                <li><a href="#" className="report-card-link">Announcements</a></li>
-                <li><a href="#" className="report-card-link">Approval Forward Settings</a></li>
-              </ul>
-            </div>
+            <ul className={oldStyles.linkList}>
+              <li><Link href="#" className={oldStyles.linkItem}>Approval Forward Settings</Link></li>
+            </ul>
           </div>
 
           {/* Field Journey Tracker */}
-          <div className="report-card">
-            <div className="report-card-header">
-              <h3 className="report-card-title">Field Journey Tracker</h3>
-              <Map className="report-card-icon" size={20} />
+          <div className={`${oldStyles.card} ${oldStyles.journeyCard}`}>
+            <div className={oldStyles.cardHeader}>
+              <h2 className={oldStyles.cardTitle}>Field Journey Tracker</h2>
+              <Map size={18} className={oldStyles.cardIcon} />
             </div>
-            <div className="report-card-body">
-              <ul className="report-card-links">
-                <li><a href="#" className="report-card-link">Summary View</a></li>
-                <li><a href="#" className="report-card-link">Map View</a></li>
-              </ul>
-            </div>
+            <ul className={oldStyles.linkList}>
+              <li><Link href="/dashboard/journey/summary" className={oldStyles.linkItem}>Summary View</Link></li>
+              <li><Link href="/dashboard/journey/map" className={oldStyles.linkItem}>Map View</Link></li>
+            </ul>
           </div>
 
+          {/* Documents */}
+          <div className={`${oldStyles.card} ${oldStyles.docsCard}`}>
+            <div className={oldStyles.cardHeader}>
+              <h2 className={oldStyles.cardTitle}>Documents</h2>
+              <File size={18} className={oldStyles.cardIcon} />
+            </div>
+            <ul className={oldStyles.linkList}>
+              <li><Link href="/dashboard/documents/personal" className={oldStyles.linkItem}>Personal Documents</Link></li>
+              <li><Link href="/dashboard/documents/dependant" className={oldStyles.linkItem}>Dependant Documents</Link></li>
+            </ul>
+          </div>
+
+          {/* Reports */}
+          <div className={`${oldStyles.card} ${oldStyles.reportsCard}`}>
+            <div className={oldStyles.cardHeader}>
+              <h2 className={oldStyles.cardTitle}>Reports</h2>
+              <BarChart2 size={18} className={oldStyles.cardIcon} />
+            </div>
+            <ul className={oldStyles.linkList}>
+              <li><Link href="/dashboard/reports" className={oldStyles.linkItem}>All Reports</Link></li>
+              <li><Link href="/dashboard/reports" className={oldStyles.linkItem}>Punch Reports</Link></li>
+              <li><Link href="/dashboard/reports" className={oldStyles.linkItem}>Attendance Reports</Link></li>
+              <li><Link href="/dashboard/reports" className={oldStyles.linkItem}>Journey Reports</Link></li>
+              <li><Link href="/dashboard/reports" className={oldStyles.linkItem}>Custom Reports</Link></li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>

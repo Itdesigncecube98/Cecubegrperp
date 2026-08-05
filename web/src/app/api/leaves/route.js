@@ -39,6 +39,7 @@ export async function POST(request) {
         startDate: data.startDate,
         endDate: data.endDate,
         reason: data.reason,
+        isHalfDay: data.isHalfDay || false,
         status: 'PENDING'
       }
     });
@@ -60,12 +61,16 @@ export async function PUT(request) {
 
     // If leave is approved, we should ideally deduct from balance.
     if (status === 'APPROVED') {
-      const { employeeId, leaveType, startDate, endDate } = updatedRequest;
+      const { employeeId, leaveType, startDate, endDate, isHalfDay } = updatedRequest;
       // Calculate days
       const start = new Date(startDate);
       const end = new Date(endDate);
       const diffTime = Math.abs(end - start);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+      if (isHalfDay) {
+        diffDays = Math.max(0, diffDays - 0.5);
+      }
 
       // Update balance
       const balance = await prisma.leaveBalance.findUnique({

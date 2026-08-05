@@ -45,6 +45,7 @@ model Employee {
   punchRequests PunchRequest[]
   leaveBalance  LeaveBalance?
   leaveRequests LeaveRequest[]
+  locationRequests LocationRequest[]
 }
 
 model Attendance {
@@ -88,6 +89,7 @@ model LeaveRequest {
   endDate      String   // "YYYY-MM-DD"
   reason       String   @db.Text
   status       String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  isHalfDay    Boolean  @default(false)
   appliedOn    DateTime @default(now())
   employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
@@ -138,3 +140,36 @@ model GpsLocation {
   isActive     Boolean @default(true)
   createdAt    DateTime @default(now())
 }
+
+model Announcement {
+  id        Int      @id @default(autoincrement())
+  subject   String
+  message   String?  @db.Text
+  isHoliday Boolean  @default(false)
+  date      String?  // YYYY-MM-DD format if it is a holiday
+  createdAt DateTime @default(now())
+}
+
+model LocationRequest {
+  id           Int      @id @default(autoincrement())
+  employeeId   String
+  status       String   @default("PENDING") // PENDING, COMPLETED, FAILED
+  latitude     Float?
+  longitude    Float?
+  address      String?
+  movementType String?  // e.g., "Office to Site"
+  requestedAt  DateTime @default(now())
+  respondedAt  DateTime?
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  pings        LocationPing[]
+}
+
+model LocationPing {
+  id         Int             @id @default(autoincrement())
+  requestId  Int
+  latitude   Float
+  longitude  Float
+  timestamp  DateTime        @default(now())
+  request    LocationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+

@@ -246,3 +246,59 @@ export const deleteLeaveType = async (id) => {
   });
   return await res.json();
 };
+
+export const getAnnouncements = async () => {
+  const res = await fetch('/api/announcements');
+  return await res.json();
+};
+
+export const createAnnouncement = async (data) => {
+  const res = await fetch('/api/announcements', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return await res.json();
+};
+
+export const deleteAnnouncement = async (id) => {
+  const res = await fetch(`/api/announcements?id=${id}`, {
+    method: 'DELETE'
+  });
+  return await res.json();
+};
+
+export const getLocationRequests = async (employeeId = '', date = '') => {
+  let url = '/api/location-requests?';
+  if (employeeId) url += `employeeId=${employeeId}&`;
+  if (date) url += `date=${date}`;
+  const res = await fetch(url);
+  return await res.json();
+};
+
+export const requestLocation = async (employeeId) => {
+  const res = await fetch('/api/location-requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employeeId })
+  });
+  return await res.json();
+};
+
+export const updateLocationRequest = async (data) => {
+  const res = await fetch('/api/location-requests', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return await res.json();
+};
+
+export const pingLocation = async (requestId, latitude, longitude) => {
+  const res = await fetch('/api/location-requests/ping', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requestId, latitude, longitude })
+  });
+  return await res.json();
+};

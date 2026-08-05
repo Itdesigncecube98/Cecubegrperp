@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, MapPin, Trash2, Plus, Target } from 'lucide-react';
+import { ArrowLeft, MapPin, Trash2, Plus, Target, Edit2 } from 'lucide-react';
 
 export default function LocationsPage() {
   const router = useRouter();
@@ -60,7 +60,7 @@ export default function LocationsPage() {
     setSubmitting(true);
     try {
       const res = await fetch('/api/locations', {
-        method: 'POST',
+        method: form.id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
       });
@@ -69,12 +69,26 @@ export default function LocationsPage() {
         fetchLocations();
         setShowForm(false);
         setForm({ name: '', address: '', latitude: '', longitude: '', radiusMeters: 100, locationType: 'Office' });
-        showToast('GPS Location added successfully!');
+        showToast(form.id ? 'GPS Location updated successfully!' : 'GPS Location added successfully!');
       }
     } catch (e) {
-      showToast('Error adding location.', 'error');
+      showToast(form.id ? 'Error updating location.' : 'Error adding location.', 'error');
     }
     setSubmitting(false);
+  };
+
+  const handleEdit = (loc) => {
+    setForm({
+      id: loc.id,
+      name: loc.name,
+      address: loc.address || '',
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      radiusMeters: loc.radiusMeters,
+      locationType: loc.locationType || 'Office'
+    });
+    setCoordMode('manual');
+    setShowForm(true);
   };
 
   const handleDelete = async (id) => {
@@ -102,7 +116,7 @@ export default function LocationsPage() {
             <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>
               ← Back to Locations
             </button>
-            <h2 style={{ margin: '8px 0 0', fontSize: '20px', fontWeight: 700 }}>New GPS Location</h2>
+            <h2 style={{ margin: '8px 0 0', fontSize: '20px', fontWeight: 700 }}>{form.id ? 'Edit GPS Location' : 'New GPS Location'}</h2>
             <div style={{ width: '40px', height: '3px', background: '#f59e0b', borderRadius: '2px', marginTop: '4px' }} />
           </div>
 
@@ -162,7 +176,7 @@ export default function LocationsPage() {
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button onClick={() => setShowForm(false)} style={{ padding: '10px 20px', border: '1px solid #e5e7eb', background: 'white', borderRadius: '6px', cursor: 'pointer', flex: 1 }}>Cancel</button>
                 <button onClick={handleSubmit} disabled={submitting} style={{ padding: '10px 20px', background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', flex: 1, fontWeight: 600 }}>
-                  {submitting ? 'Saving...' : 'Add Location'}
+                  {submitting ? 'Saving...' : form.id ? 'Save Changes' : 'Add Location'}
                 </button>
               </div>
             </div>
@@ -204,7 +218,10 @@ export default function LocationsPage() {
               <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700 }}>GPS Location Management</h1>
               <p style={{ margin: 0, color: '#6b7280', fontSize: '14px' }}>Manage GPS check-in locations with geofence radius.</p>
             </div>
-            <button onClick={() => setShowForm(true)} style={{ background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', padding: '10px 18px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button onClick={() => {
+              setForm({ name: '', address: '', latitude: '', longitude: '', radiusMeters: 100, locationType: 'Office' });
+              setShowForm(true);
+            }} style={{ background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', padding: '10px 18px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Plus size={16} /> Add GPS Location
             </button>
           </div>
@@ -235,9 +252,14 @@ export default function LocationsPage() {
                           <div style={{ fontSize: '12px', color: '#6b7280' }}>{loc.address || 'No address'}</div>
                         </div>
                       </div>
-                      <button onClick={() => handleDelete(loc.id)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', padding: '6px', cursor: 'pointer' }}>
-                        <Trash2 size={14} color="#dc2626" />
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => handleEdit(loc)} style={{ background: '#e0f2fe', border: 'none', borderRadius: '6px', padding: '6px', cursor: 'pointer' }}>
+                          <Edit2 size={14} color="#0284c7" />
+                        </button>
+                        <button onClick={() => handleDelete(loc.id)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', padding: '6px', cursor: 'pointer' }}>
+                          <Trash2 size={14} color="#dc2626" />
+                        </button>
+                      </div>
                     </div>
                     <div style={{ marginTop: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       <span style={{ background: '#f3f4f6', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500 }}>

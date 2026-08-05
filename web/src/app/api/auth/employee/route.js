@@ -38,7 +38,8 @@ export async function POST(request) {
           empId: employee.empId,
           name: employee.name,
           email: employee.email,
-          department: employee.department
+          department: employee.department,
+          role: employee.role
         }
       });
     } else {

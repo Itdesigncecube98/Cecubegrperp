@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { getEmployeeStats, updateEmployee, getPunchRequests, createPunchRequest, getEmployees } from '../../../lib/data';
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Edit2, Plus, X, Trash2, UserCircle, Shield } from 'lucide-react';
+import { getEmployeeStats, updateEmployee, getPunchRequests, createPunchRequest, getEmployees, getAnnouncements, getLocationRequests, updateLocationRequest, pingLocation } from '../../../lib/data';
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Edit2, Plus, X, Trash2, UserCircle, Shield, Bell, MapPin } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function EmployeeDashboard() {
@@ -11,6 +11,10 @@ export default function EmployeeDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedShift, setSelectedShift] = useState('Day');
   const [pendingRequests, setPendingRequests] = useState([]);
+  const [pendingLocationRequests, setPendingLocationRequests] = useState([]);
+  const [activeLocationRequests, setActiveLocationRequests] = useState([]);
+  const [selectedMovementType, setSelectedMovementType] = useState('Office to Site');
+  const [announcements, setAnnouncements] = useState([]);
   const [isSupervisor, setIsSupervisor] = useState(false);
   const router = useRouter();
 
@@ -32,24 +36,38 @@ export default function EmployeeDashboard() {
       const parsed = JSON.parse(empData);
       setEmployee(parsed);
       loadStats(parsed.id);
+
+      const interval = setInterval(() => {
+        loadStats(parsed.id, false);
+      }, 10000);
+      return () => clearInterval(interval);
     }
   }, []);
 
-  const loadStats = async (id) => {
+  async function loadStats(id, showLoader = true) {
+    if (showLoader) setLoading(true);
     try {
       const data = await getEmployeeStats(id);
       setStatsData(data);
       const reqs = await getPunchRequests(null, id);
       setPendingRequests(reqs.filter(r => r.status === 'PENDING' && r.date === new Date().toISOString().split('T')[0]));
       
+      const locReqs = await getLocationRequests(id);
+      setPendingLocationRequests(locReqs.filter(r => r.status === 'PENDING'));
+      setActiveLocationRequests(locReqs.filter(r => r.status === 'ACTIVE'));
+
+      const anns = await getAnnouncements();
+      setAnnouncements(anns || []);
+      
       const allEmps = await getEmployees();
-      setIsSupervisor(allEmps.some(e => e.supervisorId === id));
+      const me = allEmps.find(e => e.id === id);
+      setIsSupervisor((me && me.role === 'SUPERVISOR') || allEmps.some(e => e.supervisorId === id));
     } catch (e) {
       console.error('Failed to load stats', e);
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
-  };
+  }
 
   const calculateTotalTime = (slots) => {
     if (!slots || slots.length === 0) return '-';
@@ -209,6 +227,71 @@ export default function EmployeeDashboard() {
     );
   };
 
+  const handleSendLocation = (reqId) => {
+    if (!navigator.geolocation) {
+      showToast("Geolocation is not supported by your browser.", 'error');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          await updateLocationRequest({
+            id: reqId,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            status: 'ACTIVE',
+            movementType: selectedMovementType
+          });
+          showToast('Location tracking started!');
+          loadStats(employee.id);
+        } catch (e) {
+          console.error(e);
+          showToast('Failed to start tracking.', 'error');
+        }
+      },
+      (error) => {
+        console.error(error);
+        showToast('Unable to retrieve location. Please allow location access.', 'error');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  const handleStopTracking = async (reqId) => {
+    try {
+      await updateLocationRequest({
+        id: reqId,
+        status: 'STOPPED'
+      });
+      showToast('Location tracking stopped.');
+      loadStats(employee.id);
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to stop tracking.', 'error');
+    }
+  };
+
+  // Background location pinging for active requests
+  useEffect(() => {
+    let interval;
+    if (activeLocationRequests.length > 0) {
+      interval = setInterval(() => {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+          for (const req of activeLocationRequests) {
+            try {
+              await pingLocation(req.id, pos.coords.latitude, pos.coords.longitude);
+            } catch(e) { console.error('Ping failed', e); }
+          }
+        }, () => {}, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
+      }, 30000); // Send ping every 30 seconds
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    }
+  }, [activeLocationRequests]);
+
   if (loading || !employee) {
     return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading your dashboard...</div>;
   }
@@ -235,6 +318,59 @@ export default function EmployeeDashboard() {
 
   return (
     <div className="dashboard-container">
+      {activeLocationRequests.map(req => (
+        <div key={req.id} style={{
+          backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', padding: '1rem',
+          marginBottom: '1rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <MapPin size={24} color="#3b82f6" />
+            <div>
+              <div style={{ fontWeight: '600' }}>Live Tracking Active</div>
+              <div style={{ fontSize: '14px', color: '#3b82f6' }}>You are currently sharing your live location with Admin. ({req.movementType || ''})</div>
+            </div>
+          </div>
+          <button onClick={() => handleStopTracking(req.id)} style={{
+            backgroundColor: '#ef4444', color: 'white', padding: '0.5rem 1rem', borderRadius: '4px',
+            border: 'none', cursor: 'pointer', fontWeight: '500'
+          }}>Stop Sharing</button>
+        </div>
+      ))}
+
+      {pendingLocationRequests.map(req => (
+        <div key={req.id} style={{
+          backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '1rem',
+          marginBottom: '1rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <MapPin size={24} color="#ef4444" />
+            <div>
+              <div style={{ fontWeight: '600' }}>Location Request from Admin</div>
+              <div style={{ fontSize: '14px', color: '#b91c1c' }}>Please approve tracking and select your movement type.</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <select 
+              value={selectedMovementType} 
+              onChange={(e) => setSelectedMovementType(e.target.value)}
+              style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #fca5a5', backgroundColor: '#fff' }}
+            >
+              <option value="Office to Site">Office to Site</option>
+              <option value="Home to Site">Home to Site</option>
+              <option value="Site to Office">Site to Office</option>
+              <option value="Site to Site">Site to Site</option>
+              <option value="Client Visit">Client Visit</option>
+            </select>
+            <button 
+              onClick={() => handleSendLocation(req.id)}
+              style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}
+            >
+              Approve & Share
+            </button>
+          </div>
+        </div>
+      ))}
+
       <div className="page-header" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 className="page-title">Welcome back, {employee.name.split(' ')[0]}!</h1>
@@ -287,6 +423,31 @@ export default function EmployeeDashboard() {
           )}
         </div>
       </div>
+
+      {announcements.length > 0 && (
+        <div className="glass-panel" style={{ marginBottom: '2.5rem', backgroundColor: '#eff6ff', borderLeft: '4px solid #3b82f6' }}>
+          <div style={{ padding: '1rem', borderBottom: '1px solid #bfdbfe' }}>
+            <h2 style={{ fontSize: '1.1rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Bell size={18} /> Recent Announcements
+            </h2>
+          </div>
+          <div style={{ padding: '1rem' }}>
+            {announcements.map(ann => (
+              <div key={ann.id} style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px dashed #bfdbfe' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <h3 style={{ margin: 0, color: '#1e3a8a', fontSize: '1.05rem' }}>
+                    {ann.subject}
+                    {ann.isHoliday && <span style={{ marginLeft: '10px', background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>HOLIDAY</span>}
+                  </h3>
+                  <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{new Date(ann.createdAt).toLocaleDateString()}</span>
+                </div>
+                {ann.message && <p style={{ margin: '0.5rem 0 0 0', color: '#334155', fontSize: '0.9rem' }}>{ann.message}</p>}
+                {ann.isHoliday && ann.date && <p style={{ margin: '0.5rem 0 0 0', color: '#16a34a', fontSize: '0.85rem', fontWeight: 500 }}>Date: {new Date(ann.date).toLocaleDateString()}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {currentMonthData && (
         <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '2.5rem' }}>
