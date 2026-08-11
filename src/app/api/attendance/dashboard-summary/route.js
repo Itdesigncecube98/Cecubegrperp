@@ -18,15 +18,15 @@ export async function GET(request) {
     const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
 
     const [employeeCount, todayRecords, rangeRecords, gpsCount] = await Promise.all([
-      prisma.employee.count(),
+      prisma.employee.count().catch(() => 0),
       prisma.attendance.findMany({
         where: { date: todayStr },
         select: { employeeId: true, status: true, timeSlots: true }
-      }),
+      }).catch(() => []),
       prisma.attendance.findMany({
         where: { date: { gte: startStr, lte: todayStr } },
         select: { date: true, status: true }
-      }),
+      }).catch(() => []),
       prisma.gpsLocation.count({ where: { isActive: true } }).catch(() => 0)
     ]);
 

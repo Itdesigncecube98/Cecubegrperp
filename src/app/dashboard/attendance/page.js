@@ -27,7 +27,7 @@ export default function Attendance() {
       setAttendanceData(parsedData);
       
       const anns = await getAnnouncements();
-      setAnnouncements(anns || []);
+      setAnnouncements(Array.isArray(anns) ? anns : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -39,7 +39,9 @@ export default function Attendance() {
     loadData(date);
   }, [date]);
 
-  const holiday = announcements.find(a => a.isHoliday && a.date === date);
+  const holiday = Array.isArray(announcements)
+    ? announcements.find(a => a?.isHoliday && a?.date === date)
+    : null;
 
   const [savingId, setSavingId] = useState(null);
 

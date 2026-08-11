@@ -58,8 +58,9 @@ export const deleteEmployee = async (id) => {
 export const getAttendance = async (date) => {
   const targetDate = date || new Date().toISOString().split('T')[0];
   const res = await fetch(`/api/attendance?date=${targetDate}`);
-  if (!res.ok) throw new Error(`Attendance fetch failed (${res.status})`);
-  return await res.json();
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 };
 
 export const markAttendance = async (employeeId, date, status, shiftType = 'Day', timeSlots = '[]') => {
@@ -250,7 +251,9 @@ export const deleteLeaveType = async (id) => {
 
 export const getAnnouncements = async () => {
   const res = await fetch('/api/announcements');
-  return await res.json();
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 };
 
 export const createAnnouncement = async (data) => {

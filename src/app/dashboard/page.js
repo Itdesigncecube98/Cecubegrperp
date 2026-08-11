@@ -64,6 +64,15 @@ export default function AdminDashboard() {
       if (Array.isArray(summary.dailyTrend)) setDailyTrend(summary.dailyTrend);
     } catch (e) {
       console.error('Failed to load admin dashboard data', e);
+      setStats(prev => ({ ...prev, totalEmployees: 0, presentToday: 0, activeEmployees: 0, gpsLocations: 0 }));
+      setWhoIsIn([
+        { name: 'IN', value: 0 },
+        { name: 'OUT', value: 0 },
+        { name: 'NO PUNCH', value: 0 },
+        { name: 'ON LEAVE', value: 0 }
+      ]);
+      setStatusDistribution([]);
+      setDailyTrend([]);
     } finally {
       setLoading(false);
     }

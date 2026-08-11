@@ -6,9 +6,10 @@ export async function GET() {
     const announcements = await prisma.announcement.findMany({
       orderBy: { createdAt: 'desc' }
     });
-    return NextResponse.json(announcements);
+    return NextResponse.json(Array.isArray(announcements) ? announcements : []);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Error fetching announcements:', error);
+    return NextResponse.json([], { status: 200 });
   }
 }
 

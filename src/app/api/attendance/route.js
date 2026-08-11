@@ -11,7 +11,6 @@ export async function GET(request) {
       where: { date }
     });
 
-    // Merge employees with their attendance status for that date
     const result = employees.map(emp => {
       const record = attendanceRecords.find(a => a.employeeId === emp.id);
       return {
@@ -23,9 +22,10 @@ export async function GET(request) {
       };
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json(Array.isArray(result) ? result : []);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Error fetching attendance:', error);
+    return NextResponse.json([], { status: 200 });
   }
 }
 

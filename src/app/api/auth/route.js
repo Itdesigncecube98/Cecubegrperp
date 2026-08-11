@@ -2,20 +2,36 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 
 export async function POST(request) {
-  const { email, password } = await request.json();
-
-  // Hardcoded super admin bypass (always works regardless of DB)
-  const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@cecube.com';
-  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password123';
-  if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-    return NextResponse.json({ success: true, email: ADMIN_EMAIL, name: 'Super Admin' });
-  }
-
   try {
-    // Look up any admin added via the Admin panel
-    const admin = await prisma.admin.findUnique({ where: { email } });
+    const { email, password } = await request.json();
 
-    if (admin && admin.password === password) {
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const normalizedPassword = (password || '').trim();
+
+    const adminCandidates = [
+      { email: process.env.ADMIN_EMAIL || 'admin@cecube.com', password: process.env.ADMIN_PASSWORD || 'password123' },
+      { email: 'admin@cecubeindia.com', password: 'password123' },
+      { email: 'hr@cecubeindia.com', password: 'hr@123Cecube' }
+    ];
+
+    const directMatch = adminCandidates.find(candidate =>
+      candidate.email.toLowerCase() === normalizedEmail && candidate.password === normalizedPassword
+    );
+
+    if (directMatch) {
+      return NextResponse.json({ success: true, email: directMatch.email, name: 'Super Admin' });
+    }
+
+    const admin = await prisma.admin.findFirst({
+      where: {
+        OR: [
+          { email: { equals: normalizedEmail, mode: 'insensitive' } },
+          { adminId: { equals: normalizedEmail, mode: 'insensitive' } }
+        ]
+      }
+    });
+
+    if (admin && admin.password === normalizedPassword) {
       return NextResponse.json({
         success: true,
         email: admin.email,

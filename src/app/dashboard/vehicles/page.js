@@ -29,10 +29,12 @@ export default function VehiclesPage() {
       ]);
       const vehData = await vehRes.json();
       const empData = await empRes.json();
-      setVehicles(vehData);
-      setEmployees(empData);
+      setVehicles(Array.isArray(vehData) ? vehData : []);
+      setEmployees(Array.isArray(empData) ? empData : []);
     } catch (e) {
       console.error(e);
+      setVehicles([]);
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
@@ -83,17 +85,20 @@ export default function VehiclesPage() {
     setIsModalOpen(true);
   };
 
-  const filteredVehicles = vehicles.filter(v => {
-    const matchesSearch = v.plateNumber.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          v.makeModel.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (v.employee?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
-    
-    if (activeTab === 'company') {
-      return v.isCompanyVehicle && matchesSearch;
-    } else {
-      return !v.isCompanyVehicle && matchesSearch;
-    }
-  });
+  const filteredVehicles = Array.isArray(vehicles)
+    ? vehicles.filter(v => {
+        const plateNumber = (v?.plateNumber || '').toLowerCase();
+        const makeModel = (v?.makeModel || '').toLowerCase();
+        const employeeName = (v?.employee?.name || '').toLowerCase();
+        const query = searchQuery.toLowerCase();
+        const matchesSearch = plateNumber.includes(query) || makeModel.includes(query) || employeeName.includes(query);
+
+        if (activeTab === 'company') {
+          return v?.isCompanyVehicle && matchesSearch;
+        }
+        return !v?.isCompanyVehicle && matchesSearch;
+      })
+    : [];
 
   if (loading) return <div style={{ padding: '2rem' }}>Loading...</div>;
 
