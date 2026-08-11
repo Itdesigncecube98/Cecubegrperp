@@ -38,7 +38,7 @@ export default function LeaveReportPage() {
           totalRequests: empLeaves.length,
           approved, pending, rejected,
           casualBalance: bal?.casualLeaves ?? 12,
-          sickBalance: bal?.sickLeaves ?? 7,
+          lwpBalance: bal?.leaveWithoutPay ?? 0,
           earnedBalance: bal?.earnedLeaves ?? 15
         };
       });
@@ -75,7 +75,7 @@ export default function LeaveReportPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
             <thead>
               <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-                {['Employee', 'Dept', 'Total Requests', 'Approved', 'Pending', 'Rejected', 'Casual (Rem.)', 'Sick (Rem.)', 'Earned (Rem.)'].map(h => (
+                {['Employee', 'Dept', 'Total Requests', 'Approved', 'Pending', 'Rejected', 'Casual (Rem.)', 'LWP (Rem.)', 'Earned (Rem.)'].map(h => (
                   <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>

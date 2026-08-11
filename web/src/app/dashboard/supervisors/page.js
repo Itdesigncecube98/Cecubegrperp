@@ -45,9 +45,9 @@ export default function SupervisorsPage() {
 
   const loadEmployees = async () => {
     const data = await getEmployees('SUPERVISOR');
-    setEmployees(data);
+    setEmployees(Array.isArray(data) ? data : []);
     const regularEmps = await getEmployees('EMPLOYEE');
-    setAllEmployees(regularEmps);
+    setAllEmployees(Array.isArray(regularEmps) ? regularEmps : []);
   };
 
   useEffect(() => {

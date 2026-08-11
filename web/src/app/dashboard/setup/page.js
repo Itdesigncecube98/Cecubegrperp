@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getWorkWeeks, updateWorkWeeks, getLeaveTypes, createLeaveType, deleteLeaveType } from '../../../lib/data';
-import { Check, X, Edit2, Plus, Trash2 } from 'lucide-react';
+import { getWorkWeeks, updateWorkWeeks, getLeaveTypes, createLeaveType, deleteLeaveType, getLocations, createLocation, deleteLocation } from '../../../lib/data';
+import { Check, X, Edit2, Plus, Trash2, MapPin } from 'lucide-react';
 
 export default function SetupPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('workweeks');
   const [workWeeks, setWorkWeeks] = useState([]);
   const [leaveTypes, setLeaveTypes] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   
@@ -22,6 +23,16 @@ export default function SetupPage() {
     includeWeeklyOff: false,
     includeHoliday: false,
     considerAsPresent: false
+  });
+  
+  const [showLocModal, setShowLocModal] = useState(false);
+  const [newLoc, setNewLoc] = useState({
+    name: '',
+    address: '',
+    latitude: '',
+    longitude: '',
+    radiusMeters: 500,
+    locationType: 'Office'
   });
 
 
@@ -39,8 +50,10 @@ export default function SetupPage() {
     try {
       const ww = await getWorkWeeks();
       const lt = await getLeaveTypes();
+      const locs = await getLocations();
       setWorkWeeks(ww);
       setLeaveTypes(lt);
+      setLocations(locs);
     } catch (e) {
       console.error(e);
     }
@@ -88,6 +101,29 @@ export default function SetupPage() {
     }
   };
 
+  const handleAddLocation = async () => {
+    if (!newLoc.name || !newLoc.latitude || !newLoc.longitude) return;
+    try {
+      await createLocation(newLoc);
+      setShowLocModal(false);
+      fetchData();
+      showToast('Location Added Successfully');
+      setNewLoc({ name: '', address: '', latitude: '', longitude: '', radiusMeters: 500, locationType: 'Office' });
+    } catch (e) {
+      showToast('Error saving location');
+    }
+  };
+
+  const handleDeleteLocation = async (id) => {
+    try {
+      await deleteLocation(id);
+      fetchData();
+      showToast('Location Deleted Successfully');
+    } catch (e) {
+      showToast('Error deleting location');
+    }
+  };
+
   if (loading) return <div style={{padding: '2rem'}}>Loading setup...</div>;
 
   const weekDaysOrdered = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -116,6 +152,9 @@ export default function SetupPage() {
             </li>
             <li className={activeTab === 'leavetypes' ? 'active' : ''} onClick={() => setActiveTab('leavetypes')}>
               <span className="icon">✈</span> Leave Types <span className="badge">{leaveTypes.length}</span>
+            </li>
+            <li className={activeTab === 'locations' ? 'active' : ''} onClick={() => setActiveTab('locations')}>
+              <span className="icon">📍</span> GPS Locations <span className="badge">{locations.length}</span>
             </li>
             <li className={activeTab === 'autoproc' ? 'active' : ''} onClick={() => setActiveTab('autoproc')}>
               <span className="icon">🔄</span> Auto Attendance Process
@@ -207,8 +246,56 @@ export default function SetupPage() {
             </div>
           )}
 
+          {activeTab === 'autoproc' && (
+            <div className="content-card empty-state">
+              <h3>Coming Soon</h3>
+              <p>Auto Attendance Processing settings will be available soon.</p>
+            </div>
+          )}
+
+          {activeTab === 'locations' && (
+            <div className="content-card">
+              <div className="card-header-flex">
+                <div>
+                  <h3>GPS Locations</h3>
+                  <p className="subtitle">Configure physical locations where employees are allowed to punch in/out.</p>
+                </div>
+                <button className="btn-primary" onClick={() => setShowLocModal(true)}><Plus size={16} /> Add Location</button>
+              </div>
+
+              <table className="setup-table" style={{marginTop: '20px'}}>
+                <thead>
+                  <tr>
+                    <th>NAME</th>
+                    <th>ADDRESS</th>
+                    <th>TYPE</th>
+                    <th>COORDINATES</th>
+                    <th>RADIUS</th>
+                    <th>ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {locations.length === 0 ? (
+                    <tr><td colSpan="6" style={{textAlign: 'center', padding: '2rem'}}>No GPS locations configured</td></tr>
+                  ) : locations.map(loc => (
+                    <tr key={loc.id}>
+                      <td style={{fontWeight: 500}}>{loc.name}</td>
+                      <td>{loc.address || '-'}</td>
+                      <td><span className="badge">{loc.locationType}</span></td>
+                      <td>{loc.latitude}, {loc.longitude}</td>
+                      <td>{loc.radiusMeters}m</td>
+                      <td>
+                        <button onClick={() => handleDeleteLocation(loc.id)} className="icon-btn-danger"><Trash2 size={16} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Placeholders for other tabs */}
-          {['shifts', 'leaveperiods', 'autoproc'].includes(activeTab) && (
+          {['shifts', 'leaveperiods'].includes(activeTab) && (
             <div className="content-card">
               <h3>This module is under development</h3>
             </div>
@@ -286,6 +373,55 @@ export default function SetupPage() {
             </div>
             <div className="modal-footer" style={{justifyContent: 'flex-end'}}>
               <button className="btn-primary" onClick={handleAddLeave}>Add</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLocModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{maxWidth: '500px'}}>
+            <div className="modal-header">
+              <h3>Add GPS Location</h3>
+              <button onClick={() => setShowLocModal(false)} className="close-btn"><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Location Name *</label>
+                <input type="text" value={newLoc.name} onChange={e => setNewLoc({...newLoc, name: e.target.value})} placeholder="e.g. Main Office" />
+              </div>
+              <div className="form-group">
+                <label>Address</label>
+                <input type="text" value={newLoc.address} onChange={e => setNewLoc({...newLoc, address: e.target.value})} placeholder="e.g. 123 Tech Park" />
+              </div>
+              <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
+                <div className="form-group" style={{flex: 1, marginBottom: 0}}>
+                  <label>Latitude *</label>
+                  <input type="number" step="any" value={newLoc.latitude} onChange={e => setNewLoc({...newLoc, latitude: e.target.value})} placeholder="28.5125" />
+                </div>
+                <div className="form-group" style={{flex: 1, marginBottom: 0}}>
+                  <label>Longitude *</label>
+                  <input type="number" step="any" value={newLoc.longitude} onChange={e => setNewLoc({...newLoc, longitude: e.target.value})} placeholder="77.0234" />
+                </div>
+              </div>
+              <div style={{display: 'flex', gap: '1rem'}}>
+                <div className="form-group" style={{flex: 1}}>
+                  <label>Allowed Radius (meters) *</label>
+                  <input type="number" value={newLoc.radiusMeters} onChange={e => setNewLoc({...newLoc, radiusMeters: parseInt(e.target.value)})} />
+                </div>
+                <div className="form-group" style={{flex: 1}}>
+                  <label>Type</label>
+                  <select value={newLoc.locationType} onChange={e => setNewLoc({...newLoc, locationType: e.target.value})}>
+                    <option value="Office">Office</option>
+                    <option value="Site">Site</option>
+                    <option value="Client">Client</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowLocModal(false)}>Cancel</button>
+              <button className="btn-primary" onClick={handleAddLocation}>Save Location</button>
             </div>
           </div>
         </div>

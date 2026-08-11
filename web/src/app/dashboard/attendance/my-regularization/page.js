@@ -1,10 +1,51 @@
 'use client';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Info } from 'lucide-react';
+import { getPunchRequests } from '../../../../lib/data';
 import '../attendance.css';
 
 export default function MyRegularizationRequests() {
+  const [employee, setEmployee] = useState(null);
+  
+  useEffect(() => {
+    const empData = sessionStorage.getItem('employeeData');
+    if (empData) setEmployee(JSON.parse(empData));
+  }, []);
+
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    status: 'All',
+    startDate: '',
+    endDate: ''
+  });
+
+  useEffect(() => {
+    if (employee && employee.id) {
+      fetchRequests();
+    }
+  }, [employee]);
+
+  const fetchRequests = async () => {
+    setLoading(true);
+    try {
+      const data = await getPunchRequests(null, employee.id);
+      setRequests(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredRequests = requests.filter(req => {
+    if (filters.status !== 'All' && req.status.toUpperCase() !== filters.status.toUpperCase()) return false;
+    if (filters.startDate && req.date < filters.startDate) return false;
+    if (filters.endDate && req.date > filters.endDate) return false;
+    return true;
+  });
+
   return (
     <div className="pageContainer">
       <Link href="/dashboard" className="backLink">
@@ -19,28 +60,26 @@ export default function MyRegularizationRequests() {
         <div className="filtersRow">
           <div className="filterGroup">
             <label className="filterLabel">Regularization Request Status</label>
-            <select className="filterInput">
-              <option>All</option>
-              <option>Rejected</option>
-              <option>Cancelled</option>
-              <option>Pending Approval</option>
-              <option>Approved</option>
-              <option>Transferred</option>
-              <option>Recommended</option>
+            <select className="filterInput" value={filters.status} onChange={e => setFilters({...filters, status: e.target.value})}>
+              <option value="All">All</option>
+              <option value="REJECTED">Rejected</option>
+              <option value="CANCELLED">Cancelled</option>
+              <option value="PENDING">Pending Approval</option>
+              <option value="APPROVED">Approved</option>
             </select>
           </div>
           <div className="filterGroup">
             <label className="filterLabel">Start Date</label>
-            <input type="date" className="filterInput" defaultValue="2026-07-06" />
+            <input type="date" className="filterInput" value={filters.startDate} onChange={e => setFilters({...filters, startDate: e.target.value})} />
           </div>
           <div className="filterGroup">
             <label className="filterLabel">End Date</label>
-            <input type="date" className="filterInput" defaultValue="2026-08-05" />
+            <input type="date" className="filterInput" value={filters.endDate} onChange={e => setFilters({...filters, endDate: e.target.value})} />
           </div>
         </div>
         <div className="filterActions">
           <button className="btn btnPrimary">View</button>
-          <button className="btn btnPrimary">Clear</button>
+          <button className="btn btnPrimary" onClick={() => setFilters({status: 'All', startDate: '', endDate: ''})}>Clear</button>
         </div>
       </div>
 
@@ -71,25 +110,47 @@ export default function MyRegularizationRequests() {
               <tr>
                 <th>EMPLOYEE</th>
                 <th>DATE</th>
-                <th>ACTUAL CHECKIN TIME</th>
-                <th>ACTUAL CHECKOUT TIME</th>
-                <th>REQUESTED CHECKIN TIME</th>
-                <th>REQUESTED CHECKOUT TIME</th>
-                <th>REASON</th>
+                <th>REQUESTED TIME</th>
+                <th>TYPE</th>
                 <th>STATUS</th>
-                <th>ACTION</th>
+                <th>CREATED AT</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', background: '#f9fafb' }}>No data available in table</td>
-              </tr>
+              {loading ? (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>Loading requests...</td>
+                </tr>
+              ) : filteredRequests.length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', background: '#f9fafb' }}>No data available in table</td>
+                </tr>
+              ) : (
+                filteredRequests.map(req => (
+                  <tr key={req.id}>
+                    <td>{req.employee.name}</td>
+                    <td>{req.date}</td>
+                    <td>{req.time}</td>
+                    <td><span style={{ fontWeight: 600, color: req.type === 'IN' ? '#16a34a' : '#dc2626' }}>{req.type}</span></td>
+                    <td>
+                      <span className={`badge ${
+                        req.status === 'APPROVED' ? 'badge-success' : 
+                        req.status === 'PENDING' ? 'badge-warning' : 
+                        req.status === 'REJECTED' ? 'badge-danger' : ''
+                      }`}>
+                        {req.status}
+                      </span>
+                    </td>
+                    <td>{new Date(req.createdAt).toLocaleString()}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
         
         <div className="paginationArea">
-          <div>Showing 0 to 0 of 0 entries</div>
+          <div>Showing {filteredRequests.length > 0 ? 1 : 0} to {filteredRequests.length} of {filteredRequests.length} entries</div>
           <div className="paginationButtons">
             <button className="pageBtn" disabled>&lsaquo;</button>
             <button className="pageBtn active">1</button>

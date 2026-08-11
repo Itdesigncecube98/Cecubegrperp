@@ -128,7 +128,7 @@ export default function AssignLeavePage() {
                 )) : (
                   <>
                     <option value="Casual">Casual</option>
-                    <option value="Sick">Sick</option>
+                    <option value="Leave Without Pay">Leave Without Pay</option>
                     <option value="Earned">Earned</option>
                   </>
                 )}

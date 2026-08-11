@@ -8,7 +8,7 @@ const showToast = (msg) => alert(msg);
 
 export default function EmployeeDocuments() {
   const [employee, setEmployee] = useState(null);
-  const [activeTab, setActiveTab] = useState('Personal'); // 'Personal' or 'Dependent'
+  const [activeTab, setActiveTab] = useState('Personal'); // 'Personal', 'Company', or 'Dependent'
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -67,7 +67,7 @@ export default function EmployeeDocuments() {
         const payload = {
           employeeId: employee.id,
           documentType: activeTab,
-          documentName: formData.documentName,
+          documentName: formData.documentName === 'Other' ? formData.customDocumentName : formData.documentName,
           documentNumber: formData.documentNumber,
           expiryDate: formData.expiryDate,
           fileData: reader.result,
@@ -79,9 +79,9 @@ export default function EmployeeDocuments() {
         if (res.error) {
           showToast(res.error, 'error');
         } else {
-          showToast(`${activeTab} document uploaded successfully!`);
+          showToast('Document uploaded successfully');
           setShowModal(false);
-          setFormData({ documentName: '', documentNumber: '', expiryDate: '' });
+          setFormData({ documentName: '', customDocumentName: '', documentNumber: '', expiryDate: '' });
           setSelectedFile(null);
           loadData(employee.id, activeTab);
         }
@@ -114,17 +114,17 @@ export default function EmployeeDocuments() {
     try {
       const res = await fetch(`/api/documents/${id}`);
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      const a = document.createElement('a');
-      a.href = data.fileData;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // Create a Blob URL to open the file in a new tab for viewing
+      const response = await fetch(data.fileData);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      
+      // Clean up the object URL after a delay
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     } catch (err) {
       console.error(err);
-      showToast('Failed to download document', 'error');
+      showToast('Failed to view document', 'error');
     }
   };
 
@@ -140,7 +140,7 @@ export default function EmployeeDocuments() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e5e7eb', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#111827', margin: '0' }}>My Documents</h2>
-            <p style={{ color: '#6b7280', margin: '0.25rem 0 0 0' }}>Manage your personal and dependent documents securely.</p>
+            <p style={{ color: '#6b7280', margin: '0.25rem 0 0 0' }}>Manage your personal and company documents securely.</p>
           </div>
           <button 
             onClick={() => setShowModal(true)}
@@ -164,6 +164,20 @@ export default function EmployeeDocuments() {
             }}
           >
             Personal Documents
+          </button>
+          <button 
+            onClick={() => setActiveTab('Company')}
+            style={{ 
+              padding: '0.5rem 1rem', 
+              border: 'none', 
+              background: activeTab === 'Company' ? '#eff6ff' : 'transparent', 
+              color: activeTab === 'Company' ? '#2563eb' : '#6b7280',
+              fontWeight: '600',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}
+          >
+            Company Documents
           </button>
           <button 
             onClick={() => setActiveTab('Dependent')}
@@ -252,8 +266,8 @@ export default function EmployeeDocuments() {
                 ) : (
                   <input 
                     type="text" 
-                    placeholder="e.g. John (Son)"
                     required 
+                    placeholder="e.g. Offer Letter, Appointment Letter"
                     value={formData.documentName} 
                     onChange={e => setFormData({...formData, documentName: e.target.value})}
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db' }}
@@ -261,6 +275,21 @@ export default function EmployeeDocuments() {
                   />
                 )}
               </div>
+
+              {activeTab === 'Personal' && formData.documentName === 'Other' && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Custom Document Name *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Enter document name"
+                    value={formData.customDocumentName || ''} 
+                    onChange={e => setFormData({...formData, customDocumentName: e.target.value})}
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                    disabled={uploading}
+                  />
+                </div>
+              )}
               
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Document Number</label>

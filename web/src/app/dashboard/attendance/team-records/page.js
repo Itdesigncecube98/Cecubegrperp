@@ -1,132 +1,396 @@
-'use client';
-import React from 'react';
+﻿'use client';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Info, LayoutTemplate, Download } from 'lucide-react';
+import { ChevronLeft, Info, Download, Search, Calendar, Users, ArrowLeft, Clock, CheckCircle, XCircle, MapPin } from 'lucide-react';
 import '../attendance.css';
 
 export default function TeamAttendanceRecords() {
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+
+  // Detail view states
+  const [detailRecords, setDetailRecords] = useState([]);
+  const [detailFiltered, setDetailFiltered] = useState([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailSearch, setDetailSearch] = useState('');
+  const [detailStatus, setDetailStatus] = useState('All');
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const monthAgoStr = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(monthAgoStr);
+  const [endDate, setEndDate] = useState(todayStr);
+
+  // Summary stats per employee
+  const [empStats, setEmpStats] = useState({});
+  // Map of date -> { lat, lng } for punch IN locations
+  const [punchLocations, setPunchLocations] = useState({});
+
+  useEffect(() => {
+    loadEmployees();
+  }, []);
+
+  const loadEmployees = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/employees');
+      const emps = await res.json();
+      setEmployees(Array.isArray(emps) ? emps : []);
+
+      // Load today attendance for quick status
+      const attRes = await fetch(`/api/attendance?date=${todayStr}`);
+      const todayAtt = await attRes.json();
+      const statsMap = {};
+      if (Array.isArray(todayAtt)) {
+        todayAtt.forEach(a => {
+          statsMap[a.employee?.id || a.employeeId] = {
+            status: a.status || 'Not Marked',
+            timeIn: '-', timeOut: '-'
+          };
+          if (a.timeSlots) {
+            try {
+              const slots = JSON.parse(a.timeSlots);
+              if (slots.length > 0) {
+                statsMap[a.employee?.id || a.employeeId].timeIn = slots[0]?.in || '-';
+                statsMap[a.employee?.id || a.employeeId].timeOut = slots[slots.length-1]?.out || '-';
+              }
+            } catch(e) {}
+          }
+        });
+      }
+      setEmpStats(statsMap);
+    } catch(e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  const openEmployeeDetail = async (emp) => {
+    setSelectedEmployee(emp);
+    setDetailLoading(true);
+    setDetailRecords([]);
+    setDetailFiltered([]);
+    setPunchLocations({});
+    try {
+      const [statsRes, punchRes] = await Promise.all([
+        fetch(`/api/attendance/stats?employeeId=${emp.id}`),
+        fetch(`/api/requests?employeeId=${emp.id}&startDate=${startDate}&endDate=${endDate}`)
+      ]);
+      const stats = await statsRes.json();
+      const punches = await punchRes.json();
+
+      // Build date -> location map from approved IN punches with coordinates
+      const locMap = {};
+      if (Array.isArray(punches)) {
+        punches.forEach(p => {
+          if (p.type === 'IN' && p.status === 'APPROVED' && p.latitude && p.longitude) {
+            locMap[p.date] = { lat: p.latitude, lng: p.longitude };
+          }
+        });
+      }
+      setPunchLocations(locMap);
+      const dbMap = {};
+      if (Array.isArray(stats)) {
+        stats.forEach(month => {
+          (month.details || []).forEach(d => { dbMap[d.date] = d; });
+        });
+      }
+      const allRecs = [];
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        const dayName = d.toLocaleDateString('en-IN', { weekday: 'short' });
+        const rec = dbMap[dateStr];
+        let timeIn = '-', timeOut = '-', workedHours = '-';
+        let attStatus = rec ? rec.status : 'Absent';
+        let shiftType = rec ? (rec.shiftType || 'Day') : '-';
+        if (rec && rec.timeSlots && rec.timeSlots.length > 0) {
+          const slots = rec.timeSlots;
+          timeIn = slots[0]?.in || '-';
+          timeOut = slots[slots.length - 1]?.out || '-';
+          let totalMins = 0;
+          slots.forEach(slot => {
+            if (slot.in && slot.out) {
+              const [inH, inM] = slot.in.split(':').map(Number);
+              const [outH, outM] = slot.out.split(':').map(Number);
+              totalMins += (outH * 60 + outM) - (inH * 60 + inM);
+            }
+          });
+          workedHours = totalMins > 0 ? `${Math.floor(totalMins/60)}h ${totalMins%60}m` : '0h 0m';
+        }
+        allRecs.push({ date: dateStr, dayName, timeIn, timeOut, workedHours, shiftType, attStatus });
+      }
+      allRecs.sort((a, b) => b.date.localeCompare(a.date));
+      setDetailRecords(allRecs);
+      setDetailFiltered(allRecs);
+    } catch(e) { console.error(e); }
+    finally { setDetailLoading(false); }
+  };
+
+  useEffect(() => {
+    let f = [...detailRecords];
+    if (detailStatus !== 'All') f = f.filter(r => r.attStatus === detailStatus);
+    if (detailSearch.trim()) {
+      const lq = detailSearch.toLowerCase();
+      f = f.filter(r => r.date.includes(lq) || r.attStatus.toLowerCase().includes(lq));
+    }
+    setDetailFiltered(f);
+  }, [detailStatus, detailSearch, detailRecords]);
+
+  const handleDetailView = () => { if (selectedEmployee) openEmployeeDetail(selectedEmployee); };
+
+  const getStatusBadge = (status) => {
+    const s = (status || '').toLowerCase();
+    if (s === 'present') return 'badge-success';
+    if (s === 'late') return 'badge-warning';
+    if (s === 'absent') return 'badge-danger';
+    if (s === 'not marked') return 'badge-secondary';
+    return 'badge-secondary';
+  };
+
+  const getStatusDot = (status) => {
+    const s = (status || '').toLowerCase();
+    if (s === 'present' || s === 'late') return '#22c55e';
+    if (s === 'absent') return '#ef4444';
+    return '#9ca3af';
+  };
+
+  const handleExport = () => {
+    if (!selectedEmployee) return;
+    const headers = ['Date', 'Day', 'Time In', 'Time Out', 'Worked Hours', 'Shift', 'Status'];
+    const rows = detailFiltered.map(r => [r.date, r.dayName, r.timeIn, r.timeOut, r.workedHours, r.shiftType, r.attStatus]);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `attendance_${selectedEmployee.name}_${startDate}_${endDate}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const filteredEmployees = employees.filter(emp =>
+    emp.name?.toLowerCase().includes(search.toLowerCase()) ||
+    emp.empId?.toLowerCase().includes(search.toLowerCase()) ||
+    emp.department?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const presentCount = detailFiltered.filter(r => r.attStatus === 'Present').length;
+  const lateCount = detailFiltered.filter(r => r.attStatus === 'Late').length;
+  const absentCount = detailFiltered.filter(r => r.attStatus === 'Absent').length;
+
+  // ======== DETAIL VIEW ========
+  if (selectedEmployee) {
+    return (
+      <div className="pageContainer">
+        <button className="backLink" onClick={() => setSelectedEmployee(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: '#6366f1', fontWeight: 600, marginBottom: 8 }}>
+          <ArrowLeft size={16} /> Back to Team
+        </button>
+        <Link href="/dashboard" className="backLink"><ChevronLeft size={16} /> Back to Dashboard</Link>
+        <h1 className="pageTitle">Attendance Records</h1>
+        <div className="tabsContainer">
+          <Link href="/dashboard/attendance/my-records" className="tab">My Attendance Records</Link>
+          <Link href="/dashboard/attendance/team-records" className="tab active">Team Attendance Records</Link>
+        </div>
+
+        {/* Employee Info Banner */}
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1.2rem 1.5rem', marginBottom: '1rem', background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: '#fff' }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 700 }}>
+            {selectedEmployee.name?.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{selectedEmployee.name}</div>
+            <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>{selectedEmployee.empId || selectedEmployee.id} &nbsp;|&nbsp; {selectedEmployee.department} &nbsp;|&nbsp; {selectedEmployee.designation || 'Employee'}</div>
+          </div>
+        </div>
+
+        {/* Date Filters */}
+        <div className="card">
+          <div className="filtersRow">
+            <div className="filterGroup">
+              <label className="filterLabel">Start Date</label>
+              <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="filterGroup">
+              <label className="filterLabel">End Date</label>
+              <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+            <div className="filterGroup">
+              <label className="filterLabel">Status</label>
+              <select className="filterInput" value={detailStatus} onChange={e => setDetailStatus(e.target.value)}>
+                <option value="All">All</option>
+                <option value="Present">Present</option>
+                <option value="Late">Late</option>
+                <option value="Absent">Absent</option>
+              </select>
+            </div>
+          </div>
+          <div className="filterActions">
+            <button className="btn btnPrimary" onClick={handleDetailView}><Calendar size={14} style={{marginRight:4}}/> View</button>
+          </div>
+        </div>
+
+        {/* Summary */}
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+          {[{label:'PRESENT',value:presentCount,color:'#22c55e'},{label:'LATE',value:lateCount,color:'#f59e0b'},{label:'ABSENT',value:absentCount,color:'#ef4444'},{label:'TOTAL DAYS',value:detailFiltered.length,color:'#6366f1'}].map(({label,value,color}) => (
+            <div key={label} className="card" style={{flex:1,textAlign:'center',padding:'1rem'}}>
+              <div style={{fontSize:'1.8rem',fontWeight:700,color}}>{value}</div>
+              <div style={{fontSize:'0.75rem',color:'#6b7280',marginTop:2}}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Detail Table */}
+        <div className="card">
+          <div className="tableHeaderRow">
+            <div>
+              <div className="tableTitleArea"><h2 className="tableTitle">{selectedEmployee.name} — Attendance</h2><Info size={16} className="infoIcon"/></div>
+              <p className="tableSubtitle">{startDate} to {endDate}</p>
+            </div>
+            <div className="actionButtons">
+              <button className="btnOutline" onClick={handleExport}><Download size={14}/> Export CSV</button>
+            </div>
+          </div>
+          <div className="tableControls">
+            <div className="searchControl" style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6}}>
+              <Search size={14}/>
+              <input type="text" className="searchInput" placeholder="Search..." value={detailSearch} onChange={e=>setDetailSearch(e.target.value)}/>
+            </div>
+          </div>
+          <div style={{overflowX:'auto'}}>
+            <table className="dataTable">
+              <thead>
+                <tr>
+                  <th>DATE</th><th>DAY</th><th>EMP CODE</th><th>TIME IN</th>
+                  <th>TIME OUT</th><th>WORKED HOURS</th><th>SHIFT</th><th>STATUS</th><th>LOCATION</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detailLoading ? (
+                  <tr><td colSpan="9" style={{textAlign:'center',padding:'2rem'}}>Loading...</td></tr>
+                ) : detailFiltered.length === 0 ? (
+                  <tr><td colSpan="9" style={{textAlign:'center',padding:'2rem'}}>No records found</td></tr>
+                ) : detailFiltered.map((r,i) => (
+                  <tr key={i}>
+                    <td>{r.date}</td>
+                    <td style={{color:'#6b7280'}}>{r.dayName}</td>
+                    <td>{selectedEmployee.empId || '-'}</td>
+                    <td style={{color:r.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{r.timeIn}</td>
+                    <td style={{color:r.timeOut!=='-'?'#ef4444':'#9ca3af'}}>{r.timeOut}</td>
+                    <td style={{fontWeight:600}}>{r.workedHours}</td>
+                    <td>{r.shiftType}</td>
+                    <td><span className={`badge ${getStatusBadge(r.attStatus)}`}>{r.attStatus}</span></td>
+                    <td>
+                      {punchLocations[r.date] ? (
+                        <a
+                          href={`https://www.openstreetmap.org/?mlat=${punchLocations[r.date].lat}&mlon=${punchLocations[r.date].lng}#map=17/${punchLocations[r.date].lat}/${punchLocations[r.date].lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`${punchLocations[r.date].lat.toFixed(5)}, ${punchLocations[r.date].lng.toFixed(5)}`}
+                          style={{display:'inline-flex',alignItems:'center',gap:4,color:'#6366f1',fontWeight:600,fontSize:'0.8rem',textDecoration:'none'}}
+                        >
+                          <MapPin size={13}/> View
+                        </a>
+                      ) : <span style={{color:'#d1d5db'}}>—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!detailLoading && <div style={{padding:'0.75rem 1rem',fontSize:'0.85rem',color:'#6b7280'}}>Showing {detailFiltered.length} records</div>}
+        </div>
+      </div>
+    );
+  }
+
+  // ======== EMPLOYEE LIST VIEW ========
   return (
     <div className="pageContainer">
-      <Link href="/dashboard" className="backLink">
-        <ChevronLeft size={16} /> Back to Dashboard
-      </Link>
-      
+      <Link href="/dashboard" className="backLink"><ChevronLeft size={16} /> Back to Dashboard</Link>
       <h1 className="pageTitle">Attendance Records</h1>
-      
       <div className="tabsContainer">
         <Link href="/dashboard/attendance/my-records" className="tab">My Attendance Records</Link>
         <Link href="/dashboard/attendance/team-records" className="tab active">Team Attendance Records</Link>
       </div>
 
       <div className="card">
-        <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Organization</label>
-            <select className="filterInput">
-              <option>Cecube Engineering India Pvt Ltd</option>
-            </select>
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Employee</label>
-            <select className="filterInput">
-              <option>Any</option>
-            </select>
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Start Date</label>
-            <input type="date" className="filterInput" defaultValue="2026-07-06" />
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">End Date</label>
-            <input type="date" className="filterInput" defaultValue="2026-08-05" />
-          </div>
-        </div>
-        <div className="filtersRow" style={{ marginTop: '1rem' }}>
-          <div className="filterGroup">
-            <label className="filterLabel">Attendance Status</label>
-            <select className="filterInput">
-              <option>All</option>
-            </select>
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Leave Exists</label>
-            <select className="filterInput">
-              <option>Any</option>
-            </select>
-          </div>
-          <div style={{ flex: 2 }}></div>
-        </div>
-        <div className="filterActions" style={{ justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <button className="btn btnPrimary">View</button>
-            <button className="btn btnPrimary">Clear</button>
-          </div>
-          <button className="btn btnPrimary">More Filters</button>
-        </div>
-      </div>
-
-      <div className="card">
         <div className="tableHeaderRow">
           <div>
-            <div className="tableTitleArea">
-              <h2 className="tableTitle">Team Attendance Records</h2>
-              <Info size={16} className="infoIcon" />
-            </div>
-            <p className="tableSubtitle">The below table shows the list of your team's attendance records.</p>
+            <div className="tableTitleArea"><h2 className="tableTitle">Team Attendance Records</h2><Info size={16} className="infoIcon"/></div>
+            <p className="tableSubtitle">Click on an employee to view their detailed attendance records.</p>
           </div>
           <div className="actionButtons">
-            <button className="btnOutline"><LayoutTemplate size={14} /> View Columns</button>
-            <button className="btnOutline"><Download size={14} /> Export</button>
+            <div style={{display:'flex',alignItems:'center',gap:6, border:'1px solid #e5e7eb', borderRadius:8, padding:'6px 12px'}}>
+              <Search size={14} color="#9ca3af"/>
+              <input type="text" style={{border:'none',outline:'none',fontSize:'0.875rem',width:180}} placeholder="Search employee..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            </div>
           </div>
         </div>
 
-        <div className="tableControls">
-          <div className="entriesControl">
-            <select className="entriesSelect"><option>100</option></select>
-            entries per page
-          </div>
-          <div className="searchControl">
-            Search: <input type="text" className="searchInput" />
-          </div>
-        </div>
-
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{overflowX:'auto'}}>
           <table className="dataTable">
             <thead>
               <tr>
-                <th>DATE</th>
-                <th>EMPLOYEE CODE</th>
-                <th>EMPLOYEE NAME</th>
+                <th>EMPLOYEE</th>
+                <th>EMP CODE</th>
+                <th>DEPARTMENT</th>
+                <th>DESIGNATION</th>
+                <th>TODAY STATUS</th>
                 <th>TIME IN</th>
                 <th>TIME OUT</th>
-                <th>WORKED HOURS</th>
-                <th>LEAVE TYPE</th>
-                <th>LEAVE STATUS</th>
-                <th>ATTENDANCE STATUS</th>
-                <th>REGULARIZATION STATUS</th>
-                <th>ACTUAL CHECKIN TIME</th>
-                <th>ACTUAL CHECKOUT TIME</th>
-                <th>REMARKS</th>
                 <th>ACTION</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan="14" style={{ textAlign: 'center', padding: '2rem' }}>No data available in table</td>
-              </tr>
+              {loading ? (
+                <tr><td colSpan="8" style={{textAlign:'center',padding:'3rem'}}>Loading employees...</td></tr>
+              ) : filteredEmployees.length === 0 ? (
+                <tr><td colSpan="8" style={{textAlign:'center',padding:'3rem'}}>No employees found</td></tr>
+              ) : filteredEmployees.map((emp, i) => {
+                const stat = empStats[emp.id] || { status: 'Not Marked', timeIn: '-', timeOut: '-' };
+                return (
+                  <tr key={i} style={{cursor:'pointer'}} onClick={() => openEmployeeDetail(emp)}>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:'0.9rem',flexShrink:0}}>
+                          {emp.name?.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{fontWeight:600,color:'#111827'}}>{emp.name}</div>
+                          <div style={{fontSize:'0.75rem',color:'#9ca3af'}}>{emp.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{emp.empId || '-'}</td>
+                    <td>{emp.department || '-'}</td>
+                    <td>{emp.designation || '-'}</td>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:6}}>
+                        <div style={{width:8,height:8,borderRadius:'50%',background:getStatusDot(stat.status)}}></div>
+                        <span className={`badge ${getStatusBadge(stat.status)}`}>{stat.status}</span>
+                      </div>
+                    </td>
+                    <td style={{color:stat.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{stat.timeIn}</td>
+                    <td style={{color:stat.timeOut!=='-'?'#ef4444':'#9ca3af'}}>{stat.timeOut}</td>
+                    <td>
+                      <button
+                        className="btn btnPrimary"
+                        style={{padding:'4px 12px',fontSize:'0.8rem'}}
+                        onClick={e => { e.stopPropagation(); openEmployeeDetail(emp); }}
+                      >
+                        View Details
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-        
-        <div className="paginationArea">
-          <div>Showing 0 to 0 of 0 entries</div>
-          <div className="paginationButtons">
-            <button className="pageBtn" disabled>&laquo;</button>
-            <button className="pageBtn" disabled>&lsaquo;</button>
-            <button className="pageBtn" disabled>&rsaquo;</button>
-            <button className="pageBtn" disabled>&raquo;</button>
+        {!loading && (
+          <div style={{padding:'0.75rem 1rem',fontSize:'0.85rem',color:'#6b7280'}}>
+            {filteredEmployees.length} employees
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

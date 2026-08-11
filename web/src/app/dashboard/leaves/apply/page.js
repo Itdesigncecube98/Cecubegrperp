@@ -18,6 +18,7 @@ export default function ApplyLeave() {
     startDate: '',
     endDate: '',
     reason: '',
+    attachment: '',
     isHalfDay: false
   });
 
@@ -60,6 +61,19 @@ export default function ApplyLeave() {
     }
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ ...formData, attachment: reader.result });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setFormData({ ...formData, attachment: '' });
+    }
+  };
+
   return (
     <div className="pageContainer">
       <Link href="/dashboard" className="backLink">
@@ -95,7 +109,9 @@ export default function ApplyLeave() {
           >
             <option value="">-- Select Category --</option>
             {leaveTypes.map(lt => (
-              <option key={lt.id} value={lt.name}>{lt.name}</option>
+              <option key={lt.id} value={lt.name}>
+                {lt.name === 'Paid leave' ? 'Earned' : lt.name === 'COFF' ? 'Compensatory Off (COFF)' : lt.name}
+              </option>
             ))}
           </select>
         </div>
@@ -155,6 +171,15 @@ export default function ApplyLeave() {
             value={formData.reason}
             onChange={(e) => setFormData({...formData, reason: e.target.value})}
           ></textarea>
+        </div>
+        <div className="formGroup">
+          <input 
+            type="file" 
+            style={{ fontSize: '12px' }} 
+            onChange={handleFileChange} 
+            accept=".pdf,.png,.jpeg,.jpg,.docx"
+          />
+          <div className="fileHelpText">(Allowed file extensions are .pdf, .png, .jpeg, .jpg, .docx)</div>
         </div>
 
         <div className="formActions">

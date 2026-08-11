@@ -39,7 +39,9 @@ export async function POST(request) {
           name: employee.name,
           email: employee.email,
           department: employee.department,
-          role: employee.role
+          role: employee.role,
+          password: employee.password,
+          supervisorId: employee.supervisorId
         }
       });
     } else {

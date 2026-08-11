@@ -1,27 +1,42 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* Premium SaaS Light Theme - White & Blue */
-  --bg-primary: #f0f4f8; /* Soft cool blue-gray background */
+  /* Premium SaaS Light Theme - White & Blue/Indigo */
+  --bg-primary: #f8fafc; /* Very light cool gray/slate */
   --bg-secondary: #ffffff; /* Pure white cards */
-  --bg-card: rgba(255, 255, 255, 0.9); /* Glassy white */
+  --bg-card: rgba(255, 255, 255, 1);
   
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
+  --text-primary: #0f172a; /* Slate 900 */
+  --text-secondary: #64748b; /* Slate 500 */
+  --text-muted: #94a3b8; /* Slate 400 */
   
-  --accent-color: #2563eb;      /* Primary Blue */
-  --accent-hover: #1d4ed8;      /* Deep Blue */
-  --accent-light: rgba(37, 99, 235, 0.1);      
+  --accent-color: #4f46e5;      /* Indigo 600 - More SaaS-y than standard blue */
+  --accent-hover: #4338ca;      /* Indigo 700 */
+  --accent-light: #e0e7ff;      /* Indigo 100 */
+  --accent-faint: #eef2ff;      /* Indigo 50 */
   
-  --success: #10b981;
-  --danger: #ef4444;
-  --warning: #f59e0b;
+  --success: #10b981; /* Emerald 500 */
+  --success-light: #d1fae5; /* Emerald 100 */
+  --danger: #ef4444; /* Red 500 */
+  --danger-light: #fee2e2; /* Red 100 */
+  --warning: #f59e0b; /* Amber 500 */
+  --warning-light: #fef3c7; /* Amber 100 */
   
-  --border-color: #e2e8f0;
-  --card-shadow: 0 4px 24px -6px rgba(15, 23, 42, 0.08);
-  --modal-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.2);
+  --border-color: #e2e8f0; /* Slate 200 */
+  --border-light: #f1f5f9; /* Slate 100 */
   
-  font-family: 'Outfit', sans-serif;
+  /* SaaS Shadows */
+  --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --card-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --modal-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
   color: var(--text-primary);
   background-color: var(--bg-primary);
 }
@@ -42,26 +57,37 @@ body {
   padding: 0;
   overflow-x: hidden;
   background-color: var(--bg-primary);
-  /* Soft Light Mesh Gradient Background */
   background-image: 
-    radial-gradient(circle at 15% 50%, rgba(37, 99, 235, 0.05), transparent 30%),
-    radial-gradient(circle at 85% 30%, rgba(56, 189, 248, 0.08), transparent 30%);
+    radial-gradient(circle at 0% 0%, rgba(79, 70, 229, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.03) 0%, transparent 50%);
   background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* SaaS Card Utilities - Light Glassmorphism */
+/* SaaS Card Utilities */
+.saas-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.saas-card:hover {
+  box-shadow: var(--card-shadow-hover);
+}
+
 .glass-panel {
   background: var(--bg-card);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
   box-shadow: var(--card-shadow);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .glass-panel:hover {
-  box-shadow: 0 12px 32px -8px rgba(37, 99, 235, 0.12);
+  box-shadow: var(--card-shadow-hover);
 }
 
 /* Typography */
@@ -81,12 +107,12 @@ p {
 button {
   cursor: pointer;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.625rem 1.25rem;
   font-weight: 500;
   font-family: inherit;
   font-size: 0.875rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -94,21 +120,37 @@ button {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: var(--accent-color);
   color: white;
-  box-shadow: 0 4px 12px 0 rgba(37, 99, 235, 0.25);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
-
 .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3), 0 2px 4px -1px rgba(79, 70, 229, 0.2);
 }
 
 .btn-danger {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  background: var(--danger);
   color: white;
-  box-shadow: 0 4px 12px 0 rgba(239, 68, 68, 0.25);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.3), 0 2px 4px -1px rgba(239, 68, 68, 0.2);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-outline:hover {
+  background: var(--bg-primary);
+  border-color: var(--text-muted);
 }
 
 .btn-danger:hover {
@@ -175,7 +217,7 @@ table {
 }
 
 th {
-  padding: 0.75rem 0.75rem;
+  padding: 0.6rem 0.75rem;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -183,13 +225,15 @@ th {
   color: var(--text-secondary);
   background-color: #f8fafc;
   border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
 }
 
 td {
-  padding: 0.75rem 0.75rem;
+  padding: 0.55rem 0.75rem;
   border-bottom: 1px solid var(--border-color);
   color: var(--text-primary);
   font-size: 0.85rem;
+  vertical-align: middle;
 }
 
 tr {

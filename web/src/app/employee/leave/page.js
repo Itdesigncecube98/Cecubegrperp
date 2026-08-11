@@ -9,7 +9,7 @@ import '../../dashboard/attendance/attendance.css';
 import '../../dashboard/leaves/leaves.css';
 
 export default function EmployeeLeavePage() {
-  const [balance, setBalance] = useState({ casualLeaves: 0, sickLeaves: 0, earnedLeaves: 0 });
+  const [balance, setBalance] = useState({ casualLeaves: 0, leaveWithoutPay: 0, earnedLeaves: 0 });
   const [history, setHistory] = useState([]);
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,8 +20,10 @@ export default function EmployeeLeavePage() {
     startDate: '',
     endDate: '',
     reason: '',
+    attachment: '',
     isHalfDay: false
   });
+  const [activeTab, setActiveTab] = useState('balances');
 
   const router = useRouter();
 
@@ -32,8 +34,14 @@ export default function EmployeeLeavePage() {
       return;
     }
     const parsed = JSON.parse(empData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     setEmployeeId(parsed.id);
     fetchData(parsed.id);
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'history') {
+      setActiveTab('history');
+    }
   }, [router]);
 
   async function fetchData(id) {
@@ -66,12 +74,25 @@ export default function EmployeeLeavePage() {
         employeeId: employeeId,
         ...newRequest
       });
-      setNewRequest({ leaveType: '', startDate: '', endDate: '', reason: '', isHalfDay: false });
+      setNewRequest({ leaveType: '', startDate: '', endDate: '', reason: '', attachment: '', isHalfDay: false });
       fetchData(employeeId);
       alert('Leave request submitted successfully!');
     } catch (error) {
       console.error("Error submitting leave", error);
       alert('Failed to submit leave request');
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewRequest({ ...newRequest, attachment: reader.result });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setNewRequest({ ...newRequest, attachment: '' });
     }
   };
 
@@ -85,10 +106,66 @@ export default function EmployeeLeavePage() {
         <ChevronLeft size={16} /> Back to Dashboard
       </Link>
       
-      <h1 className="pageTitle">Apply Leave</h1>
+      <h1 className="pageTitle">Leave Management</h1>
       <hr style={{ borderTop: '1px solid #e5e7eb', marginBottom: '1.5rem' }} />
 
-      <form className="card" style={{ maxWidth: '1000px', marginBottom: '2rem' }} onSubmit={handleApply}>
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
+        <button 
+          onClick={() => setActiveTab('balances')}
+          style={{ 
+            background: 'none', border: 'none', padding: '0.5rem 1rem', fontSize: '16px', fontWeight: activeTab === 'balances' ? '600' : '400', 
+            color: activeTab === 'balances' ? '#059669' : '#6b7280', borderBottom: activeTab === 'balances' ? '2px solid #059669' : 'none', cursor: 'pointer'
+          }}
+        >
+          Balances
+        </button>
+        <button 
+          onClick={() => setActiveTab('apply')}
+          style={{ 
+            background: 'none', border: 'none', padding: '0.5rem 1rem', fontSize: '16px', fontWeight: activeTab === 'apply' ? '600' : '400', 
+            color: activeTab === 'apply' ? '#059669' : '#6b7280', borderBottom: activeTab === 'apply' ? '2px solid #059669' : 'none', cursor: 'pointer'
+          }}
+        >
+          Apply Leave
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')}
+          style={{ 
+            background: 'none', border: 'none', padding: '0.5rem 1rem', fontSize: '16px', fontWeight: activeTab === 'history' ? '600' : '400', 
+            color: activeTab === 'history' ? '#059669' : '#6b7280', borderBottom: activeTab === 'history' ? '2px solid #059669' : 'none', cursor: 'pointer'
+          }}
+        >
+          Your Leave Appn (History)
+        </button>
+      </div>
+
+      {activeTab === 'balances' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+          <div className="card" style={{ borderLeft: '4px solid #3b82f6', padding: '1.5rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Casual Leave (CL)</h3>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.casualLeaves ?? 0}</p>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days remaining</p>
+          </div>
+          <div className="card" style={{ borderLeft: '4px solid #10b981', padding: '1.5rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Earned Leave (EL)</h3>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.earnedLeaves ?? 0}</p>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days remaining</p>
+          </div>
+          <div className="card" style={{ borderLeft: '4px solid #8b5cf6', padding: '1.5rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Comp. Off (C-off)</h3>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.compensatoryLeaves ?? 0}</p>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days available</p>
+          </div>
+          <div className="card" style={{ borderLeft: '4px solid #f59e0b', padding: '1.5rem' }}>
+            <h3 style={{ fontSize: '1rem', color: '#6b7280', margin: 0 }}>Leave Without Pay</h3>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.leaveWithoutPay ?? 0}</p>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days used</p>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'apply' && (
+        <form className="card" style={{ maxWidth: '1000px', marginBottom: '2rem' }} onSubmit={handleApply}>
         <div className="formGroup">
           <label className="filterLabel">Select Category <span style={{ color: 'red' }}>*</span></label>
           <select 
@@ -99,7 +176,9 @@ export default function EmployeeLeavePage() {
           >
             <option value="">-- Select Category --</option>
             {leaveTypes.map(lt => (
-              <option key={lt.id} value={lt.name}>{lt.name}</option>
+              <option key={lt.id} value={lt.name}>
+                {lt.name === 'Paid leave' ? 'Earned' : lt.name === 'COFF' ? 'Compensatory Off (COFF)' : lt.name}
+              </option>
             ))}
           </select>
         </div>
@@ -162,7 +241,12 @@ export default function EmployeeLeavePage() {
         </div>
 
         <div className="formGroup">
-          <input type="file" style={{ fontSize: '12px' }} />
+          <input 
+            type="file" 
+            style={{ fontSize: '12px' }} 
+            onChange={handleFileChange} 
+            accept=".pdf,.png,.jpeg,.jpg,.docx"
+          />
           <div className="fileHelpText">(Allowed file extensions are .pdf, .png, .jpeg, .jpg, .docx)</div>
         </div>
 
@@ -171,9 +255,10 @@ export default function EmployeeLeavePage() {
           <button type="submit" className="btn btnPrimary">Submit</button>
         </div>
       </form>
+      )}
 
-      <h2 className="tableTitle" style={{ marginBottom: '1rem' }}>My Leave History</h2>
-      <div className="card" style={{ maxWidth: '1000px' }}>
+      {activeTab === 'history' && (
+        <div className="card" style={{ maxWidth: '1000px' }}>
         <table className="dataTable">
           <thead>
             <tr>
@@ -212,6 +297,7 @@ export default function EmployeeLeavePage() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

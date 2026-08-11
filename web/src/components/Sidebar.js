@@ -2,7 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Users, CalendarCheck, LogOut, Shield, UserCheck, Settings } from 'lucide-react';
+import { LayoutDashboard, Users, CalendarCheck, LogOut, Shield, Settings, Car, Mail } from 'lucide-react';
 import './sidebar.css';
 
 export default function Sidebar() {
@@ -17,14 +17,15 @@ export default function Sidebar() {
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Admins', path: '/dashboard/admins', icon: Shield },
-    { name: 'Supervisors', path: '/dashboard/supervisors', icon: UserCheck },
     { name: 'Employees', path: '/dashboard/employees', icon: Users },
     { name: 'Attendance', path: '/dashboard/attendance', icon: CalendarCheck },
+    { name: 'Vehicles', path: '/dashboard/vehicles', icon: Car },
+    { name: 'Email Blast', path: '/dashboard/email', icon: Mail },
     { name: 'Settings', path: '/dashboard/settings', icon: Settings }
   ];
 
   return (
-    <div className="sidebar glass-panel">
+    <div className="sidebar">
       <div className="sidebar-header">
         <img src="https://www.cecubeindia.com/images/logo.png" alt="Cecube Logo" style={{ maxWidth: '160px' }} />
       </div>

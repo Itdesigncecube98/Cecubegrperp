@@ -10,8 +10,17 @@ export default function TeamLeaveApplications() {
   const [loading, setLoading] = useState(true);
   const [employees, setEmployees] = useState([]);
 
+  const [userId, setUserId] = useState('');
+
   useEffect(() => {
-    fetchRequests();
+    const adminData = sessionStorage.getItem('adminData');
+    if (adminData) {
+      const parsed = JSON.parse(adminData);
+      setUserId(parsed.id);
+      fetchRequests(parsed.id);
+    } else {
+      fetchRequests(null);
+    }
     fetchEmployees();
   }, []);
 
@@ -24,10 +33,15 @@ export default function TeamLeaveApplications() {
     }
   };
 
-  const fetchRequests = async () => {
+  const fetchRequests = async (adminId) => {
     try {
-      const data = await getLeaveRequests();
-      setRequests(data || []);
+      // Fetch all pending leave requests as admin
+      const url = adminId
+        ? `/api/leaves?role=ADMIN&userId=${adminId}`
+        : '/api/leaves';
+      const res = await fetch(url);
+      const data = await res.json();
+      setRequests(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error fetching leave requests", error);
     } finally {
@@ -37,8 +51,8 @@ export default function TeamLeaveApplications() {
 
   const handleAction = async (id, status) => {
     try {
-      await updateLeaveRequestStatus(id, status);
-      fetchRequests();
+      await updateLeaveRequestStatus(id, status, userId, 'ADMIN');
+      fetchRequests(userId);
     } catch (error) {
       console.error(`Error updating request ${id}`, error);
     }
@@ -87,7 +101,7 @@ export default function TeamLeaveApplications() {
               <option>On duty</option>
               <option>Paid leave</option>
               <option>Casual</option>
-              <option>Sick</option>
+              <option>Leave Without Pay</option>
             </select>
           </div>
           <div className="filterGroup">
@@ -185,37 +199,43 @@ export default function TeamLeaveApplications() {
                     <td>{calculateDays(req.startDate, req.endDate)}</td>
                     <td>
                       <span style={{
-                        backgroundColor: req.status === 'PENDING' ? '#fef3c7' : req.status === 'APPROVED' ? '#dcfce7' : '#fee2e2',
-                        color: req.status === 'PENDING' ? '#d97706' : req.status === 'APPROVED' ? '#16a34a' : '#dc2626',
+                        backgroundColor:
+                          req.status === 'APPROVED' ? '#dcfce7' :
+                          req.status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                        color:
+                          req.status === 'APPROVED' ? '#16a34a' :
+                          req.status === 'REJECTED' ? '#dc2626' : '#d97706',
                         padding: '0.25rem 0.5rem',
                         borderRadius: '4px',
                         fontSize: '0.85rem',
                         fontWeight: '500'
                       }}>
-                        {req.status}
+                        {req.status === 'PENDING_SUPERVISOR' ? 'Pending Supervisor' :
+                         req.status === 'PENDING_ADMIN' ? 'Pending Admin' :
+                         req.status}
                       </span>
                     </td>
                     <td>{req.reason}</td>
                     <td>
-                      {req.status === 'PENDING' ? (
+                      {(req.status === 'PENDING_SUPERVISOR' || req.status === 'PENDING_ADMIN') ? (
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button 
                             onClick={() => handleAction(req.id, 'APPROVED')}
-                            style={{ padding: '0.3rem', borderRadius: '4px', backgroundColor: '#dcfce7', color: '#16a34a', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            title="Approve"
+                            style={{ padding: '0.3rem 0.6rem', borderRadius: '4px', backgroundColor: '#dcfce7', color: '#16a34a', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem', fontWeight: 600 }}
                           >
-                            <Check size={16} />
+                            <Check size={14} /> Approve
                           </button>
                           <button 
                             onClick={() => handleAction(req.id, 'REJECTED')}
-                            style={{ padding: '0.3rem', borderRadius: '4px', backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            title="Reject"
+                            style={{ padding: '0.3rem 0.6rem', borderRadius: '4px', backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem', fontWeight: 600 }}
                           >
-                            <X size={16} />
+                            <X size={14} /> Reject
                           </button>
                         </div>
                       ) : (
-                        <span style={{ color: '#9ca3af', fontSize: '0.9rem' }}>Processed</span>
+                        <span style={{ color: req.status === 'APPROVED' ? '#16a34a' : req.status === 'REJECTED' ? '#dc2626' : '#9ca3af', fontSize: '0.85rem', fontWeight: 500 }}>
+                          {req.status === 'APPROVED' ? '✓ Approved' : req.status === 'REJECTED' ? '✗ Rejected' : 'Processed'}
+                        </span>
                       )}
                     </td>
                   </tr>

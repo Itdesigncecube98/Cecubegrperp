@@ -13,12 +13,26 @@ export async function GET(request) {
     if (employeeId) {
       whereClause.employeeId = employeeId;
     }
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
+
     if (date) {
-      // Very basic date filtering by checking if requestedAt starts with the date string
-      // In a real app we might use Prisma's date functions, but for simplicity:
       whereClause.requestedAt = {
         gte: new Date(`${date}T00:00:00.000Z`),
         lt: new Date(`${date}T23:59:59.999Z`)
+      };
+    } else if (startDate && endDate) {
+      whereClause.requestedAt = {
+        gte: new Date(`${startDate}T00:00:00.000Z`),
+        lt: new Date(`${endDate}T23:59:59.999Z`)
+      };
+    } else if (startDate) {
+      whereClause.requestedAt = {
+        gte: new Date(`${startDate}T00:00:00.000Z`)
+      };
+    } else if (endDate) {
+      whereClause.requestedAt = {
+        lt: new Date(`${endDate}T23:59:59.999Z`)
       };
     }
 
@@ -26,7 +40,10 @@ export async function GET(request) {
       where: whereClause,
       orderBy: { requestedAt: 'desc' },
       include: {
-        employee: true
+        employee: true,
+        pings: {
+          orderBy: { timestamp: 'asc' }
+        }
       }
     });
 
@@ -82,6 +99,20 @@ export async function PUT(request) {
     });
 
     return NextResponse.json(updated);
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = parseInt(searchParams.get('id'));
+    if (!id) {
+      return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    }
+    await prisma.locationRequest.delete({ where: { id } });
+    return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

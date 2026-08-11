@@ -58,6 +58,7 @@ export const deleteEmployee = async (id) => {
 export const getAttendance = async (date) => {
   const targetDate = date || new Date().toISOString().split('T')[0];
   const res = await fetch(`/api/attendance?date=${targetDate}`);
+  if (!res.ok) throw new Error(`Attendance fetch failed (${res.status})`);
   return await res.json();
 };
 
@@ -154,11 +155,11 @@ export const createLeaveRequest = async (data) => {
   return await res.json();
 };
 
-export const updateLeaveRequestStatus = async (id, status) => {
+export const updateLeaveRequestStatus = async (id, status, approvedBy = null, role = null) => {
   const res = await fetch('/api/leaves', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, status })
+    body: JSON.stringify({ id, status, approvedBy, role })
   });
   return await res.json();
 };
@@ -268,6 +269,36 @@ export const deleteAnnouncement = async (id) => {
   return await res.json();
 };
 
+export const getLocations = async () => {
+  const res = await fetch('/api/locations', { cache: 'no-store' });
+  return await res.json();
+};
+
+export const createLocation = async (data) => {
+  const res = await fetch('/api/locations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return await res.json();
+};
+
+export const updateLocation = async (data) => {
+  const res = await fetch('/api/locations', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return await res.json();
+};
+
+export const deleteLocation = async (id) => {
+  const res = await fetch(`/api/locations?id=${id}`, {
+    method: 'DELETE'
+  });
+  return await res.json();
+};
+
 export const getLocationRequests = async (employeeId = '', date = '') => {
   let url = '/api/location-requests?';
   if (employeeId) url += `employeeId=${employeeId}&`;
@@ -290,6 +321,13 @@ export const updateLocationRequest = async (data) => {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
+  });
+  return await res.json();
+};
+
+export const deleteLocationRequest = async (id) => {
+  const res = await fetch(`/api/location-requests?id=${id}`, {
+    method: 'DELETE'
   });
   return await res.json();
 };

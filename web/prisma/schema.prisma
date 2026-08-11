@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Admin {
@@ -47,6 +48,8 @@ model Employee {
   leaveRequests LeaveRequest[]
   locationRequests LocationRequest[]
   documents     EmployeeDocument[]
+  vehicles      Vehicle[]
+  tripLogs      TripLog[]
 }
 
 model Attendance {
@@ -64,11 +67,14 @@ model Attendance {
 model PunchRequest {
   id           Int      @id @default(autoincrement())
   employeeId   String
-  type         String   // "IN" or "OUT"
+  type         String   // "IN", "OUT", "REGULARIZE"
   time         String   // "09:30"
   date         String   // "YYYY-MM-DD"
   shiftType    String   @default("Day") // Day, Night
   status       String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  reason       String?  @db.Text
+  latitude     Float?
+  longitude    Float?
   createdAt    DateTime @default(now())
   employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
@@ -77,21 +83,29 @@ model LeaveBalance {
   id           Int      @id @default(autoincrement())
   employeeId   String   @unique
   casualLeaves Float    @default(12)
-  sickLeaves   Float    @default(12)
+  leaveWithoutPay Float    @default(0)
   earnedLeaves Float    @default(15)
+  compensatoryLeaves Float @default(0)
   employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model LeaveRequest {
   id           Int      @id @default(autoincrement())
   employeeId   String
-  leaveType    String   // "Casual", "Sick", "Earned", "Unpaid"
+  leaveType    String   // "Casual", "Sick", "Earned", "Unpaid", "COFF"
   startDate    String   // "YYYY-MM-DD"
   endDate      String   // "YYYY-MM-DD"
   reason       String   @db.Text
-  status       String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  attachment   String?  // Base64 encoded file data
+  status       String   @default("PENDING_SUPERVISOR") // PENDING_SUPERVISOR, PENDING_ADMIN, APPROVED, REJECTED
   isHalfDay    Boolean  @default(false)
   appliedOn    DateTime @default(now())
+  supervisorApproved Boolean @default(false)
+  supervisorApprovedAt DateTime?
+  supervisorApprovedBy String?
+  adminApproved Boolean @default(false)
+  adminApprovedAt DateTime?
+  adminApprovedBy String?
   employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
@@ -181,10 +195,63 @@ model EmployeeDocument {
   documentName   String   // e.g. "Aadhar Card"
   documentNumber String?
   expiryDate     String?  // "YYYY-MM-DD"
-  fileData       String   @db.LongText // Base64 encoded file data
+  fileData       String   // Base64 encoded file data
   fileName       String
   fileType       String   // e.g. "application/pdf", "image/png"
   createdAt      DateTime @default(now())
   employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
+model Vehicle {
+  id               Int      @id @default(autoincrement())
+  employeeId       String?
+  isCompanyVehicle Boolean  @default(false)
+  makeModel        String
+  plateNumber      String   @unique
+  vehicleType      String
+  ratePerKm        Float    @default(0.0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  employee         Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  trips            TripLog[]
+}
+
+model TripLog {
+  id           Int      @id @default(autoincrement())
+  employeeId   String
+  vehicleId    Int
+  date         String?
+  startLocation String?
+  endLocation  String?
+  distanceKm   Float?   @default(0.0)
+  amount       Float?   @default(0.0)
+  status       String   @default("REQUESTED") // REQUESTED, ACTIVE, COMPLETED, APPROVED, REJECTED, PAID
+  createdAt    DateTime @default(now())
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  pings        TripPing[]
+}
+
+model TripPing {
+  id         Int      @id @default(autoincrement())
+  tripId     Int
+  latitude   Float
+  longitude  Float
+  timestamp  DateTime @default(now())
+  trip       TripLog  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model EmailLog {
+  id              Int      @id @default(autoincrement())
+  subject         String
+  message         String   @db.Text
+  recipientCount  Int      @default(0)
+  recipientEmails String?  @db.Text
+  recipientNames  String?  @db.Text
+  attachmentName  String?
+  emailType       String   @default("general")
+  status          String   @default("SENT") // SENT, FAILED
+  errorMessage    String?
+  sentBy          String?
+  createdAt       DateTime @default(now())
+}

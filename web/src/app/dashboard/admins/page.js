@@ -74,13 +74,13 @@ export default function Admins() {
 
   return (
     <div>
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
         <div>
-          <h1 className="page-title">Super Admin Panel</h1>
-          <p className="page-subtitle">Manage administrative accounts that have access to this dashboard.</p>
+          <h1 className="page-title" style={{ margin: 0 }}>Super Admin Panel</h1>
+          <p className="page-subtitle" style={{ margin: '4px 0 0 0' }}>Manage administrative accounts that have access to this dashboard.</p>
         </div>
-        <button className="btn-primary" onClick={() => openModal()}>
-          <Plus size={20} /> Add Admin
+        <button className="btn-primary" onClick={() => openModal()} style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+          <Plus size={16} /> Add Admin
         </button>
       </div>
 
@@ -92,13 +92,14 @@ export default function Admins() {
               <th>Name</th>
               <th>Email</th>
               <th>Department</th>
+              <th>Password</th>
               <th className="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {admins.length === 0 ? (
               <tr>
-                <td colSpan="5" className="empty-state">Loading admins...</td>
+                <td colSpan="6" className="empty-state">Loading admins...</td>
               </tr>
             ) : (
               admins.map(admin => (
@@ -114,6 +115,7 @@ export default function Admins() {
                   </td>
                   <td>{admin.email}</td>
                   <td><span className="badge badge-success">{admin.department}</span></td>
+                  <td style={{ fontFamily: 'monospace', color: 'var(--text-secondary)', fontSize: '0.85rem', letterSpacing: '0.1em' }}>••••••••</td>
                   <td className="text-right">
                     <button className="icon-btn edit-btn" title="Edit Admin" onClick={() => openModal(admin)}>
                       <Edit2 size={16} />

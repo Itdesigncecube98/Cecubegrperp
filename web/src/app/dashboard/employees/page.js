@@ -46,9 +46,9 @@ export default function Employees() {
   const loadData = async () => {
     try {
       const data = await getEmployees();
-      setEmployees(data);
-      const superData = await getEmployees('SUPERVISOR');
-      setSupervisors(superData);
+      setEmployees(Array.isArray(data) ? data : []);
+      // All employees can be supervisors — load all for the dropdown
+      setSupervisors(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
     }
@@ -92,12 +92,7 @@ export default function Employees() {
     if (formData.id) {
       await updateEmployee(formData.id, formData);
     } else {
-      await addEmployee({
-        ...formData,
-        role: 'EMPLOYEE'
-      });
-      // Assuming showToast is defined or imported
-      if (typeof showToast !== 'undefined') showToast('Employee added successfully!');
+      await addEmployee({ ...formData, role: 'EMPLOYEE' });
     }
     loadData();
     closeModal();
@@ -106,7 +101,7 @@ export default function Employees() {
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this employee?')) {
       await deleteEmployee(id);
-      loadEmployees();
+      loadData();
     }
   };
 
@@ -156,7 +151,7 @@ export default function Employees() {
                   <td><span className="badge badge-success">{emp.department}</span></td>
                   <td>
                     {emp.supervisorId ? (
-                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                         {supervisors.find(e => e.id === emp.supervisorId)?.name || `ID: ${emp.supervisorId}`}
                       </span>
                     ) : (
@@ -167,15 +162,17 @@ export default function Employees() {
                     <span className="masked-password">••••••••</span>
                   </td>
                   <td className="text-right">
-                    <button className="icon-btn" title="View Stats" onClick={() => openStatsModal(emp)} style={{ color: 'var(--accent-color)' }}>
-                      <BarChart2 size={16} />
-                    </button>
-                    <button className="icon-btn edit-btn" onClick={() => openModal(emp)}>
-                      <Edit2 size={16} />
-                    </button>
-                    <button className="icon-btn delete-btn" onClick={() => handleDelete(emp.id)}>
-                      <Trash2 size={16} />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2px' }}>
+                      <button className="icon-btn" title="View Stats" onClick={() => openStatsModal(emp)} style={{ color: 'var(--accent-color)' }}>
+                        <BarChart2 size={16} />
+                      </button>
+                      <button className="icon-btn edit-btn" onClick={() => openModal(emp)}>
+                        <Edit2 size={16} />
+                      </button>
+                      <button className="icon-btn delete-btn" onClick={() => handleDelete(emp.id)}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -214,10 +211,10 @@ export default function Employees() {
                 <input required type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
               </div>
               <div className="input-group">
-                <label>Supervisor</label>
+                <label>Supervisor (Optional)</label>
                 <select value={formData.supervisorId || ''} onChange={e => setFormData({...formData, supervisorId: e.target.value})} style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <option value="">No Supervisor (Unassigned)</option>
-                  {supervisors.map(sup => (
+                  <option value="">No Supervisor</option>
+                  {supervisors.filter(s => s.id !== formData.id).map(sup => (
                     <option key={sup.id} value={sup.id}>{sup.name} ({sup.department})</option>
                   ))}
                 </select>

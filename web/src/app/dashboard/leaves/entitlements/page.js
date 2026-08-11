@@ -46,7 +46,7 @@ export default function EntitlementsPage() {
         if (!emp) return [];
         return [
           { id: `${bal.id}-cas`, empName: emp.name, empId: emp.empId, org: emp.organisation || 'CECUBE ENGINEERING PVT LTD', leaveType: 'Casual', days: bal.casualLeaves, validTo: '2026-12-31', employeeId: emp.id },
-          { id: `${bal.id}-sick`, empName: emp.name, empId: emp.empId, org: emp.organisation || 'CECUBE ENGINEERING PVT LTD', leaveType: 'Sick', days: bal.sickLeaves, validTo: '2026-12-31', employeeId: emp.id },
+          { id: `${bal.id}-lwp`, empName: emp.name, empId: emp.empId, org: emp.organisation || 'CECUBE ENGINEERING PVT LTD', leaveType: 'Leave Without Pay', days: bal.leaveWithoutPay, validTo: '2026-12-31', employeeId: emp.id },
           { id: `${bal.id}-earn`, empName: emp.name, empId: emp.empId, org: emp.organisation || 'CECUBE ENGINEERING PVT LTD', leaveType: 'Earned', days: bal.earnedLeaves, validTo: '2026-12-31', employeeId: emp.id },
         ];
       });
@@ -87,12 +87,12 @@ export default function EntitlementsPage() {
         const payload = {
           employeeId: parseInt(row.employeeId) || row.employeeId,
           casualLeaves: existing.casualLeaves || 12,
-          sickLeaves: existing.sickLeaves || 7,
+          leaveWithoutPay: existing.leaveWithoutPay || 0,
           earnedLeaves: existing.earnedLeaves || 15,
         };
 
         if (row.leaveType === 'Casual') payload.casualLeaves = days;
-        else if (row.leaveType === 'Sick') payload.sickLeaves = days;
+        else if (row.leaveType === 'Leave Without Pay') payload.leaveWithoutPay = days;
         else if (row.leaveType === 'Earned') payload.earnedLeaves = days;
 
         await fetch('/api/leaves/balance', {
@@ -142,7 +142,7 @@ export default function EntitlementsPage() {
             <select value={filterLeaveType} onChange={e => setFilterLeaveType(e.target.value)} style={inputStyle}>
               <option value="All">All</option>
               <option value="Casual">Casual</option>
-              <option value="Sick">Sick</option>
+              <option value="Leave Without Pay">Leave Without Pay</option>
               <option value="Earned">Earned</option>
               {leaveTypes.map(lt => <option key={lt.id} value={lt.name}>{lt.name}</option>)}
             </select>
@@ -306,7 +306,7 @@ export default function EntitlementsPage() {
                       <select value={row.leaveType} onChange={e => updateRow(idx, 'leaveType', e.target.value)} style={inputStyle}>
                         <option value="">All</option>
                         <option value="Casual">Casual</option>
-                        <option value="Sick">Sick</option>
+                        <option value="Leave Without Pay">Leave Without Pay</option>
                         <option value="Earned">Earned</option>
                         {leaveTypes.map(lt => <option key={lt.id} value={lt.name}>{lt.name}</option>)}
                       </select>

@@ -7,6 +7,8 @@ import { getLeaveRequests, updateLeaveRequestStatus } from '../../../../lib/data
 export default function LeaveRequestsPage() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState('');
+  const [userId, setUserId] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -15,13 +17,20 @@ export default function LeaveRequestsPage() {
       router.push('/login/admin');
       return;
     }
-    fetchRequests();
+    
+    const parsed = JSON.parse(adminData);
+    setUserRole(parsed.role || 'ADMIN');
+    setUserId(parsed.id);
+    
+    fetchRequests(parsed.id);
   }, [router]);
 
-  const fetchRequests = async () => {
+  const fetchRequests = async (id) => {
     try {
-      const data = await getLeaveRequests();
-      setRequests(data);
+      // Admin sees ALL pending leave requests
+      const res = await fetch(`/api/leaves?role=ADMIN&userId=${id}`);
+      const data = await res.json();
+      setRequests(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error fetching leave requests", error);
     } finally {
@@ -31,8 +40,8 @@ export default function LeaveRequestsPage() {
 
   const handleAction = async (id, status) => {
     try {
-      await updateLeaveRequestStatus(id, status);
-      fetchRequests();
+      await updateLeaveRequestStatus(id, status, userId, 'ADMIN');
+      fetchRequests(userId);
     } catch (error) {
       console.error(`Error updating request ${id}`, error);
     }
@@ -71,12 +80,13 @@ export default function LeaveRequestsPage() {
                 <td>{req.reason}</td>
                 <td>{new Date(req.appliedOn).toLocaleDateString()}</td>
                 <td>
-                  <span className={`status-badge ${req.status.toLowerCase()}`}>
-                    {req.status}
+                  <span className={`status-badge ${req.status.toLowerCase().replace('_', '-')}`}>
+                    {req.status === 'PENDING_SUPERVISOR' ? 'Pending Supervisor' : 
+                     req.status === 'PENDING_ADMIN' ? 'Pending Admin' : req.status}
                   </span>
                 </td>
                 <td>
-                  {req.status === 'PENDING' ? (
+                  {(req.status === 'PENDING_ADMIN' || req.status === 'PENDING_SUPERVISOR') ? (
                     <div className="action-buttons">
                       <button className="approve-btn" onClick={() => handleAction(req.id, 'APPROVED')}>Approve</button>
                       <button className="reject-btn" onClick={() => handleAction(req.id, 'REJECTED')}>Reject</button>
@@ -109,7 +119,8 @@ export default function LeaveRequestsPage() {
         .requests-table th { background-color: #f8f9fa; font-weight: 600; color: #555; }
         
         .status-badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-        .status-badge.pending { background-color: #fff3cd; color: #856404; }
+        .status-badge.pending-supervisor { background-color: #fff3cd; color: #856404; }
+        .status-badge.pending-admin { background-color: #cfe2ff; color: #084298; }
         .status-badge.approved { background-color: #d4edda; color: #155724; }
         .status-badge.rejected { background-color: #f8d7da; color: #721c24; }
         

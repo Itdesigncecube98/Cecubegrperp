@@ -1,23 +1,17 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Download, LayoutTemplate, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
 import styles from '../punches.module.css';
 
 import { getAttendance } from '../../../../lib/data';
+import { useAutoRefresh, formatRefreshTime } from '../../../../lib/useAutoRefresh';
 
 export default function WhosInPage() {
   const [employee, setEmployee] = useState(null);
   const [activeTab, setActiveTab] = useState('Employee');
   const [chartData, setChartData] = useState([{ name: 'All', IN: 0, OUT: 0, 'NO PUNCH': 0, 'ON LEAVE': 0 }]);
-  
-  useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
-    if (empData) setEmployee(JSON.parse(empData));
-    fetchWhosIn();
-  }, []);
-
   const today = new Date().toISOString().split('T')[0];
   const [filters, setFilters] = useState({
     organization: 'Cecube Engineering India Pvt Ltd',
@@ -28,64 +22,87 @@ export default function WhosInPage() {
   });
 
   const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
 
-  const fetchWhosIn = async () => {
-    setLoading(true);
-    try {
-      const data = await getAttendance(today);
-      const mapped = data.map(d => {
-        let attStatus = 'NO PUNCH';
-        if (d.status === 'Present' || d.status === 'Late') attStatus = 'IN';
-        if (d.status === 'Absent' && d.timeSlots && d.timeSlots.length > 0) attStatus = 'OUT';
-        
-        let firstPunch = '';
-        let recentPunch = '';
-        if (d.timeSlots) {
-          try {
-            const slots = JSON.parse(d.timeSlots);
-            if (slots.length > 0) {
-              firstPunch = slots[0].in || '';
-              recentPunch = slots[slots.length - 1].out || slots[slots.length - 1].in || '';
-            }
-          } catch(e) {}
-        }
-        
-        return {
-          code: d.employee.employeeCode || d.employee.empId || 'N/A',
-          name: d.employee.name,
-          branch: d.employee.branch || '-',
-          date: d.date,
-          firstPunch,
-          recentPunch,
-          status: attStatus,
-          department: d.employee.department,
-          designation: d.employee.designation
-        };
-      });
-      setRecords(mapped);
-      
-      const inCount = mapped.filter(r => r.status === 'IN').length;
-      const outCount = mapped.filter(r => r.status === 'OUT').length;
-      const noPunchCount = mapped.filter(r => r.status === 'NO PUNCH').length;
-      const onLeaveCount = mapped.filter(r => r.status === 'ON LEAVE').length;
-      
-      setChartData([{ name: 'All', IN: inCount, OUT: outCount, 'NO PUNCH': noPunchCount, 'ON LEAVE': onLeaveCount }]);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchWhosIn = useCallback(async () => {
+    const data = await getAttendance(today);
+    const mapped = (Array.isArray(data) ? data : []).map(d => {
+      let attStatus = 'NO PUNCH';
+      if (d.status === 'Present' || d.status === 'Late') attStatus = 'IN';
+      if (d.status === 'Absent' && d.timeSlots && d.timeSlots.length > 0) attStatus = 'OUT';
+
+      let firstPunch = '';
+      let recentPunch = '';
+      if (d.timeSlots) {
+        try {
+          const slots = JSON.parse(d.timeSlots);
+          if (slots.length > 0) {
+            firstPunch = slots[0].in || '';
+            recentPunch = slots[slots.length - 1].out || slots[slots.length - 1].in || '';
+          }
+        } catch (e) {}
+      }
+
+      return {
+        code: d.employee.employeeCode || d.employee.empId || 'N/A',
+        name: d.employee.name,
+        branch: d.employee.branch || '-',
+        date: d.date,
+        firstPunch,
+        recentPunch,
+        status: attStatus,
+        department: d.employee.department,
+        designation: d.employee.designation
+      };
+    });
+    setRecords(mapped);
+
+    const inCount = mapped.filter(r => r.status === 'IN').length;
+    const outCount = mapped.filter(r => r.status === 'OUT').length;
+    const noPunchCount = mapped.filter(r => r.status === 'NO PUNCH').length;
+    const onLeaveCount = mapped.filter(r => r.status === 'ON LEAVE').length;
+
+    setChartData([{ name: 'All', IN: inCount, OUT: outCount, 'NO PUNCH': noPunchCount, 'ON LEAVE': onLeaveCount }]);
+  }, [today]);
+
+  const { refresh, refreshing, lastRefreshed, autoRefresh, setAutoRefresh } = useAutoRefresh(fetchWhosIn, {
+    intervalMs: 10000,
+    enabled: true
+  });
+
+  useEffect(() => {
+    const empData = sessionStorage.getItem('employeeData');
+    if (empData) setEmployee(JSON.parse(empData));
+    (async () => {
+      setInitialLoading(true);
+      try {
+        await fetchWhosIn();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setInitialLoading(false);
+      }
+    })();
+  }, [fetchWhosIn]);
 
   return (
     <div className={styles.container}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div className={styles.topBar}>
         <Link href="/dashboard" className={styles.backLink}>
           <ChevronLeft size={16} /> Back to Dashboard
         </Link>
-        <div style={{ fontSize: '14px', fontWeight: 500, color: '#334155' }}>
-          Who's In
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontSize: '14px', fontWeight: 500, color: '#334155' }}>Who&apos;s In</div>
+          <button onClick={refresh} disabled={refreshing} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '0.4rem 0.6rem', cursor: refreshing ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
+            <RefreshCw size={14} color="#4b5563" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
+            {refreshing ? 'Updating…' : 'Refresh'}
+          </button>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#64748b', cursor: 'pointer' }}>
+            <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} style={{ width: 14, height: 14 }} />
+            Auto
+          </label>
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>{lastRefreshed ? formatRefreshTime(lastRefreshed) : ''}</span>
         </div>
       </div>
 
@@ -113,8 +130,8 @@ export default function WhosInPage() {
               <span style={{ color: '#3b82f6', fontWeight: '500', borderBottom: '2px solid #f59e0b', paddingBottom: '0.2rem' }}>Who is in?</span>
             </h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1rem' }}>
-              <button onClick={fetchWhosIn} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <RefreshCw size={14} color="#4b5563" />
+              <button onClick={refresh} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <RefreshCw size={14} color="#4b5563" style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
               </button>
               <span style={{ fontSize: '0.9rem', color: '#4b5563' }}>Group By</span>
               <select style={{ padding: '0.4rem', borderRadius: '6px', border: '1px solid #3b82f6', fontSize: '0.9rem', color: '#111827', outline: 'none', backgroundColor: 'white' }}>
@@ -133,7 +150,7 @@ export default function WhosInPage() {
                 <YAxis axisLine={{stroke: '#e5e7eb'}} tickLine={false} tick={{fontSize: 12, fill: '#4b5563'}} tickCount={2} domain={[0, 1]} />
                 <XAxis dataKey="name" axisLine={{stroke: '#e5e7eb'}} tickLine={false} tick={{fontSize: 12, fill: '#4b5563'}} dy={10} />
                 <Tooltip cursor={{fill: 'transparent'}} />
-                <Legend iconType="square" iconSize={12} wrapperStyle={{ fontSize: '11px', fontWeight: 600, bottom: -15, color: '#4b5563' }} />
+                <Legend verticalAlign="bottom" height={36} iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '11px', fontWeight: 600, paddingTop: '10px', color: '#4b5563' }} />
                 <Bar dataKey="IN" stackId="a" fill="#22c55e" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="OUT" stackId="a" fill="#3b82f6" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="NO PUNCH" stackId="a" fill="#f87171" radius={[6, 6, 0, 0]} />
@@ -230,7 +247,7 @@ export default function WhosInPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {initialLoading && records.length === 0 ? (
                   <tr>
                     <td colSpan="8" style={{ textAlign: 'center', padding: '1rem' }}>Loading...</td>
                   </tr>
@@ -259,7 +276,9 @@ export default function WhosInPage() {
                         }}>{r.status}</span>
                       </td>
                       <td>
-                        <button className={styles.linkButton}>View Punches</button>
+                        <Link href={`/dashboard/punches/team-punches?employeeCode=${encodeURIComponent(r.code)}`} className={styles.linkButton}>
+                          View Punches
+                        </Link>
                       </td>
                     </tr>
                   ))

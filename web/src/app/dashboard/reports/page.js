@@ -30,14 +30,7 @@ const reportsData = [
     category: 'attendance',
     link: '/dashboard/reports/grouped-summary'
   },
-  {
-    id: 4,
-    title: 'Mobile Checkin Report',
-    desc: 'This report shows mobile GPS-based punches with detail view and employee-wise summaries. It also includes the duration spent at each location based on check-in and check-out times.',
-    tags: ['punch'],
-    category: 'punch',
-    link: '/dashboard/reports/mobile-checkin'
-  },
+
   {
     id: 5,
     title: 'Team Punches Report',
@@ -52,7 +45,7 @@ const reportsData = [
     desc: 'Day wise summary of the journey status for the selected date range, providing insights like distance traveled, duration on the road, and more.',
     tags: ['journey'],
     category: 'journey',
-    link: '#'
+    link: '/dashboard/reports/live-tracking-day-wise'
   },
   {
     id: 7,
@@ -60,7 +53,7 @@ const reportsData = [
     desc: 'Summary report with total distance traveled, total duration on the road, and session for the selected date range.',
     tags: ['journey'],
     category: 'journey',
-    link: '#'
+    link: '/dashboard/reports/live-tracking-summary'
   },
   {
     id: 8,
@@ -68,7 +61,7 @@ const reportsData = [
     desc: 'Snapshot report of the journey status for each date, providing insights like distance traveled, duration on the road, and more.',
     tags: ['journey'],
     category: 'journey',
-    link: '#'
+    link: '/dashboard/reports/live-tracking-muster'
   },
   {
     id: 9,
@@ -76,7 +69,7 @@ const reportsData = [
     desc: 'First and Last Punch Muster Report',
     tags: ['custom'],
     category: 'custom',
-    link: '#'
+    link: '/dashboard/reports/first-last-punch'
   }
 ];
 

@@ -1,7 +1,15 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { ArrowLeft, MapPin, Trash2, Plus, Target, Edit2 } from 'lucide-react';
+
+// Leaflet must be loaded client-side only
+const LocationMap = dynamic(() => import('./LocationMap'), { ssr: false, loading: () => (
+  <div style={{ width: '100%', height: '380px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f3f4f6', borderRadius: '8px' }}>
+    <p style={{ color: '#9ca3af' }}>Loading map...</p>
+  </div>
+) });
 
 export default function LocationsPage() {
   const router = useRouter();
@@ -16,6 +24,11 @@ export default function LocationsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [mapMarker, setMapMarker] = useState(null);
+  const [flyTo, setFlyTo] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const searchTimer = useRef(null);
 
   useEffect(() => {
     const adminData = sessionStorage.getItem('adminData');
@@ -52,6 +65,47 @@ export default function LocationsPage() {
       setForm(prev => ({ ...prev, latitude: parts[0], longitude: parts[1] }));
     }
   };
+
+  const handleLocationSearch = async (query) => {
+    setSearchQuery(query);
+    if (!query || query.trim().length < 3) { setSearchResults([]); return; }
+    // debounce 400ms
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const data = await res.json();
+        setSearchResults(data);
+      } catch (e) { setSearchResults([]); }
+      setSearching(false);
+    }, 400);
+  };
+
+  const handleSelectSearchResult = (result) => {
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    const pos = { lat, lng };
+    setForm(prev => ({
+      ...prev,
+      latitude: String(lat),
+      longitude: String(lng),
+      address: prev.address || result.display_name
+    }));
+    setMapMarker(pos);
+    setFlyTo(pos);
+    setSearchQuery(result.display_name);
+    setSearchResults([]);
+  };
+
+  // Called when user clicks on the map
+  const handleMapClick = useCallback((pos) => {
+    setMapMarker(pos);
+    setForm(prev => ({ ...prev, latitude: String(pos.lat), longitude: String(pos.lng) }));
+  }, []);
 
   const handleSubmit = async () => {
     if (!form.name || !form.latitude || !form.longitude) {
@@ -184,26 +238,46 @@ export default function LocationsPage() {
             {/* Right - Map Preview */}
             <div>
               <label style={labelSm}>Place the marker at the location in the map</label>
-              <div style={{ marginBottom: '8px' }}>
-                <input placeholder="Search a Location" style={{ ...inputStyle, marginBottom: '0' }} disabled />
-              </div>
-              {/* Static Map using OpenStreetMap tiles */}
-              <div style={{ width: '100%', height: '380px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e5e7eb', position: 'relative', background: '#e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px' }}>
-                {mapMarker ? (
-                  <iframe
-                    title="map"
-                    width="100%"
-                    height="100%"
-                    style={{ border: 'none' }}
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapMarker.lng - 0.01},${mapMarker.lat - 0.01},${mapMarker.lng + 0.01},${mapMarker.lat + 0.01}&layer=mapnik&marker=${mapMarker.lat},${mapMarker.lng}`}
-                  />
-                ) : (
-                  <>
-                    <MapPin size={48} color="#9ca3af" />
-                    <p style={{ color: '#9ca3af', fontSize: '14px', textAlign: 'center' }}>Enter coordinates to see the location on map</p>
-                  </>
+              <div style={{ marginBottom: '8px', position: 'relative' }}>
+                <input
+                  placeholder="Search a Location"
+                  value={searchQuery}
+                  onChange={e => handleLocationSearch(e.target.value)}
+                  style={{ ...inputStyle, marginBottom: '0' }}
+                />
+                {searching && (
+                  <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#6b7280' }}>Searching...</div>
+                )}
+                {searchResults.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: '200px', overflowY: 'auto' }}>
+                    {searchResults.map((r, i) => (
+                      <div
+                        key={i}
+                        onClick={() => handleSelectSearchResult(r)}
+                        style={{ padding: '10px 12px', cursor: 'pointer', fontSize: '13px', borderBottom: i < searchResults.length - 1 ? '1px solid #f3f4f6' : 'none' }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                      >
+                        {r.display_name}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
+              {/* Interactive Leaflet Map */}
+              <div style={{ width: '100%', height: '380px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+                <LocationMap
+                  marker={mapMarker}
+                  radiusMeters={form.radiusMeters}
+                  onMapClick={handleMapClick}
+                  flyTo={flyTo}
+                />
+              </div>
+              {mapMarker && (
+                <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+                  📍 {mapMarker.lat.toFixed(6)}, {mapMarker.lng.toFixed(6)} — click anywhere on the map to reposition
+                </p>
+              )}
             </div>
           </div>
         </div>

@@ -1,13 +1,14 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { getAttendance, markAttendance } from '../../../lib/data';
-import { Plus, X, Trash2, Save, Check } from 'lucide-react';
+import { getAttendance, markAttendance, getAnnouncements } from '../../../lib/data';
+import { Plus, X, Trash2, Save, Check, Calendar } from 'lucide-react';
 import './attendance.css';
 
 export default function Attendance() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceData, setAttendanceData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [announcements, setAnnouncements] = useState([]);
 
   // Time Slots Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,6 +25,9 @@ export default function Attendance() {
         timeSlots: item.timeSlots ? JSON.parse(item.timeSlots) : []
       }));
       setAttendanceData(parsedData);
+      
+      const anns = await getAnnouncements();
+      setAnnouncements(anns || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -34,6 +38,8 @@ export default function Attendance() {
   useEffect(() => {
     loadData(date);
   }, [date]);
+
+  const holiday = announcements.find(a => a.isHoliday && a.date === date);
 
   const [savingId, setSavingId] = useState(null);
 
@@ -117,6 +123,18 @@ export default function Attendance() {
         </div>
       </div>
 
+      {holiday && (
+        <div style={{ background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', border: '1px solid #86efac', padding: '1.25rem 1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 6px -1px rgba(34, 197, 94, 0.1)' }}>
+          <div style={{ background: '#16a34a', color: '#fff', padding: '10px', borderRadius: '10px' }}>
+            <Calendar size={24} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#14532d', margin: '0 0 4px 0' }}>Holiday: {holiday.subject}</h2>
+            <p style={{ fontSize: '14px', color: '#166534', margin: 0 }}>Attendance is not required for employees today.</p>
+          </div>
+        </div>
+      )}
+
       <div className="glass-panel table-container">
         <table>
           <thead>
@@ -151,7 +169,6 @@ export default function Attendance() {
                   <td>
                     <span className={`badge ${
                       record.status === 'Present' ? 'badge-success' : 
-                      record.status === 'Late' ? 'badge-warning' : 
                       record.status === 'Absent' ? 'badge-danger' : ''
                     }`}>
                       {record.status}
@@ -178,7 +195,6 @@ export default function Attendance() {
                       >
                         <option value="Not Marked">Not Marked</option>
                         <option value="Present">Present</option>
-                        <option value="Late">Late</option>
                         <option value="Absent">Absent</option>
                       </select>
                       

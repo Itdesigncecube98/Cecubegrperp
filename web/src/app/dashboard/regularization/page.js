@@ -1,30 +1,41 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, X, ArrowLeft, Clock } from 'lucide-react';
+import { Check, X, ArrowLeft, Clock, RefreshCw } from 'lucide-react';
 import { getPunchRequests, updatePunchRequestStatus } from '../../../lib/data';
+import { useAutoRefresh, formatRefreshTime } from '../../../lib/useAutoRefresh';
 
 export default function RegularizationRequestsPage() {
   const router = useRouter();
   const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [filter, setFilter] = useState('PENDING');
+
+  const loadRequests = useCallback(async () => {
+    const data = await getPunchRequests();
+    setRequests(Array.isArray(data) ? data : []);
+  }, []);
+
+  const { refresh, refreshing, lastRefreshed, autoRefresh, setAutoRefresh } = useAutoRefresh(loadRequests, {
+    intervalMs: 10000,
+    enabled: true
+  });
 
   useEffect(() => {
     const adminData = sessionStorage.getItem('adminData');
     if (!adminData) { router.push('/login/admin'); return; }
-    fetchData();
-  }, [router]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const data = await getPunchRequests(); // no supervisorId = all requests
-      setRequests(data);
-    } catch (e) { console.error(e); }
-    setLoading(false);
-  };
+    (async () => {
+      setInitialLoading(true);
+      try {
+        await loadRequests();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setInitialLoading(false);
+      }
+    })();
+  }, [router, loadRequests]);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -33,11 +44,13 @@ export default function RegularizationRequestsPage() {
 
   const handleAction = async (id, status) => {
     try {
+      setRequests(prev => prev.map(r => (r.id === id ? { ...r, status } : r)));
       await updatePunchRequestStatus(id, status);
       showToast(`Request ${status.toLowerCase()} successfully!`);
-      fetchData();
+      refresh();
     } catch (e) {
       showToast('Error updating request', 'error');
+      refresh();
     }
   };
 
@@ -45,23 +58,42 @@ export default function RegularizationRequestsPage() {
 
   return (
     <div style={{ padding: '24px', fontFamily: 'sans-serif' }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       {toast && (
         <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: toast.type === 'error' ? '#dc2626' : '#16a34a', color: 'white', padding: '10px 24px', borderRadius: '30px', fontWeight: 500, zIndex: 9999 }}>
           {toast.msg}
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-        <button onClick={() => router.push('/dashboard')} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px', cursor: 'pointer' }}>
-          <ArrowLeft size={18} />
-        </button>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700 }}>Regularization Requests</h1>
-          <p style={{ margin: 0, color: '#6b7280', fontSize: '14px' }}>Review and process employee punch regularization requests.</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button onClick={() => router.push('/dashboard')} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px', cursor: 'pointer' }}>
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700 }}>Regularization Requests</h1>
+            <p style={{ margin: 0, color: '#6b7280', fontSize: '14px' }}>Review and process employee punch regularization requests.</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: 'none', background: '#0f766e', color: 'white', fontWeight: 600, fontSize: '13px', cursor: refreshing ? 'wait' : 'pointer' }}
+          >
+            <RefreshCw size={14} style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
+            {refreshing ? 'Updating…' : 'Refresh'}
+          </button>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#374151', cursor: 'pointer' }}>
+            <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} style={{ width: 16, height: 16 }} />
+            Auto-refresh
+          </label>
+          <span style={{ fontSize: '12px', color: refreshing ? '#0f766e' : '#6b7280' }}>
+            {refreshing ? 'Updating in background…' : lastRefreshed ? `Updated ${formatRefreshTime(lastRefreshed)}` : ''}
+          </span>
         </div>
       </div>
 
-      {/* Filter */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
         {['PENDING', 'APPROVED', 'REJECTED', 'ALL'].map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 16px', borderRadius: '20px', border: '1px solid #e5e7eb', background: filter === f ? '#007bff' : 'white', color: filter === f ? 'white' : '#374151', cursor: 'pointer', fontWeight: 500, fontSize: '13px' }}>
@@ -70,7 +102,7 @@ export default function RegularizationRequestsPage() {
         ))}
       </div>
 
-      <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+      <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden', opacity: refreshing && requests.length > 0 ? 0.92 : 1, transition: 'opacity 0.2s' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
@@ -80,7 +112,7 @@ export default function RegularizationRequestsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {initialLoading && requests.length === 0 ? (
               <tr><td colSpan="7" style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>Loading requests...</td></tr>
             ) : filtered.length === 0 ? (
               <tr><td colSpan="7" style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>No {filter.toLowerCase()} requests found.</td></tr>

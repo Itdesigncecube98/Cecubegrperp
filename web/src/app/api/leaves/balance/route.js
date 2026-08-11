@@ -8,9 +8,9 @@ export async function GET(request) {
     
     if (employeeId) {
       const balance = await prisma.leaveBalance.findUnique({
-        where: { employeeId: parseInt(employeeId) }
+        where: { employeeId: employeeId }
       });
-      return NextResponse.json(balance || { casualLeaves: 12, sickLeaves: 7, earnedLeaves: 15 });
+      return NextResponse.json(balance || { casualLeaves: 12, leaveWithoutPay: 0, earnedLeaves: 15 });
     }
     
     // Return all balances if no employeeId
@@ -24,12 +24,12 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const data = await request.json();
-    const { employeeId, casualLeaves, sickLeaves, earnedLeaves } = data;
+    const { employeeId, casualLeaves, leaveWithoutPay, earnedLeaves } = data;
     
     const balance = await prisma.leaveBalance.upsert({
-      where: { employeeId: parseInt(employeeId) },
-      update: { casualLeaves, sickLeaves, earnedLeaves },
-      create: { employeeId: parseInt(employeeId), casualLeaves, sickLeaves, earnedLeaves }
+      where: { employeeId: employeeId },
+      update: { casualLeaves, leaveWithoutPay, earnedLeaves },
+      create: { employeeId: employeeId, casualLeaves, leaveWithoutPay, earnedLeaves }
     });
     
     return NextResponse.json(balance);

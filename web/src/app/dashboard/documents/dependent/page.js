@@ -2,11 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
-import '../../attendance/attendance.css';
+import '../documents.css';
 import { getDocuments, createDocument, deleteDocument, getEmployees } from '@/lib/data';
 const showToast = (msg) => alert(msg);
 
-export default function DependantDocuments() {
+export default function DependentDocuments() {
   const [documents, setDocuments] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +71,7 @@ export default function DependantDocuments() {
         const payload = {
           employeeId: formData.employeeId,
           documentType: 'Dependent',
-          documentName: formData.documentName,
+          documentName: formData.documentName === 'Other' ? formData.customDocumentName : formData.documentName,
           documentNumber: formData.documentNumber,
           expiryDate: formData.expiryDate,
           fileData: base64Data,
@@ -83,9 +83,9 @@ export default function DependantDocuments() {
         if (res.error) {
           showToast(res.error, 'error');
         } else {
-          showToast('Dependent document uploaded successfully');
+          showToast('Document uploaded successfully');
           setShowModal(false);
-          setFormData({ employeeId: '', documentName: '', documentNumber: '', expiryDate: '' });
+          setFormData({ employeeId: '', documentName: '', customDocumentName: '', documentNumber: '', expiryDate: '', dependentName: '', dependentRelation: '' });
           setSelectedFile(null);
           loadData();
         }
@@ -97,6 +97,7 @@ export default function DependantDocuments() {
       setUploading(false);
     }
   };
+
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this dependent document?')) return;
@@ -118,17 +119,17 @@ export default function DependantDocuments() {
     try {
       const res = await fetch(`/api/documents/${id}`);
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      const a = document.createElement('a');
-      a.href = data.fileData;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // Create a Blob URL to open the file in a new tab for viewing
+      const response = await fetch(data.fileData);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      
+      // Clean up the object URL after a delay
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     } catch (err) {
       console.error(err);
-      showToast('Failed to download document', 'error');
+      showToast('Failed to view document', 'error');
     }
   };
 
@@ -142,32 +143,26 @@ export default function DependantDocuments() {
   };
 
   return (
-    <div className="pageContainer">
-      <Link href="/dashboard" className="backLink">
-        <ChevronLeft size={16} /> Back to Dashboard
-      </Link>
-      
-      <div className="card" style={{ marginTop: '1.5rem' }}>
-        <div className="filterActions" style={{ justifyContent: 'flex-end' }}>
-          <button className="btn btnPrimary" onClick={() => setShowModal(true)}>Add Dependant Document</button>
+    <div className="docsContainer">
+      <div className="docsHeader">
+        <div>
+          <Link href="/dashboard" className="backLink">
+            <ChevronLeft size={16} /> Back to Dashboard
+          </Link>
+          <h1 className="pageTitle">Dependent Documents</h1>
+          <p className="pageSubtitle">Manage dependent documents for employees</p>
         </div>
+        <button className="primaryBtn" onClick={() => setShowModal(true)}>
+          + Add Document
+        </button>
       </div>
 
-      <div className="card">
-        <div className="tableHeaderRow">
-          <div>
-            <div className="tableTitleArea">
-              <h2 className="tableTitle">Employee Dependant Documents</h2>
-            </div>
-            <p className="tableSubtitle">The below table shows the list of Dependant Documents.</p>
-          </div>
-        </div>
-
+      <div className="modernCard">
         <div style={{ overflowX: 'auto' }}>
           {loading ? (
             <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>
           ) : (
-            <table className="dataTable">
+            <table className="modernTable">
               <thead>
                 <tr>
                   <th>EMPLOYEE CODE</th>
@@ -175,38 +170,38 @@ export default function DependantDocuments() {
                   <th>DOCUMENT NAME</th>
                   <th>DOCUMENT NUMBER</th>
                   <th>EXPIRY DATE</th>
-                  <th>EXPIRES IN (DAYS)</th>
+                  <th>EXPIRES IN</th>
                   <th>ACTION</th>
                 </tr>
               </thead>
               <tbody>
                 {documents.length === 0 ? (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', background: '#f9fafb' }}>No data available in table</td>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>No dependent documents found</td>
                   </tr>
                 ) : (
                   documents.map((doc) => {
                     const daysLeft = getDaysUntilExpiry(doc.expiryDate);
                     return (
                       <tr key={doc.id}>
-                        <td>{doc.employee?.empId || '-'}</td>
-                        <td style={{ fontWeight: '600' }}>{doc.employee?.name || 'Unknown'}</td>
+                        <td style={{ fontWeight: 600 }}>{doc.employee?.empId || '-'}</td>
+                        <td style={{ fontWeight: 600 }}>{doc.employee?.name || 'Unknown'}</td>
                         <td>{doc.documentName}</td>
-                        <td>{doc.documentNumber || '-'}</td>
+                        <td style={{ color: '#64748b' }}>{doc.documentNumber || '-'}</td>
                         <td>{doc.expiryDate ? new Date(doc.expiryDate).toLocaleDateString() : '-'}</td>
                         <td>
                           {daysLeft === 'N/A' ? '-' : (
-                            <span style={{ color: daysLeft < 30 ? '#dc2626' : (daysLeft < 90 ? '#d97706' : 'inherit') }}>
-                              {daysLeft}
+                            <span className={`statusBadge ${daysLeft < 30 ? 'danger' : (daysLeft < 90 ? 'warning' : 'success')}`}>
+                              {daysLeft} days
                             </span>
                           )}
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <button className="icon-btn" onClick={() => handleView(doc.id, doc.fileName)} title="Download / View" style={{color: '#3b82f6'}}>
+                            <button className="actionBtn view" onClick={() => handleView(doc.id, doc.fileName)} title="Download / View">
                               View
                             </button>
-                            <button className="icon-btn" onClick={() => handleDelete(doc.id)} title="Delete" style={{color: '#ef4444'}}>
+                            <button className="actionBtn delete" onClick={() => handleDelete(doc.id)} title="Delete">
                               Delete
                             </button>
                           </div>
@@ -222,16 +217,17 @@ export default function DependantDocuments() {
       </div>
 
       {showModal && (
-        <div className="modalOverlay" onClick={() => !uploading && setShowModal(false)}>
-          <div className="modalContent" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+        <div className="modernModalOverlay" onClick={() => !uploading && setShowModal(false)}>
+          <div className="modernModal" onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
-              <h3>Upload Dependant Document</h3>
+              <h3>Upload Dependent Document</h3>
               <button className="closeBtn" onClick={() => !uploading && setShowModal(false)} disabled={uploading}>&times;</button>
             </div>
             <form className="modalBody" onSubmit={handleSubmit}>
               <div className="formGroup">
                 <label>Employee *</label>
                 <select 
+                  className="modernInput"
                   required 
                   value={formData.employeeId} 
                   onChange={(e) => setFormData({...formData, employeeId: e.target.value})}
@@ -244,10 +240,11 @@ export default function DependantDocuments() {
                 </select>
               </div>
               <div className="formGroup">
-                <label>Dependant Name / Relation *</label>
+                <label>Document Name / Title *</label>
                 <input 
+                  className="modernInput"
                   type="text" 
-                  placeholder="e.g. John Doe (Son)"
+                  placeholder="e.g. Health Insurance, Birth Certificate"
                   required 
                   value={formData.documentName} 
                   onChange={(e) => setFormData({...formData, documentName: e.target.value})}
@@ -257,7 +254,9 @@ export default function DependantDocuments() {
               <div className="formGroup">
                 <label>Document Number</label>
                 <input 
+                  className="modernInput"
                   type="text" 
+                  placeholder="Leave blank if N/A"
                   value={formData.documentNumber} 
                   onChange={(e) => setFormData({...formData, documentNumber: e.target.value})}
                   disabled={uploading}
@@ -266,6 +265,7 @@ export default function DependantDocuments() {
               <div className="formGroup">
                 <label>Expiry Date</label>
                 <input 
+                  className="modernInput"
                   type="date" 
                   value={formData.expiryDate} 
                   onChange={(e) => setFormData({...formData, expiryDate: e.target.value})}
@@ -275,16 +275,19 @@ export default function DependantDocuments() {
               <div className="formGroup">
                 <label>File (Max 2MB) *</label>
                 <input 
+                  className="modernInput"
                   type="file" 
                   required 
-                  accept="image/*,application/pdf"
                   onChange={handleFileChange}
                   disabled={uploading}
+                  accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
                 />
               </div>
-              <div className="modalFooter">
-                <button type="button" className="btn btnSecondary" onClick={() => setShowModal(false)} disabled={uploading}>Cancel</button>
-                <button type="submit" className="btn btnPrimary" disabled={uploading}>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                <button type="button" className="actionBtn" onClick={() => setShowModal(false)} disabled={uploading} style={{ flex: 1, padding: '12px' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="primaryBtn" disabled={uploading} style={{ flex: 1, justifyContent: 'center' }}>
                   {uploading ? 'Uploading...' : 'Save Document'}
                 </button>
               </div>

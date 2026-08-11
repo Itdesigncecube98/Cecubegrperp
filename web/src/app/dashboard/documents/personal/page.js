@@ -71,7 +71,7 @@ export default function PersonalDocuments() {
         const payload = {
           employeeId: formData.employeeId,
           documentType: 'Personal',
-          documentName: formData.documentName,
+          documentName: formData.documentName === 'Other' ? formData.customDocumentName : formData.documentName,
           documentNumber: formData.documentNumber,
           expiryDate: formData.expiryDate,
           fileData: base64Data,
@@ -85,7 +85,7 @@ export default function PersonalDocuments() {
         } else {
           showToast('Document uploaded successfully');
           setShowModal(false);
-          setFormData({ employeeId: '', documentName: '', documentNumber: '', expiryDate: '' });
+          setFormData({ employeeId: '', documentName: '', customDocumentName: '', documentNumber: '', expiryDate: '' });
           setSelectedFile(null);
           loadData();
         }
@@ -120,16 +120,17 @@ export default function PersonalDocuments() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      // Create a temporary link to download/view the file
-      const a = document.createElement('a');
-      a.href = data.fileData;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // Create a Blob URL to open the file in a new tab for viewing
+      const response = await fetch(data.fileData);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      
+      // Clean up the object URL after a delay
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     } catch (err) {
       console.error(err);
-      showToast('Failed to download document', 'error');
+      showToast('Failed to view document', 'error');
     }
   };
 
@@ -143,32 +144,26 @@ export default function PersonalDocuments() {
   };
 
   return (
-    <div className="pageContainer">
-      <Link href="/dashboard" className="backLink">
-        <ChevronLeft size={16} /> Back to Dashboard
-      </Link>
-      
-      <div className="card" style={{ marginTop: '1.5rem' }}>
-        <div className="filterActions" style={{ justifyContent: 'flex-end' }}>
-          <button className="btn btnPrimary" onClick={() => setShowModal(true)}>Add Document</button>
+    <div className="docsContainer">
+      <div className="docsHeader">
+        <div>
+          <Link href="/dashboard" className="backLink">
+            <ChevronLeft size={16} /> Back to Dashboard
+          </Link>
+          <h1 className="pageTitle">Personal Documents</h1>
+          <p className="pageSubtitle">Manage personal documents for employees</p>
         </div>
+        <button className="primaryBtn" onClick={() => setShowModal(true)}>
+          + Add Document
+        </button>
       </div>
 
-      <div className="card">
-        <div className="tableHeaderRow">
-          <div>
-            <div className="tableTitleArea">
-              <h2 className="tableTitle">Employee Personal Documents</h2>
-            </div>
-            <p className="tableSubtitle">The below table shows the list of your Personal Documents.</p>
-          </div>
-        </div>
-
+      <div className="modernCard">
         <div style={{ overflowX: 'auto' }}>
           {loading ? (
             <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>
           ) : (
-            <table className="dataTable">
+            <table className="modernTable">
               <thead>
                 <tr>
                   <th>EMPLOYEE CODE</th>
@@ -197,17 +192,17 @@ export default function PersonalDocuments() {
                         <td>{doc.expiryDate ? new Date(doc.expiryDate).toLocaleDateString() : '-'}</td>
                         <td>
                           {daysLeft === 'N/A' ? '-' : (
-                            <span style={{ color: daysLeft < 30 ? '#dc2626' : (daysLeft < 90 ? '#d97706' : 'inherit') }}>
-                              {daysLeft}
+                            <span className={`statusBadge ${daysLeft < 30 ? 'danger' : (daysLeft < 90 ? 'warning' : 'success')}`}>
+                              {daysLeft} days
                             </span>
                           )}
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <button className="icon-btn" onClick={() => handleView(doc.id, doc.fileName)} title="Download / View" style={{color: '#3b82f6'}}>
+                            <button className="actionBtn view" onClick={() => handleView(doc.id, doc.fileName)} title="Download / View">
                               View
                             </button>
-                            <button className="icon-btn" onClick={() => handleDelete(doc.id)} title="Delete" style={{color: '#ef4444'}}>
+                            <button className="actionBtn delete" onClick={() => handleDelete(doc.id)} title="Delete">
                               Delete
                             </button>
                           </div>
@@ -223,8 +218,8 @@ export default function PersonalDocuments() {
       </div>
 
       {showModal && (
-        <div className="modalOverlay" onClick={() => !uploading && setShowModal(false)}>
-          <div className="modalContent" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+        <div className="modernModalOverlay" onClick={() => !uploading && setShowModal(false)}>
+          <div className="modernModal" onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <h3>Upload Personal Document</h3>
               <button className="closeBtn" onClick={() => !uploading && setShowModal(false)} disabled={uploading}>&times;</button>
@@ -233,6 +228,7 @@ export default function PersonalDocuments() {
               <div className="formGroup">
                 <label>Employee *</label>
                 <select 
+                  className="modernInput"
                   required 
                   value={formData.employeeId} 
                   onChange={(e) => setFormData({...formData, employeeId: e.target.value})}
@@ -247,6 +243,7 @@ export default function PersonalDocuments() {
               <div className="formGroup">
                 <label>Document Name (Type) *</label>
                 <select 
+                  className="modernInput"
                   required 
                   value={formData.documentName} 
                   onChange={(e) => setFormData({...formData, documentName: e.target.value})}
@@ -262,9 +259,24 @@ export default function PersonalDocuments() {
                   <option value="Other">Other</option>
                 </select>
               </div>
+              {formData.documentName === 'Other' && (
+                <div className="formGroup">
+                  <label>Custom Document Name *</label>
+                  <input 
+                    className="modernInput"
+                    type="text" 
+                    required 
+                    value={formData.customDocumentName || ''} 
+                    onChange={(e) => setFormData({...formData, customDocumentName: e.target.value})}
+                    disabled={uploading}
+                    placeholder="Enter document name"
+                  />
+                </div>
+              )}
               <div className="formGroup">
                 <label>Document Number</label>
                 <input 
+                  className="modernInput"
                   type="text" 
                   value={formData.documentNumber} 
                   onChange={(e) => setFormData({...formData, documentNumber: e.target.value})}
@@ -274,6 +286,7 @@ export default function PersonalDocuments() {
               <div className="formGroup">
                 <label>Expiry Date</label>
                 <input 
+                  className="modernInput"
                   type="date" 
                   value={formData.expiryDate} 
                   onChange={(e) => setFormData({...formData, expiryDate: e.target.value})}
@@ -283,6 +296,7 @@ export default function PersonalDocuments() {
               <div className="formGroup">
                 <label>File (Max 2MB) *</label>
                 <input 
+                  className="modernInput"
                   type="file" 
                   required 
                   accept="image/*,application/pdf"
@@ -290,9 +304,11 @@ export default function PersonalDocuments() {
                   disabled={uploading}
                 />
               </div>
-              <div className="modalFooter">
-                <button type="button" className="btn btnSecondary" onClick={() => setShowModal(false)} disabled={uploading}>Cancel</button>
-                <button type="submit" className="btn btnPrimary" disabled={uploading}>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                <button type="button" className="actionBtn" onClick={() => setShowModal(false)} disabled={uploading} style={{ flex: 1, padding: '12px' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="primaryBtn" disabled={uploading} style={{ flex: 1, justifyContent: 'center' }}>
                   {uploading ? 'Uploading...' : 'Save Document'}
                 </button>
               </div>
