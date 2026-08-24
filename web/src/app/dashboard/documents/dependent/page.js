@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import Dialog from '@/components/Dialog';
 import '../documents.css';
 import { getDocuments, createDocument, deleteDocument, getEmployees } from '@/lib/data';
 const showToast = (msg) => alert(msg);
@@ -10,6 +11,7 @@ export default function DependentDocuments() {
   const [documents, setDocuments] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, documentId: null });
   
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -99,10 +101,10 @@ export default function DependentDocuments() {
   };
 
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this dependent document?')) return;
+  const confirmDelete = async () => {
+    if (!deleteDialog.documentId) return;
     try {
-      const res = await deleteDocument(id);
+      const res = await deleteDocument(deleteDialog.documentId);
       if (res.error) {
         showToast(res.error, 'error');
       } else {
@@ -113,6 +115,11 @@ export default function DependentDocuments() {
       console.error(err);
       showToast('Failed to delete document', 'error');
     }
+    setDeleteDialog({ isOpen: false, documentId: null });
+  };
+
+  const handleDelete = (id) => {
+    setDeleteDialog({ isOpen: true, documentId: id });
   };
 
   const handleView = async (id, fileName) => {
@@ -295,6 +302,15 @@ export default function DependentDocuments() {
           </div>
         </div>
       )}
+
+      <Dialog 
+        isOpen={deleteDialog.isOpen}
+        type="confirm"
+        title="Delete Document"
+        message="Are you sure you want to delete this dependent document?"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteDialog({ isOpen: false, documentId: null })}
+      />
     </div>
   );
 }

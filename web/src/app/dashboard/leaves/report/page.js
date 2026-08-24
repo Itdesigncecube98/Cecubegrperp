@@ -37,9 +37,10 @@ export default function LeaveReportPage() {
           ...emp,
           totalRequests: empLeaves.length,
           approved, pending, rejected,
-          casualBalance: bal?.casualLeaves ?? 12,
+          casualBalance: bal?.casualLeaves ?? 0,
           lwpBalance: bal?.leaveWithoutPay ?? 0,
-          earnedBalance: bal?.earnedLeaves ?? 15
+          earnedBalance: bal?.earnedLeaves ?? 0,
+          coffBalance: bal?.compensatoryLeaves ?? 0
         };
       });
       setData(report);
@@ -58,13 +59,12 @@ export default function LeaveReportPage() {
         </button>
         <div>
           <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700 }}>Leave Entitlements & Usage Report</h1>
-          <p style={{ margin: 0, color: '#6b7280', fontSize: '14px' }}>Overview of leave usage and remaining balances for all employees.</p>
+          <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: '14px' }}>Overview of leave usage across all employees</p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '20px' }}>
-        <select value={filterDept} onChange={e => setFilterDept(e.target.value)} style={{ padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '14px' }}>
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <select value={filterDept} onChange={e => setFilterDept(e.target.value)} style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #e5e7eb', outline: 'none' }}>
           {departments.map(d => <option key={d} value={d}>{d === 'ALL' ? 'All Departments' : d}</option>)}
         </select>
         <button onClick={fetchData} style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Refresh</button>
@@ -75,7 +75,7 @@ export default function LeaveReportPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
             <thead>
               <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-                {['Employee', 'Dept', 'Total Requests', 'Approved', 'Pending', 'Rejected', 'Casual (Rem.)', 'LWP (Rem.)', 'Earned (Rem.)'].map(h => (
+                {['Employee', 'Dept', 'Total Requests', 'Approved', 'Pending', 'Rejected', 'Casual (Rem.)', 'LWP (Rem.)', 'Earned (Rem.)', 'COFF (Rem.)'].map(h => (
                   <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -104,10 +104,13 @@ export default function LeaveReportPage() {
                     <span style={{ color: '#1d4ed8', fontWeight: 700 }}>{emp.casualBalance}</span>
                   </td>
                   <td style={{ padding: '14px', textAlign: 'center' }}>
-                    <span style={{ color: '#d97706', fontWeight: 700 }}>{emp.sickBalance}</span>
+                    <span style={{ color: '#d97706', fontWeight: 700 }}>{emp.lwpBalance}</span>
                   </td>
                   <td style={{ padding: '14px', textAlign: 'center' }}>
                     <span style={{ color: '#16a34a', fontWeight: 700 }}>{emp.earnedBalance}</span>
+                  </td>
+                  <td style={{ padding: '14px', textAlign: 'center' }}>
+                    <span style={{ color: '#8b5cf6', fontWeight: 700 }}>{emp.coffBalance}</span>
                   </td>
                 </tr>
               ))}

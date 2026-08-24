@@ -14,6 +14,20 @@ export default function TeamPunches() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [tableData, setTableData] = useState([]);
+  const [employeesList, setEmployeesList] = useState([]);
+
+  useEffect(() => {
+    async function loadEmployees() {
+      try {
+        const res = await fetch('/api/employees');
+        const data = await res.json();
+        if (Array.isArray(data)) setEmployeesList(data);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadEmployees();
+  }, []);
 
   const today = new Date();
   const monday = new Date(today);
@@ -88,8 +102,11 @@ export default function TeamPunches() {
           </div>
           <div className="filterGroup">
             <label className="filterLabel">Employee</label>
-            <select className="filterInput">
-              <option>Any</option>
+            <select className="filterInput" value={search} onChange={e => setSearch(e.target.value)}>
+              <option value="">Any</option>
+              {employeesList.map(e => (
+                <option key={e.id} value={e.empId || e.name}>{e.name} ({e.empId})</option>
+              ))}
             </select>
           </div>
           <div className="filterGroup">

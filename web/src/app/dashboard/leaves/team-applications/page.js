@@ -176,6 +176,7 @@ export default function TeamLeaveApplications() {
                 <th>END DATE</th>
                 <th>NO OF DAYS</th>
                 <th>STATUS</th>
+                <th>ACTUAL ATTENDANCE</th>
                 <th>REASON</th>
                 <th>ACTION</th>
               </tr>
@@ -183,11 +184,11 @@ export default function TeamLeaveApplications() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>Loading...</td>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>Loading...</td>
                 </tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>No data available in table</td>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No data available in table</td>
                 </tr>
               ) : (
                 requests.map(req => (
@@ -214,6 +215,9 @@ export default function TeamLeaveApplications() {
                          req.status === 'PENDING_ADMIN' ? 'Pending Admin' :
                          req.status}
                       </span>
+                    </td>
+                    <td style={{ fontSize: '0.85rem', fontWeight: 500, color: req.actualAttendance === 'Present' ? '#16a34a' : '#6b7280' }}>
+                      {req.actualAttendance === 'Present' ? 'Present (Punched In)' : 'Absent / No Punch'}
                     </td>
                     <td>{req.reason}</td>
                     <td>

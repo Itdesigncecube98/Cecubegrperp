@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Plus, Trash2 } from 'lucide-react';
 import { getAnnouncements, createAnnouncement, deleteAnnouncement } from '../../../../lib/data';
+import Dialog from '../../../../components/Dialog';
 import '../../attendance/attendance.css';
 
 export default function Announcements() {
@@ -10,6 +11,7 @@ export default function Announcements() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState({ subject: '', message: '', isHoliday: false, date: '' });
+  const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null });
 
   useEffect(() => {
     fetchData();
@@ -40,10 +42,17 @@ export default function Announcements() {
   };
 
   const handleDelete = async (id) => {
-    if (confirm('Are you sure you want to delete this announcement?')) {
-      await deleteAnnouncement(id);
-      fetchData();
-    }
+    setDialogConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'Delete Announcement',
+      message: 'Are you sure you want to delete this announcement?',
+      onConfirm: async () => {
+        setDialogConfig(prev => ({ ...prev, isOpen: false }));
+        await deleteAnnouncement(id);
+        fetchData();
+      }
+    });
   };
   return (
     <div className="pageContainer">
@@ -160,6 +169,15 @@ export default function Announcements() {
           </div>
         </div>
       </div>
+      
+      <Dialog 
+        isOpen={dialogConfig.isOpen}
+        type={dialogConfig.type}
+        title={dialogConfig.title}
+        message={dialogConfig.message}
+        onConfirm={dialogConfig.onConfirm}
+        onCancel={() => setDialogConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

@@ -47,7 +47,28 @@ export default function EmployeeLeavePage() {
   async function fetchData(id) {
     try {
       const bal = await getLeaveBalance(id);
-      setBalance(bal || { casual: 0, sick: 0, earned: 0, lwp: 0 });
+      
+      const currMonth = new Date().getMonth() + 1;
+      const currYear = new Date().getFullYear();
+      let netDaysLwp = 0;
+      let explicitLwp = 0;
+      
+      const finalBal = bal || { casualLeaves: 0, leaveWithoutPay: 0, earnedLeaves: 0, compensatoryLeaves: 0 };
+      
+      try {
+        const monthRes = await fetch(`/api/leaves/balance?employeeId=${id}&month=${currMonth}&year=${currYear}`);
+        if (monthRes.ok) {
+          const monthBal = await monthRes.json();
+          netDaysLwp = -(monthBal.netDaysLwp || 0);
+          explicitLwp = monthBal.explicitLwp || 0;
+        }
+      } catch (e) {
+        console.error('Failed to load net lwp', e);
+      }
+
+      finalBal.netDaysLwp = netDaysLwp;
+      finalBal.explicitLwp = explicitLwp;
+      setBalance(finalBal);
       
       const [reqs, typesData] = await Promise.all([
         getLeaveRequests(null, id),
@@ -158,8 +179,13 @@ export default function EmployeeLeavePage() {
           </div>
           <div className="card" style={{ borderLeft: '4px solid #f59e0b', padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', color: '#6b7280', margin: 0 }}>Leave Without Pay</h3>
-            <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.leaveWithoutPay ?? 0}</p>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.explicitLwp ?? 0}</p>
             <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days used</p>
+          </div>
+          <div className="card" style={{ borderLeft: '4px solid #ef4444', padding: '1.5rem' }}>
+            <h3 style={{ fontSize: '1rem', color: '#6b7280', margin: 0 }}>Net Days LWP</h3>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.netDaysLwp ?? 0}</p>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>net days</p>
           </div>
         </div>
       )}

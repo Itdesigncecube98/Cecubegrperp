@@ -21,7 +21,7 @@ export const loginEmployee = async (email, password) => {
 
 export const getEmployees = async (role = null) => {
   const url = role ? `/api/employees?role=${role}` : '/api/employees';
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   return await res.json();
 };
 
@@ -58,8 +58,9 @@ export const deleteEmployee = async (id) => {
 export const getAttendance = async (date) => {
   const targetDate = date || new Date().toISOString().split('T')[0];
   const res = await fetch(`/api/attendance?date=${targetDate}`);
-  if (!res.ok) throw new Error(`Attendance fetch failed (${res.status})`);
-  return await res.json();
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 };
 
 export const markAttendance = async (employeeId, date, status, shiftType = 'Day', timeSlots = '[]') => {
@@ -126,11 +127,11 @@ export const createPunchRequest = async (data) => {
   return await res.json();
 };
 
-export const updatePunchRequestStatus = async (id, status) => {
+export const updatePunchRequestStatus = async (id, status, grantCoff = false) => {
   const res = await fetch('/api/requests', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, status })
+    body: JSON.stringify({ id, status, grantCoff })
   });
   return await res.json();
 };
@@ -250,7 +251,9 @@ export const deleteLeaveType = async (id) => {
 
 export const getAnnouncements = async () => {
   const res = await fetch('/api/announcements');
-  return await res.json();
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 };
 
 export const createAnnouncement = async (data) => {
@@ -364,3 +367,54 @@ export const deleteDocument = async (id) => {
   });
   return await res.json();
 };
+
+export const getImprestApprovals = async (approverId) => {
+  const res = await fetch(`/api/imprest?approverId=${approverId}`, { cache: 'no-store' });
+  return await res.json();
+};
+
+export const updateImprestRequest = async (id, action, updateData) => {
+  const res = await fetch('/api/imprest', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action, ...updateData })
+  });
+  return await res.json();
+};
+export const getMyImprestRequests = async (employeeId) => {
+  const res = await fetch(`/api/imprest?employeeId=${employeeId}`, { cache: 'no-store' });
+  return await res.json();
+};
+
+export const getCandidates = async () => {
+  const res = await fetch('/api/candidates', { cache: 'no-store' });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+};
+
+export const addCandidate = async (candidateData) => {
+  const res = await fetch('/api/candidates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(candidateData)
+  });
+  return await res.json();
+};
+
+export const updateCandidate = async (id, updatedData) => {
+  const res = await fetch('/api/candidates', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, ...updatedData })
+  });
+  return await res.json();
+};
+
+export const deleteCandidate = async (id) => {
+  const res = await fetch(`/api/candidates?id=${id}`, {
+    method: 'DELETE'
+  });
+  return await res.json();
+};
+

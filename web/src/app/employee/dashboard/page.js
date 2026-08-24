@@ -1,23 +1,36 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { getEmployeeStats, updateEmployee, getPunchRequests, createPunchRequest, getEmployees, getAnnouncements, getLocationRequests, updateLocationRequest, pingLocation, getLocations } from '../../../lib/data';
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Edit2, Plus, X, Trash2, UserCircle, Shield, Bell, MapPin, Car } from 'lucide-react';
+import { getEmployeeStats, updateEmployee, getPunchRequests, createPunchRequest, getEmployees, getAnnouncements, getLocationRequests, updateLocationRequest, pingLocation, getLocations, getHolidays, getLeaveBalance, getImprestApprovals, updateImprestRequest, getMyImprestRequests } from '../../../lib/data';
+import dynamic from 'next/dynamic';
+const LocationPicker = dynamic(() => import('@/components/LocationPicker'), { ssr: false });
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Edit2, Plus, X, Trash2, UserCircle, Shield, Bell, MapPin, Car, IndianRupee, ClipboardList, Layers } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import ImprestModal from './ImprestModal';
 
 export default function EmployeeDashboard() {
   const [statsData, setStatsData] = useState([]);
+  const [leaveBalance, setLeaveBalance] = useState(null);
+
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [employee, setEmployee] = useState(null);
+  const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedShift, setSelectedShift] = useState('Day');
+  const [selectedShift, setSelectedShift] = useState(() => {
+    const h = new Date().getHours();
+    // Night shift: 7 PM (19:00) to 8 AM
+    return (h >= 19 || h < 8) ? 'Night' : 'Day';
+  });
   const [pendingRequests, setPendingRequests] = useState([]);
   const [pendingLocationRequests, setPendingLocationRequests] = useState([]);
   const [activeLocationRequests, setActiveLocationRequests] = useState([]);
   const [activeTrips, setActiveTrips] = useState([]);
   const [pendingTrips, setPendingTrips] = useState([]);
+  const [myImprestRequests, setMyImprestRequests] = useState([]);
+  const [pendingImprestApprovals, setPendingImprestApprovals] = useState([]);
   const [selectedMovementType, setSelectedMovementType] = useState('Office to Site');
   const [announcements, setAnnouncements] = useState([]);
   const [isSupervisor, setIsSupervisor] = useState(false);
+  const [isAccountsAdmin, setIsAccountsAdmin] = useState(false);
   const [gpsLocations, setGpsLocations] = useState([]);
   const [isSharingLocation, setIsSharingLocation] = useState(false);
   const router = useRouter();
@@ -36,7 +49,14 @@ export default function EmployeeDashboard() {
 
   // Regularize Modal State
   const [isRegularizeModalOpen, setIsRegularizeModalOpen] = useState(false);
-  const [regularizeData, setRegularizeData] = useState({ date: '', reason: '', inTime: '', outTime: '' });
+  // COff Conversion Modal State
+  const [isCoffModalOpen, setIsCoffModalOpen] = useState(false);
+  const [coffData, setCoffData] = useState({ month: '', numCoffs: 1 });
+  const [availableNightShifts, setAvailableNightShifts] = useState(0);
+  const [regularizeData, setRegularizeData] = useState({ date: '', reason: '', inTime: '', outTime: '', latitude: null, longitude: null, locationName: '' });
+
+  // Imprest Modal State
+  const [isImprestModalOpen, setIsImprestModalOpen] = useState(false);
 
   useEffect(() => {
     const empData = sessionStorage.getItem('employeeData');
@@ -44,7 +64,6 @@ export default function EmployeeDashboard() {
       const parsed = JSON.parse(empData);
       setEmployee(parsed);
       loadStats(parsed.id);
-
       const interval = setInterval(() => {
         loadStats(parsed.id, false);
       }, 60000);
@@ -52,17 +71,24 @@ export default function EmployeeDashboard() {
     }
   }, []);
 
+  useEffect(() => {
+    // This empty effect keeps backward compatibility with previous modifications
+    // State derivation happens inline below to avoid HMR staleness
+  }, [employee]);
+
   async function loadStats(id, showLoader = true) {
     if (showLoader) setLoading(true);
     try {
       // Critical path only — unblock UI fast
-      const [data, reqs] = await Promise.all([
+      const [data, reqs, bal] = await Promise.all([
         getEmployeeStats(id).catch(() => []),
-        getPunchRequests(null, id).catch(() => [])
+        getPunchRequests(null, id).catch(() => []),
+        getLeaveBalance(id).catch(() => null)
       ]);
 
       setStatsData(Array.isArray(data) ? data : []);
       setPendingRequests(Array.isArray(reqs) ? reqs.filter(r => r.status === 'PENDING') : []);
+      setLeaveBalance(bal);
     } catch (e) {
       if (e.message !== 'Failed to fetch') console.error('Failed to load stats', e);
     } finally {
@@ -75,20 +101,33 @@ export default function EmployeeDashboard() {
       fetch(`/api/trips?employeeId=${id}`).then(r => r.json()).catch(() => []),
       getAnnouncements().catch(() => []),
       getLocations().catch(() => []),
-      fetch(`/api/employees?checkSupervisor=${id}`).then(r => r.json()).catch(() => ({ isSupervisor: false }))
-    ]).then(([locReqs, tripData, anns, locs, supervisorFlag]) => {
+      getHolidays().catch(() => []),
+      fetch(`/api/employees?checkSupervisor=${id}`).then(r => r.json()).catch(() => ({ isSupervisor: false })),
+      getImprestApprovals(id).catch(() => []),
+      getMyImprestRequests(id).catch(() => []),
+      fetch('/api/synchronization/imprest-workflow').then(r => r.json()).catch(() => ({}))
+    ]).then(([locReqs, tripData, anns, locs, hols, supervisorFlag, imprestApprs, myImprests, wfConfig]) => {
       if (Array.isArray(locReqs)) {
-        setPendingLocationRequests(locReqs.filter(r => r.status === 'PENDING'));
-        setActiveLocationRequests(locReqs.filter(r => r.status === 'ACTIVE'));
+        setPendingLocationRequests(locReqs.filter(r => r.status === 'PENDING' && r.employeeId === id));
+        setActiveLocationRequests(locReqs.filter(r => r.status === 'APPROVED' && r.employeeId === id));
       }
       if (Array.isArray(tripData)) {
-        setActiveTrips(tripData.filter(t => t.status === 'ACTIVE'));
-        setPendingTrips(tripData.filter(t => t.status === 'REQUESTED'));
+        setActiveTrips(tripData.filter(t => t.status === 'APPROVED'));
+        setPendingTrips(tripData.filter(t => t.status === 'PENDING'));
       }
       setAnnouncements(Array.isArray(anns) ? anns : []);
-      setGpsLocations(Array.isArray(locs) ? locs.filter(l => l.isActive) : []);
+      setHolidays(Array.isArray(hols) ? hols : []);
       setIsSupervisor(!!supervisorFlag?.isSupervisor);
-    });
+      
+      if (Array.isArray(wfConfig) && wfConfig.length > 0) {
+        setIsAccountsAdmin(wfConfig[0].accountsId === id);
+      } else if (wfConfig?.accountsId === id) {
+        setIsAccountsAdmin(true);
+      }
+
+      setPendingImprestApprovals(Array.isArray(imprestApprs) ? imprestApprs.filter(r => ['PENDING_SUPERVISOR', 'PENDING_PROJECTS_HEAD', 'PENDING_ACCOUNTS', 'PENDING_ADMIN'].includes(r.status)) : []);
+      setMyImprestRequests(Array.isArray(myImprests) ? myImprests : []);
+    }).catch(() => { });
   }
 
   // Local calendar date (IST-safe) — avoid UTC day mismatch
@@ -144,6 +183,14 @@ export default function EmployeeDashboard() {
     return `${hours}:${mins}`;
   };
 
+  // Night shift starts at 7 PM (19:00)
+  const NIGHT_SHIFT_HOUR = 19;
+
+  const isNightShiftTime = () => {
+    const h = new Date().getHours();
+    return h >= NIGHT_SHIFT_HOUR || h < 8;
+  };
+
   const handlePunch = async (action, todayRecord, todayDate) => {
     if (isPunching) return;
     setIsPunching(true);
@@ -152,18 +199,46 @@ export default function EmployeeDashboard() {
 
     const now = new Date();
     const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const shiftTypeToSave = todayRecord?.shiftType || selectedShift;
+    const isNight = isNightShiftTime();
+    // After 7 PM, always Night shift regardless of existing record
+    const shiftTypeToSave = isNight ? 'Night' : (todayRecord?.shiftType || selectedShift);
     let newSlots = todayRecord?.timeSlots ? todayRecord.timeSlots.map(s => ({ ...s })) : [];
+
+    // --- DAY ROLLOVER LOGIC ---
+    // If punch time is <= 08:00 AM, the shift actually belongs to yesterday
+    let targetDate = todayDate;
+    if (currentTime <= '08:00') {
+      const dObj = new Date(targetDate);
+      dObj.setDate(dObj.getDate() - 1);
+      targetDate = dObj.toISOString().split('T')[0];
+    }
+    // --------------------------
 
     try {
       if (action === 'in') {
-        if (!newSlots.some(s => s.in && !s.out)) {
-          newSlots.push({ in: currentTime, out: '' });
+        // After 7 PM: always start a fresh night slot even if already punched in for day
+        if (isNight) {
+          // Only add a new night slot if there's no open night slot already
+          const openNightSlot = newSlots.find(s => s.in >= '19:00' && !s.out);
+          if (!openNightSlot) {
+            newSlots.push({ in: currentTime, out: '' });
+          }
+        } else {
+          // Normal day in
+          const openSlot = newSlots.find(s => s.in && !s.out);
+          if (openSlot) {
+            openSlot.in = currentTime; // update if already pending?
+          } else {
+            newSlots.push({ in: currentTime, out: '' });
+          }
         }
       } else {
-        const openIdx = newSlots.findIndex(s => s.in && !s.out);
-        if (openIdx !== -1) newSlots[openIdx].out = currentTime;
-        else newSlots.push({ in: '', out: currentTime });
+        const openSlot = newSlots.find(s => s.in && !s.out);
+        if (openSlot) {
+          openSlot.out = currentTime;
+        } else {
+          newSlots.push({ in: '', out: currentTime });
+        }
       }
 
       // Capture GPS with the punch so Team Regularization shows location while still PENDING
@@ -174,7 +249,7 @@ export default function EmployeeDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: employee.id,
-          date: todayDate,
+          date: targetDate, // USE TARGET DATE
           status: 'Present',
           shiftType: shiftTypeToSave,
           timeSlots: JSON.stringify(newSlots)
@@ -188,14 +263,14 @@ export default function EmployeeDashboard() {
           employeeId: employee.id,
           type: action === 'in' ? 'IN' : 'OUT',
           time: currentTime,
-          date: todayDate,
+          date: targetDate, // USE TARGET DATE
           shiftType: shiftTypeToSave,
           ...(coords || {})
         })
       });
 
       // Update UI immediately so Punch Out / Punch In shows without waiting
-      setStatsData(prev => patchTodayInStats(prev, todayDate, newSlots, shiftTypeToSave));
+      setStatsData(prev => patchTodayInStats(prev, targetDate, newSlots, shiftTypeToSave));
       setPendingRequests(prev => [
         {
           id: `temp-${Date.now()}`,
@@ -233,7 +308,7 @@ export default function EmployeeDashboard() {
               });
             } catch (e) { /* silent */ }
           },
-          () => {},
+          () => { },
           { enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 }
         );
       }
@@ -255,17 +330,17 @@ export default function EmployeeDashboard() {
     try {
       const res = await fetch(`/api/employees/${employee.id}`);
       const fresh = await res.json();
-      setProfileData({ 
+      setProfileData({
         empId: fresh.empId || employee.empId || '',
-        name: fresh.name || employee.name, 
+        name: fresh.name || employee.name,
         email: fresh.email || employee.email,
         department: fresh.department || employee.department,
         password: fresh.password || ''
       });
     } catch {
-      setProfileData({ 
+      setProfileData({
         empId: employee.empId || '',
-        name: employee.name, 
+        name: employee.name,
         email: employee.email,
         department: employee.department,
         password: employee.password || ''
@@ -307,13 +382,13 @@ export default function EmployeeDashboard() {
   const getDistanceFromLatLonInM = (lat1, lon1, lat2, lon2) => {
     const R = 6371000; // Radius of the earth in meters
     const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180; 
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2); 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-    const d = R * c; 
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const d = R * c;
     return d;
   };
 
@@ -450,15 +525,57 @@ export default function EmployeeDashboard() {
           for (const req of activeLocationRequests) {
             try {
               await pingLocation(req.id, pos.coords.latitude, pos.coords.longitude);
-            } catch(e) { console.error('Ping failed', e); }
+            } catch (e) { console.error('Ping failed', e); }
           }
-        }, () => {}, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
+        }, () => { }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
       }, 30000); // Send ping every 30 seconds
     }
     return () => {
       if (interval) clearInterval(interval);
     }
   }, [activeLocationRequests]);
+
+  const handleCoffSubmit = async (e) => {
+    e.preventDefault();
+    if (!coffData.month || coffData.numCoffs < 1) {
+      showToast('Please select a valid month and number of COffs.', 'error');
+      return;
+    }
+    try {
+      await createPunchRequest({
+        employeeId: employee.id,
+        type: 'COFF_CONVERSION',
+        date: coffData.month + '-01',
+        time: String(coffData.numCoffs),
+        reason: `Requesting ${coffData.numCoffs} COff(s) for Night Shifts in ${coffData.month}`
+      });
+      showToast('COff conversion request submitted successfully!', 'success');
+      setIsCoffModalOpen(false);
+      setCoffData({ month: '', numCoffs: 1 });
+      loadStats(employee.id);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to submit COff conversion request.', 'error');
+    }
+  };
+
+  const openCoffModal = () => {
+    const cm = expandedMonth || (statsData.length > 0 ? statsData[0].month : null);
+    if (!cm) {
+      showToast('No data available to convert.', 'error');
+      return;
+    }
+    const currentMonthStats = statsData.find(s => s.month === cm);
+    const totalNightShifts = currentMonthStats?.['Night Shift'] || currentMonthStats?.NightShift || 0;
+
+    // Calculate pending/approved conversions for this month
+    const conversionsThisMonth = pendingRequests.filter(r => r.type === 'COFF_CONVERSION' && r.date.startsWith(cm));
+    const alreadyRequested = conversionsThisMonth.reduce((acc, curr) => acc + (parseInt(curr.time) || 0), 0);
+
+    setAvailableNightShifts(totalNightShifts);
+    setCoffData({ month: cm, numCoffs: 1 });
+    setIsCoffModalOpen(true);
+  };
 
   const handleRegularizeSubmit = async (e) => {
     e.preventDefault();
@@ -488,12 +605,10 @@ export default function EmployeeDashboard() {
 
     for (const slot of existingSlots) {
       if (slot.in && slot.out) {
-        // Skip checking against the exact slot they might be completing
-        // (if they had {in: "07:00", out: ""} and they submit {out: "09:00"}, 
-        // the existing slot doesn't have an out time yet, so it won't hit this block)
+        //  it's fine, but if it was night shift out, targetDate is yesterday.)
         const slotIn = timeToMins(slot.in);
         const slotOut = timeToMins(slot.out);
-        
+
         let overlap = false;
         if (reqIn !== null && reqOut !== null) {
           // Both in and out provided
@@ -513,7 +628,6 @@ export default function EmployeeDashboard() {
       }
     }
     try {
-      const coords = await getPunchCoords();
       const timeData = JSON.stringify({
         in: normalizeTimeInput(regularizeData.inTime),
         out: normalizeTimeInput(regularizeData.outTime)
@@ -523,17 +637,40 @@ export default function EmployeeDashboard() {
         date: regularizeData.date,
         type: 'REGULARIZE',
         time: timeData,
-        shiftType: 'Day',
         reason: regularizeData.reason,
-        ...(coords || {})
+        latitude: regularizeData.latitude,
+        longitude: regularizeData.longitude
       });
       showToast("Regularization request submitted");
       setIsRegularizeModalOpen(false);
-      setRegularizeData({ date: '', reason: '', inTime: '', outTime: '' });
+      setRegularizeData({ date: '', reason: '', inTime: '', outTime: '', latitude: null, longitude: null });
       loadStats(employee.id); // reload stats
     } catch (e) {
       console.error(e);
       alert("Failed to submit request.");
+    }
+  };
+
+  const handleImprestSubmit = async (formData) => {
+    try {
+      const res = await fetch('/api/imprest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: employee.id,
+          ...formData
+        })
+      });
+      if (res.ok) {
+        showToast('Imprest request submitted successfully!');
+        setIsImprestModalOpen(false);
+        loadStats(employee.id);
+      } else {
+        showToast('Failed to submit Imprest request', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to submit Imprest request', 'error');
     }
   };
 
@@ -548,6 +685,9 @@ export default function EmployeeDashboard() {
   const todayHoliday = announcements.find(a => a.isHoliday && a.date === todayDate);
   const todayRecord = currentMonthData?.details?.find(d => d.date === todayDate) || null;
 
+  const nowHour = new Date().getHours();
+  const isCurrentlyNightTime = nowHour >= NIGHT_SHIFT_HOUR || nowHour < 7;
+
   let isPunchedIn = false;
   if (localPunchState === 'in') {
     isPunchedIn = true;
@@ -555,7 +695,14 @@ export default function EmployeeDashboard() {
     isPunchedIn = false;
   } else if (todayRecord?.timeSlots?.length > 0) {
     const last = todayRecord.timeSlots[todayRecord.timeSlots.length - 1];
-    if (last.in && !last.out) isPunchedIn = true;
+    if (last.in && !last.out) {
+      // After 7 PM: only consider punched-in if the open slot is a night slot (>= 19:00)
+      if (isCurrentlyNightTime) {
+        isPunchedIn = last.in >= '19:00';
+      } else {
+        isPunchedIn = true;
+      }
+    }
   }
 
   const pendingToday = pendingRequests.filter(r => r.date === todayDate && (r.type === 'IN' || r.type === 'OUT'));
@@ -643,77 +790,35 @@ export default function EmployeeDashboard() {
         </div>
       ))}
 
+
+
       <div style={{ marginBottom: '2.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0', letterSpacing: '-0.5px' }}>Welcome back, {employee.name.split(' ')[0]}!</h1>
           <p style={{ fontSize: '15px', color: '#64748b', margin: 0, fontWeight: 500 }}>Here is your attendance overview.</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          {isSupervisor && (
-            <button onClick={() => router.push('/employee/supervisor')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
-              <Shield size={16} /> Supervisor
-            </button>
-          )}
-          <button onClick={() => router.push('/employee/announcements')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fffbeb', color: '#d97706', border: '1px solid #fde68a', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <Bell size={16} /> Announcements
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button 
+            onClick={() => router.push('/portal')} 
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}
+            onMouseOver={e => e.currentTarget.style.background = '#f1f5f9'}
+            onMouseOut={e => e.currentTarget.style.background = '#f8fafc'}
+          >
+            <Layers size={16} /> Switch Module
           </button>
-          <button onClick={() => router.push('/employee/documents')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-            Documents
-          </button>
-          <button onClick={() => { setRegularizeData({ date: new Date().toISOString().split('T')[0], reason: '', inTime: '', outTime: '' }); setIsRegularizeModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff7ed', color: '#ea580c', border: '1px solid #ffedd5', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <Clock size={16} /> Regularize
-          </button>
-          <button onClick={() => router.push('/employee/leave?tab=apply')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" x2="4" y1="22" y2="15"></line></svg>
-            Apply Leave
-          </button>
-          <button onClick={() => router.push('/employee/leave?tab=history')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-            Your Leave Appn
-          </button>
-          <button onClick={() => router.push('/employee/vehicles')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <Car size={16} /> My Vehicles
-          </button>
-          <button onClick={() => router.push('/employee/reports/trips')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <Car size={16} /> Trip Report
-          </button>
-          <button onClick={() => router.push('/employee/reports/location')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <MapPin size={16} /> Location Report
-          </button>
-          {activeLocationRequests.length === 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', padding: '4px 4px 4px 8px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <select
-                value={selectedMovementType}
-                onChange={e => setSelectedMovementType(e.target.value)}
-                style={{ border: 'none', background: 'transparent', outline: 'none', fontWeight: 600, color: '#334155', fontSize: '12px', cursor: 'pointer' }}
-              >
-                <option value="Office to Site">Office to Site</option>
-                <option value="Home to Site">Home to Site</option>
-                <option value="Site to Office">Site to Office</option>
-                <option value="Site to Site">Site to Site</option>
-                <option value="Client Visit">Client Visit</option>
-              </select>
-              <button onClick={handleStartLiveLocation} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#3b82f6', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}>
-                <MapPin size={14} /> Share Location
-              </button>
-            </div>
-          ) : null}
-          <button onClick={openProfileModal} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', color: '#475569', border: '1px solid #e2e8f0', padding: '10px 16px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-            <UserCircle size={16} /> Profile
-          </button>
-          
-          {todayHoliday ? (
+
+          {todayHoliday && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', padding: '8px 16px', borderRadius: '10px', border: '1px solid #86efac', boxShadow: '0 2px 8px rgba(34, 197, 94, 0.15)' }}>
               <span style={{ fontSize: '20px' }}>🌴</span>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#14532d', textTransform: 'uppercase' }}>Holiday: {todayHoliday.subject}</div>
-                <div style={{ fontSize: '11px', color: '#166534', fontWeight: 600 }}>Enjoy your day off! No punch required.</div>
+                <div style={{ fontSize: '11px', color: '#166534', fontWeight: 600 }}>Enjoy your day off! Working today will earn you a COff.</div>
               </div>
             </div>
-          ) : isPunchedIn ? (
-            <button 
-              onClick={() => handlePunch('out', todayRecord, todayDate)} 
+          )}
+          {isPunchedIn ? (
+            <button
+              onClick={() => handlePunch('out', todayRecord, todayDate)}
               disabled={isPunching}
               className="btn-danger"
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', borderRadius: '10px', fontWeight: 700, fontSize: '14px', cursor: isPunching ? 'not-allowed' : 'pointer', opacity: isPunching ? 0.6 : 1 }}
@@ -721,52 +826,301 @@ export default function EmployeeDashboard() {
               <Clock size={16} /> {isPunching ? 'Saving...' : 'Punch Out'}
             </button>
           ) : (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: '#fff', padding: '4px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-              {!todayRecord && (
-                <select 
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: '#fff', padding: '4px', borderRadius: '12px', border: `1px solid ${isCurrentlyNightTime ? '#c7d2fe' : '#e2e8f0'}`, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+              {isCurrentlyNightTime ? (
+                <span style={{
+                  fontWeight: 700, fontSize: '13px', color: '#5b21b6',
+                  padding: '4px 10px', userSelect: 'none'
+                }}>
+                  🌙 Night Shift
+                </span>
+              ) : (
+                <select
                   value={selectedShift}
                   onChange={(e) => setSelectedShift(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: '8px', border: 'none', background: 'transparent', outline: 'none', fontWeight: 600, color: '#334155', fontSize: '13px' }}
+                  style={{
+                    border: 'none', background: 'transparent', outline: 'none', fontWeight: 600,
+                    color: '#0369a1', fontSize: '13px', cursor: 'pointer', padding: '4px 8px'
+                  }}
                 >
-                  <option value="Day">Day Shift</option>
-                  <option value="Night">Night Shift</option>
+                  <option value="Day">☀️ Day Shift</option>
                 </select>
               )}
-              <button 
-                onClick={() => handlePunch('in', todayRecord, todayDate)} 
+              <button
+                onClick={() => handlePunch('in', todayRecord, todayDate)}
                 disabled={isPunching}
                 className="btn-primary"
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 20px', borderRadius: '8px', fontWeight: 700, fontSize: '14px', cursor: isPunching ? 'not-allowed' : 'pointer', opacity: isPunching ? 0.6 : 1 }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 20px', borderRadius: '8px', fontWeight: 700, fontSize: '14px', cursor: isPunching ? 'not-allowed' : 'pointer', opacity: isPunching ? 0.6 : 1, background: isCurrentlyNightTime ? 'linear-gradient(135deg, #0ea5e9, #0284c7)' : undefined }}
               >
-                <Clock size={16} /> {isPunching ? 'Saving...' : 'Punch In'}
+                <Clock size={16} /> {isPunching ? 'Saving...' : isCurrentlyNightTime ? 'Night Punch In' : 'Punch In'}
               </button>
             </div>
           )}
         </div>
       </div>
 
+      {/* --- DASHBOARD ACTION GRID --- */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+        
+        {/* Attendance Card */}
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
+            <span style={{ background: '#e0f2fe', padding: '6px', borderRadius: '8px', color: '#0ea5e9' }}><CheckCircle size={18} /></span>
+            Attendance
+          </h3>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <li>
+              <button onClick={() => { setRegularizeData({ date: new Date().toISOString().split('T')[0], reason: '', inTime: '', outTime: '' }); setIsRegularizeModalOpen(true); }} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'color 0.2s' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Regularize Attendance
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        {/* Leave Card */}
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
+            <span style={{ background: '#fef3c7', padding: '6px', borderRadius: '8px', color: '#d97706' }}><Calendar size={18} /></span>
+            Leave
+          </h3>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <li>
+              <button onClick={() => router.push('/employee/leave?tab=apply')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Apply Leave
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/leave?tab=history')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Your Leave Applications
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        {/* Imprest Card */}
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
+            <span style={{ background: '#e0e7ff', padding: '6px', borderRadius: '8px', color: '#4f46e5' }}><IndianRupee size={18} /></span>
+            Imprest
+          </h3>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <li>
+              <button onClick={() => setIsImprestModalOpen(true)} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Apply Imprest
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/my-imprests')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> My Imprests
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/imprestresponsibilities')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Imprest Approvals
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        {/* Organization Card */}
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
+            <span style={{ background: '#ede9fe', padding: '6px', borderRadius: '8px', color: '#7c3aed' }}><Shield size={18} /></span>
+            Organization
+          </h3>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <li>
+              <button onClick={() => router.push('/employee/announcements')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Announcements
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/documents')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Documents
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/dashboard/doc-generator')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Doc Generator
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/dashboard/doc-generator')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> My Doc Appns
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/profile')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Profile
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        {/* Field Journey Card */}
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
+            <span style={{ background: '#dcfce7', padding: '6px', borderRadius: '8px', color: '#16a34a' }}><MapPin size={18} /></span>
+            Field Journey
+          </h3>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {activeLocationRequests.length === 0 && (
+              <li style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span>
+                <select
+                  value={selectedMovementType}
+                  onChange={e => setSelectedMovementType(e.target.value)}
+                  style={{ border: '1px solid #e2e8f0', background: '#fff', outline: 'none', color: '#475569', fontSize: '12px', borderRadius: '4px', padding: '4px' }}
+                >
+                  <option value="Office to Site">Office to Site</option>
+                  <option value="Home to Site">Home to Site</option>
+                  <option value="Site to Office">Site to Office</option>
+                  <option value="Site to Site">Site to Site</option>
+                  <option value="Client Visit">Client Visit</option>
+                </select>
+                <button onClick={handleStartLiveLocation} style={{ all: 'unset', cursor: 'pointer', color: '#3b82f6', fontSize: '0.9rem', fontWeight: 600 }}>
+                  Share Location
+                </button>
+              </li>
+            )}
+            <li>
+              <button onClick={() => router.push('/employee/reports/location')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Location Report
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/vehicles')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> My Vehicles
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/reports/trips')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Trip Report
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        {/* Merged Supervisor, Accounts & Doc Approvals Card */}
+        {(() => {
+          if (!employee) return null;
+          
+          const docConfig = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('docGenerator_workflowConfig') || '{}') : {};
+          const r = (employee.role || '').toUpperCase();
+          const dp = (employee.department || '').toUpperCase();
+          const ds = (employee.designation || '').toUpperCase();
+          
+          const isMatch = (str) => {
+            if (!str) return false;
+            return str.includes('HR') || str.includes('HUMAN RESOURCE') || 
+                   str.includes('ADMIN') || str.includes('ACCOUNT') || 
+                   str.includes('FINANCE');
+          };
+
+          const isDocApprover = Object.values(docConfig).some(config => 
+            config.hrId === employee.id || 
+            config.accountsId === employee.id ||
+            config.hodId === employee.id
+          );
+
+          const showDocCard = isMatch(r) || isMatch(dp) || isMatch(ds) || isDocApprover;
+
+          const hasAnyRole = isSupervisor || isAccountsAdmin || showDocCard;
+
+          if (!hasAnyRole) return null;
+
+          return (
+            <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
+                <span style={{ background: '#fee2e2', padding: '6px', borderRadius: '8px', color: '#ef4444' }}><Shield size={18} /></span>
+                Supervisor & Admin Tasks
+              </h3>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {isSupervisor && (
+                  <li>
+                    <button onClick={() => router.push('/employee/supervisor')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ color: '#cbd5e1' }}>•</span> Supervisor Dashboard
+                    </button>
+                  </li>
+                )}
+                {isAccountsAdmin && (
+                  <li>
+                    <button onClick={() => router.push('/employee/imprest-management')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ color: '#cbd5e1' }}>•</span> Full Imprest Dashboard
+                    </button>
+                  </li>
+                )}
+                {showDocCard && (
+                  <li>
+                    <button onClick={() => router.push('/employee/doc-approvals')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ color: '#cbd5e1' }}>•</span> Doc Approvals Dashboard
+                    </button>
+                  </li>
+                )}
+              </ul>
+            </div>
+          );
+        })()}
+
+      </div>
 
       {currentMonthData && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-          <div className="saas-card" style={{ padding: '1.75rem', display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            <div style={{ background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', padding: '1.25rem', borderRadius: '14px', color: '#15803d', boxShadow: '0 4px 10px rgba(34, 197, 94, 0.15)' }}>
-              <CheckCircle size={28} />
-            </div>
-            <div>
-              <p style={{ color: '#64748b', fontSize: '13px', fontWeight: 600, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Present ({currentMonthData.month})</p>
-              <h2 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.Present} <span style={{fontSize: '15px', fontWeight: 600, color: '#94a3b8'}}>Days</span></h2>
-            </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem', marginBottom: '2.5rem' }}>
+
+          <div className="saas-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '4px solid #94a3b8' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Total Days ({currentMonthData.month})</p>
+            <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.TotalDays || 0}</h2>
           </div>
 
-          <div className="saas-card" style={{ padding: '1.75rem', display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            <div style={{ background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)', padding: '1.25rem', borderRadius: '14px', color: '#b91c1c', boxShadow: '0 4px 10px rgba(239, 68, 68, 0.15)' }}>
-              <XCircle size={28} />
-            </div>
-            <div>
-              <p style={{ color: '#64748b', fontSize: '13px', fontWeight: 600, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Absent ({currentMonthData.month})</p>
-              <h2 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.Absent} <span style={{fontSize: '15px', fontWeight: 600, color: '#94a3b8'}}>Days</span></h2>
-            </div>
+          <div className="saas-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '4px solid #475569' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Working Days</p>
+            <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.TotalWorkingDays || 0}</h2>
           </div>
+
+          <div className="saas-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '4px solid #22c55e' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Present</p>
+            <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.Present || 0}</h2>
+          </div>
+
+          <div className="saas-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '4px solid #ef4444' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Absent</p>
+            <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.Absent || 0}</h2>
+          </div>
+
+          <div className="saas-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '4px solid #10b981' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>On Leave</p>
+            <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.Leave || 0}</h2>
+          </div>
+
+          <div className="saas-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '4px solid #f59e0b' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Holidays</p>
+            <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.Holidays || 0}</h2>
+          </div>
+
+          <div className="saas-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '4px solid #3b82f6' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Off Days</p>
+            <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.OffDays || 0}</h2>
+          </div>
+
+          <div className="saas-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '4px solid #166534' }}>
+            <p style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>COFF Taken</p>
+            <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData.COFF || 0} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}> / Bal: {leaveBalance?.compensatoryLeaves || 0}</span></h2>
+          </div>
+
+          <div className="saas-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '4px solid #8b5cf6' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Night Shift</p>
+              <button
+                onClick={openCoffModal}
+                style={{ fontSize: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '2px 6px', color: '#475569', cursor: 'pointer', fontWeight: 600 }}
+                title="Convert to COff"
+              >
+                Convert
+              </button>
+            </div>
+            <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{currentMonthData['Night Shift'] || currentMonthData.NightShift || 0}</h2>
+          </div>
+
         </div>
       )}
 
@@ -775,32 +1129,40 @@ export default function EmployeeDashboard() {
           <Calendar size={20} color="var(--accent-color)" />
           <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>Attendance History</h2>
         </div>
-        
+
         <div className="table-container">
-          <table style={{ marginBottom: '0' }}>
+          <table className="attendance-history-table" style={{ marginBottom: '0' }}>
             <thead>
               <tr>
                 <th>Month</th>
-                <th>Present</th>
-                <th>Absent</th>
+                <th className="text-center">Working Days</th>
+                <th className="text-center">Present</th>
+                <th className="text-center">Absent</th>
+                <th className="text-center">Leave</th>
+                <th className="text-center">Holidays</th>
+                <th className="text-center">Off Days</th>
                 <th className="text-right">Action</th>
               </tr>
             </thead>
             <tbody>
               {statsData.length === 0 ? (
                 <tr>
-                  <td colSpan="4" className="empty-state" style={{ padding: '3rem' }}>No attendance records found yet.</td>
+                  <td colSpan="8" className="empty-state" style={{ padding: '3rem' }}>No attendance records found yet.</td>
                 </tr>
               ) : (
                 statsData.map(stat => (
                   <React.Fragment key={stat.month}>
                     <tr>
                       <td style={{ fontWeight: '600' }}>{stat.month}</td>
-                      <td><span className="badge badge-success">{stat.Present}</span></td>
-                      <td><span className="badge badge-danger">{stat.Absent}</span></td>
+                      <td className="text-center">{stat.TotalWorkingDays || 0}</td>
+                      <td className="text-center"><span className="badge badge-success">{stat.Present || 0}</span></td>
+                      <td className="text-center"><span className="badge badge-danger">{stat.Absent || 0}</span></td>
+                      <td className="text-center"><span className="badge badge-warning" style={{ background: '#ecfdf5', color: '#047857' }}>{stat.Leave || 0}</span></td>
+                      <td className="text-center"><span className="badge" style={{ background: '#fef3c7', color: '#d97706' }}>{stat.Holidays || 0}</span></td>
+                      <td className="text-center"><span className="badge" style={{ background: '#eff6ff', color: '#2563eb' }}>{stat.OffDays || 0}</span></td>
                       <td className="text-right">
-                        <button 
-                          className="btn-outline" 
+                        <button
+                          className="btn-outline"
                           style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
                           onClick={() => setExpandedMonth(expandedMonth === stat.month ? null : stat.month)}
                         >
@@ -809,70 +1171,122 @@ export default function EmployeeDashboard() {
                       </td>
                     </tr>
                     {expandedMonth === stat.month && (
-                      <tr>
-                        <td colSpan="4" style={{ padding: '0', backgroundColor: '#f9fafb' }}>
-                          <table style={{ margin: '1rem', width: 'calc(100% - 2rem)', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                      <tr className="attendance-details-row">
+                        <td colSpan="8">
+                          <div className="attendance-details-wrapper">
+                          <table className="attendance-details-table">
                             <thead>
                               <tr>
-                                <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.75rem' }}>Date</th>
-                                <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.75rem' }}>Status</th>
-                                <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.75rem' }}>Shift</th>
-                                <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.75rem' }}>Time Slots (In - Out)</th>
-                                <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.75rem' }}>Total Time</th>
-                                <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.75rem' }}>Action</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Shift</th>
+                                <th>Time Slots (In - Out)</th>
+                                <th>Total Time</th>
+                                <th>Action</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {stat.details.map(d => (
-                                <tr key={d.date} style={{ backgroundColor: '#ffffff' }}>
-                                  <td style={{ padding: '0.75rem 1rem' }}>{d.date}</td>
-                                  <td style={{ padding: '0.75rem 1rem' }}>
-                                    <span className={`badge ${
-                                      d.status === 'Present' ? 'badge-success' : 
-                                      d.status === 'Absent' ? 'badge-danger' : ''
-                                    }`}>{d.status}</span>
-                                  </td>
-                                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                    {d.shiftType || '-'}
-                                  </td>
-                                  <td style={{ padding: '0.75rem 1rem' }}>
-                                    {d.timeSlots && d.timeSlots.length > 0 ? (
-                                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                        {d.timeSlots.map((slot, i) => (
-                                          <span key={i} className="badge" style={{ backgroundColor: 'var(--accent-light)', color: 'var(--accent-hover)' }}>
-                                            {slot.in || '?'} - {slot.out || '?'}
-                                          </span>
-                                        ))}
+                              {stat.details.map(d => {
+                                const dayName = new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' });
+                                const isSunday = new Date(d.date + 'T00:00:00').getDay() === 0;
+                                const isHoliday = holidays.some(h => h.date === d.date);
+                                const isRedDay = isSunday || isHoliday;
+                                return (
+                                  <tr key={d.date} style={{ backgroundColor: isRedDay ? '#fff1f2' : '#ffffff' }}>
+                                    <td style={{ padding: '0.75rem 1rem' }}>
+                                      <div style={{ fontWeight: 600, color: isRedDay ? '#be123c' : 'inherit' }}>
+                                        {dayName} {isHoliday && <span style={{ fontSize: '0.75rem', fontWeight: 'normal' }}>(Holiday)</span>}
                                       </div>
-                                    ) : (
-                                      <span style={{ color: 'var(--text-secondary)' }}>-</span>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: '0.75rem 1rem', fontWeight: '500', color: 'var(--text-primary)' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                      <Clock size={14} color="var(--text-secondary)"/>
-                                      {calculateTotalTime(d.timeSlots)}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '0.75rem 1rem' }}>
-                                    {pendingRequests.some(pr => pr.date === d.date && (pr.type === 'IN' || pr.type === 'OUT' || pr.type === 'REGULARIZE')) ? (
-                                      <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 'bold' }}>Pending Approval</span>
-                                    ) : d.status === 'Absent' ? (
-                                      <button 
-                                        onClick={() => {
-                                          setRegularizeData({ date: d.date, reason: '', inTime: '', outTime: '' });
-                                          setIsRegularizeModalOpen(true);
-                                        }}
-                                        style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
-                                      >
-                                        Regularize
-                                      </button>
-                                    ) : null}
-                                  </td>
-                                </tr>
-                              ))}
+                                      <div style={{ fontSize: '12px', color: isRedDay ? '#e11d48' : '#6b7280' }}>{d.date}</div>
+                                    </td>
+                                    <td style={{ padding: '0.75rem 1rem' }}>
+                                      <span className={`badge ${d.status === 'Present' ? 'badge-success' :
+                                        d.status === 'Absent' ? 'badge-danger' :
+                                          d.status === 'Holiday' ? 'badge-warning' : ''
+                                        }`}>{d.status}</span>
+                                    </td>
+                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem' }}>
+                                      {(() => {
+                                        const isNightTime = (t) => t ? (t > '19:00' || t <= '08:00') : false;
+                                        let hasDay = false;
+                                        let hasNight = false;
+                                        if (d.timeSlots && d.timeSlots.length > 0) {
+                                          d.timeSlots.forEach(s => {
+                                            if (isNightTime(s.in)) hasNight = true;
+                                            else hasDay = true;
+                                          });
+                                        } else {
+                                          if (d.shiftType === 'Night') hasNight = true;
+                                          else if (d.shiftType === 'Day') hasDay = true;
+                                        }
+
+                                        if (hasDay && hasNight) {
+                                          return (
+                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                              <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600 }}>Day</span>
+                                              <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#f3e8ff', color: '#6b21a8', fontWeight: 600 }}>Night</span>
+                                            </div>
+                                          );
+                                        } else if (hasNight) {
+                                          return <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#f3e8ff', color: '#6b21a8', fontWeight: 600 }}>Night</span>;
+                                        } else if (hasDay) {
+                                          return <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600 }}>Day</span>;
+                                        }
+                                        return <span style={{ color: 'var(--text-secondary)' }}>{d.shiftType || '-'}</span>;
+                                      })()}
+                                    </td>
+                                    <td style={{ padding: '0.75rem 1rem' }}>
+                                      {d.timeSlots && d.timeSlots.length > 0 ? (
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                          {d.timeSlots.map((slot, i) => {
+                                            const isNight = slot.in ? (slot.in > '19:00' || slot.in <= '08:00') : false;
+                                            return (
+                                              <span key={i} className="badge" style={{
+                                                backgroundColor: isNight ? '#f3e8ff' : '#e0f2fe',
+                                                color: isNight ? '#6b21a8' : '#0369a1'
+                                              }}>
+                                                {slot.in || '?'} - {slot.out || '?'}
+                                              </span>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <span style={{ color: 'var(--text-secondary)' }}>-</span>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '0.75rem 1rem', fontWeight: '500', color: 'var(--text-primary)' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                        <Clock size={14} color="var(--text-secondary)" />
+                                        {calculateTotalTime(d.timeSlots)}
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '0.75rem 1rem' }}>
+                                      {pendingRequests.some(pr => pr.date === d.date && (pr.type === 'IN' || pr.type === 'OUT' || pr.type === 'REGULARIZE')) ? (
+                                        <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 'bold' }}>Pending Approval</span>
+                                      ) : (d.status === 'Absent' || d.status === 'Holiday') ? (
+                                        <button
+                                          onClick={() => {
+                                            const newRegData = { date: d.date, reason: '', inTime: '', outTime: '', latitude: 28.6139, longitude: 77.2090 };
+                                            if (navigator.geolocation) {
+                                              navigator.geolocation.getCurrentPosition((pos) => {
+                                                setRegularizeData(prev => ({ ...prev, latitude: pos.coords.latitude, longitude: pos.coords.longitude }));
+                                              });
+                                            }
+                                            setRegularizeData(newRegData);
+                                            setIsRegularizeModalOpen(true);
+                                          }}
+                                          style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
+                                        >
+                                          Regularize
+                                        </button>
+                                      ) : null}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
+                          </div>
                         </td>
                       </tr>
                     )}
@@ -883,6 +1297,9 @@ export default function EmployeeDashboard() {
           </table>
         </div>
       </div>
+
+
+
 
       {/* Edit Profile Modal */}
       {isProfileModalOpen && (
@@ -895,10 +1312,10 @@ export default function EmployeeDashboard() {
             <form onSubmit={saveProfile}>
               <div className="input-group">
                 <label>Employee ID</label>
-                <input 
-                  type="text" 
-                  value={profileData.empId} 
-                  onChange={e => setProfileData({...profileData, empId: e.target.value})} 
+                <input
+                  type="text"
+                  value={profileData.empId}
+                  onChange={e => setProfileData({ ...profileData, empId: e.target.value })}
                   placeholder="e.g. E-001"
                   disabled
                   style={{ backgroundColor: '#f3f4f6' }}
@@ -906,37 +1323,37 @@ export default function EmployeeDashboard() {
               </div>
               <div className="input-group" style={{ marginBottom: '1rem' }}>
                 <label>Name</label>
-                <input 
-                  required 
-                  type="text" 
-                  value={profileData.name} 
-                  onChange={e => setProfileData({...profileData, name: e.target.value})} 
+                <input
+                  required
+                  type="text"
+                  value={profileData.name}
+                  onChange={e => setProfileData({ ...profileData, name: e.target.value })}
                 />
               </div>
               <div className="input-group" style={{ marginBottom: '1rem' }}>
                 <label>Email</label>
-                <input 
+                <input
                   required
-                  type="email" 
-                  value={profileData.email} 
-                  onChange={e => setProfileData({...profileData, email: e.target.value})} 
+                  type="email"
+                  value={profileData.email}
+                  onChange={e => setProfileData({ ...profileData, email: e.target.value })}
                 />
               </div>
               <div className="input-group" style={{ marginBottom: '1rem' }}>
                 <label>Department</label>
-                <input 
+                <input
                   required
-                  type="text" 
-                  value={profileData.department} 
-                  onChange={e => setProfileData({...profileData, department: e.target.value})} 
+                  type="text"
+                  value={profileData.department}
+                  onChange={e => setProfileData({ ...profileData, department: e.target.value })}
                 />
               </div>
               <div className="input-group" style={{ marginBottom: '1.5rem' }}>
                 <label>Password</label>
-                <input 
-                  type="text" 
-                  value={profileData.password} 
-                  onChange={e => setProfileData({...profileData, password: e.target.value})} 
+                <input
+                  type="text"
+                  value={profileData.password}
+                  onChange={e => setProfileData({ ...profileData, password: e.target.value })}
                 />
               </div>
               <div className="modal-actions" style={{ justifyContent: 'flex-end', marginTop: '1.5rem' }}>
@@ -957,31 +1374,34 @@ export default function EmployeeDashboard() {
               <button className="icon-btn" onClick={() => setIsRegularizeModalOpen(false)}><X size={20} /></button>
             </div>
             <form onSubmit={handleRegularizeSubmit}>
+              <div style={{ marginBottom: '1rem', padding: '0.5rem 0.75rem', backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '6px', color: '#92400e', fontSize: '12px' }}>
+                <strong>Note:</strong> Please enter the time in <strong>24-hour format</strong> (e.g. 19:30 instead of 7:30 PM).
+              </div>
               <div className="input-group" style={{ marginBottom: '1rem' }}>
                 <label>Date</label>
-                <input 
-                  type="date" 
-                  value={regularizeData.date} 
-                  onChange={e => setRegularizeData({...regularizeData, date: e.target.value})}
+                <input
+                  type="date"
+                  value={regularizeData.date}
+                  onChange={e => setRegularizeData({ ...regularizeData, date: e.target.value })}
                 />
               </div>
-              
+
               <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                 <div className="input-group" style={{ flex: 1 }}>
                   <label>Punch In Time</label>
-                  <input 
-                    type="time" 
-                    value={regularizeData.inTime} 
-                    onChange={e => setRegularizeData({...regularizeData, inTime: e.target.value})} 
+                  <input
+                    type="time"
+                    value={regularizeData.inTime}
+                    onChange={e => setRegularizeData({ ...regularizeData, inTime: e.target.value })}
                   />
                   <small style={{ color: '#64748b' }}>Leave blank if not missed</small>
                 </div>
                 <div className="input-group" style={{ flex: 1 }}>
                   <label>Punch Out Time</label>
-                  <input 
-                    type="time" 
-                    value={regularizeData.outTime} 
-                    onChange={e => setRegularizeData({...regularizeData, outTime: e.target.value})} 
+                  <input
+                    type="time"
+                    value={regularizeData.outTime}
+                    onChange={e => setRegularizeData({ ...regularizeData, outTime: e.target.value })}
                   />
                   <small style={{ color: '#64748b' }}>Leave blank if not missed</small>
                 </div>
@@ -989,13 +1409,32 @@ export default function EmployeeDashboard() {
 
               <div className="input-group" style={{ marginBottom: '1.5rem' }}>
                 <label>Reason for Regularization</label>
-                <textarea 
+                <textarea
                   required
-                  value={regularizeData.reason} 
-                  onChange={e => setRegularizeData({...regularizeData, reason: e.target.value})} 
+                  value={regularizeData.reason}
+                  onChange={e => setRegularizeData({ ...regularizeData, reason: e.target.value })}
                   placeholder="E.g., Forgot to punch in, Biometric issue, etc."
                   rows={3}
                   style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                />
+              </div>
+
+              <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                <label>Location Name (Where were you present?)</label>
+                <input
+                  type="text"
+                  value={regularizeData.locationName}
+                  onChange={e => setRegularizeData({ ...regularizeData, locationName: e.target.value })}
+                  placeholder="E.g., Client Office (ABC Corp), Delhi"
+                  style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%' }}
+                />
+              </div>
+
+              <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                <label>Location (Pin on map)</label>
+                <LocationPicker
+                  defaultPosition={regularizeData.latitude ? { lat: regularizeData.latitude, lng: regularizeData.longitude } : null}
+                  onChange={(pos) => setRegularizeData({ ...regularizeData, latitude: pos.lat, longitude: pos.lng })}
                 />
               </div>
 
@@ -1008,7 +1447,63 @@ export default function EmployeeDashboard() {
         </div>
       )}
 
-      {/* Toast Notification */}
+      {/* COff Conversion Modal */}
+      {isCoffModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsCoffModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h2>Convert Night Shifts to COff</h2>
+              <button className="close-btn" onClick={() => setIsCoffModalOpen(false)}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleCoffSubmit} className="modal-body">
+              <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                <p style={{ margin: 0, color: '#0369a1', fontSize: '13px', fontWeight: 500 }}>
+                  You have <strong>{availableNightShifts}</strong> total Night Shifts logged in <strong>{coffData.month}</strong>.
+                </p>
+                <p style={{ margin: '0.5rem 0 0 0', color: '#0284c7', fontSize: '12px' }}>
+                  Please verify you haven't already converted these before submitting.
+                </p>
+              </div>
+
+              <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                <label>Target Month</label>
+                <input
+                  type="month"
+                  value={coffData.month}
+                  onChange={e => setCoffData({ ...coffData, month: e.target.value })}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                  required
+                />
+              </div>
+
+              <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                <label>Number of COffs to Claim</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={Math.max(1, availableNightShifts)}
+                  value={coffData.numCoffs}
+                  onChange={e => setCoffData({ ...coffData, numCoffs: parseInt(e.target.value) || 1 })}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                  required
+                />
+              </div>
+
+              <div className="modal-actions" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+                <button type="button" className="btn-outline" onClick={() => setIsCoffModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn-primary" style={{ background: '#8b5cf6', color: '#fff', border: 'none' }}>Submit Request</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      
+      <ImprestModal 
+        isOpen={isImprestModalOpen} 
+        onClose={() => setIsImprestModalOpen(false)} 
+        employee={employee} 
+        onSubmit={handleImprestSubmit} 
+      />     {/* Toast Notification */}
       {toast && (
         <div className={`toast-notification ${toast.type === 'success' ? 'toast-success' : 'toast-error'}`}>
           {toast.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}

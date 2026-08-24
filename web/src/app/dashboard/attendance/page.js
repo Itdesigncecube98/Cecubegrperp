@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getAttendance, markAttendance, getAnnouncements } from '../../../lib/data';
 import { Plus, X, Trash2, Save, Check, Calendar } from 'lucide-react';
 import './attendance.css';
@@ -9,6 +9,7 @@ export default function Attendance() {
   const [attendanceData, setAttendanceData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Time Slots Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -27,7 +28,7 @@ export default function Attendance() {
       setAttendanceData(parsedData);
       
       const anns = await getAnnouncements();
-      setAnnouncements(anns || []);
+      setAnnouncements(Array.isArray(anns) ? anns : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -39,7 +40,19 @@ export default function Attendance() {
     loadData(date);
   }, [date]);
 
-  const holiday = announcements.find(a => a.isHoliday && a.date === date);
+  const holiday = Array.isArray(announcements)
+    ? announcements.find(a => a?.isHoliday && a?.date === date)
+    : null;
+
+  const filteredAttendance = useMemo(() => {
+    if (!searchTerm.trim()) return attendanceData;
+    const lowerSearch = searchTerm.toLowerCase();
+    return attendanceData.filter(record => 
+      (record.employee?.name || '').toLowerCase().includes(lowerSearch) ||
+      (record.employee?.empId || '').toLowerCase().includes(lowerSearch) ||
+      (record.employee?.department || '').toLowerCase().includes(lowerSearch)
+    );
+  }, [attendanceData, searchTerm]);
 
   const [savingId, setSavingId] = useState(null);
 
@@ -108,18 +121,56 @@ export default function Attendance() {
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Attendance Tracking</h1>
+          <h1 className="page-title" style={{ margin: 0, marginBottom: '0.5rem' }}>Attendance Tracking</h1>
           <p className="page-subtitle">Mark and view daily attendance records.</p>
         </div>
         
-        <div className="date-picker-wrapper glass-panel">
-          <label>Select Date:</label>
-          <input 
-            type="date" 
-            value={date} 
-            onChange={e => setDate(e.target.value)}
-            className="date-input"
-          />
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <div style={{ position: 'relative', width: '280px' }}>
+            <input 
+              type="text" 
+              placeholder="Search by name, ID, dept..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{ 
+                width: '100%', 
+                height: '42px',
+                padding: '0 14px 0 40px', 
+                borderRadius: '10px', 
+                border: '1px solid #e2e8f0', 
+                outline: 'none',
+                fontSize: '14px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                background: '#fff',
+                color: '#1e293b'
+              }}
+            />
+            <svg style={{ position: 'absolute', left: 14, top: 12, color: '#94a3b8' }} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+          
+          <div>
+            <input 
+              type="date" 
+              value={date} 
+              onChange={e => setDate(e.target.value)}
+              style={{
+                height: '42px',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '0 14px',
+                outline: 'none',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#1e293b',
+                background: '#fff',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                cursor: 'pointer'
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -152,12 +203,12 @@ export default function Attendance() {
               <tr>
                 <td colSpan="5" className="empty-state">Loading records...</td>
               </tr>
-            ) : attendanceData.length === 0 ? (
+            ) : filteredAttendance.length === 0 ? (
               <tr>
-                <td colSpan="5" className="empty-state">No employees found. Please add employees first.</td>
+                <td colSpan="5" className="empty-state">No matching employees found.</td>
               </tr>
             ) : (
-              attendanceData.map(record => (
+              filteredAttendance.map(record => (
                 <tr key={record.employee.id}>
                   <td style={{ fontWeight: '500', color: 'var(--text-secondary)' }}>
                     {record.employee.empId || '-'}

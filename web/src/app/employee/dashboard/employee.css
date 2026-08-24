@@ -1,9 +1,9 @@
 .employee-layout {
   min-height: 100vh;
-  background-color: var(--bg-color);
+  background-color: var(--bg-primary);
   background-image: 
-    radial-gradient(at 0% 0%, hsla(153, 100%, 74%, 0.15) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, hsla(213, 100%, 74%, 0.15) 0px, transparent 50%);
+    radial-gradient(at 0% 0%, hsla(195, 100%, 74%, 0.25) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(213, 100%, 74%, 0.25) 0px, transparent 50%);
 }
 
 .employee-navbar {
@@ -27,7 +27,7 @@
 }
 
 .nav-brand img {
-  height: 35px;
+  height: 70px;
 }
 
 .portal-badge {
@@ -82,6 +82,50 @@
   overflow-x: auto;
 }
 
+.text-right {
+  text-align: right;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.attendance-history-table {
+  width: 100%;
+}
+
+.attendance-details-row td {
+  padding: 0 !important;
+}
+
+.attendance-details-row:hover td {
+  background-color: #f9fafb !important;
+}
+
+.attendance-details-wrapper {
+  padding: 1rem 1.5rem;
+  background-color: #f9fafb;
+  border-top: 1px solid var(--border-color);
+}
+
+.attendance-details-table {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.attendance-details-table th {
+  background-color: #f3f4f6;
+  font-size: 0.75rem;
+}
+
+.attendance-details-table tr:hover td {
+  background-color: inherit;
+}
+
 .empty-state {
   text-align: center;
   padding: 3rem !important;
@@ -115,5 +159,4 @@ button.icon-btn.logout-btn:hover {
   background-color: #fee2e2;
   color: #dc2626;
 }
-
 

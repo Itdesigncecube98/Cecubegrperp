@@ -5,20 +5,24 @@ import { ChevronLeft, Info, Search, Download } from 'lucide-react';
 import '../../attendance/attendance.css';
 
 export default function LeaveBalances() {
+  const today = new Date();
   const [balances, setBalances] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [selectedMonth, selectedYear]);
 
   const fetchData = async () => {
     try {
+      setLoading(true);
       const [empRes, balRes] = await Promise.all([
         fetch('/api/employees'),
-        fetch('/api/leaves/balance')
+        fetch(`/api/leaves/balance?month=${selectedMonth}&year=${selectedYear}`)
       ]);
       const emps = await empRes.json();
       const bals = await balRes.json();
@@ -46,7 +50,7 @@ export default function LeaveBalances() {
 
   const handleExportExcel = async () => {
     try {
-      const response = await fetch('/api/leaves/balance/export');
+      const response = await fetch(`/api/leaves/balance/export?month=${selectedMonth}&year=${selectedYear}`);
       if (!response.ok) throw new Error('Export failed');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -92,6 +96,30 @@ export default function LeaveBalances() {
                 style={{ paddingLeft: 34 }}
               />
             </div>
+            
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <select 
+                value={selectedMonth} 
+                onChange={e => setSelectedMonth(Number(e.target.value))}
+                style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }}
+              >
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i+1} value={i+1}>
+                    {new Date(0, i).toLocaleString('en', { month: 'long' })}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selectedYear}
+                onChange={e => setSelectedYear(Number(e.target.value))}
+                style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }}
+              >
+                {[2024, 2025, 2026, 2027].map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
             <button
               onClick={handleExportExcel}
               style={{
@@ -130,7 +158,7 @@ export default function LeaveBalances() {
                 </tr>
               ) : (
                 filteredBalances.map(b => (
-                  <tr key={b.id}>
+                  <tr key={b.employeeId || b.id}>
                     <td style={{ fontWeight: 600, color: '#1f2937' }}>{getEmpName(b.employeeId)}</td>
                     <td style={{ color: '#6b7280' }}>{getEmpCode(b.employeeId)}</td>
                     <td style={{ color: '#6b7280' }}>{getEmpDept(b.employeeId)}</td>

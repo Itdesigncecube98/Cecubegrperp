@@ -7,7 +7,7 @@ export default function Home() {
 
   useEffect(() => {
     // Redirect to dashboard by default. AdminLayout will check for login.
-    router.replace('/dashboard');
+    router.replace('/login');
   }, [router]);
 
   return null;

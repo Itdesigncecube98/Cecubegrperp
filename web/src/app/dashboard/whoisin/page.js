@@ -178,9 +178,18 @@ export default function WhoIsInPage() {
                     const status = getStatus(emp.id);
                     return (
                       <div key={emp.id} style={{ background: 'white', borderRadius: '10px', border: '1px solid #e5e7eb', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'linear-gradient(135deg, #667eea, #764ba2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '16px', flexShrink: 0 }}>
-                          {emp.name.charAt(0).toUpperCase()}
-                        </div>
+                        {emp.photoUrl ? (
+                          <>
+                            <img src={emp.photoUrl} alt="avatar" style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }} />
+                            <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'none', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '16px', flexShrink: 0 }}>
+                              {emp.name.charAt(0).toUpperCase()}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '16px', flexShrink: 0 }}>
+                            {emp.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 600, fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.name}</div>
                           <div style={{ fontSize: '12px', color: '#6b7280' }}>{emp.department}</div>

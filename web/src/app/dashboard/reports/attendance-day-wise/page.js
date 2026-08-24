@@ -43,8 +43,12 @@ export default function DayWiseAttendance() {
       const emps = await empRes.json();
       const totalEmployees = emps.length;
 
+      const holRes = await fetch('/api/leaves/holidays');
+      const holidaysData = await holRes.json();
+      const holidaySet = new Set(holidaysData.map(h => h.date));
+
       const results = [];
-      await Promise.all(dateRange.map(async (d) => {
+      for (const d of dateRange) {
         const dateStr = fmt(d);
         const res = await fetch(`/api/attendance?date=${dateStr}`);
         const data = await res.json();
@@ -57,25 +61,38 @@ export default function DayWiseAttendance() {
         if (Array.isArray(data)) {
           data.forEach(rec => {
             if (rec.status === 'Present') present++;
-            else if (rec.status === 'Absent') absent++;
+            else if (rec.status === 'Absent') absent++; // explicit absents
             else if (rec.status === 'Late') late++;
             else if (rec.status === 'Weekly Off' || rec.status === 'WO') wo++;
           });
         }
+
+        const dateObj = new Date(d);
+        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+        const isSunday = dateObj.getDay() === 0;
+        const isHoliday = holidaySet.has(dateStr) || isSunday;
+
+        let finalAbsent = 0;
+        if (!isHoliday) {
+          // If no explicit absents were found but some employees didn't punch in, consider them absent
+          finalAbsent = Math.max(absent, totalEmployees - (present + late + wo));
+        }
         
         results.push({
           date: dateStr,
+          dayName,
           all: totalEmployees,
           present,
-          absent,
+          absent: finalAbsent,
           late,
           earlyGoing: 0,
           lcEg: 0,
-          holiday: 0,
-          wo,
-          halfDay: 0
+          holiday: (holidaySet.has(dateStr) && !isSunday) ? totalEmployees : 0,
+          wo: isSunday ? totalEmployees : wo,
+          halfDay: 0,
+          isHoliday
         });
-      }));
+      }
 
       results.sort((a, b) => a.date.localeCompare(b.date));
       setTableData(results);
@@ -181,8 +198,8 @@ export default function DayWiseAttendance() {
                 </tr>
               ) : tableData.length > 0 ? (
                 tableData.map(row => (
-                  <tr key={row.date}>
-                    <td>{row.date.split('-').reverse().join('-')}</td>
+                  <tr key={row.date} style={row.isHoliday ? { background: '#fee2e2' } : {}}>
+                    <td>{row.date.split('-').reverse().join('-')} ({row.dayName})</td>
                     <td style={{ textAlign: 'center' }}>{row.all}</td>
                     <td style={{ textAlign: 'center', color: '#16a34a', fontWeight: 500 }}>{row.present}</td>
                     <td style={{ textAlign: 'center', color: '#dc2626', fontWeight: 500 }}>{row.absent}</td>

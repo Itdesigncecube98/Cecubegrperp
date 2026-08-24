@@ -23,8 +23,9 @@ export default function EmployeeVehiclesPage() {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRegularizeModalOpen, setIsRegularizeModalOpen] = useState(false);
   const [selectedMapTrip, setSelectedMapTrip] = useState(null);
-  const [tripData, setTripData] = useState({ date: new Date().toISOString().split('T')[0], vehicleId: '', startLocation: '', endLocation: '', distanceKm: '' });
+  const [tripData, setTripData] = useState({ date: new Date().toISOString().split('T')[0], vehicleId: '', startLocation: '', endLocation: '', distanceKm: '', reason: '' });
 
   useEffect(() => {
     const empData = sessionStorage.getItem('employeeData');
@@ -101,10 +102,25 @@ export default function EmployeeVehiclesPage() {
     } catch (e) { console.error(e); }
   };
 
+  const notificationRef = React.useRef(null);
+
   const startTracking = (tripId) => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser');
       return;
+    }
+
+    // Request notification permission and show persistent notification
+    if ('Notification' in window) {
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          notificationRef.current = new Notification('Trip Active', {
+            body: 'Your live location is being tracked for the ongoing trip.',
+            requireInteraction: true, // keeps it on screen until dismissed or closed programmatically
+            icon: '/favicon.ico'
+          });
+        }
+      });
     }
 
     const id = navigator.geolocation.watchPosition(
@@ -140,6 +156,12 @@ export default function EmployeeVehiclesPage() {
       setTrackingId(null);
     }
 
+    // Close the notification
+    if (notificationRef.current) {
+      notificationRef.current.close();
+      notificationRef.current = null;
+    }
+
     try {
       await fetch(`/api/trips/${tripId}/stop`, { 
         method: 'PUT',
@@ -158,7 +180,11 @@ export default function EmployeeVehiclesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: employee.id,
-          ...tripData
+          date: tripData.date,
+          vehicleId: tripData.vehicleId,
+          startLocation: tripData.startLocation,
+          endLocation: tripData.endLocation,
+          distanceKm: 0 // Default to 0 for standard trip log
         })
       });
 
@@ -168,11 +194,38 @@ export default function EmployeeVehiclesPage() {
       }
       
       setIsModalOpen(false);
-      setTripData({ date: new Date().toISOString().split('T')[0], vehicleId: '', startLocation: '', endLocation: '', distanceKm: '' });
+      setTripData({ date: new Date().toISOString().split('T')[0], vehicleId: '', startLocation: '', endLocation: '', distanceKm: '', reason: '' });
       fetchData(employee.id);
     } catch (error) {
       console.error(error);
       alert('Error logging trip');
+    }
+  };
+
+  const handleRegularizeTrip = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: employee.id,
+          ...tripData,
+          status: 'PENDING_REGULARIZATION'
+        })
+      });
+
+      if (!res.ok) {
+        alert('Failed to regularize trip');
+        return;
+      }
+      
+      setIsRegularizeModalOpen(false);
+      setTripData({ date: new Date().toISOString().split('T')[0], vehicleId: '', startLocation: '', endLocation: '', distanceKm: '', reason: '' });
+      fetchData(employee.id);
+    } catch (error) {
+      console.error(error);
+      alert('Error regularizing trip');
     }
   };
 
@@ -276,9 +329,14 @@ export default function EmployeeVehiclesPage() {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.02em' }}>Assigned Vehicles</h2>
-            <button onClick={() => setIsModalOpen(true)} className="btn-primary">
-              <Plus size={18} /> Log a Trip
-            </button>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button onClick={() => setIsRegularizeModalOpen(true)} className="btn-outline">
+                Regularize Trip
+              </button>
+              <button onClick={() => setIsModalOpen(true)} className="btn-primary">
+                <Plus size={18} /> Log a Trip
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
@@ -344,8 +402,8 @@ export default function EmployeeVehiclesPage() {
                   <td style={{ padding: '1.25rem 1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>{trip.distanceKm} km</td>
                   <td style={{ padding: '1.25rem 1.5rem', fontWeight: 800, color: 'var(--success)' }}>₹{trip.amount.toFixed(2)}</td>
                   <td style={{ padding: '1.25rem 1.5rem' }}>
-                    <span className={`badge ${trip.status === 'PENDING' ? 'badge-warning' : trip.status === 'APPROVED' ? 'badge-secondary' : trip.status === 'PAID' ? 'badge-success' : trip.status === 'ACTIVE' ? 'badge-secondary' : trip.status === 'REQUESTED' ? 'badge-secondary' : trip.status === 'COMPLETED' ? 'badge-secondary' : 'badge-danger'}`}>
-                      {trip.status}
+                    <span className={`badge ${trip.status === 'PENDING' ? 'badge-warning' : trip.status === 'PENDING_REGULARIZATION' ? 'badge-warning' : trip.status === 'APPROVED' ? 'badge-secondary' : trip.status === 'PAID' ? 'badge-success' : trip.status === 'ACTIVE' ? 'badge-secondary' : trip.status === 'REQUESTED' ? 'badge-secondary' : trip.status === 'COMPLETED' ? 'badge-secondary' : 'badge-danger'}`}>
+                      {trip.status === 'PENDING_REGULARIZATION' ? 'PENDING (REGULARIZATION)' : trip.status}
                     </span>
                   </td>
                 </tr>
@@ -420,21 +478,102 @@ export default function EmployeeVehiclesPage() {
                     />
                   </div>
                 </div>
-                <div style={{ marginBottom: '2rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Distance (km) <span style={{ color: '#9ca3af', fontWeight: 400 }}>— leave blank if GPS tracked</span></label>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="btn-outline" style={{ flex: 1, padding: '0.875rem' }}>Cancel</button>
+                  <button type="submit" className="btn-primary" style={{ flex: 2, padding: '0.875rem' }}>Start Tracking</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Regularize Trip Modal */}
+      {isRegularizeModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(4px)' }}>
+          <div className="saas-card" style={{ width: '100%', maxWidth: '450px', padding: '2rem' }}>
+            <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Regularize a Trip</h2>
+            {vehicles.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                <p style={{ color: 'var(--danger)', marginBottom: '1rem' }}>You don't have any vehicles assigned.</p>
+                <button type="button" onClick={() => setIsRegularizeModalOpen(false)} className="btn-outline">Close</button>
+              </div>
+            ) : (
+              <form onSubmit={handleRegularizeTrip}>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Date</label>
+                  <input 
+                    type="date" 
+                    value={tripData.date} 
+                    onChange={e => setTripData({...tripData, date: e.target.value})} 
+                    required
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f9fafb' }}
+                  />
+                </div>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Vehicle</label>
+                  <select 
+                    value={tripData.vehicleId} 
+                    onChange={e => setTripData({...tripData, vehicleId: e.target.value})} 
+                    required
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f9fafb' }}
+                  >
+                    <option value="">Select a vehicle...</option>
+                    {vehicles.map(veh => <option key={veh.id} value={veh.id}>
+                      {veh.isCompanyVehicle ? '[Company] ' : ''}{veh.makeModel} ({veh.plateNumber}) - ₹{veh.ratePerKm}/km
+                    </option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>From</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Office"
+                      value={tripData.startLocation} 
+                      onChange={e => setTripData({...tripData, startLocation: e.target.value})} 
+                      required
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f9fafb' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>To</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Client Site A"
+                      value={tripData.endLocation} 
+                      onChange={e => setTripData({...tripData, endLocation: e.target.value})} 
+                      required
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f9fafb' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Distance (km)</label>
                   <input 
                     type="number" 
                     step="0.1"
-                    placeholder="e.g. 15.5 (optional if using Live Map)"
+                    placeholder="e.g. 15.5"
                     value={tripData.distanceKm} 
                     onChange={e => setTripData({...tripData, distanceKm: e.target.value})} 
+                    required
                     style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f9fafb', fontSize: '1.25rem', fontWeight: 700 }}
+                  />
+                </div>
+                <div style={{ marginBottom: '2rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>Reason for Regularization</label>
+                  <textarea 
+                    placeholder="e.g. Forgot to turn on GPS"
+                    value={tripData.reason} 
+                    onChange={e => setTripData({...tripData, reason: e.target.value})} 
+                    required
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f9fafb', minHeight: '80px', fontFamily: 'inherit' }}
                   />
                 </div>
                 
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="btn-outline" style={{ flex: 1, padding: '0.875rem' }}>Cancel</button>
-                  <button type="submit" className="btn-primary" style={{ flex: 2, padding: '0.875rem' }}>Submit Trip</button>
+                  <button type="button" onClick={() => setIsRegularizeModalOpen(false)} className="btn-outline" style={{ flex: 1, padding: '0.875rem' }}>Cancel</button>
+                  <button type="submit" className="btn-primary" style={{ flex: 2, padding: '0.875rem' }}>Submit Request</button>
                 </div>
               </form>
             )}

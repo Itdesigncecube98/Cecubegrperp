@@ -9,111 +9,212 @@ datasource db {
 }
 
 model Admin {
-  id         Int    @id @default(autoincrement())
+  id         Int     @id @default(autoincrement())
   adminId    String?
   name       String
-  email      String @unique
+  email      String  @unique
   department String
   password   String
 }
 
 model Employee {
-  id           String       @id @default(cuid())
-  empId        String?
-  name         String
-  email        String       @unique
-  password     String
-  department   String
-  role         String       @default("EMPLOYEE")
-  supervisorId String?
+  id                  String               @id @default(cuid())
+  empId               String?
+  name                String
+  email               String               @unique
+  password            String
+  department          String
+  role                String               @default("EMPLOYEE")
+  supervisorId        String?
   // Extended profile fields
+  phone               String?
+  designation         String?
+  position            String?
+  branch              String?
+  siteOffice          String?
+  organisation        String?
+  gender              String?
+  maritalStatus       String?
+  nationality         String?
+  joinedDate          String?
+  address             String?
+  emergencyContact    String?
+  emergencyPhone      String?
+  dateOfBirth         String?
+  workTelephone       String?
+  extension           String?
+  cpn                 String?
+  otherEmail          String?
+  pan                 String?
+  aadharNo            String?
+  uan                 String?
+  bankName            String?
+  bankAccountNo       String?
+  ifscCode            String?
+  addressStreet1      String?
+  addressStreet2      String?
+  city                String?
+  state               String?
+  zipCode             String?
+  country             String?
+  employmentStatus    String?
+  workWeekMapping     String?
+  marriageAnniversary String?
+  grade               String?
+  bloodGroup          String?
+  langRead            String?
+  langWrite           String?
+  langSpeak           String?
+  chargeType          String?
+  employmentToDate    String?
+  fatherName          String?
+  employeeType        String?
+  passportNo          String?
+  identificationMark  String?
+  annualCtc           String?
+  basicSalary         String?
+  hra                 String?
+  conveyance          String?
+  medical             String?
+  specialAllowance    String?
+  bonus               String?
+  deductions          String?
+  pfEmployee          String?
+  pfEmployer          String?
+  professionalTax     String?
+  tds                 String?
+  esicNo              String?
+  ndaNo               String?
+  supervisor          Employee?            @relation("SupervisorRelation", fields: [supervisorId], references: [id])
+  subordinates        Employee[]           @relation("SupervisorRelation")
+  assignedModules     String[]             @default([])
+  createdAt           DateTime             @default(now())
+  attendances         Attendance[]
+  punchRequests       PunchRequest[]
+  leaveBalance        LeaveBalance?
+  leaveRequests       LeaveRequest[]
+  locationRequests    LocationRequest[]
+  documents           EmployeeDocument[]
+  vehicles            Vehicle[]
+  tripLogs            TripLog[]
+  dependents          Dependent[]
+  overtimeAssignments OvertimeAssignment[]
+  jobHistories        JobHistory[]
+  orgChartNode        OrgChartNode?
+  bankDetails         BankDetail[]
+  workExperiences     WorkExperience[]
+  educations          Education[]
+  imprestRequests     ImprestRequest[]
+  generatedDocuments  GeneratedDocument[]
+  docWorkflowMapping  DocWorkflowMapping?
+  hodMappings         DocWorkflowMapping[] @relation("HodRelation")
+  hrMappings          DocWorkflowMapping[] @relation("HrRelation")
+  accountsDocMappings DocWorkflowMapping[] @relation("AccountsDocRelation")
+
+  // Imprest Workflow Roles
+  projectsHeadWorkflows ImprestWorkflowConfig[] @relation("ProjectsHeadRel")
+  accountsWorkflows     ImprestWorkflowConfig[] @relation("AccountsRel")
+  adminWorkflows        ImprestWorkflowConfig[] @relation("AdminRel")
+
+  @@index([role])
+  @@index([supervisorId])
+}
+
+model OrgChartNode {
+  id             String         @id @default(cuid())
+  employeeId     String?        @unique
+  parentId       String?
+  isVacant       Boolean        @default(false)
+  positionTitle  String?
+  department     String?
+  jobDescription String?        @db.Text
+  employee       Employee?      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  candidates     Candidate[]
+  parent         OrgChartNode?  @relation("OrgChartHierarchy", fields: [parentId], references: [id])
+  children       OrgChartNode[] @relation("OrgChartHierarchy")
+}
+
+model Dependent {
+  id           Int      @id @default(autoincrement())
+  employeeId   String
+  name         String
+  relationship String
+  dateOfBirth  String?
   phone        String?
-  designation  String?
-  branch       String?
-  organisation String?
-  gender       String?
-  maritalStatus String?
-  nationality  String?
-  joinedDate   String?
-  photoUrl     String?
-  address      String?
-  emergencyContact String?
-  emergencyPhone   String?
-  supervisor   Employee?    @relation("SupervisorRelation", fields: [supervisorId], references: [id])
-  subordinates Employee[]   @relation("SupervisorRelation")
-  createdAt    DateTime     @default(now())
-  attendances  Attendance[]
-  punchRequests PunchRequest[]
-  leaveBalance  LeaveBalance?
-  leaveRequests LeaveRequest[]
-  locationRequests LocationRequest[]
-  documents     EmployeeDocument[]
-  vehicles      Vehicle[]
-  tripLogs      TripLog[]
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model Attendance {
   id         Int      @id @default(autoincrement())
   employeeId String
-  date       String   // stored as YYYY-MM-DD
-  status     String   // Present, Absent, Late
+  date       String // stored as YYYY-MM-DD
+  status     String // Present, Absent, Late
   shiftType  String   @default("Day") // Day, Night
   timeSlots  String?  @db.Text // stores JSON array string e.g. [{"in":"09:30","out":"12:00"}]
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, date])
+  @@index([date])
 }
 
 model PunchRequest {
   id           Int      @id @default(autoincrement())
   employeeId   String
-  type         String   // "IN", "OUT", "REGULARIZE"
-  time         String   // "09:30"
-  date         String   // "YYYY-MM-DD"
+  type         String // "IN", "OUT", "REGULARIZE"
+  time         String // "09:30"
+  date         String // "YYYY-MM-DD"
   shiftType    String   @default("Day") // Day, Night
   status       String   @default("PENDING") // PENDING, APPROVED, REJECTED
   reason       String?  @db.Text
   latitude     Float?
   longitude    Float?
+  locationName String?
   createdAt    DateTime @default(now())
   employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@index([employeeId, date])
 }
 
 model LeaveBalance {
-  id           Int      @id @default(autoincrement())
-  employeeId   String   @unique
-  casualLeaves Float    @default(12)
-  leaveWithoutPay Float    @default(0)
-  earnedLeaves Float    @default(15)
-  compensatoryLeaves Float @default(0)
-  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id                 Int      @id @default(autoincrement())
+  employeeId         String   @unique
+  casualLeaves       Float    @default(12)
+  leaveWithoutPay    Float    @default(0)
+  earnedLeaves       Float    @default(15)
+  compensatoryLeaves Float    @default(0)
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model LeaveRequest {
-  id           Int      @id @default(autoincrement())
-  employeeId   String
-  leaveType    String   // "Casual", "Sick", "Earned", "Unpaid", "COFF"
-  startDate    String   // "YYYY-MM-DD"
-  endDate      String   // "YYYY-MM-DD"
-  reason       String   @db.Text
-  attachment   String?  // Base64 encoded file data
-  status       String   @default("PENDING_SUPERVISOR") // PENDING_SUPERVISOR, PENDING_ADMIN, APPROVED, REJECTED
-  isHalfDay    Boolean  @default(false)
-  appliedOn    DateTime @default(now())
-  supervisorApproved Boolean @default(false)
+  id                   Int       @id @default(autoincrement())
+  employeeId           String
+  leaveType            String // "Casual", "Sick", "Earned", "Unpaid", "COFF"
+  startDate            String // "YYYY-MM-DD"
+  endDate              String // "YYYY-MM-DD"
+  reason               String    @db.Text
+  attachment           String? // Base64 encoded file data
+  status               String    @default("PENDING_SUPERVISOR") // PENDING_SUPERVISOR, PENDING_ADMIN, APPROVED, REJECTED
+  isHalfDay            Boolean   @default(false)
+  appliedOn            DateTime  @default(now())
+  supervisorApproved   Boolean   @default(false)
   supervisorApprovedAt DateTime?
   supervisorApprovedBy String?
-  adminApproved Boolean @default(false)
-  adminApprovedAt DateTime?
-  adminApprovedBy String?
-  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  adminApproved        Boolean   @default(false)
+  adminApprovedAt      DateTime?
+  adminApprovedBy      String?
+  employee             Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([startDate, endDate])
+  @@index([employeeId])
 }
 
 model Holiday {
-  id           Int      @id @default(autoincrement())
-  name         String
-  date         String   @unique // "YYYY-MM-DD"
-  type         String   @default("Public") // Public, Optional
+  id   Int    @id @default(autoincrement())
+  name String
+  date String @unique // "YYYY-MM-DD"
+  type String @default("Public") // Public, Optional
 }
 
 model AccountSettings {
@@ -129,9 +230,9 @@ model AccountSettings {
 }
 
 model WorkWeek {
-  id         Int     @id @default(autoincrement())
-  day        String  @unique
-  isWorking  Boolean @default(true)
+  id        Int     @id @default(autoincrement())
+  day       String  @unique
+  isWorking Boolean @default(true)
 }
 
 model LeaveType {
@@ -145,14 +246,14 @@ model LeaveType {
 }
 
 model GpsLocation {
-  id           Int     @id @default(autoincrement())
+  id           Int      @id @default(autoincrement())
   name         String
   address      String?
   latitude     Float
   longitude    Float
-  radiusMeters Int     @default(100)
-  locationType String  @default("Office") // Office, Site, Client
-  isActive     Boolean @default(true)
+  radiusMeters Int      @default(100)
+  locationType String   @default("Office") // Office, Site, Client
+  isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 }
 
@@ -161,84 +262,88 @@ model Announcement {
   subject   String
   message   String?  @db.Text
   isHoliday Boolean  @default(false)
-  date      String?  // YYYY-MM-DD format if it is a holiday
+  date      String? // YYYY-MM-DD format if it is a holiday
   createdAt DateTime @default(now())
 }
 
 model LocationRequest {
-  id           Int      @id @default(autoincrement())
+  id           Int            @id @default(autoincrement())
   employeeId   String
-  status       String   @default("PENDING") // PENDING, COMPLETED, FAILED
+  status       String         @default("PENDING") // PENDING, COMPLETED, FAILED
   latitude     Float?
   longitude    Float?
   address      String?
-  movementType String?  // e.g., "Office to Site"
-  requestedAt  DateTime @default(now())
+  movementType String? // e.g., "Office to Site"
+  requestedAt  DateTime       @default(now())
   respondedAt  DateTime?
-  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee     Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   pings        LocationPing[]
 }
 
 model LocationPing {
-  id         Int             @id @default(autoincrement())
-  requestId  Int
-  latitude   Float
-  longitude  Float
-  timestamp  DateTime        @default(now())
-  request    LocationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id        Int             @id @default(autoincrement())
+  requestId Int
+  latitude  Float
+  longitude Float
+  timestamp DateTime        @default(now())
+  request   LocationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 }
 
 model EmployeeDocument {
   id             Int      @id @default(autoincrement())
   employeeId     String
-  documentType   String   // "Personal" or "Dependent"
-  documentName   String   // e.g. "Aadhar Card"
+  documentType   String // "Personal" or "Dependent"
+  documentName   String // e.g. "Aadhar Card"
   documentNumber String?
-  expiryDate     String?  // "YYYY-MM-DD"
-  fileData       String   // Base64 encoded file data
+  expiryDate     String? // "YYYY-MM-DD"
+  fileData       String // Base64 encoded file data
   fileName       String
-  fileType       String   // e.g. "application/pdf", "image/png"
+  fileType       String // e.g. "application/pdf", "image/png"
   createdAt      DateTime @default(now())
   employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model Vehicle {
-  id               Int      @id @default(autoincrement())
+  id               Int       @id @default(autoincrement())
   employeeId       String?
-  isCompanyVehicle Boolean  @default(false)
+  isCompanyVehicle Boolean   @default(false)
   makeModel        String
-  plateNumber      String   @unique
+  plateNumber      String    @unique
   vehicleType      String
-  ratePerKm        Float    @default(0.0)
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
+  ratePerKm        Float     @default(0.0)
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
   employee         Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   trips            TripLog[]
 }
 
 model TripLog {
-  id           Int      @id @default(autoincrement())
-  employeeId   String
-  vehicleId    Int
-  date         String?
+  id            Int        @id @default(autoincrement())
+  employeeId    String
+  vehicleId     Int
+  date          String?
   startLocation String?
-  endLocation  String?
-  distanceKm   Float?   @default(0.0)
-  amount       Float?   @default(0.0)
-  status       String   @default("REQUESTED") // REQUESTED, ACTIVE, COMPLETED, APPROVED, REJECTED, PAID
-  createdAt    DateTime @default(now())
-  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  vehicle      Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  pings        TripPing[]
+  endLocation   String?
+  distanceKm    Float?     @default(0.0)
+  amount        Float?     @default(0.0)
+  status        String     @default("REQUESTED") // REQUESTED, ACTIVE, COMPLETED, APPROVED, REJECTED, PAID, PENDING_REGULARIZATION
+  reason        String?    @db.Text
+  createdAt     DateTime   @default(now())
+  employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  vehicle       Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  pings         TripPing[]
+
+  @@index([status])
+  @@index([employeeId])
 }
 
 model TripPing {
-  id         Int      @id @default(autoincrement())
-  tripId     Int
-  latitude   Float
-  longitude  Float
-  timestamp  DateTime @default(now())
-  trip       TripLog  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  id        Int      @id @default(autoincrement())
+  tripId    Int
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
+  trip      TripLog  @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }
 
 model EmailLog {
@@ -254,4 +359,237 @@ model EmailLog {
   errorMessage    String?
   sentBy          String?
   createdAt       DateTime @default(now())
+}
+
+model OvertimeAssignment {
+  id         Int      @id @default(autoincrement())
+  employeeId String
+  date       String
+  hours      String?
+  reason     String?  @db.Text
+  status     String   @default("ASSIGNED")
+  createdAt  DateTime @default(now())
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model BankDetail {
+  id            Int      @id @default(autoincrement())
+  employeeId    String
+  bankName      String?
+  accountName   String?
+  accountNumber String?
+  ifscCode      String?
+  branch        String?
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model WorkExperience {
+  id             Int      @id @default(autoincrement())
+  employeeId     String
+  companyName    String?
+  jobTitle       String?
+  fromDate       String?
+  toDate         String?
+  jobDescription String?
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Education {
+  id          Int      @id @default(autoincrement())
+  employeeId  String
+  institution String?
+  degree      String?
+  year        String?
+  grade       String?
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Department {
+  id           String   @id @default(cuid())
+  name         String
+  organization String?
+  description  String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Branch {
+  id           String   @id @default(cuid())
+  name         String
+  organization String?
+  description  String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model SiteOffice {
+  id           String   @id @default(cuid())
+  name         String
+  organization String?
+  description  String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  textColor   String?  @default("#1f2937")
+  bgColor     String?  @default("#f3f4f6")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model JobHistory {
+  id          Int      @id @default(autoincrement())
+  employeeId  String
+  siteOffice  String?
+  branch      String?
+  department  String?
+  designation String?
+  chargeType  String?
+  fromDate    String // "YYYY-MM-DD"
+  toDate      String? // "YYYY-MM-DD" or null if current
+  createdAt   DateTime @default(now())
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model ImprestRequest {
+  id              Int     @id @default(autoincrement())
+  requestId       String  @unique // e.g., IMP-2023-0001
+  employeeId      String
+  amountRequested Float
+  purpose         String  @db.Text
+  requiredDate    String // YYYY-MM-DD
+  projectSite     String?
+  imprestHead     String?
+  imprestType     String?
+
+  // Approval Workflow
+  status         String    @default("PENDING") // PENDING, APPROVED, REJECTED, RETURNED
+  approvedAmount Float?
+  approverId     String?
+  approvalDate   DateTime?
+  remarks        String?   @db.Text
+
+  // Issue & Settlement
+  issueDate      DateTime?
+  issuedAmount   Float?
+  paymentMode    String?
+  transactionRef String?
+  settledStatus  String    @default("OPEN") // OPEN, PARTIAL, SETTLED, CLOSED
+  settlementDate DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  expenses ImprestExpense[]
+
+  @@index([status])
+  @@index([employeeId])
+}
+
+model ImprestExpense {
+  id               Int     @id @default(autoincrement())
+  imprestRequestId Int
+  expenseDate      String // YYYY-MM-DD
+  category         String
+  description      String  @db.Text
+  vendorName       String?
+  billNo           String?
+  billAmount       Float
+  billUpload       String? // URL/Base64
+  status           String  @default("PENDING") // PENDING, VERIFIED, REJECTED
+
+  createdAt DateTime @default(now())
+
+  imprestRequest ImprestRequest @relation(fields: [imprestRequestId], references: [id], onDelete: Cascade)
+}
+
+model ImprestWorkflowConfig {
+  id             Int      @id @default(1)
+  projectsHeadId String?
+  accountsId     String?
+  adminId        String?
+  updatedAt      DateTime @updatedAt
+
+  projectsHead Employee? @relation("ProjectsHeadRel", fields: [projectsHeadId], references: [id])
+  accounts     Employee? @relation("AccountsRel", fields: [accountsId], references: [id])
+  admin        Employee? @relation("AdminRel", fields: [adminId], references: [id])
+}
+
+model ImprestHead {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model GeneratedDocument {
+  id               Int      @id @default(autoincrement())
+  employeeId       String
+  formType         String   // "FOOD_ALLOWANCE", "ACCOMMODATION"
+  formData         String   @db.Text // JSON string containing form data
+  status           String   @default("PENDING_SUPERVISOR") // PENDING_SUPERVISOR, PENDING_HOD, PENDING_HR, PENDING_ACCOUNTS, APPROVED, REJECTED
+  
+  supervisorId     String?
+  supervisorStatus String?
+  supervisorDate   DateTime?
+  supervisorNotes  String?   @db.Text
+
+  hodId            String?
+  hodStatus        String?
+  hodDate          DateTime?
+  hodNotes         String?   @db.Text
+
+  hrId             String?
+  hrStatus         String?
+  hrDate           DateTime?
+  hrNotes          String?   @db.Text
+
+  accountsId       String?
+  accountsStatus   String?
+  accountsDate     DateTime?
+  accountsNotes    String?   @db.Text
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  @@index([status])
+  @@index([employeeId])
+}
+
+model DocWorkflowMapping {
+  id         Int      @id @default(autoincrement())
+  employeeId String   @unique
+  hodId      String?
+  hrId       String?
+  accountsId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  hod        Employee? @relation("HodRelation", fields: [hodId], references: [id])
+  hr         Employee? @relation("HrRelation", fields: [hrId], references: [id])
+  accounts   Employee? @relation("AccountsDocRelation", fields: [accountsId], references: [id])
+}
+
+model Candidate {
+  id           String   @id @default(cuid())
+  name         String
+  email        String?  @unique
+  phone        String?
+  appliedFor   String?
+  department   String?
+  status       String   @default("PENDING") // PENDING, REJECTED, HIRED
+  resumeUrl    String?
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  orgChartNodeId String?
+  orgChartNode   OrgChartNode? @relation(fields: [orgChartNodeId], references: [id], onDelete: SetNull)
 }

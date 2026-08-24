@@ -150,7 +150,11 @@ export default function MobileCheckin() {
                       <div style={{ fontWeight: 600 }}>{row.employee?.name}</div>
                       <div style={{ fontSize: '12px', color: '#6b7280' }}>{row.employee?.empId}</div>
                     </td>
-                    <td>{row.date.split('-').reverse().join('-')}</td>
+                    <td>
+                      <div style={{ fontWeight: 500, fontSize: '13px' }}>
+                        {new Date(row.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' })}, {row.date.split('-').reverse().join('-')}
+                      </div>
+                    </td>
                     <td>{row.time}</td>
                     <td>
                       <span style={{ 

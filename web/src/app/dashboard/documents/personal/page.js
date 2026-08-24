@@ -2,14 +2,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
-import '../../attendance/attendance.css';
+import Dialog from '@/components/Dialog';
+import '../documents.css';
 import { getDocuments, createDocument, deleteDocument, getEmployees } from '@/lib/data';
 const showToast = (msg) => alert(msg);
 
 export default function PersonalDocuments() {
   const [documents, setDocuments] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [docTypes, setDocTypes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, documentId: null });
   
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -24,6 +27,10 @@ export default function PersonalDocuments() {
 
   useEffect(() => {
     loadData();
+    const savedTypes = localStorage.getItem('documentTypes');
+    if (savedTypes) {
+      setDocTypes(JSON.parse(savedTypes));
+    }
   }, []);
 
   const loadData = async () => {
@@ -98,10 +105,10 @@ export default function PersonalDocuments() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this document?')) return;
+  const confirmDelete = async () => {
+    if (!deleteDialog.documentId) return;
     try {
-      const res = await deleteDocument(id);
+      const res = await deleteDocument(deleteDialog.documentId);
       if (res.error) {
         showToast(res.error, 'error');
       } else {
@@ -112,6 +119,11 @@ export default function PersonalDocuments() {
       console.error(err);
       showToast('Failed to delete document', 'error');
     }
+    setDeleteDialog({ isOpen: false, documentId: null });
+  };
+
+  const handleDelete = (id) => {
+    setDeleteDialog({ isOpen: true, documentId: id });
   };
 
   const handleView = async (id, fileName) => {
@@ -250,12 +262,11 @@ export default function PersonalDocuments() {
                   disabled={uploading}
                 >
                   <option value="">Select Document Name</option>
-                  <option value="Aadhar Card">Aadhar Card</option>
-                  <option value="PAN Card">PAN Card</option>
-                  <option value="Passport">Passport</option>
-                  <option value="Driving License">Driving License</option>
-                  <option value="Voter ID">Voter ID</option>
-                  <option value="Offer Letter">Offer Letter</option>
+                  {docTypes
+                    .filter(d => d.scope === 'Individual')
+                    .map(d => (
+                    <option key={d.id} value={d.type}>{d.type}</option>
+                  ))}
                   <option value="Other">Other</option>
                 </select>
               </div>
@@ -316,6 +327,15 @@ export default function PersonalDocuments() {
           </div>
         </div>
       )}
+
+      <Dialog 
+        isOpen={deleteDialog.isOpen}
+        type="confirm"
+        title="Delete Document"
+        message="Are you sure you want to delete this document?"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteDialog({ isOpen: false, documentId: null })}
+      />
     </div>
   );
 }

@@ -10,6 +10,7 @@ export default function EmployeeDocuments() {
   const [employee, setEmployee] = useState(null);
   const [activeTab, setActiveTab] = useState('Personal'); // 'Personal', 'Company', or 'Dependent'
   const [documents, setDocuments] = useState([]);
+  const [docTypes, setDocTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Modal state
@@ -28,6 +29,11 @@ export default function EmployeeDocuments() {
       const parsed = JSON.parse(empData);
       setEmployee(parsed);
       loadData(parsed.id, activeTab);
+    }
+    
+    const savedTypes = localStorage.getItem('documentTypes');
+    if (savedTypes) {
+      setDocTypes(JSON.parse(savedTypes));
     }
   }, [activeTab]);
 
@@ -247,36 +253,27 @@ export default function EmployeeDocuments() {
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Document Name/Type *</label>
-                {activeTab === 'Personal' ? (
-                  <select 
-                    required 
-                    value={formData.documentName} 
-                    onChange={e => setFormData({...formData, documentName: e.target.value})}
-                    style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db' }}
-                    disabled={uploading}
-                  >
-                    <option value="">Select Document</option>
-                    <option value="Aadhar Card">Aadhar Card</option>
-                    <option value="PAN Card">PAN Card</option>
-                    <option value="Passport">Passport</option>
-                    <option value="Driving License">Driving License</option>
-                    <option value="Voter ID">Voter ID</option>
-                    <option value="Other">Other</option>
-                  </select>
-                ) : (
-                  <input 
-                    type="text" 
-                    required 
-                    placeholder="e.g. Offer Letter, Appointment Letter"
-                    value={formData.documentName} 
-                    onChange={e => setFormData({...formData, documentName: e.target.value})}
-                    style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db' }}
-                    disabled={uploading}
-                  />
-                )}
+                <select 
+                  required 
+                  value={formData.documentName} 
+                  onChange={e => setFormData({...formData, documentName: e.target.value})}
+                  style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db' }}
+                  disabled={uploading}
+                >
+                  <option value="">Select Document</option>
+                  {docTypes
+                    .filter(d => d.uploadInPortal && (
+                      activeTab === 'Personal' ? d.scope === 'Individual' : 
+                      activeTab === 'Company' ? d.scope === 'Company' : true
+                    ))
+                    .map(d => (
+                    <option key={d.id} value={d.type}>{d.type}</option>
+                  ))}
+                  <option value="Other">Other</option>
+                </select>
               </div>
 
-              {activeTab === 'Personal' && formData.documentName === 'Other' && (
+              {formData.documentName === 'Other' && (
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Custom Document Name *</label>
                   <input 

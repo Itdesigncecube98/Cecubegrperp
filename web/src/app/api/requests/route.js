@@ -49,19 +49,74 @@ export async function POST(request) {
     const latitude = data.latitude !== undefined && data.latitude !== null ? parseFloat(data.latitude) : null;
     const longitude = data.longitude !== undefined && data.longitude !== null ? parseFloat(data.longitude) : null;
 
+    let finalDate = data.date;
+    const timeStr = data.time || '';
+    
+    // If this is an OUT punch and the time is after 08:00 AM, we need to check if they were working the night shift from yesterday.
+    // However, if the time is > 08:00, finalDate will be today.
+    // If they were on a night shift, their IN punch was yesterday. 
+    // We should look up if they have an open night shift yesterday, and if so, this OUT punch belongs to yesterday's shift!
+    let shiftType = data.shiftType || 'Day';
+    let isOvertime = false;
+    let overtimeHours = 0;
+
+    if (data.type === 'OUT' && timeStr > '08:00') {
+      // Check if they have an open night shift yesterday
+      const yesterdayObj = new Date(data.date);
+      yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+      const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
+
+      const yesterdayAttendance = await prisma.attendance.findUnique({
+        where: { employeeId_date: { employeeId: data.employeeId, date: yesterdayStr } }
+      });
+
+      if (yesterdayAttendance && yesterdayAttendance.shiftType === 'Night') {
+        try {
+          const slots = JSON.parse(yesterdayAttendance.timeSlots || '[]');
+          const openSlot = slots.find(s => s.in && !s.out);
+          if (openSlot) {
+            // Found an open night shift! This OUT punch belongs to yesterday.
+            finalDate = yesterdayStr;
+            shiftType = 'Night';
+
+            // Calculate overtime. 08:00 AM is the end of night shift.
+            // timeStr is e.g. "09:30". Overtime is 09:30 - 08:00 = 2.5 hours.
+            const [otH, otM] = timeStr.split(':').map(Number);
+            overtimeHours = (otH - 8) + (otM / 60);
+            if (overtimeHours > 0) {
+              isOvertime = true;
+            }
+          }
+        } catch (e) {}
+      }
+    }
+
     const newRequest = await prisma.punchRequest.create({
       data: {
         employeeId: data.employeeId,
         type: data.type,
-        time: data.time || '',
-        date: data.date,
-        shiftType: data.shiftType || 'Day',
+        time: timeStr,
+        date: finalDate,
+        shiftType: shiftType,
         reason: data.reason || null,
         status: 'PENDING',
         latitude,
-        longitude
+        longitude,
+        locationName: data.locationName || null
       }
     });
+
+    if (isOvertime) {
+      await prisma.overtimeAssignment.create({
+        data: {
+          employeeId: data.employeeId,
+          date: finalDate, // associate OT with the shift date
+          hours: overtimeHours.toFixed(2),
+          reason: `Auto-generated for late night shift punch out at ${timeStr}`,
+          status: 'PENDING',
+        }
+      });
+    }
 
     return NextResponse.json(newRequest);
   } catch (error) {
@@ -94,7 +149,7 @@ export async function PATCH(request) {
 export async function PUT(request) {
   try {
     const data = await request.json();
-    const { id, status } = data;
+    const { id, status, grantCoff } = data;
 
     const updatedRequest = await prisma.punchRequest.update({
       where: { id: parseInt(id) },
@@ -102,6 +157,38 @@ export async function PUT(request) {
     });
 
     const { employeeId, date, time, type, shiftType } = updatedRequest;
+
+    if (status === 'APPROVED') {
+      const holiday = await prisma.holiday.findUnique({ where: { date } });
+      const isHoliday = !!holiday;
+      
+      // Grant COFF if explicitly requested or if it's an approved IN/REGULARIZE punch on a holiday
+      const shouldGrantCoff = grantCoff || (isHoliday && (type === 'IN' || type === 'REGULARIZE'));
+
+      if (shouldGrantCoff) {
+        // Find balance first
+        const balance = await prisma.leaveBalance.findUnique({ where: { employeeId } });
+        if (balance) {
+          await prisma.leaveBalance.update({
+            where: { employeeId },
+            data: { compensatoryLeaves: { increment: 1 } }
+          });
+        }
+      }
+
+      if (type === 'COFF_CONVERSION') {
+        const coffsRequested = parseInt(time) || 0;
+        if (coffsRequested > 0) {
+          const balance = await prisma.leaveBalance.findUnique({ where: { employeeId } });
+          if (balance) {
+            await prisma.leaveBalance.update({
+              where: { employeeId },
+              data: { compensatoryLeaves: { increment: coffsRequested } }
+            });
+          }
+        }
+      }
+    }
 
     // IN/OUT punches already write attendance immediately on punch.
     // APPROVED → keep attendance as-is (confirm only).

@@ -27,89 +27,185 @@ export async function GET(request) {
       }
     });
 
-    // Holidays / work weeks only needed for absent injection in current month
-    const [holidays, workWeeks] = await Promise.all([
+    const [holidays, workWeeks, approvedLeaves] = await Promise.all([
       prisma.holiday.findMany(),
-      prisma.workWeek.findMany()
+      prisma.workWeek.findMany(),
+      prisma.leaveRequest.findMany({
+        where: { employeeId, status: 'APPROVED' }
+      })
     ]);
+    
     // Convert to easy lookups
     const holidayDates = new Set(holidays.map(h => h.date));
-    const nonWorkingDays = new Set(workWeeks.filter(w => !w.isWorking).map(w => w.day));
-
-    // Group by month
-    // Format: 'YYYY-MM-DD'
-    const statsByMonth = {};
+    let nonWorkingDays = new Set(workWeeks.filter(w => !w.isWorking).map(w => w.day));
+    
+    // Default fallback: if no work week settings exist, assume Sunday is an off day
+    if (workWeeks.length === 0) {
+      nonWorkingDays.add('Sunday');
+    }
+    
+    // Calculate leave dates
+    const leaveDates = new Set();
+    approvedLeaves.forEach(l => {
+      const start = new Date(l.startDate);
+      const end = new Date(l.endDate);
+      let curr = new Date(start);
+      while (curr <= end) {
+        const y = curr.getFullYear();
+        const m = String(curr.getMonth() + 1).padStart(2, '0');
+        const d = String(curr.getDate()).padStart(2, '0');
+        leaveDates.add(`${y}-${m}-${d}`);
+        curr.setDate(curr.getDate() + 1);
+      }
+    });
 
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const parts = new Intl.DateTimeFormat('en-GB', { 
+      timeZone: 'Asia/Kolkata', 
+      year: 'numeric', month: '2-digit', day: '2-digit', 
+      hour: '2-digit', hour12: false 
+    }).formatToParts(today);
+    const p = {};
+    parts.forEach(part => p[part.type] = part.value);
+    const todayStr = `${p.year}-${p.month}-${p.day}`;
+    let currentHour = parseInt(p.hour, 10);
+    if (currentHour === 24) currentHour = 0;
+
+    const isNightTime = (t) => t ? (t > '19:00' || t <= '08:00') : false;
+    const dayCountsAsNightShift = (slots, shiftType, effStatus) => {
+      const withIn = slots.filter(s => s.in);
+      if (withIn.length > 0) {
+        const firstIn = withIn.reduce((min, s) => (!min || s.in < min) ? s.in : min, null);
+        return isNightTime(firstIn);
+      }
+      return shiftType === 'Night' || shiftType === 'Night Shift' || effStatus === 'Night Shift';
+    };
+
+    // Group by month
+    const statsByMonth = {};
+    const recordMap = new Map();
 
     records.forEach(record => {
-      const monthPrefix = record.date.substring(0, 7); // e.g., '2023-08'
-      
-      let effectiveStatus = record.status;
       const parsedSlots = record.timeSlots ? JSON.parse(record.timeSlots) : [];
-
-      // If it's a past date and has incomplete/no time slots, and status is not already
-      // Present (admin-marked), treat it as Absent so employee can regularize.
-      // We do NOT override an admin-set Present status just because punch-out is missing.
-      // Late is treated the same as Present — no downgrade.
-      if (record.date < todayStr && effectiveStatus !== 'Present' && effectiveStatus !== 'Late') {
-        if (parsedSlots.length === 0 || parsedSlots.some(slot => !slot.out || !slot.in)) {
-          effectiveStatus = 'Absent';
+      let updatedSlots = false;
+      parsedSlots.forEach(slot => {
+        if (slot.in && !slot.out) {
+          if (record.date < todayStr || (record.date === todayStr && currentHour >= 19)) {
+            slot.out = '19:00';
+            updatedSlots = true;
+          }
         }
+      });
+      if (updatedSlots) {
+        prisma.attendance.update({
+          where: { id: record.id },
+          data: { timeSlots: JSON.stringify(parsedSlots) }
+        }).catch(() => {});
+        record.timeSlots = JSON.stringify(parsedSlots); // update in memory
       }
+      recordMap.set(record.date, record);
+    });
 
-      // Normalize Late → Present (Late status is no longer used)
-      if (effectiveStatus === 'Late') effectiveStatus = 'Present';
+    // Start from 6 months ago, 1st of month
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - 6);
+    startDate.setDate(1);
+    
+    let iterDate = new Date(startDate);
+    iterDate.setHours(0, 0, 0, 0); // Reset time to midnight local time
+
+    while (true) {
+      const year = iterDate.getFullYear();
+      const month = String(iterDate.getMonth() + 1).padStart(2, '0');
+      const day = String(iterDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
       
+      if (dateStr > todayStr) {
+        break; // stop when we've processed up to todayStr
+      }
+      
+      const monthPrefix = `${year}-${month}`;
+      const dayName = iterDate.toLocaleDateString('en-US', { weekday: 'long' });
+
       if (!statsByMonth[monthPrefix]) {
         statsByMonth[monthPrefix] = {
           month: monthPrefix,
+          TotalDays: 0,
+          TotalWorkingDays: 0,
+          OffDays: 0,
+          Holidays: 0,
+          Leave: 0,
           Present: 0,
           Absent: 0,
+          COFF: 0,
+          'Night Shift': 0,
+          Late: 0,
           details: []
         };
       }
-      
-      if (statsByMonth[monthPrefix][effectiveStatus] !== undefined) {
-        statsByMonth[monthPrefix][effectiveStatus]++;
+
+      const mStat = statsByMonth[monthPrefix];
+      mStat.TotalDays++;
+
+      const isHoliday = holidayDates.has(dateStr);
+      const isOffDay = nonWorkingDays.has(dayName);
+      const isLeave = leaveDates.has(dateStr);
+      const record = recordMap.get(dateStr);
+
+      if (isHoliday) mStat.Holidays++;
+      else if (isOffDay) mStat.OffDays++;
+      else mStat.TotalWorkingDays++;
+
+      let statusToPush = '';
+
+      if (record) {
+        let effStatus = record.status;
+        const slots = record.timeSlots ? JSON.parse(record.timeSlots) : [];
+        if (dateStr < todayStr && effStatus !== 'Present' && effStatus !== 'Late' && effStatus !== 'Night Shift' && effStatus !== 'COFF') {
+          if (slots.length === 0 || slots.some(s => !s.out || !s.in)) {
+            effStatus = 'Absent';
+          }
+        }
+        
+        if (isLeave && (slots.length === 0 || effStatus === 'Absent' || effStatus === 'No Punch')) {
+          effStatus = 'On Leave';
+        }
+        
+        statusToPush = effStatus;
+        if (effStatus === 'Present' || effStatus === 'Late') mStat.Present++;
+        else if (effStatus === 'Absent') mStat.Absent++;
+        else if (effStatus === 'COFF') mStat.COFF++;
+        else if (effStatus === 'On Leave') mStat.Leave++;
+        
+        if (effStatus === 'Late') mStat.Late++;
+        if (dayCountsAsNightShift(slots, record.shiftType, effStatus)) mStat['Night Shift']++;
+
+      } else {
+        if (isLeave) {
+          statusToPush = 'On Leave';
+          mStat.Leave++;
+        } else if (isHoliday) {
+          statusToPush = 'Holiday';
+        } else if (isOffDay) {
+          statusToPush = 'Off';
+        } else if (dateStr < todayStr) {
+          statusToPush = 'Absent';
+          mStat.Absent++;
+        } else {
+          statusToPush = 'No Punch';
+        }
       }
-      
-      statsByMonth[monthPrefix].details.push({
-        date: record.date,
-        status: effectiveStatus,
-        shiftType: record.shiftType || 'Day',
-        timeSlots: record.timeSlots ? JSON.parse(record.timeSlots) : []
-      });
-    });
 
-    // Inject missing days as Absent
-    // From start of current month up to yesterday
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    
-    for (let d = new Date(startOfMonth); d < today; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
-      const monthPrefix = dateStr.substring(0, 7);
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
-
-      // If record exists, skip
-      if (records.some(r => r.date === dateStr)) continue;
-      
-      // If it's a holiday or weekend, skip (or maybe show as 'Holiday'/'Week Off'?)
-      if (holidayDates.has(dateStr)) continue;
-      if (nonWorkingDays.has(dayName)) continue;
-
-      if (!statsByMonth[monthPrefix]) {
-        statsByMonth[monthPrefix] = { month: monthPrefix, Present: 0, Absent: 0, details: [] };
+      if (statusToPush) {
+        mStat.details.push({
+          date: dateStr,
+          status: statusToPush,
+          shiftType: record ? (record.shiftType || 'Day') : '-',
+          timeSlots: record && record.timeSlots ? JSON.parse(record.timeSlots) : []
+        });
       }
-      
-      statsByMonth[monthPrefix].Absent++;
-      statsByMonth[monthPrefix].details.push({
-        date: dateStr,
-        status: 'Absent',
-        shiftType: 'Day',
-        timeSlots: []
-      });
+
+      iterDate.setDate(iterDate.getDate() + 1);
     }
 
     // Convert to sorted array and sort details by date

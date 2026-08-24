@@ -138,9 +138,18 @@ export default function Directory() {
                 leavesDirectory.map(emp => (
                   <tr key={emp.id}>
                     <td>
-                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#9ca3af', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold' }}>
-                        {emp.name.substring(0, 2).toUpperCase()}
-                      </div>
+                      {emp.photoUrl ? (
+                        <>
+                          <img src={emp.photoUrl} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }} />
+                          <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#0ea5e9', color: 'white', display: 'none', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold' }}>
+                            {emp.name.substring(0, 2).toUpperCase()}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#0ea5e9', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold' }}>
+                          {emp.name.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
                     </td>
                     <td>{emp.employeeCode || emp.empId || 'N/A'}</td>
                     <td>{emp.name}</td>

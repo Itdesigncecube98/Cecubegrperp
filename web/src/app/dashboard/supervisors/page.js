@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { getEmployees, addEmployee, updateEmployee, deleteEmployee, getEmployeeStats } from '../../../lib/data';
-import { Plus, Edit2, Trash2, X, BarChart2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, BarChart2, User, PhoneCall, Briefcase, Users, Mail, Settings, PlusCircle, Shield, Clock } from 'lucide-react';
 import './supervisors.css';
 
 export default function SupervisorsPage() {
@@ -251,13 +251,14 @@ export default function SupervisorsPage() {
                     <th>Present</th>
                     <th>Late</th>
                     <th>Absent</th>
+                    <th>Night Shift</th>
                     <th className="text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {statsData.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="empty-state" style={{ padding: '2rem' }}>No attendance records found.</td>
+                      <td colSpan="6" className="empty-state" style={{ padding: '2rem' }}>No attendance records found.</td>
                     </tr>
                   ) : (
                     statsData.map(stat => (
@@ -265,8 +266,9 @@ export default function SupervisorsPage() {
                         <tr>
                           <td style={{ fontWeight: '600' }}>{stat.month}</td>
                           <td><span className="badge badge-success">{stat.Present}</span></td>
-                          <td><span className="badge badge-warning">{stat.Late}</span></td>
+                          <td><span className="badge badge-warning">{stat.Late || 0}</span></td>
                           <td><span className="badge badge-danger">{stat.Absent}</span></td>
+                          <td><span className="badge" style={{ background: '#3b82f6', color: 'white' }}>{stat['Night Shift'] || 0}</span></td>
                           <td className="text-right">
                             <button 
                               className="btn-outline" 
@@ -279,39 +281,94 @@ export default function SupervisorsPage() {
                         </tr>
                         {expandedMonth === stat.month && (
                           <tr>
-                            <td colSpan="5" style={{ padding: '0', backgroundColor: '#f9fafb' }}>
+                            <td colSpan="6" style={{ padding: '0', backgroundColor: '#f9fafb' }}>
                               <table style={{ margin: '0.5rem 1rem', width: 'calc(100% - 2rem)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
                                 <thead>
                                   <tr>
                                     <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.65rem' }}>Date</th>
                                     <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.65rem' }}>Status</th>
+                                    <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.65rem' }}>Shift</th>
                                     <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.65rem' }}>Time Slots (In - Out)</th>
                                     <th style={{ backgroundColor: '#f3f4f6', fontSize: '0.65rem' }}>Total Time</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {stat.details.map(d => (
-                                    <tr key={d.date} style={{ backgroundColor: '#ffffff' }}>
-                                      <td style={{ padding: '0.5rem 1rem' }}>{d.date}</td>
-                                      <td style={{ padding: '0.5rem 1rem' }}>{d.status}</td>
-                                      <td style={{ padding: '0.5rem 1rem' }}>
+                                  {stat.details.map(d => {
+                                    const dayName = new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' });
+                                    const isSunday = new Date(d.date + 'T00:00:00').getDay() === 0;
+                                    
+                                    const isNightSlot = (slot) => {
+                                      if (!slot.in) return false;
+                                      const hour = parseInt(slot.in.split(':')[0], 10);
+                                      return hour >= 19 || hour < 6;
+                                    };
+                                    
+                                    let hasDay = false;
+                                    let hasNight = false;
+                                    
+                                    if (d.timeSlots && d.timeSlots.length > 0) {
+                                      d.timeSlots.forEach(s => {
+                                        if (isNightSlot(s)) hasNight = true;
+                                        else hasDay = true;
+                                      });
+                                    } else {
+                                      if (d.shiftType === 'Night' || d.status === 'Night Shift') hasNight = true;
+                                      else hasDay = true;
+                                    }
+
+                                    return (
+                                    <tr key={d.date} style={{ backgroundColor: isSunday ? '#fff1f2' : '#ffffff', borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '1rem 1.25rem' }}>
+                                        <div style={{ fontWeight: 700, color: isSunday ? '#be123c' : '#1e293b' }}>{dayName}</div>
+                                        <div style={{ fontSize: '12px', color: isSunday ? '#e11d48' : '#64748b', marginTop: '2px' }}>{d.date}</div>
+                                      </td>
+                                      <td style={{ padding: '1rem 1.25rem' }}>
+                                        {d.status === 'Present' ? (
+                                          <span style={{ backgroundColor: '#dcfce7', color: '#166534', padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>{d.status}</span>
+                                        ) : d.status === 'Absent' ? (
+                                          <span style={{ backgroundColor: '#fee2e2', color: '#991b1b', padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>{d.status}</span>
+                                        ) : d.status === 'Late' ? (
+                                          <span style={{ backgroundColor: '#fef3c7', color: '#92400e', padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>{d.status}</span>
+                                        ) : (
+                                          <span style={{ backgroundColor: '#e0e7ff', color: '#3730a3', padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>{d.status}</span>
+                                        )}
+                                      </td>
+                                      <td style={{ padding: '1rem 1.25rem' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}>
+                                          {hasDay && <span style={{ backgroundColor: '#dbeafe', color: '#1d4ed8', padding: '2px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 700 }}>Day</span>}
+                                          {hasNight && <span style={{ backgroundColor: '#f3e8ff', color: '#7e22ce', padding: '2px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 700 }}>Night</span>}
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: '1rem 1.25rem' }}>
                                         {d.timeSlots && d.timeSlots.length > 0 ? (
                                           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                            {d.timeSlots.map((slot, i) => (
-                                              <span key={i} className="badge badge-success" style={{ backgroundColor: '#e0e7ff', color: 'var(--accent-color)' }}>
+                                            {d.timeSlots.map((slot, i) => {
+                                              const isNight = isNightSlot(slot);
+                                              return (
+                                              <span key={i} style={{ 
+                                                backgroundColor: isNight ? '#f3e8ff' : '#dbeafe', 
+                                                color: isNight ? '#7e22ce' : '#0369a1', 
+                                                padding: '4px 12px', 
+                                                borderRadius: '16px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 600
+                                              }}>
                                                 {slot.in || '?'} - {slot.out || '?'}
                                               </span>
-                                            ))}
+                                            )})}
                                           </div>
                                         ) : (
                                           <span style={{ color: 'var(--text-secondary)' }}>-</span>
                                         )}
                                       </td>
-                                      <td style={{ padding: '0.5rem 1rem', fontWeight: '500', color: 'var(--text-primary)' }}>
-                                        {calculateTotalTime(d.timeSlots)}
+                                      <td style={{ padding: '1rem 1.25rem', fontWeight: '500', color: '#1e293b' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          {d.timeSlots && d.timeSlots.length > 0 && <Clock size={14} color="#64748b" />} {calculateTotalTime(d.timeSlots)}
+                                        </div>
                                       </td>
                                     </tr>
-                                  ))}
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             </td>

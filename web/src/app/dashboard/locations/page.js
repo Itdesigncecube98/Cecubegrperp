@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { ArrowLeft, MapPin, Trash2, Plus, Target, Edit2 } from 'lucide-react';
+import Dialog from '../../../components/Dialog';
 
 // Leaflet must be loaded client-side only
 const LocationMap = dynamic(() => import('./LocationMap'), { ssr: false, loading: () => (
@@ -17,6 +18,7 @@ export default function LocationsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [toast, setToast] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [coordMode, setCoordMode] = useState('manual'); // 'manual' | 'map'
   const [form, setForm] = useState({
     name: '', address: '', latitude: '', longitude: '',
@@ -145,12 +147,14 @@ export default function LocationsPage() {
     setShowForm(true);
   };
 
-  const handleDelete = async (id) => {
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
     try {
-      await fetch(`/api/locations?id=${id}`, { method: 'DELETE' });
+      await fetch(`/api/locations?id=${deleteConfirm.id}`, { method: 'DELETE' });
       fetchLocations();
       showToast('Location deleted.');
     } catch (e) { showToast('Error deleting.', 'error'); }
+    setDeleteConfirm(null);
   };
 
   const coordsInput = form.latitude && form.longitude ? `${form.latitude},${form.longitude}` : '';
@@ -330,7 +334,7 @@ export default function LocationsPage() {
                         <button onClick={() => handleEdit(loc)} style={{ background: '#e0f2fe', border: 'none', borderRadius: '6px', padding: '6px', cursor: 'pointer' }}>
                           <Edit2 size={14} color="#0284c7" />
                         </button>
-                        <button onClick={() => handleDelete(loc.id)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', padding: '6px', cursor: 'pointer' }}>
+                        <button onClick={() => setDeleteConfirm(loc)} style={{ background: '#fee2e2', border: 'none', borderRadius: '6px', padding: '6px', cursor: 'pointer' }}>
                           <Trash2 size={14} color="#dc2626" />
                         </button>
                       </div>
@@ -363,6 +367,15 @@ export default function LocationsPage() {
           )}
         </div>
       )}
+
+      <Dialog 
+        isOpen={!!deleteConfirm}
+        type="confirm"
+        title="Delete Location"
+        message={deleteConfirm ? `Are you sure you want to delete the location '${deleteConfirm.name}'?` : ''}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 }

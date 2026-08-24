@@ -1,6 +1,7 @@
-﻿'use client';
+'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mail, Send, Users, User, CheckCircle, AlertCircle, FileText, Calendar, Paperclip, X, Inbox, RefreshCw, MapPin } from 'lucide-react';
+import { Mail, Send, Users, User, CheckCircle, AlertCircle, FileText, Calendar, Paperclip, X, Inbox, RefreshCw, MapPin, Clock, Gift, Heart, Briefcase } from 'lucide-react';
+import OvertimeManagement from '../../../components/OvertimeManagement';
 
 const EMAIL_TYPES = [
   { value: 'general', label: 'General', icon: null },
@@ -34,6 +35,7 @@ export default function EmailBlastPage() {
   const [emailLogs, setEmailLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [expandedLog, setExpandedLog] = useState(null);
+  const [logToDelete, setLogToDelete] = useState(null);
   const fileInputRef = useRef(null);
 
   const loadEmailLogs = useCallback(async () => {
@@ -222,8 +224,8 @@ export default function EmailBlastPage() {
       onClick={() => setTab(id)}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '8px 16px', border: 'none', borderBottom: tab === id ? '2px solid #6366f1' : '2px solid transparent',
-        background: 'none', color: tab === id ? '#4f46e5' : '#6b7280', fontWeight: tab === id ? 700 : 500,
+        padding: '8px 16px', border: 'none', borderBottom: tab === id ? '2px solid var(--accent-color)' : '2px solid transparent',
+        background: 'none', color: tab === id ? 'var(--accent-color)' : '#6b7280', fontWeight: tab === id ? 700 : 500,
         cursor: 'pointer', fontSize: '0.9rem'
       }}
     >
@@ -234,17 +236,30 @@ export default function EmailBlastPage() {
   return (
     <div style={{ padding: '2rem', maxWidth: 900 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-        <Mail size={28} color="#6366f1" />
+        <Mail size={28} color="var(--accent-color)" />
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Email Blast</h1>
       </div>
       <p style={{ color: '#64748b', marginBottom: '1.25rem', marginTop: '4px' }}>
         Send an email to all or selected employees from your chosen sender address.
       </p>
 
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #e5e7eb', marginBottom: '1.5rem', overflowX: 'auto' }}>
         {tabBtn('compose', 'Compose', <Send size={14} />)}
         {tabBtn('records', 'Sent Emails', <Inbox size={14} />)}
+        {tabBtn('overtime', 'Overtime', <Clock size={14} />)}
+        {tabBtn('celebrations', 'Celebrations', <Gift size={14} />)}
       </div>
+
+      {tab === 'celebrations' && (
+        <CelebrationsTab 
+          employees={employees} 
+          holidays={holidays}
+          senderEmail={senderEmail}
+          senderName={senderName}
+        />
+      )}
+
+      {tab === 'overtime' && <OvertimeManagement />}
 
       {tab === 'records' && (
         <div>
@@ -266,30 +281,42 @@ export default function EmailBlastPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {emailLogs.map(log => (
-                <div key={log.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', padding: '1rem 1.25rem' }}>
+                <div key={log.id} style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: 16, overflow: 'hidden', boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.03)', transition: 'all 0.2s ease' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', padding: '1.25rem 1.5rem' }}>
                     <button
                       type="button"
                       onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
-                      style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                      style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', outline: 'none' }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
                         <div style={{ flex: 1, minWidth: 200 }}>
-                          <div style={{ fontWeight: 700, color: '#111827', marginBottom: 4 }}>{log.subject}</div>
-                          <div style={{ fontSize: 12, color: '#6b7280' }}>
-                            {new Date(log.createdAt).toLocaleString('en-IN')} · {log.recipientCount} recipient{log.recipientCount !== 1 ? 's' : ''}
-                            {log.attachmentName ? ` · 📎 ${log.attachmentName}` : ''}
-                            {log.sentBy ? ` · from ${log.sentBy}` : ''}
+                          <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 6, fontSize: '1.05rem', letterSpacing: '-0.01em' }}>{log.subject}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>{new Date(log.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                            <span style={{ color: '#cbd5e1' }}>•</span>
+                            <span>{log.recipientCount} recipient{log.recipientCount !== 1 ? 's' : ''}</span>
+                            {log.attachmentName && (
+                              <>
+                                <span style={{ color: '#cbd5e1' }}>•</span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Paperclip size={12} /> {log.attachmentName}</span>
+                              </>
+                            )}
+                            {log.sentBy && (
+                              <>
+                                <span style={{ color: '#cbd5e1' }}>•</span>
+                                <span>from {log.sentBy}</span>
+                              </>
+                            )}
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#ede9fe', color: '#5b21b6', textTransform: 'capitalize' }}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: '#f5f3ff', color: '#6d28d9', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                             {log.emailType || 'general'}
                           </span>
                           <span style={{
-                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-                            background: log.status === 'SENT' ? '#dcfce7' : '#fee2e2',
-                            color: log.status === 'SENT' ? '#166534' : '#991b1b'
+                            fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, textTransform: 'uppercase', letterSpacing: '0.02em',
+                            background: log.status === 'SENT' ? '#f0fdf4' : '#fef2f2',
+                            color: log.status === 'SENT' ? '#15803d' : '#b91c1c'
                           }}>
                             {log.status}
                           </span>
@@ -298,67 +325,72 @@ export default function EmailBlastPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (!window.confirm('Delete this email log?')) return;
-                        try {
-                          const res = await fetch(`/api/email?id=${log.id}`, { method: 'DELETE' });
-                          const deleted = await res.json();
-                          if (deleted.success) {
-                            setExpandedLog(null);
-                            loadEmailLogs();
-                          } else {
-                            alert(deleted.error || 'Failed to delete email log');
-                          }
-                        } catch (err) {
-                          alert('Failed to delete email log');
-                        }
-                      }}
-                      style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', color: '#e11d48', fontWeight: 600, fontSize: '12px' }}>
+                      onClick={() => setLogToDelete(log)}
+                      style={{ background: '#fff1f2', border: '1px solid #ffe4e6', borderRadius: 10, padding: '8px 16px', cursor: 'pointer', color: '#e11d48', fontWeight: 700, fontSize: '0.85rem', transition: 'all 0.2s', outline: 'none' }}>
                       Delete
                     </button>
                   </div>
-                  {expandedLog === log.id && (
-                    <div style={{ padding: '0 1.25rem 1.25rem', borderTop: '1px solid #f3f4f6' }}>
-                      <div style={{ marginTop: 12, marginBottom: 8, fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Message</div>
-                      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, color: '#334155', lineHeight: 1.6, background: '#f8fafc', padding: 12, borderRadius: 8 }}>
-                        {log.message}
-                      </pre>
+                  
+                  {/* Expanded Section with Smooth Styling */}
+                  <div style={{
+                    maxHeight: expandedLog === log.id ? '2000px' : '0',
+                    opacity: expandedLog === log.id ? 1 : 0,
+                    overflow: 'hidden',
+                    transition: 'all 0.3s ease-in-out',
+                    background: '#fafaf9',
+                    borderTop: expandedLog === log.id ? '1px solid #f1f5f9' : 'none'
+                  }}>
+                    <div style={{ padding: '1.5rem' }}>
+                      <div style={{ marginBottom: '1.5rem' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Message Content</div>
+                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.95rem', color: '#334155', lineHeight: 1.7, background: '#ffffff', padding: '1.25rem', borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
+                          {log.message}
+                        </pre>
+                      </div>
+
                       {log.attachmentName && (
-                        <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#334155' }}>
-                          <Paperclip size={14} />
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>
-                                {log.emailType === 'document' ? 'Document' : 'Attachment'}
-                              </div>
-                              <div>{log.attachmentName}</div>
+                        <div style={{ marginBottom: '1.5rem' }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Attached Document</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '1rem', background: '#ffffff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                            <div style={{ padding: '8px', background: '#f0f9ff', borderRadius: 8, color: '#0284c7' }}>
+                              <Paperclip size={18} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#0f172a' }}>{log.attachmentName}</div>
+                              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{log.emailType === 'document' ? 'Document Sharing' : 'General Attachment'}</div>
                             </div>
                             {log.emailType === 'document' && (
                               <button type="button" onClick={() => viewSharedDocument(log)}
-                                style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', color: '#3b82f6', fontSize: 12, fontWeight: 700 }}>
-                                View shared document
+                                style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', color: '#0f172a', fontSize: '0.85rem', fontWeight: 600 }}>
+                                View Document
                               </button>
                             )}
                           </div>
                         </div>
                       )}
-                      {log.recipientNames && (
-                        <>
-                          <div style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Recipients</div>
-                          <div style={{ fontSize: 13, color: '#475569' }}>{log.recipientNames}</div>
-                        </>
-                      )}
-                      {log.recipientEmails && (
-                        <>
-                          <div style={{ marginTop: 12, marginBottom: 6, fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Emails</div>
-                          <div style={{ fontSize: 12, color: '#64748b', wordBreak: 'break-all' }}>{log.recipientEmails}</div>
-                        </>
-                      )}
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        {log.recipientNames && (
+                          <div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Recipients ({log.recipientCount})</div>
+                            <div style={{ fontSize: '0.9rem', color: '#475569', lineHeight: 1.6, background: '#ffffff', padding: '1rem', borderRadius: 12, border: '1px solid #e2e8f0' }}>{log.recipientNames}</div>
+                          </div>
+                        )}
+                        {log.recipientEmails && (
+                          <div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Emails</div>
+                            <div style={{ fontSize: '0.9rem', color: '#475569', lineHeight: 1.6, background: '#ffffff', padding: '1rem', borderRadius: 12, border: '1px solid #e2e8f0', wordBreak: 'break-all' }}>{log.recipientEmails}</div>
+                          </div>
+                        )}
+                      </div>
+
                       {log.errorMessage && (
-                        <div style={{ marginTop: 12, fontSize: 13, color: '#dc2626' }}>Error: {log.errorMessage}</div>
+                        <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#fef2f2', borderRadius: 12, border: '1px solid #fecaca', color: '#b91c1c', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <AlertCircle size={16} /> <strong>Error:</strong> {log.errorMessage}
+                        </div>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -381,7 +413,7 @@ export default function EmailBlastPage() {
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             {EMAIL_TYPES.map(t => (
               <button key={t.value} type="button" onClick={() => setEmailType(t.value)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '2px solid ' + (emailType === t.value ? '#6366f1' : '#e2e8f0'), background: emailType === t.value ? '#ede9fe' : '#fff', color: emailType === t.value ? '#4f46e5' : '#6b7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '2px solid ' + (emailType === t.value ? 'var(--accent-color)' : '#e2e8f0'), background: emailType === t.value ? 'var(--accent-faint)' : '#fff', color: emailType === t.value ? 'var(--accent-color)' : '#6b7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>
                 {t.icon === 'file' && <FileText size={14} />}
                 {t.icon === 'calendar' && <Calendar size={14} />}
                 {t.label}
@@ -393,7 +425,7 @@ export default function EmailBlastPage() {
         {emailType === 'document' && (
           <div style={{ background: '#fafaf9', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem', marginBottom: '1.25rem' }}>
             <div style={{ fontWeight: 700, color: '#374151', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
-              <FileText size={15} color="#6366f1" /> Document Details
+              <FileText size={15} color="var(--accent-color)" /> Document Details
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
               <div>
@@ -411,7 +443,7 @@ export default function EmailBlastPage() {
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', fontWeight: 600, color: '#374151', marginBottom: 6, fontSize: '0.8rem' }}>Attach File (optional)</label>
               {!docFile ? (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.75rem 1rem', borderRadius: 8, border: '2px dashed #c7d2fe', background: '#f5f3ff', cursor: 'pointer', fontSize: '0.875rem', color: '#6366f1', fontWeight: 500 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.75rem 1rem', borderRadius: 8, border: '2px dashed var(--accent-light)', background: 'var(--accent-faint)', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--accent-color)', fontWeight: 500 }}>
                   <Paperclip size={16} />
                   Click to attach a document (PDF, DOC, DOCX, etc.)
                   <input ref={fileInputRef} type="file" onChange={handleFileChange} accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" style={{ display: 'none' }} />
@@ -441,7 +473,7 @@ export default function EmailBlastPage() {
         {emailType === 'location' && (
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem', marginBottom: '1.25rem' }}>
             <div style={{ fontWeight: 700, color: '#374151', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
-              <MapPin size={15} color="#6366f1" /> GPS Location Details
+              <MapPin size={15} color="var(--accent-color)" /> GPS Location Details
             </div>
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', fontWeight: 600, color: '#374151', marginBottom: 6, fontSize: '0.8rem' }}>Saved GPS Location *</label>
@@ -464,7 +496,7 @@ export default function EmailBlastPage() {
         {emailType === 'holiday' && (
           <div style={{ background: '#fafaf9', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem', marginBottom: '1.25rem' }}>
             <div style={{ fontWeight: 700, color: '#374151', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
-              <Calendar size={15} color="#6366f1" /> Holiday Details
+              <Calendar size={15} color="var(--accent-color)" /> Holiday Details
             </div>
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', fontWeight: 600, color: '#374151', marginBottom: 6, fontSize: '0.8rem' }}>Select Holiday *</label>
@@ -512,18 +544,18 @@ export default function EmailBlastPage() {
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', marginBottom: mode === 'select' ? '1rem' : 0 }}>
             <button type="button" onClick={() => { setMode('all'); setSelected([]); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '2px solid ' + (mode === 'all' ? '#6366f1' : '#e2e8f0'), background: mode === 'all' ? '#ede9fe' : '#fff', color: mode === 'all' ? '#4f46e5' : '#6b7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '2px solid ' + (mode === 'all' ? 'var(--accent-color)' : '#e2e8f0'), background: mode === 'all' ? 'var(--accent-faint)' : '#fff', color: mode === 'all' ? 'var(--accent-color)' : '#6b7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>
               <Users size={14} /> All Employees ({employees.length})
             </button>
             <button type="button" onClick={() => setMode('select')}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '2px solid ' + (mode === 'select' ? '#6366f1' : '#e2e8f0'), background: mode === 'select' ? '#ede9fe' : '#fff', color: mode === 'select' ? '#4f46e5' : '#6b7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '2px solid ' + (mode === 'select' ? 'var(--accent-color)' : '#e2e8f0'), background: mode === 'select' ? 'var(--accent-faint)' : '#fff', color: mode === 'select' ? 'var(--accent-color)' : '#6b7280', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>
               <User size={14} /> Select Employees
             </button>
           </div>
           {mode === 'select' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: 200, overflowY: 'auto', padding: '0.5rem 0' }}>
               {employees.map(emp => (
-                <label key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20, border: '1.5px solid ' + (selected.includes(emp.id) ? '#6366f1' : '#e2e8f0'), background: selected.includes(emp.id) ? '#ede9fe' : '#f9fafb', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500, color: selected.includes(emp.id) ? '#4f46e5' : '#374151', userSelect: 'none' }}>
+                <label key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20, border: '1.5px solid ' + (selected.includes(emp.id) ? 'var(--accent-color)' : '#e2e8f0'), background: selected.includes(emp.id) ? 'var(--accent-faint)' : '#f9fafb', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500, color: selected.includes(emp.id) ? 'var(--accent-color)' : '#374151', userSelect: 'none' }}>
                   <input type="checkbox" checked={selected.includes(emp.id)} onChange={() => toggleEmployee(emp.id)} style={{ display: 'none' }} />
                   {emp.name} <span style={{ color: '#9ca3af', fontSize: '0.72rem' }}>({emp.empId || emp.email})</span>
                 </label>
@@ -556,12 +588,202 @@ export default function EmailBlastPage() {
         )}
 
         <button type="submit" disabled={isSendDisabled()}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.75rem 2rem', background: isSendDisabled() ? '#a5b4fc' : '#6366f1', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: '0.95rem', cursor: isSendDisabled() ? 'not-allowed' : 'pointer' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.75rem 2rem', background: isSendDisabled() ? 'var(--accent-light)' : 'var(--accent-color)', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: '0.95rem', cursor: isSendDisabled() ? 'not-allowed' : 'pointer' }}>
           <Send size={16} />
           {sending ? 'Sending...' : 'Send to ' + recipientCount + ' Employee' + (recipientCount !== 1 ? 's' : '')}
         </button>
       </form>
         </>
+      )}
+
+      {logToDelete && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', padding: '1.5rem', borderRadius: 12, maxWidth: 400, width: '90%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ margin: '0 0 1rem', fontSize: '1.25rem', color: '#111827', fontWeight: 700 }}>Delete Email Log</h3>
+            <p style={{ margin: '0 0 1.5rem', color: '#4b5563', fontSize: '0.95rem' }}>Are you sure you want to delete this email log? This action cannot be undone.</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button type="button" onClick={() => setLogToDelete(null)} style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}>Cancel</button>
+              <button type="button" onClick={async () => {
+                try {
+                  const res = await fetch(`/api/email?id=${logToDelete.id}`, { method: 'DELETE' });
+                  const deleted = await res.json();
+                  if (deleted.success) {
+                    if (expandedLog === logToDelete.id) setExpandedLog(null);
+                    setLogToDelete(null);
+                    loadEmailLogs();
+                  } else {
+                    alert(deleted.error || 'Failed to delete email log');
+                    setLogToDelete(null);
+                  }
+                } catch (err) {
+                  alert('Failed to delete email log');
+                  setLogToDelete(null);
+                }
+              }} style={{ padding: '0.5rem 1rem', borderRadius: 8, border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CelebrationsTab({ employees, holidays, senderEmail, senderName }) {
+  const [sending, setSending] = useState({});
+
+  const handleQuickMail = async (data) => {
+    let finalSubject = '';
+    let finalMessage = '';
+
+    const formatOrgName = (org) => {
+      if (!org) return '';
+      let name = org.replace(/-/g, ' ');
+      name = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      if (name.toLowerCase() === 'cecube engg' || name.toLowerCase() === 'cecube engineering') {
+        return 'Cecube Engg India';
+      }
+      return name;
+    };
+
+    if (data.type === 'Birthday') {
+      finalSubject = `Happy Birthday, ${data.name}! 🎂`;
+      finalMessage = `Dear ${data.name},\n\nWishing you a very Happy Birthday! Have a wonderful year ahead.\n\nBest regards,\n${data.organisation ? formatOrgName(data.organisation) + '\n' : ''}Cecube Group`;
+    } else if (data.type === 'Marriage Anniversary') {
+      finalSubject = `Happy Marriage Anniversary, ${data.name}! 🎉`;
+      finalMessage = `Dear ${data.name},\n\nWishing you a very Happy Marriage Anniversary! Have a great day.\n\nBest regards,\n${data.organisation ? formatOrgName(data.organisation) + '\n' : ''}Cecube Group`;
+    } else if (data.type === 'Work Anniversary') {
+      finalSubject = `Happy ${data.years} Year Work Anniversary, ${data.name}! 🎊`;
+      finalMessage = `Dear ${data.name},\n\nCongratulations on completing ${data.years} year${data.years > 1 ? 's' : ''} with us! Thank you for your continued dedication.\n\nBest regards,\n${data.organisation ? formatOrgName(data.organisation) + '\n' : ''}Cecube Group`;
+    } else if (data.type === 'Holiday') {
+      finalSubject = `Happy ${data.name}! 🌟`;
+      finalMessage = `Dear Team,\n\nWishing you all a very Happy ${data.name}!\n\nBest regards,\nCecube Group`;
+    }
+
+    setSending(prev => ({ ...prev, [data.id]: true }));
+    try {
+      const body = {
+        subject: finalSubject,
+        message: finalMessage,
+        emailType: 'general',
+        senderEmail,
+        senderName: 'Cecube Group',
+        ...(data.type !== 'Holiday' ? { recipientIds: [data.id] } : {})
+      };
+      
+      try {
+        const admin = JSON.parse(sessionStorage.getItem('adminData') || '{}');
+        if (admin.email) body.sentBy = admin.email;
+      } catch { /* ignore */ }
+
+      const res = await fetch('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const resData = await res.json();
+      if (resData.success) {
+        alert(`Email sent successfully to ${data.name}!`);
+      } else {
+        alert(resData.error || 'Failed to send email');
+      }
+    } catch (err) {
+      alert('Network error. Please try again.');
+    } finally {
+      setSending(prev => ({ ...prev, [data.id]: false }));
+    }
+  };
+
+  const getTodayCelebrations = () => {
+    const today = new Date();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const suffix = `-${mm}-${dd}`; // Matches YYYY-MM-DD endings
+
+    const cels = [];
+    
+    // Holidays
+    holidays.forEach(h => {
+      if (h.date && h.date.endsWith(suffix)) {
+        cels.push({ type: 'Holiday', text: `Today is ${h.name}`, icon: 'calendar', emailData: { id: 'holiday_' + h.id, type: 'Holiday', name: h.name } });
+      }
+    });
+
+    // Employees
+    employees.forEach(emp => {
+      if (emp.dateOfBirth && emp.dateOfBirth.endsWith(suffix)) {
+        cels.push({ type: 'Birthday', text: `Today is ${emp.name}'s Birthday!`, icon: 'gift', emailData: { id: emp.id, type: 'Birthday', name: emp.name, organisation: emp.organisation } });
+      }
+      if (emp.marriageAnniversary && emp.marriageAnniversary.endsWith(suffix)) {
+        cels.push({ type: 'Marriage Anniversary', text: `Today is ${emp.name}'s Marriage Anniversary!`, icon: 'heart', emailData: { id: emp.id, type: 'Marriage Anniversary', name: emp.name, organisation: emp.organisation } });
+      }
+      if (emp.joinedDate && emp.joinedDate.endsWith(suffix)) {
+        const joinYear = parseInt(emp.joinedDate.substring(0, 4), 10);
+        const years = today.getFullYear() - joinYear;
+        if (years > 0) {
+          cels.push({ type: 'Work Anniversary', text: `Today is ${emp.name}'s ${years}-Year Work Anniversary!`, icon: 'briefcase', emailData: { id: emp.id, type: 'Work Anniversary', name: emp.name, years, organisation: emp.organisation } });
+        }
+      }
+    });
+
+    return cels;
+  };
+
+  const celebrations = getTodayCelebrations();
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#111827' }}>Today's Celebrations</h2>
+          <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: '0.9rem' }}>
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+      </div>
+
+      {celebrations.length === 0 ? (
+        <div style={{ padding: '3rem', textAlign: 'center', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 }}>
+          <Gift size={48} color="#e5e7eb" style={{ marginBottom: '1rem' }} />
+          <h3 style={{ margin: '0 0 0.5rem', color: '#374151', fontSize: '1.1rem' }}>No Celebrations Today</h3>
+          <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>There are no birthdays, anniversaries, or holidays today.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+          {celebrations.map((cel, idx) => (
+            <div key={idx} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <div style={{ 
+                width: 48, height: 48, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: cel.type === 'Birthday' ? '#fef3c7' : cel.type === 'Marriage Anniversary' ? '#fce7f3' : cel.type === 'Work Anniversary' ? '#e0e7ff' : '#dcfce7',
+                color: cel.type === 'Birthday' ? '#d97706' : cel.type === 'Marriage Anniversary' ? '#be185d' : cel.type === 'Work Anniversary' ? '#4338ca' : '#15803d'
+              }}>
+                {cel.icon === 'gift' && <Gift size={24} />}
+                {cel.icon === 'heart' && <Heart size={24} />}
+                {cel.icon === 'briefcase' && <Briefcase size={24} />}
+                {cel.icon === 'calendar' && <Calendar size={24} />}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                  {cel.type}
+                </div>
+                <div style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a' }}>
+                  {cel.text}
+                </div>
+              </div>
+              {cel.emailData && (
+                <button 
+                  onClick={() => handleQuickMail(cel.emailData)}
+                  title="Send wishes via Email"
+                  disabled={sending[cel.emailData.id]}
+                  style={{ background: 'var(--accent-faint)', color: 'var(--accent-color)', border: 'none', padding: '10px', borderRadius: '50%', cursor: sending[cel.emailData.id] ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', opacity: sending[cel.emailData.id] ? 0.5 : 1 }}
+                  onMouseEnter={e => !sending[cel.emailData.id] && (e.currentTarget.style.background = 'var(--accent-light)')}
+                  onMouseLeave={e => !sending[cel.emailData.id] && (e.currentTarget.style.background = 'var(--accent-faint)')}
+                >
+                  {sending[cel.emailData.id] ? <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Mail size={18} />}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Info, Download, Search, Calendar, Users, ArrowLeft, Clock, CheckCircle, XCircle, MapPin } from 'lucide-react';
@@ -71,18 +71,25 @@ export default function TeamAttendanceRecords() {
     setDetailFiltered([]);
     setPunchLocations({});
     try {
-      const [statsRes, punchRes] = await Promise.all([
+      const [statsRes, punchRes, holidayRes] = await Promise.all([
         fetch(`/api/attendance/stats?employeeId=${emp.id}`),
-        fetch(`/api/requests?employeeId=${emp.id}&startDate=${startDate}&endDate=${endDate}`)
+        fetch(`/api/requests?employeeId=${emp.id}&startDate=${startDate}&endDate=${endDate}`),
+        fetch(`/api/leaves/holidays`)
       ]);
       const stats = await statsRes.json();
       const punches = await punchRes.json();
+      const holidays = await holidayRes.json();
 
-      // Build date -> location map from approved IN punches with coordinates
+      const holMap = {};
+      if (Array.isArray(holidays)) {
+        holidays.forEach(h => { holMap[h.date] = h.name; });
+      }
+
+      // Build date -> location map from approved IN punches and REGULARIZE with coordinates
       const locMap = {};
       if (Array.isArray(punches)) {
         punches.forEach(p => {
-          if (p.type === 'IN' && p.status === 'APPROVED' && p.latitude && p.longitude) {
+          if ((p.type === 'IN' || p.type === 'REGULARIZE') && p.status === 'APPROVED' && p.latitude && p.longitude) {
             locMap[p.date] = { lat: p.latitude, lng: p.longitude };
           }
         });
@@ -97,12 +104,28 @@ export default function TeamAttendanceRecords() {
       const allRecs = [];
       const start = new Date(startDate);
       const end = new Date(endDate);
+      const todayStr = new Date().toISOString().split('T')[0];
+      
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
         const dayName = d.toLocaleDateString('en-IN', { weekday: 'short' });
         const rec = dbMap[dateStr];
         let timeIn = '-', timeOut = '-', workedHours = '-';
-        let attStatus = rec ? rec.status : 'Absent';
+        
+        let attStatus = 'Absent';
+        if (rec) {
+          attStatus = rec.status;
+          if ((attStatus === 'Present' || attStatus === 'Late' || attStatus === 'PRESENT') && (holMap[dateStr] || dayName === 'Sun')) {
+            attStatus = 'COff';
+          }
+        } else if (holMap[dateStr]) {
+          attStatus = 'Holiday';
+        } else if (dayName === 'Sun') {
+          attStatus = 'Week Off';
+        } else if (dateStr > todayStr) {
+          attStatus = '-';
+        }
+
         let shiftType = rec ? (rec.shiftType || 'Day') : '-';
         if (rec && rec.timeSlots && rec.timeSlots.length > 0) {
           const slots = rec.timeSlots;
@@ -139,13 +162,16 @@ export default function TeamAttendanceRecords() {
 
   const handleDetailView = () => { if (selectedEmployee) openEmployeeDetail(selectedEmployee); };
 
-  const getStatusBadge = (status) => {
+  const renderStatus = (status) => {
     const s = (status || '').toLowerCase();
-    if (s === 'present') return 'badge-success';
-    if (s === 'late') return 'badge-warning';
-    if (s === 'absent') return 'badge-danger';
-    if (s === 'not marked') return 'badge-secondary';
-    return 'badge-secondary';
+    if (s === 'present') return <span className="badge badge-success">{status}</span>;
+    if (s === 'late') return <span className="badge badge-warning">{status}</span>;
+    if (s === 'absent') return <span className="badge badge-danger">{status}</span>;
+    if (s === 'coff') return <span style={{ padding: '4px 10px', borderRadius: '8px', background: '#166534', color: 'white', fontSize: '11px', fontWeight: 700 }}>{status}</span>;
+    if (s === 'holiday') return <span style={{ padding: '4px 10px', borderRadius: '8px', background: '#fef3c7', color: '#d97706', fontSize: '11px', fontWeight: 700 }}>{status}</span>;
+    if (s === 'week off') return <span style={{ padding: '4px 10px', borderRadius: '8px', background: '#f3f4f6', color: '#4b5563', fontSize: '11px', fontWeight: 700 }}>{status}</span>;
+    if (s === '-') return <span style={{ color: '#9ca3af' }}>-</span>;
+    return <span className="badge badge-secondary">{status}</span>;
   };
 
   const getStatusDot = (status) => {
@@ -181,7 +207,7 @@ export default function TeamAttendanceRecords() {
   if (selectedEmployee) {
     return (
       <div className="pageContainer">
-        <button className="backLink" onClick={() => setSelectedEmployee(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: '#6366f1', fontWeight: 600, marginBottom: 8 }}>
+        <button className="backLink" onClick={() => setSelectedEmployee(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: '#0ea5e9', fontWeight: 600, marginBottom: 8 }}>
           <ArrowLeft size={16} /> Back to Team
         </button>
         <Link href="/dashboard" className="backLink"><ChevronLeft size={16} /> Back to Dashboard</Link>
@@ -192,10 +218,19 @@ export default function TeamAttendanceRecords() {
         </div>
 
         {/* Employee Info Banner */}
-        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1.2rem 1.5rem', marginBottom: '1rem', background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', color: '#fff' }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 700 }}>
-            {selectedEmployee.name?.charAt(0).toUpperCase()}
-          </div>
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1.2rem 1.5rem', marginBottom: '1rem', background: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)', color: '#fff' }}>
+          {selectedEmployee.photoUrl ? (
+            <>
+              <img src={selectedEmployee.photoUrl} alt="avatar" style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.5)' }} onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }} />
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'none', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 700 }}>
+                {selectedEmployee.name?.charAt(0).toUpperCase()}
+              </div>
+            </>
+          ) : (
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 700 }}>
+              {selectedEmployee.name?.charAt(0).toUpperCase()}
+            </div>
+          )}
           <div>
             <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{selectedEmployee.name}</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>{selectedEmployee.empId || selectedEmployee.id} &nbsp;|&nbsp; {selectedEmployee.department} &nbsp;|&nbsp; {selectedEmployee.designation || 'Employee'}</div>
@@ -230,7 +265,7 @@ export default function TeamAttendanceRecords() {
 
         {/* Summary */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-          {[{label:'PRESENT',value:presentCount,color:'#22c55e'},{label:'LATE',value:lateCount,color:'#f59e0b'},{label:'ABSENT',value:absentCount,color:'#ef4444'},{label:'TOTAL DAYS',value:detailFiltered.length,color:'#6366f1'}].map(({label,value,color}) => (
+          {[{label:'PRESENT',value:presentCount,color:'#22c55e'},{label:'LATE',value:lateCount,color:'#f59e0b'},{label:'ABSENT',value:absentCount,color:'#ef4444'},{label:'TOTAL DAYS',value:detailFiltered.length,color:'#0ea5e9'}].map(({label,value,color}) => (
             <div key={label} className="card" style={{flex:1,textAlign:'center',padding:'1rem'}}>
               <div style={{fontSize:'1.8rem',fontWeight:700,color}}>{value}</div>
               <div style={{fontSize:'0.75rem',color:'#6b7280',marginTop:2}}>{label}</div>
@@ -269,15 +304,52 @@ export default function TeamAttendanceRecords() {
                 ) : detailFiltered.length === 0 ? (
                   <tr><td colSpan="9" style={{textAlign:'center',padding:'2rem'}}>No records found</td></tr>
                 ) : detailFiltered.map((r,i) => (
-                  <tr key={i}>
+                  <tr key={i} style={r.dayName === 'Sun' ? { backgroundColor: '#fee2e2' } : {}}>
                     <td>{r.date}</td>
-                    <td style={{color:'#6b7280'}}>{r.dayName}</td>
+                    <td style={{color: r.dayName === 'Sun' ? '#dc2626' : '#6b7280', fontWeight: r.dayName === 'Sun' ? 600 : 'normal'}}>{r.dayName}</td>
                     <td>{selectedEmployee.empId || '-'}</td>
                     <td style={{color:r.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{r.timeIn}</td>
                     <td style={{color:r.timeOut!=='-'?'#ef4444':'#9ca3af'}}>{r.timeOut}</td>
                     <td style={{fontWeight:600}}>{r.workedHours}</td>
-                    <td>{r.shiftType}</td>
-                    <td><span className={`badge ${getStatusBadge(r.attStatus)}`}>{r.attStatus}</span></td>
+                    <td>
+                      {(() => {
+                        const isNightTime = (t) => t ? (t > '19:00' || t <= '08:00') : false;
+                        let hasDay = false;
+                        let hasNight = false;
+                        // For team-records and my-records, r.timeSlots might be a string or undefined
+                        let slots = [];
+                        try {
+                          if (r.timeSlots) {
+                            slots = typeof r.timeSlots === 'string' ? JSON.parse(r.timeSlots) : r.timeSlots;
+                          }
+                        } catch(e) {}
+
+                        if (slots && slots.length > 0) {
+                          slots.forEach(s => {
+                            if (isNightTime(s.in)) hasNight = true;
+                            else hasDay = true;
+                          });
+                        } else {
+                          if (r.shiftType === 'Night') hasNight = true;
+                          else if (r.shiftType === 'Day') hasDay = true;
+                        }
+
+                        if (hasDay && hasNight) {
+                          return (
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600, fontSize: '0.85rem' }}>Day</span>
+                              <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#f3e8ff', color: '#6b21a8', fontWeight: 600, fontSize: '0.85rem' }}>Night</span>
+                            </div>
+                          );
+                        } else if (hasNight) {
+                          return <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#f3e8ff', color: '#6b21a8', fontWeight: 600, fontSize: '0.85rem' }}>Night</span>;
+                        } else if (hasDay) {
+                          return <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600, fontSize: '0.85rem' }}>Day</span>;
+                        }
+                        return <span style={{ color: '#9ca3af' }}>{r.shiftType || '-'}</span>;
+                      })()}
+                    </td>
+                    <td>{renderStatus(r.attStatus)}</td>
                     <td>
                       {punchLocations[r.date] ? (
                         <a
@@ -285,7 +357,7 @@ export default function TeamAttendanceRecords() {
                           target="_blank"
                           rel="noopener noreferrer"
                           title={`${punchLocations[r.date].lat.toFixed(5)}, ${punchLocations[r.date].lng.toFixed(5)}`}
-                          style={{display:'inline-flex',alignItems:'center',gap:4,color:'#6366f1',fontWeight:600,fontSize:'0.8rem',textDecoration:'none'}}
+                          style={{display:'inline-flex',alignItems:'center',gap:4,color:'#0ea5e9',fontWeight:600,fontSize:'0.8rem',textDecoration:'none'}}
                         >
                           <MapPin size={13}/> View
                         </a>
@@ -351,9 +423,18 @@ export default function TeamAttendanceRecords() {
                   <tr key={i} style={{cursor:'pointer'}} onClick={() => openEmployeeDetail(emp)}>
                     <td>
                       <div style={{display:'flex',alignItems:'center',gap:10}}>
-                        <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:'0.9rem',flexShrink:0}}>
-                          {emp.name?.charAt(0).toUpperCase()}
-                        </div>
+                        {emp.photoUrl ? (
+                          <>
+                            <img src={emp.photoUrl} alt="avatar" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }} />
+                            <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#0ea5e9,#38bdf8)',display:'none',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:'0.9rem',flexShrink:0}}>
+                              {emp.name?.charAt(0).toUpperCase()}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#0ea5e9,#38bdf8)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:'0.9rem',flexShrink:0}}>
+                            {emp.name?.charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <div>
                           <div style={{fontWeight:600,color:'#111827'}}>{emp.name}</div>
                           <div style={{fontSize:'0.75rem',color:'#9ca3af'}}>{emp.email}</div>
@@ -366,7 +447,7 @@ export default function TeamAttendanceRecords() {
                     <td>
                       <div style={{display:'flex',alignItems:'center',gap:6}}>
                         <div style={{width:8,height:8,borderRadius:'50%',background:getStatusDot(stat.status)}}></div>
-                        <span className={`badge ${getStatusBadge(stat.status)}`}>{stat.status}</span>
+                        {renderStatus(stat.status)}
                       </div>
                     </td>
                     <td style={{color:stat.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{stat.timeIn}</td>

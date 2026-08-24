@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, Car } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Dialog from '../../../components/Dialog';
 
 export default function VehiclesPage() {
   const [vehicles, setVehicles] = useState([]);
@@ -13,6 +14,7 @@ export default function VehiclesPage() {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ id: null, employeeId: '', isCompanyVehicle: false, makeModel: '', plateNumber: '', vehicleType: 'Two Wheeler', ratePerKm: 0, isActive: true });
+  const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: null });
 
   const router = useRouter();
 
@@ -29,10 +31,12 @@ export default function VehiclesPage() {
       ]);
       const vehData = await vehRes.json();
       const empData = await empRes.json();
-      setVehicles(vehData);
-      setEmployees(empData);
+      setVehicles(Array.isArray(vehData) ? vehData : []);
+      setEmployees(Array.isArray(empData) ? empData : []);
     } catch (e) {
       console.error(e);
+      setVehicles([]);
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
@@ -52,7 +56,12 @@ export default function VehiclesPage() {
       
       if (!res.ok) {
         const errorData = await res.json();
-        alert(errorData.error || 'Failed to save vehicle');
+        setDialogConfig({
+          isOpen: true,
+          type: 'alert',
+          title: 'Error',
+          message: errorData.error || 'Failed to save vehicle'
+        });
         return;
       }
       
@@ -60,18 +69,31 @@ export default function VehiclesPage() {
       fetchData();
     } catch (error) {
       console.error(error);
-      alert('Error saving vehicle');
+      setDialogConfig({
+        isOpen: true,
+        type: 'alert',
+        title: 'Error',
+        message: 'Error saving vehicle'
+      });
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this vehicle?')) return;
-    try {
-      const res = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchData();
-    } catch (e) {
-      console.error(e);
-    }
+    setDialogConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'Delete Vehicle',
+      message: 'Are you sure you want to delete this vehicle?',
+      onConfirm: async () => {
+        setDialogConfig(prev => ({ ...prev, isOpen: false }));
+        try {
+          const res = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
+          if (res.ok) fetchData();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    });
   };
 
   const openModal = (veh = null) => {
@@ -83,17 +105,20 @@ export default function VehiclesPage() {
     setIsModalOpen(true);
   };
 
-  const filteredVehicles = vehicles.filter(v => {
-    const matchesSearch = v.plateNumber.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          v.makeModel.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (v.employee?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
-    
-    if (activeTab === 'company') {
-      return v.isCompanyVehicle && matchesSearch;
-    } else {
-      return !v.isCompanyVehicle && matchesSearch;
-    }
-  });
+  const filteredVehicles = Array.isArray(vehicles)
+    ? vehicles.filter(v => {
+        const plateNumber = (v?.plateNumber || '').toLowerCase();
+        const makeModel = (v?.makeModel || '').toLowerCase();
+        const employeeName = (v?.employee?.name || '').toLowerCase();
+        const query = searchQuery.toLowerCase();
+        const matchesSearch = plateNumber.includes(query) || makeModel.includes(query) || employeeName.includes(query);
+
+        if (activeTab === 'company') {
+          return v?.isCompanyVehicle && matchesSearch;
+        }
+        return !v?.isCompanyVehicle && matchesSearch;
+      })
+    : [];
 
   if (loading) return <div style={{ padding: '2rem' }}>Loading...</div>;
 
@@ -266,6 +291,15 @@ export default function VehiclesPage() {
           </div>
         </div>
       )}
+
+      <Dialog 
+        isOpen={dialogConfig.isOpen}
+        type={dialogConfig.type}
+        title={dialogConfig.title}
+        message={dialogConfig.message}
+        onConfirm={dialogConfig.onConfirm}
+        onCancel={() => setDialogConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

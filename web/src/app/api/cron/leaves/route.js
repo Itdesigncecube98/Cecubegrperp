@@ -20,9 +20,9 @@ export async function GET(request) {
       });
 
       if (currentBalance) {
-        // Option A: Treat negative as 0, then add new leaves
-        const newCL = Math.max(0, currentBalance.casualLeaves) + 1;
-        const newEL = Math.max(0, currentBalance.earnedLeaves) + 2;
+        // Refreshes every month, no carry forward
+        const newCL = 1;
+        const newEL = 2;
 
         await prisma.leaveBalance.update({
           where: { employeeId: emp.id },

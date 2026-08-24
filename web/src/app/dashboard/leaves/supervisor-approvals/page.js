@@ -98,6 +98,7 @@ export default function SupervisorApprovalsPage() {
               <th>Duration</th>
               <th>Reason</th>
               <th>Applied On</th>
+              <th>Actual Attendance</th>
               <th>Status</th>
               <th>Action</th>
             </tr>
@@ -110,6 +111,9 @@ export default function SupervisorApprovalsPage() {
                 <td>{req.startDate} to {req.endDate}</td>
                 <td>{req.reason}</td>
                 <td>{new Date(req.appliedOn).toLocaleDateString()}</td>
+                <td style={{ fontWeight: 600, color: req.actualAttendance === 'Present' ? '#16a34a' : '#6b7280' }}>
+                  {req.actualAttendance === 'Present' ? 'Present' : 'Absent'}
+                </td>
                 <td>{getStatusBadge(req.status)}</td>
                 <td>
                   {(req.status === 'PENDING_SUPERVISOR' && userRole === 'SUPERVISOR') || 
@@ -126,7 +130,7 @@ export default function SupervisorApprovalsPage() {
             ))}
             {requests.length === 0 && (
               <tr>
-                <td colSpan="7" className="text-center">No leave requests pending your approval.</td>
+                <td colSpan="8" className="text-center">No leave requests pending your approval.</td>
               </tr>
             )}
           </tbody>

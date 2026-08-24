@@ -70,6 +70,70 @@ const reportsData = [
     tags: ['custom'],
     category: 'custom',
     link: '/dashboard/reports/first-last-punch'
+  },
+  {
+    id: 10,
+    title: 'Trip & Mileage Report',
+    desc: 'Detailed report of all employee trips, including distance, duration, and route taken.',
+    tags: ['journey', 'vehicle'],
+    category: 'journey',
+    link: '/dashboard/vehicles/trips'
+  },
+  {
+    id: 11,
+    title: 'Trip Day-Wise Muster Report',
+    desc: 'Employee-wise and day-wise matrix report showing trip statuses and total amounts.',
+    tags: ['journey', 'vehicle', 'muster'],
+    category: 'journey',
+    link: '/dashboard/reports/trip-muster'
+  },
+  {
+    id: 12,
+    title: 'Team Night Punches (Employee-Wise)',
+    desc: 'Report showing all night punches grouped by employee.',
+    tags: ['punch', 'attendance'],
+    category: 'attendance',
+    link: '/dashboard/reports/team-night-punches-employee-wise'
+  },
+  {
+    id: 13,
+    title: 'Team Night Punches (Day-Wise)',
+    desc: 'Report showing all night punches grouped by date.',
+    tags: ['punch', 'attendance'],
+    category: 'attendance',
+    link: '/dashboard/reports/team-night-punches-day-wise'
+  },
+  {
+    id: 14,
+    title: 'Employee Overtime Report',
+    desc: 'Detailed report of all overtime assigned to a specific employee.',
+    tags: ['overtime'],
+    category: 'overtime',
+    link: '/dashboard/reports/employee-overtime'
+  },
+  {
+    id: 15,
+    title: 'Monthly Overtime Report',
+    desc: 'Aggregated summary of overtime hours for all employees in a specific month.',
+    tags: ['overtime'],
+    category: 'overtime',
+    link: '/dashboard/reports/monthly-overtime'
+  },
+  {
+    id: 16,
+    title: 'Team COff Report',
+    desc: 'Report showing Compensatory Off (COff) balance and taken for all employees.',
+    tags: ['coff', 'leave'],
+    category: 'coff',
+    link: '/dashboard/reports/team-coff'
+  },
+  {
+    id: 17,
+    title: 'Individual COff Report',
+    desc: 'Detailed COff requests history for individual employees.',
+    tags: ['coff', 'leave'],
+    category: 'coff',
+    link: '/dashboard/reports/individual-coff'
   }
 ];
 
@@ -128,7 +192,27 @@ export default function ReportsPage() {
             onClick={() => setActiveCategory('journey')}
           >
             <div className="sidebarIconText">
-              <MapPin size={16} /> Journey Reports
+              <MapPin size={16} /> Journey & Vehicle
+            </div>
+            <ChevronRight size={16} color="#9ca3af" />
+          </button>
+
+          <button 
+            className={`reportsSidebarItem ${activeCategory === 'overtime' ? 'active' : ''}`}
+            onClick={() => setActiveCategory('overtime')}
+          >
+            <div className="sidebarIconText">
+              <Clock size={16} /> Overtime
+            </div>
+            <ChevronRight size={16} color="#9ca3af" />
+          </button>
+          
+          <button 
+            className={`reportsSidebarItem ${activeCategory === 'coff' ? 'active' : ''}`}
+            onClick={() => setActiveCategory('coff')}
+          >
+            <div className="sidebarIconText">
+              <CheckCircle2 size={16} /> COff Reports
             </div>
             <ChevronRight size={16} color="#9ca3af" />
           </button>

@@ -12,14 +12,10 @@ export async function GET(request) {
     const where = {};
     
     if (role === 'SUPERVISOR' && userId) {
-      // Supervisor sees PENDING_SUPERVISOR requests from their team
       where.employee = { supervisorId: userId };
-      where.status = 'PENDING_SUPERVISOR';
     } else if (role === 'ADMIN' && userId) {
-      // Admin sees ALL pending requests (both PENDING_SUPERVISOR and PENDING_ADMIN)
       where.status = { in: ['PENDING_SUPERVISOR', 'PENDING_ADMIN'] };
     } else if (supervisorId) {
-      // Backward compatibility
       where.employee = { supervisorId: supervisorId };
     }
     
@@ -35,7 +31,26 @@ export async function GET(request) {
       orderBy: { appliedOn: 'desc' }
     });
 
-    return NextResponse.json(requests);
+    const enrichedRequests = await Promise.all(requests.map(async (req) => {
+      const attendances = await prisma.attendance.findMany({
+        where: {
+          employeeId: req.employeeId,
+          date: {
+            gte: req.startDate,
+            lte: req.endDate
+          }
+        }
+      });
+      
+      const wasPresent = attendances.some(a => a.status === 'Present' || a.status === 'Late');
+      
+      return {
+        ...req,
+        actualAttendance: wasPresent ? 'Present' : 'Absent / No Punch'
+      };
+    }));
+
+    return NextResponse.json(enrichedRequests);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -137,29 +152,13 @@ export async function PUT(request) {
 
         if (leaveType === 'Casual') {
           balanceUpdateData.casualLeaves = balance.casualLeaves - diffDays;
-          if (balanceUpdateData.casualLeaves < 0) {
-            currentLwp += Math.abs(balanceUpdateData.casualLeaves);
-            balanceUpdateData.casualLeaves = 0;
-            balanceUpdateData.leaveWithoutPay = currentLwp;
-          }
         } else if (leaveType === 'Leave Without Pay' || leaveType === 'Sick' || leaveType === 'Unpaid') {
           currentLwp += diffDays;
           balanceUpdateData.leaveWithoutPay = currentLwp;
         } else if (leaveType === 'Earned' || leaveType === 'Paid leave') {
           balanceUpdateData.earnedLeaves = balance.earnedLeaves - diffDays;
-          if (balanceUpdateData.earnedLeaves < 0) {
-            currentLwp += Math.abs(balanceUpdateData.earnedLeaves);
-            balanceUpdateData.earnedLeaves = 0;
-            balanceUpdateData.leaveWithoutPay = currentLwp;
-          }
         } else if (leaveType === 'COFF') {
-          // For COFF, deduct from compensatory leaves
           balanceUpdateData.compensatoryLeaves = balance.compensatoryLeaves - diffDays;
-          if (balanceUpdateData.compensatoryLeaves < 0) {
-            currentLwp += Math.abs(balanceUpdateData.compensatoryLeaves);
-            balanceUpdateData.compensatoryLeaves = 0;
-            balanceUpdateData.leaveWithoutPay = currentLwp;
-          }
         }
         
         await prisma.leaveBalance.update({

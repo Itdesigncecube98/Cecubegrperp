@@ -1,19 +1,15 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { prisma } from '../../../lib/prisma';
+import fs from 'fs';
+import path from 'path';
 
 const smtpUser = process.env.SMTP_EMAIL || '';
 const smtpPassword = process.env.SMTP_PASSWORD || '';
 const defaultFromEmail = process.env.SMTP_FROM_EMAIL || smtpUser || 'hr@cecubeindia.com';
 const defaultFromName = process.env.SMTP_FROM_NAME || 'Cecube HR';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: smtpUser,
-    pass: smtpPassword
-  }
-});
+
 
 export async function GET() {
   try {
@@ -36,8 +32,20 @@ export async function DELETE(request) {
       return NextResponse.json({ error: 'Missing email log ID' }, { status: 400 });
     }
 
-    await prisma.emailLog.delete({ where: { id: parseInt(id) } });
-    return NextResponse.json({ success: true });
+    const numericId = parseInt(id, 10);
+    if (isNaN(numericId)) {
+      return NextResponse.json({ error: 'Invalid email log ID format' }, { status: 400 });
+    }
+
+    try {
+      await prisma.emailLog.delete({ where: { id: numericId } });
+      return NextResponse.json({ success: true });
+    } catch (dbError) {
+      if (dbError.code === 'P2025') {
+        return NextResponse.json({ error: 'Email log not found (already deleted?)' }, { status: 404 });
+      }
+      throw dbError;
+    }
   } catch (error) {
     console.error('Email delete error:', error);
     return NextResponse.json({ error: error.message || 'Failed to delete email log' }, { status: 500 });
@@ -71,6 +79,25 @@ export async function POST(request) {
     const fromEmail = preferredEmail === 'support@cecubeindia.com' ? fallbackEmail : (preferredEmail || fallbackEmail);
     const fromName = senderName || defaultFromName;
 
+    // Dynamically pick the right credentials
+    let authUser = smtpUser;
+    let authPass = smtpPassword;
+    if (fromEmail === 'hr@cecubeindia.com') {
+      authUser = process.env.SMTP_EMAIL_HR || 'hr@cecubeindia.com';
+      authPass = process.env.SMTP_PASSWORD_HR || process.env.SMTP_PASSWORD || '';
+    } else if (fromEmail === 'contact@cecubeindia.com') {
+      authUser = process.env.SMTP_EMAIL_CONTACT || 'contact@cecubeindia.com';
+      authPass = process.env.SMTP_PASSWORD_CONTACT || process.env.SMTP_PASSWORD || '';
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: authUser,
+        pass: authPass
+      }
+    });
+
     const mailOptions = {
       from: `"${fromName}" <${fromEmail}>`,
       replyTo: fromEmail,
@@ -78,9 +105,9 @@ export async function POST(request) {
       subject,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-          <div style="background: #6366f1; padding: 24px 30px; text-align: center;">
+          <div style="background: #0284c7; padding: 24px 30px; text-align: center;">
             <div style="display: inline-block; background: #ffffff; border-radius: 10px; padding: 10px 20px;">
-              <img src="https://www.cecubeindia.com/images/logo.png" alt="Cecube Engineering India" style="max-height: 48px; max-width: 200px; display: block;" />
+              <img src="cid:cecubelogo" alt="Cecube Engineering India" style="max-height: 48px; max-width: 200px; display: block;" />
             </div>
           </div>
           <div style="padding: 30px; background: #ffffff; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px;">
@@ -92,12 +119,31 @@ export async function POST(request) {
       `
     };
 
+    const attachments = [];
+    
+    const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+    try {
+      if (fs.existsSync(logoPath)) {
+        attachments.push({
+          filename: 'logo.png',
+          path: logoPath,
+          cid: 'cecubelogo'
+        });
+      }
+    } catch (e) {
+      console.error('Error attaching logo:', e);
+    }
+
     if (attachment && attachment.data && attachment.filename) {
-      mailOptions.attachments = [{
+      attachments.push({
         filename: attachment.filename,
         content: Buffer.from(attachment.data, 'base64'),
         contentType: attachment.contentType || 'application/octet-stream'
-      }];
+      });
+    }
+
+    if (attachments.length > 0) {
+      mailOptions.attachments = attachments;
     }
 
     try {

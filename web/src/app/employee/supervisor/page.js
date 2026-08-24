@@ -1,8 +1,8 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getPunchRequests, updatePunchRequestStatus } from '../../../lib/data';
-import { Check, X, Clock, ArrowLeft, CalendarCheck, Map as MapIcon, RefreshCw } from 'lucide-react';
+import { getPunchRequests, updatePunchRequestStatus, getImprestApprovals, updateImprestRequest } from '../../../lib/data';
+import { Check, X, Clock, ArrowLeft, CalendarCheck, Map as MapIcon, RefreshCw, IndianRupee } from 'lucide-react';
 import { useAutoRefresh, formatRefreshTime } from '../../../lib/useAutoRefresh';
 import './supervisor.css';
 
@@ -11,6 +11,8 @@ export default function SupervisorDashboard() {
   const [employee, setEmployee] = useState(null);
   const [requests, setRequests] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [imprestRequests, setImprestRequests] = useState([]);
+  const [docRequests, setDocRequests] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [leaveLoading, setLeaveLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -25,6 +27,26 @@ export default function SupervisorDashboard() {
     if (!employee?.id) return;
     const data = await getPunchRequests(employee.id);
     setRequests(Array.isArray(data) ? data : []);
+    
+    // Also load imprest requests for this approver
+    try {
+      const imprestData = await getImprestApprovals(employee.id);
+      setImprestRequests(Array.isArray(imprestData) ? imprestData : []);
+    } catch (err) {
+      console.error('Failed to load imprest requests', err);
+    }
+
+    try {
+      // Load Doc Requests from localStorage
+      const empRes = await fetch('/api/employees');
+      const allEmps = await empRes.json();
+      const subordinateIds = allEmps.filter(e => e.supervisorId === employee.id).map(e => e.id);
+      
+      const savedSubs = JSON.parse(localStorage.getItem('docGenerator_submissions') || '[]');
+      setDocRequests(savedSubs.filter(sub => subordinateIds.includes(sub.employeeId)));
+    } catch (err) {
+      console.error('Failed to load doc requests', err);
+    }
   }, [employee?.id]);
 
   const loadLeaveRequests = useCallback(async () => {
@@ -103,7 +125,42 @@ export default function SupervisorDashboard() {
     }
   };
 
+  const handleImprestAction = async (id, currentStatus, action) => {
+    try {
+      const targetStatus = action === 'APPROVE' ? undefined : action; // undefined lets the backend determine the next step
+      await updateImprestRequest(id, 'approve', { currentStatus, status: targetStatus, approverId: employee.id, remarks: '' });
+      showToast(`Imprest request ${action.toLowerCase()} successfully!`);
+      loadRequests();
+    } catch (e) {
+      console.error('Failed to update imprest', e);
+      showToast('Failed to update imprest request', 'error');
+    }
+  };
+
+  const handleDocAction = (id, action) => {
+    try {
+      const allSubs = JSON.parse(localStorage.getItem('docGenerator_submissions') || '[]');
+      const updated = allSubs.map(s => {
+        if (s.id === id) {
+          return { ...s, status: action === 'APPROVE' ? 'PENDING_HR' : 'REJECTED' };
+        }
+        return s;
+      });
+      localStorage.setItem('docGenerator_submissions', JSON.stringify(updated));
+      showToast(`Document ${action === 'APPROVE' ? 'approved (sent to HR)' : 'rejected'} successfully!`);
+      loadRequests();
+    } catch (e) {
+      console.error('Failed to update document', e);
+      showToast('Failed to update document request', 'error');
+    }
+  };
+
   if (!employee) return null;
+
+  const pendingPunch = requests.filter(r => r.status === 'PENDING');
+  const pendingLeave = leaveRequests.filter(r => r.status === 'PENDING_SUPERVISOR');
+  const pendingImprest = imprestRequests.filter(r => r.status?.startsWith('PENDING'));
+  const pendingDocs = docRequests.filter(r => r.status === 'PENDING_SUPERVISOR');
 
   const tabStyle = (tab) => ({
     background: 'none',
@@ -111,8 +168,8 @@ export default function SupervisorDashboard() {
     padding: '0.75rem 1.5rem',
     fontSize: '0.95rem',
     fontWeight: activeTab === tab ? '700' : '500',
-    color: activeTab === tab ? '#4f46e5' : '#6b7280',
-    borderBottom: activeTab === tab ? '2px solid #4f46e5' : '2px solid transparent',
+    color: activeTab === tab ? 'var(--accent-color)' : '#6b7280',
+    borderBottom: activeTab === tab ? '2px solid var(--accent-color)' : '2px solid transparent',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
@@ -169,21 +226,35 @@ export default function SupervisorDashboard() {
 
       <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
         <button style={tabStyle('punch')} onClick={() => setActiveTab('punch')}>
-          <Clock size={16} /> Punch Requests {requests.filter(r => r.status === 'PENDING').length > 0 && (
-            <span style={{ background: '#4f46e5', color: 'white', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
-              {requests.filter(r => r.status === 'PENDING').length}
+          <Clock size={16} /> Punch Requests {pendingPunch.length > 0 && (
+            <span style={{ background: 'var(--accent-color)', color: 'white', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
+              {pendingPunch.length}
             </span>
           )}
         </button>
         <button style={tabStyle('leave')} onClick={() => setActiveTab('leave')}>
-          <CalendarCheck size={16} /> Leave Requests {leaveRequests.length > 0 && (
+          <CalendarCheck size={16} /> Leave Requests {pendingLeave.length > 0 && (
             <span style={{ background: '#059669', color: 'white', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
-              {leaveRequests.length}
+              {pendingLeave.length}
             </span>
           )}
         </button>
         <button style={tabStyle('trips')} onClick={() => router.push('/employee/supervisor/trips')}>
           <MapIcon size={16} /> Team Trips
+        </button>
+        <button style={tabStyle('imprest')} onClick={() => setActiveTab('imprest')}>
+          <IndianRupee size={16} /> Imprest Approvals {pendingImprest.length > 0 && (
+            <span style={{ background: '#d97706', color: 'white', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
+              {pendingImprest.length}
+            </span>
+          )}
+        </button>
+        <button style={tabStyle('docs')} onClick={() => setActiveTab('docs')}>
+          <CalendarCheck size={16} /> Doc Approvals {pendingDocs.length > 0 && (
+            <span style={{ background: '#8b5cf6', color: 'white', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
+              {pendingDocs.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -202,12 +273,12 @@ export default function SupervisorDashboard() {
               </tr>
             </thead>
             <tbody>
-              {initialLoading && requests.length === 0 ? (
+              {initialLoading && pendingPunch.length === 0 ? (
                 <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
-              ) : requests.length === 0 ? (
-                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No punch requests from your team.</td></tr>
+              ) : pendingPunch.length === 0 ? (
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No pending punch requests.</td></tr>
               ) : (
-                requests.map(req => (
+                pendingPunch.map(req => (
                   <tr key={req.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
                     <td style={{ padding: '1rem' }}>
                       <div style={{ fontWeight: 500 }}>{req.date}</div>
@@ -239,7 +310,7 @@ export default function SupervisorDashboard() {
                           target="_blank"
                           rel="noopener noreferrer"
                           title={`${req.latitude.toFixed(5)}, ${req.longitude.toFixed(5)}`}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#6366f1', fontWeight: 600, fontSize: '0.8rem', textDecoration: 'none' }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--accent-color)', fontWeight: 600, fontSize: '0.8rem', textDecoration: 'none' }}
                         >
                           <MapIcon size={13} /> View
                         </a>
@@ -286,12 +357,12 @@ export default function SupervisorDashboard() {
               </tr>
             </thead>
             <tbody>
-              {leaveLoading && leaveRequests.length === 0 ? (
+              {leaveLoading && pendingLeave.length === 0 ? (
                 <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
-              ) : leaveRequests.length === 0 ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No leave requests pending your approval.</td></tr>
+              ) : pendingLeave.length === 0 ? (
+                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No pending leave requests.</td></tr>
               ) : (
-                leaveRequests.map(req => (
+                pendingLeave.map(req => (
                   <tr key={req.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
                     <td style={{ padding: '1rem' }}>
                       <div style={{ fontWeight: 600, color: '#111827' }}>{req.employee?.name || 'Unknown'}</div>
@@ -310,15 +381,143 @@ export default function SupervisorDashboard() {
                     <td style={{ padding: '1rem', color: '#4b5563', maxWidth: 200, fontSize: '0.875rem' }}>{req.reason || '-'}</td>
                     <td style={{ padding: '1rem', color: '#6b7280', fontSize: '0.875rem' }}>{new Date(req.appliedOn).toLocaleDateString('en-IN')}</td>
                     <td style={{ padding: '1rem', textAlign: 'right' }}>
+                      {req.status === 'PENDING_SUPERVISOR' ? (
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => handleLeaveAction(req.id, 'APPROVED')}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
+                          >
+                            <Check size={14} /> Approve
+                          </button>
+                          <button
+                            onClick={() => handleLeaveAction(req.id, 'REJECTED')}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
+                          >
+                            <X size={14} /> Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{
+                          background: req.status === 'APPROVED' ? '#dcfce7' : req.status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                          color: req.status === 'APPROVED' ? '#16a34a' : req.status === 'REJECTED' ? '#dc2626' : '#d97706',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '0.85rem',
+                          fontWeight: 600
+                        }}>
+                          {req.status.replace('_', ' ')}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'imprest' && (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>
+                <th style={{ padding: '1rem' }}>Employee</th>
+                <th style={{ padding: '1rem' }}>Amount Requested</th>
+                <th style={{ padding: '1rem' }}>Required Date</th>
+                <th style={{ padding: '1rem' }}>Purpose</th>
+                <th style={{ padding: '1rem', textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {initialLoading && pendingImprest.length === 0 ? (
+                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
+              ) : pendingImprest.length === 0 ? (
+                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No pending imprest requests.</td></tr>
+              ) : (
+                pendingImprest.map(req => (
+                  <tr key={req.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '1rem' }}>
+                      <div style={{ fontWeight: 600, color: '#111827' }}>{req.employee?.name || 'Unknown'}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{req.employee?.department} | {req.projectSite || 'No Site'}</div>
+                    </td>
+                    <td style={{ padding: '1rem' }}>
+                      <span style={{ fontWeight: 600, color: '#0ea5e9' }}>₹{req.amountRequested}</span>
+                    </td>
+                    <td style={{ padding: '1rem', color: '#4b5563', fontSize: '0.9rem' }}>
+                      {new Date(req.requiredDate).toLocaleDateString('en-GB')}
+                    </td>
+                    <td style={{ padding: '1rem', color: '#4b5563', maxWidth: 200, fontSize: '0.875rem' }}>
+                      {req.purpose}
+                    </td>
+                    <td style={{ padding: '1rem', textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                         <button
-                          onClick={() => handleLeaveAction(req.id, 'APPROVED')}
+                          onClick={() => handleImprestAction(req.id, req.status, 'APPROVE')}
                           style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
                         >
                           <Check size={14} /> Approve
                         </button>
                         <button
-                          onClick={() => handleLeaveAction(req.id, 'REJECTED')}
+                          onClick={() => handleImprestAction(req.id, req.status, 'REJECTED')}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
+                        >
+                          <X size={14} /> Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'docs' && (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>
+                <th style={{ padding: '1rem' }}>Date</th>
+                <th style={{ padding: '1rem' }}>Employee</th>
+                <th style={{ padding: '1rem' }}>Template Name</th>
+                <th style={{ padding: '1rem' }}>Status</th>
+                <th style={{ padding: '1rem', textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {initialLoading && pendingDocs.length === 0 ? (
+                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
+              ) : pendingDocs.length === 0 ? (
+                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No pending document requests.</td></tr>
+              ) : (
+                pendingDocs.map(req => (
+                  <tr key={req.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '1rem', color: '#4b5563', fontSize: '0.9rem' }}>
+                      {new Date(req.createdAt).toLocaleDateString('en-GB')}
+                    </td>
+                    <td style={{ padding: '1rem' }}>
+                      <div style={{ fontWeight: 600, color: '#111827' }}>{req.employeeName || 'Unknown'}</div>
+                    </td>
+                    <td style={{ padding: '1rem', color: '#4b5563', fontSize: '0.9rem' }}>
+                      {req.templateName}
+                    </td>
+                    <td style={{ padding: '1rem' }}>
+                      <span style={{ background: '#fef3c7', color: '#d97706', padding: '4px 10px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600 }}>
+                        Pending Supervisor
+                      </span>
+                    </td>
+                    <td style={{ padding: '1rem', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={() => handleDocAction(req.id, 'APPROVE')}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
+                        >
+                          <Check size={14} /> Approve
+                        </button>
+                        <button
+                          onClick={() => handleDocAction(req.id, 'REJECTED')}
                           style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
                         >
                           <X size={14} /> Reject

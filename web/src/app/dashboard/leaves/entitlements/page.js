@@ -86,9 +86,9 @@ export default function EntitlementsPage() {
 
         const payload = {
           employeeId: parseInt(row.employeeId) || row.employeeId,
-          casualLeaves: existing.casualLeaves || 12,
+          casualLeaves: existing.casualLeaves || 0,
           leaveWithoutPay: existing.leaveWithoutPay || 0,
-          earnedLeaves: existing.earnedLeaves || 15,
+          earnedLeaves: existing.earnedLeaves || 0,
         };
 
         if (row.leaveType === 'Casual') payload.casualLeaves = days;

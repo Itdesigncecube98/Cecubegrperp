@@ -154,7 +154,7 @@ export default function WhosInPage() {
                 <Bar dataKey="IN" stackId="a" fill="#22c55e" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="OUT" stackId="a" fill="#3b82f6" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="NO PUNCH" stackId="a" fill="#f87171" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="ON LEAVE" stackId="a" fill="#38bdf8" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="ON LEAVE" stackId="a" fill="#f59e0b" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -261,7 +261,9 @@ export default function WhosInPage() {
                       <td>{r.code}</td>
                       <td>{r.name}</td>
                       <td>{r.branch}</td>
-                      <td>{r.date}</td>
+                      <td>
+                        {new Date(r.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' })}, {r.date}
+                      </td>
                       <td>{r.firstPunch}</td>
                       <td>{r.recentPunch}</td>
                       <td>

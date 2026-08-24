@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, X, ArrowLeft, Clock, RefreshCw } from 'lucide-react';
+import { Check, X, ArrowLeft, Clock, RefreshCw, MapPin } from 'lucide-react';
 import { getPunchRequests, updatePunchRequestStatus } from '../../../lib/data';
 import { useAutoRefresh, formatRefreshTime } from '../../../lib/useAutoRefresh';
 
@@ -120,7 +120,9 @@ export default function RegularizationRequestsPage() {
               filtered.map(req => (
                 <tr key={req.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '14px 16px' }}>
-                    <div style={{ fontWeight: 500, fontSize: '14px' }}>{req.date}</div>
+                    <div style={{ fontWeight: 500, fontSize: '14px' }}>
+                      {new Date(req.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' })}, {req.date}
+                    </div>
                     <div style={{ fontSize: '12px', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={10} /> {req.time}</div>
                   </td>
                   <td style={{ padding: '14px 16px' }}>
@@ -135,7 +137,19 @@ export default function RegularizationRequestsPage() {
                       PUNCH {req.type}
                     </span>
                   </td>
-                  <td style={{ padding: '14px 16px', fontSize: '13px', color: '#374151', maxWidth: '180px' }}>{req.reason || '—'}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '13px', color: '#374151', maxWidth: '180px' }}>
+                    {req.reason || '—'}
+                    {req.locationName && (
+                      <div style={{ marginTop: '4px', fontSize: '11px', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <MapPin size={12} /> {req.locationName}
+                      </div>
+                    )}
+                    {req.latitude && req.longitude && !req.locationName && (
+                      <div style={{ marginTop: '4px', fontSize: '11px', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <MapPin size={12} /> <a href={`https://maps.google.com/?q=${req.latitude},${req.longitude}`} target="_blank" style={{ color: '#2563eb' }}>View Map</a>
+                      </div>
+                    )}
+                  </td>
                   <td style={{ padding: '14px 16px' }}>
                     <span style={{ background: req.status === 'PENDING' ? '#fef3c7' : req.status === 'APPROVED' ? '#dcfce7' : '#fee2e2', color: req.status === 'PENDING' ? '#d97706' : req.status === 'APPROVED' ? '#16a34a' : '#dc2626', padding: '3px 10px', borderRadius: '4px', fontSize: '12px', fontWeight: 600 }}>
                       {req.status}

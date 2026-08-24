@@ -50,23 +50,49 @@ export default function MyAttendanceRecords() {
   const fetchRecords = async (id, from, to) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/attendance/stats?employeeId=${id}`);
-      const stats = await res.json();
+      const [statsRes, holidayRes] = await Promise.all([
+        fetch(`/api/attendance/stats?employeeId=${id}`),
+        fetch(`/api/leaves/holidays`)
+      ]);
+      const stats = await statsRes.json();
+      const holidays = await holidayRes.json();
+
       const dbMap = {};
+      const holMap = {};
       if (Array.isArray(stats)) {
         stats.forEach(month => {
           (month.details || []).forEach(d => { dbMap[d.date] = d; });
         });
       }
+      if (Array.isArray(holidays)) {
+        holidays.forEach(h => { holMap[h.date] = h.name; });
+      }
+
       const allRecs = [];
       const start = new Date(from);
       const end = new Date(to);
+      const today = new Date().toISOString().split('T')[0];
+
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
         const dayName = d.toLocaleDateString('en-IN', { weekday: 'short' });
         const rec = dbMap[dateStr];
         let timeIn = '-', timeOut = '-', workedHours = '-';
-        let attStatus = rec ? rec.status : 'Not Marked';
+        
+        let attStatus = 'Absent';
+        if (rec) {
+          attStatus = rec.status;
+          if ((attStatus === 'Present' || attStatus === 'Late' || attStatus === 'PRESENT') && (holMap[dateStr] || dayName === 'Sun')) {
+            attStatus = 'COff';
+          }
+        } else if (holMap[dateStr]) {
+          attStatus = 'Holiday';
+        } else if (dayName === 'Sun') {
+          attStatus = 'Week Off';
+        } else if (dateStr > today) {
+          attStatus = '-';
+        }
+
         let shiftType = rec ? (rec.shiftType || 'Day') : '-';
         if (rec && rec.timeSlots && rec.timeSlots.length > 0) {
           const slots = rec.timeSlots;
@@ -112,13 +138,16 @@ export default function MyAttendanceRecords() {
 
   useEffect(() => { applyFilters(records, statusFilter, search); }, [statusFilter, search]);
 
-  const getStatusBadgeClass = (status) => {
+  const renderStatus = (status) => {
     const s = (status || '').toLowerCase();
-    if (s === 'present') return 'badge-success';
-    if (s === 'late') return 'badge-warning';
-    if (s === 'absent') return 'badge-danger';
-    if (s === 'not marked') return 'badge-secondary';
-    return 'badge-secondary';
+    if (s === 'present') return <span className="badge badge-success">{status}</span>;
+    if (s === 'late') return <span className="badge badge-warning">{status}</span>;
+    if (s === 'absent') return <span className="badge badge-danger">{status}</span>;
+    if (s === 'coff') return <span style={{ padding: '4px 10px', borderRadius: '8px', background: '#166534', color: 'white', fontSize: '11px', fontWeight: 700 }}>{status}</span>;
+    if (s === 'holiday') return <span style={{ padding: '4px 10px', borderRadius: '8px', background: '#fef3c7', color: '#d97706', fontSize: '11px', fontWeight: 700 }}>{status}</span>;
+    if (s === 'week off') return <span style={{ padding: '4px 10px', borderRadius: '8px', background: '#f3f4f6', color: '#4b5563', fontSize: '11px', fontWeight: 700 }}>{status}</span>;
+    if (s === '-') return <span style={{ color: '#9ca3af' }}>-</span>;
+    return <span className="badge badge-secondary">{status}</span>;
   };
 
   const handleExport = () => {
@@ -188,7 +217,7 @@ export default function MyAttendanceRecords() {
       )}
 
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-        {[{label:'PRESENT',value:presentCount,color:'#22c55e'},{label:'ABSENT',value:absentCount,color:'#ef4444'},{label:'TOTAL DAYS',value:filtered.length,color:'#6366f1'}].map(({label,value,color}) => (
+        {[{label:'PRESENT',value:presentCount,color:'#22c55e'},{label:'ABSENT',value:absentCount,color:'#ef4444'},{label:'TOTAL DAYS',value:filtered.length,color:'#0ea5e9'}].map(({label,value,color}) => (
           <div key={label} className="card" style={{flex:1,textAlign:'center',padding:'1rem'}}>
             <div style={{fontSize:'1.8rem',fontWeight:700,color}}>{value}</div>
             <div style={{fontSize:'0.75rem',color:'#6b7280',marginTop:2}}>{label}</div>
@@ -226,16 +255,52 @@ export default function MyAttendanceRecords() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan="9" style={{textAlign:'center',padding:'2rem'}}>No records found</td></tr>
               ) : filtered.map((r,i) => (
-                <tr key={i}>
+                <tr key={i} style={r.dayName === 'Sun' ? { backgroundColor: '#fee2e2' } : {}}>
                   <td>{r.date}</td>
-                  <td style={{color:'#6b7280'}}>{r.dayName}</td>
+                  <td style={{color: r.dayName === 'Sun' ? '#dc2626' : '#6b7280', fontWeight: r.dayName === 'Sun' ? 600 : 'normal'}}>{r.dayName}</td>
                   <td>{employee?.empId || '-'}</td>
                   <td>{employee?.name || '-'}</td>
                   <td style={{color:r.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{r.timeIn}</td>
                   <td style={{color:r.timeOut!=='-'?'#ef4444':'#9ca3af'}}>{r.timeOut}</td>
                   <td style={{fontWeight:600}}>{r.workedHours}</td>
-                  <td>{r.shiftType}</td>
-                  <td><span className={`badge ${getStatusBadgeClass(r.attStatus)}`}>{r.attStatus}</span></td>
+                  <td>
+                    {(() => {
+                      const isNightTime = (t) => t ? (t > '19:00' || t <= '08:00') : false;
+                      let hasDay = false;
+                      let hasNight = false;
+                      let slots = [];
+                      try {
+                        if (r.timeSlots) {
+                          slots = typeof r.timeSlots === 'string' ? JSON.parse(r.timeSlots) : r.timeSlots;
+                        }
+                      } catch(e) {}
+
+                      if (slots && slots.length > 0) {
+                        slots.forEach(s => {
+                          if (isNightTime(s.in)) hasNight = true;
+                          else hasDay = true;
+                        });
+                      } else {
+                        if (r.shiftType === 'Night') hasNight = true;
+                        else if (r.shiftType === 'Day') hasDay = true;
+                      }
+
+                      if (hasDay && hasNight) {
+                        return (
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600, fontSize: '0.85rem' }}>Day</span>
+                            <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#f3e8ff', color: '#6b21a8', fontWeight: 600, fontSize: '0.85rem' }}>Night</span>
+                          </div>
+                        );
+                      } else if (hasNight) {
+                        return <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#f3e8ff', color: '#6b21a8', fontWeight: 600, fontSize: '0.85rem' }}>Night</span>;
+                      } else if (hasDay) {
+                        return <span style={{ padding: '2px 8px', borderRadius: '12px', backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: 600, fontSize: '0.85rem' }}>Day</span>;
+                      }
+                      return <span style={{ color: '#9ca3af' }}>{r.shiftType || '-'}</span>;
+                    })()}
+                  </td>
+                  <td>{renderStatus(r.attStatus)}</td>
                 </tr>
               ))}
             </tbody>

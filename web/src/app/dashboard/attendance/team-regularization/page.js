@@ -1,15 +1,18 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Info, Check, X, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Info, Check, X, RefreshCw, MapPin } from 'lucide-react';
 import { getPunchRequests, updatePunchRequestStatus, getEmployees } from '../../../../lib/data';
 import { useAutoRefresh, formatRefreshTime } from '../../../../lib/useAutoRefresh';
+import Dialog from '../../../../components/Dialog';
 import '../attendance.css';
 
 export default function TeamRegularizationRequests() {
   const [requests, setRequests] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [employees, setEmployees] = useState([]);
+  const [showCoffDialog, setShowCoffDialog] = useState(false);
+  const [coffRequestId, setCoffRequestId] = useState(null);
   const [filters, setFilters] = useState({
     status: 'All',
     employeeId: 'Any',
@@ -72,11 +75,11 @@ export default function TeamRegularizationRequests() {
     })();
   }, [loadRequests]);
 
-  const handleAction = async (id, newStatus) => {
+  const handleAction = async (id, newStatus, grantCoff = false) => {
     try {
-      // Optimistic UI — update row immediately, no full reload flash
+      // Optimistic UI
       setRequests(prev => prev.map(r => (r.id === id ? { ...r, status: newStatus } : r)));
-      await updatePunchRequestStatus(id, newStatus);
+      await updatePunchRequestStatus(id, newStatus, grantCoff);
       refresh();
     } catch (err) {
       console.error(err);
@@ -238,10 +241,13 @@ export default function TeamRegularizationRequests() {
                   <tr key={req.id}>
                     <td><input type="checkbox" /></td>
                     <td>{req.employee?.name}</td>
-                    <td>{req.date}</td>
+                    <td>{new Date(req.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' })}, {req.date}</td>
                     <td>
                       {(() => {
                         if (!req.time) return '-';
+                        if (req.type === 'COFF_CONVERSION') {
+                          return <span style={{ fontWeight: 600 }}>{req.time} COff(s)</span>;
+                        }
                         if (req.type === 'REGULARIZE') {
                           try {
                             const parsed = JSON.parse(req.time);
@@ -258,9 +264,17 @@ export default function TeamRegularizationRequests() {
                         return formatTime(req.time);
                       })()}
                     </td>
-                    <td><span style={{ fontWeight: 600, color: req.type === 'IN' ? '#16a34a' : req.type === 'OUT' ? '#dc2626' : '#f59e0b' }}>{req.type}</span></td>
+                    <td>
+                      <span style={{ fontWeight: 600, color: req.type === 'IN' ? '#16a34a' : req.type === 'OUT' ? '#dc2626' : req.type === 'COFF_CONVERSION' ? '#8b5cf6' : '#f59e0b' }}>
+                        {req.type === 'COFF_CONVERSION' ? 'COFF Conv.' : req.type}
+                      </span>
+                      {req.shiftType === 'Night' && (
+                        <div style={{ fontSize: '11px', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>Night Shift</div>
+                      )}
+                    </td>
                     <td><span style={{ fontSize: '12px', color: '#6b7280' }}>{req.reason || '-'}</span></td>
                     <td>
+                      {req.locationName && <div style={{ fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '2px' }}>{req.locationName}</div>}
                       {req.latitude != null && req.longitude != null ? (
                         <a
                           href={`https://maps.google.com/?q=${req.latitude},${req.longitude}`}
@@ -268,12 +282,12 @@ export default function TeamRegularizationRequests() {
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           title={`${Number(req.latitude).toFixed(5)}, ${Number(req.longitude).toFixed(5)}`}
-                          style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}
+                          style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
                         >
-                          Map View
+                          <MapPin size={12} /> Map View
                         </a>
                       ) : (
-                        <span style={{ fontSize: '12px', color: '#9ca3af' }}>-</span>
+                        <span style={{ fontSize: '12px', color: '#9ca3af' }}>N/A</span>
                       )}
                     </td>
                     <td>
@@ -302,6 +316,22 @@ export default function TeamRegularizationRequests() {
                           >
                             <Check size={14} />
                           </button>
+                          {req.shiftType === 'Night' && (
+                            <button
+                              type="button"
+                              className="btn btnPrimary"
+                              style={{ padding: '0.3rem 0.5rem', background: '#6366f1', fontSize: '11px', fontWeight: 600 }}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setCoffRequestId(req.id);
+                                setShowCoffDialog(true);
+                              }}
+                              title="Approve & Grant COFF"
+                            >
+                              Approve + COFF
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn btnPrimary"
@@ -336,6 +366,21 @@ export default function TeamRegularizationRequests() {
           </div>
         </div>
       </div>
+
+      <Dialog 
+        isOpen={showCoffDialog}
+        title="Grant COFF"
+        message="Approve and grant 1 COFF for this Night Shift?"
+        onConfirm={() => {
+          if (coffRequestId) handleAction(coffRequestId, 'APPROVED', true);
+          setShowCoffDialog(false);
+          setCoffRequestId(null);
+        }}
+        onCancel={() => {
+          setShowCoffDialog(false);
+          setCoffRequestId(null);
+        }}
+      />
     </div>
   );
 }

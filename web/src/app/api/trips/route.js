@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 export async function GET(request) {
   try {
@@ -19,7 +19,7 @@ export async function GET(request) {
       const subordinateIds = supervisor?.subordinates?.map(s => s.id) ?? [];
       trips = await prisma.tripLog.findMany({
         where: { employeeId: { in: subordinateIds } },
-        include: { employee: true, vehicle: true, pings: { orderBy: { timestamp: 'asc' } } },
+        include: { employee: { include: { supervisor: true } }, vehicle: true, pings: { orderBy: { timestamp: 'asc' } } },
         orderBy: { createdAt: 'desc' }
       });
     } else if (employeeId) {
@@ -30,7 +30,7 @@ export async function GET(request) {
       });
     } else {
       trips = await prisma.tripLog.findMany({
-        include: { employee: true, vehicle: true, pings: { orderBy: { timestamp: 'asc' } } },
+        include: { employee: { include: { supervisor: true } }, vehicle: true, pings: { orderBy: { timestamp: 'asc' } } },
         orderBy: { createdAt: 'desc' }
       });
     }
@@ -42,28 +42,27 @@ export async function GET(request) {
   }
 }
 
-export async function POST(request) {
-  try {
-    const data = await request.json();
-    const { employeeId, vehicleId, date, startLocation, endLocation, distanceKm } = data;
-
-    if (!employeeId || !vehicleId || !date || !startLocation || !endLocation) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
-
-    const vehicle = await prisma.vehicle.findUnique({
-      where: { id: parseInt(vehicleId) }
-    });
-
-    if (!vehicle) {
-      return NextResponse.json({ error: 'Vehicle not found' }, { status: 404 });
-    }
-
-    const km = distanceKm ? parseFloat(distanceKm) : 0;
-    const amount = km * vehicle.ratePerKm;
-
-    const trip = await prisma.tripLog.create({
-      data: {
+  export async function POST(request) {
+    try {
+      const data = await request.json();
+      const { employeeId, vehicleId, date, startLocation, endLocation, distanceKm, status, reason } = data;
+  
+      if (!employeeId || !vehicleId || !date || !startLocation || !endLocation) {
+        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      }
+  
+      const vehicle = await prisma.vehicle.findUnique({
+        where: { id: parseInt(vehicleId) }
+      });
+  
+      if (!vehicle) {
+        return NextResponse.json({ error: 'Vehicle not found' }, { status: 404 });
+      }
+  
+      const km = distanceKm ? parseFloat(distanceKm) : 0;
+      const amount = km * vehicle.ratePerKm;
+  
+      const tripData = {
         employeeId,
         vehicleId: parseInt(vehicleId),
         date,
@@ -71,8 +70,14 @@ export async function POST(request) {
         endLocation,
         distanceKm: km,
         amount
-      }
-    });
+      };
+
+      if (status) tripData.status = status;
+      if (reason) tripData.reason = reason;
+
+      const trip = await prisma.tripLog.create({
+        data: tripData
+      });
 
     return NextResponse.json(trip, { status: 201 });
   } catch (error) {

@@ -129,7 +129,7 @@ export default function MyRegularizationRequests() {
                 filteredRequests.map(req => (
                   <tr key={req.id}>
                     <td>{req.employee.name}</td>
-                    <td>{req.date}</td>
+                    <td>{new Date(req.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' })}, {req.date}</td>
                     <td>{req.time}</td>
                     <td><span style={{ fontWeight: 600, color: req.type === 'IN' ? '#16a34a' : '#dc2626' }}>{req.type}</span></td>
                     <td>

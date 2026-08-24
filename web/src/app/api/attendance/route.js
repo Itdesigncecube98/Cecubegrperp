@@ -11,7 +11,46 @@ export async function GET(request) {
       where: { date }
     });
 
-    // Merge employees with their attendance status for that date
+    // Auto-punch out logic for 19:00
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-GB', { 
+      timeZone: 'Asia/Kolkata', 
+      year: 'numeric', month: '2-digit', day: '2-digit', 
+      hour: '2-digit', hour12: false 
+    }).formatToParts(now);
+    const p = {};
+    parts.forEach(part => p[part.type] = part.value);
+    const currentDateStr = `${p.year}-${p.month}-${p.day}`;
+    // handle 24:00 which sometimes Intl returns for midnight
+    let currentHour = parseInt(p.hour, 10);
+    if (currentHour === 24) currentHour = 0;
+
+    for (let record of attendanceRecords) {
+      if (record.timeSlots) {
+        try {
+          let slots = JSON.parse(record.timeSlots);
+          let updated = false;
+          slots.forEach(slot => {
+            if (slot.in && !slot.out) {
+              // If past date OR today and past 19:00
+              if (record.date < currentDateStr || (record.date === currentDateStr && currentHour >= 19)) {
+                slot.out = '19:00';
+                updated = true;
+              }
+            }
+          });
+          if (updated) {
+            record.timeSlots = JSON.stringify(slots);
+            // Fire and forget update to persist the auto punch-out
+            prisma.attendance.update({
+              where: { id: record.id },
+              data: { timeSlots: record.timeSlots }
+            }).catch(console.error);
+          }
+        } catch (e) {}
+      }
+    }
+
     const result = employees.map(emp => {
       const record = attendanceRecords.find(a => a.employeeId === emp.id);
       return {
@@ -23,9 +62,10 @@ export async function GET(request) {
       };
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json(Array.isArray(result) ? result : []);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Error fetching attendance:', error);
+    return NextResponse.json([], { status: 200 });
   }
 }
 

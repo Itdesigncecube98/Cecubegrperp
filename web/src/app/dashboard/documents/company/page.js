@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import Dialog from '@/components/Dialog';
 import '../documents.css';
 import { getDocuments, createDocument, deleteDocument, getEmployees } from '@/lib/data';
 const showToast = (msg) => alert(msg);
@@ -9,7 +10,9 @@ const showToast = (msg) => alert(msg);
 export default function CompanyDocuments() {
   const [documents, setDocuments] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [docTypes, setDocTypes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, documentId: null });
   
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -24,6 +27,10 @@ export default function CompanyDocuments() {
 
   useEffect(() => {
     loadData();
+    const savedTypes = localStorage.getItem('documentTypes');
+    if (savedTypes) {
+      setDocTypes(JSON.parse(savedTypes));
+    }
   }, []);
 
   const loadData = async () => {
@@ -98,10 +105,10 @@ export default function CompanyDocuments() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this company document?')) return;
+  const confirmDelete = async () => {
+    if (!deleteDialog.documentId) return;
     try {
-      const res = await deleteDocument(id);
+      const res = await deleteDocument(deleteDialog.documentId);
       if (res.error) {
         showToast(res.error, 'error');
       } else {
@@ -112,6 +119,11 @@ export default function CompanyDocuments() {
       console.error(err);
       showToast('Failed to delete document', 'error');
     }
+    setDeleteDialog({ isOpen: false, documentId: null });
+  };
+
+  const handleDelete = (id) => {
+    setDeleteDialog({ isOpen: true, documentId: id });
   };
 
   const handleView = async (id, fileName) => {
@@ -240,16 +252,36 @@ export default function CompanyDocuments() {
               </div>
               <div className="formGroup">
                 <label>Document Name / Title *</label>
-                <input 
+                <select 
                   className="modernInput"
-                  type="text" 
-                  placeholder="e.g. Offer Letter, Relieving Letter"
                   required 
                   value={formData.documentName} 
                   onChange={(e) => setFormData({...formData, documentName: e.target.value})}
                   disabled={uploading}
-                />
+                >
+                  <option value="">Select Document Name</option>
+                  {docTypes
+                    .filter(d => d.scope === 'Company')
+                    .map(d => (
+                    <option key={d.id} value={d.type}>{d.type}</option>
+                  ))}
+                  <option value="Other">Other</option>
+                </select>
               </div>
+              {formData.documentName === 'Other' && (
+                <div className="formGroup">
+                  <label>Custom Document Name *</label>
+                  <input 
+                    className="modernInput"
+                    type="text" 
+                    required 
+                    value={formData.customDocumentName || ''} 
+                    onChange={(e) => setFormData({...formData, customDocumentName: e.target.value})}
+                    disabled={uploading}
+                    placeholder="Enter document name"
+                  />
+                </div>
+              )}
               <div className="formGroup">
                 <label>Document Number</label>
                 <input 
@@ -294,6 +326,15 @@ export default function CompanyDocuments() {
           </div>
         </div>
       )}
+
+      <Dialog 
+        isOpen={deleteDialog.isOpen}
+        type="confirm"
+        title="Delete Document"
+        message="Are you sure you want to delete this company document?"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteDialog({ isOpen: false, documentId: null })}
+      />
     </div>
   );
 }
