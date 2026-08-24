@@ -1,0 +1,119 @@
+.employee-layout {
+  min-height: 100vh;
+  background-color: var(--bg-color);
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(153, 100%, 74%, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, hsla(213, 100%, 74%, 0.15) 0px, transparent 50%);
+}
+
+.employee-navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav-brand img {
+  height: 35px;
+}
+
+.portal-badge {
+  background-color: #d1fae5;
+  color: #059669;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid #a7f3d0;
+}
+
+.nav-profile {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.profile-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.profile-dept {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+
+.employee-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Utilities */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem !important;
+  color: var(--text-secondary);
+}
+
+.icon-btn {
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: none;
+  box-shadow: none;
+}
+
+.icon-btn:hover {
+  background: #f3f4f6;
+  color: var(--text-primary);
+}
+
+.delete-btn:hover {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+button.icon-btn.logout-btn {
+  color: #ef4444;
+}
+
+button.icon-btn.logout-btn:hover {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+

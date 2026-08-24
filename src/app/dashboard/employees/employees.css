@@ -1,0 +1,57 @@
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem !important;
+  color: var(--text-secondary);
+}
+
+.emp-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.masked-password {
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+}
+
+.icon-btn {
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: none;
+  box-shadow: none;
+}
+
+.icon-btn:hover {
+  background: #f3f4f6;
+  color: var(--text-primary);
+}
+
+.edit-btn:hover {
+  color: var(--accent-hover);
+  background: var(--accent-light);
+}
+
+.delete-btn:hover {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+/* Modal styles have been moved to globals.css for app-wide consistency */
