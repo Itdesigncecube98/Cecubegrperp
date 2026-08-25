@@ -38,13 +38,13 @@ export async function GET(request) {
         items = await prisma.$queryRaw`SELECT id, name, "createdAt" FROM "ImprestHead" ORDER BY name ASC`;
         break;
       case 'grades':
-        await prisma.$executeRaw`CREATE TABLE IF NOT EXISTS "GradeConfig" (id SERIAL PRIMARY KEY, designation TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, description TEXT, "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(), UNIQUE(designation, name))`;
-        await prisma.$executeRaw`ALTER TABLE "GradeConfig" ADD COLUMN IF NOT EXISTS designation TEXT NOT NULL DEFAULT ''`;
-        items = await prisma.$queryRaw`SELECT id, designation, name, description, "createdAt" FROM "GradeConfig" ORDER BY designation ASC, name ASC`;
+        items = await prisma.grade.findMany({ orderBy: [{ designation: 'asc' }, { name: 'asc' }] });
         break;
       case 'designations':
-        await prisma.$executeRaw`CREATE TABLE IF NOT EXISTS "DesignationConfig" (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT, "createdAt" TIMESTAMP NOT NULL DEFAULT NOW())`;
-        items = await prisma.$queryRaw`SELECT id, name, description, "createdAt" FROM "DesignationConfig" ORDER BY name ASC`;
+        items = await prisma.designation.findMany({ orderBy: { name: 'asc' } });
+        break;
+      case 'positions':
+        items = await prisma.position.findMany({ orderBy: { name: 'asc' } });
         break;
       case 'impresttypes':
         await prisma.$executeRaw`CREATE TABLE IF NOT EXISTS "ImprestTypeConfig" (id SERIAL PRIMARY KEY, "imprestHead" TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, description TEXT, "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(), UNIQUE("imprestHead", name))`;
@@ -105,16 +105,15 @@ export async function POST(request) {
         break;
       case 'grades': {
         const desig = designation || '';
-        await prisma.$executeRaw`CREATE TABLE IF NOT EXISTS "GradeConfig" (id SERIAL PRIMARY KEY, designation TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, description TEXT, "createdAt" TIMESTAMP NOT NULL DEFAULT NOW())`;
-        await prisma.$executeRaw`ALTER TABLE "GradeConfig" ADD COLUMN IF NOT EXISTS designation TEXT NOT NULL DEFAULT ''`;
-        const gRes = await prisma.$queryRaw`INSERT INTO "GradeConfig" (designation, name, description, "createdAt") VALUES (${desig}, ${name}, ${description || null}, NOW()) RETURNING id, designation, name, description, "createdAt"`;
-        item = gRes[0];
+        item = await prisma.grade.create({ data: { designation: desig, name, description: description || null } });
         break;
       }
       case 'designations': {
-        await prisma.$executeRaw`CREATE TABLE IF NOT EXISTS "DesignationConfig" (id SERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT, "createdAt" TIMESTAMP NOT NULL DEFAULT NOW())`;
-        const dRes = await prisma.$queryRaw`INSERT INTO "DesignationConfig" (name, description, "createdAt") VALUES (${name}, ${description || null}, NOW()) RETURNING id, name, description, "createdAt"`;
-        item = dRes[0];
+        item = await prisma.designation.create({ data: { name, description: description || null } });
+        break;
+      }
+      case 'positions': {
+        item = await prisma.position.create({ data: { name, description: description || null } });
         break;
       }
       case 'impresttypes': {
@@ -196,22 +195,21 @@ export async function PUT(request) {
       }
       case 'grades': {
         const desig = designation || '';
-        const oldGrades = await prisma.$queryRaw`SELECT * FROM "GradeConfig" WHERE id = ${parseInt(id)}`;
-        if (oldGrades && oldGrades.length > 0) {
-          await prisma.$queryRaw`UPDATE "GradeConfig" SET designation = ${desig}, name = ${name}, description = ${description || null} WHERE id = ${parseInt(id)}`;
-          item = { id: parseInt(id), designation: desig, name, description };
-          if (oldGrades[0].name !== name) await cascadeRename('grade', oldGrades[0].name, name);
-        }
+        const oldItem = await prisma.grade.findUnique({ where: { id } });
+        item = await prisma.grade.update({ where: { id }, data: { designation: desig, name, description: description || null } });
+        if (oldItem && oldItem.name !== name) await cascadeRename('grade', oldItem.name, name);
         break;
       }
       case 'designations': {
-        const oldDesignations = await prisma.$queryRaw`SELECT * FROM "DesignationConfig" WHERE id = ${parseInt(id)}`;
-        if (oldDesignations && oldDesignations.length > 0) {
-          await prisma.$queryRaw`UPDATE "DesignationConfig" SET name = ${name}, description = ${description || null} WHERE id = ${parseInt(id)}`;
-          item = { id: parseInt(id), name, description };
-          // Cascade rename in Employee.designation field if name changed
-          if (oldDesignations[0].name !== name) await cascadeRename('designation', oldDesignations[0].name, name);
-        }
+        const oldItem = await prisma.designation.findUnique({ where: { id } });
+        item = await prisma.designation.update({ where: { id }, data: { name, description: description || null } });
+        if (oldItem && oldItem.name !== name) await cascadeRename('designation', oldItem.name, name);
+        break;
+      }
+      case 'positions': {
+        const oldItem = await prisma.position.findUnique({ where: { id } });
+        item = await prisma.position.update({ where: { id }, data: { name, description: description || null } });
+        if (oldItem && oldItem.name !== name) await cascadeRename('position', oldItem.name, name);
         break;
       }
       case 'impresttypes': {
@@ -262,10 +260,13 @@ export async function DELETE(request) {
         await prisma.$queryRaw`DELETE FROM "ImprestHead" WHERE id = ${parseInt(id)}`;
         break;
       case 'grades':
-        await prisma.$queryRaw`DELETE FROM "GradeConfig" WHERE id = ${parseInt(id)}`;
+        await prisma.grade.delete({ where: { id } });
         break;
       case 'designations':
-        await prisma.$queryRaw`DELETE FROM "DesignationConfig" WHERE id = ${parseInt(id)}`;
+        await prisma.designation.delete({ where: { id } });
+        break;
+      case 'positions':
+        await prisma.position.delete({ where: { id } });
         break;
       case 'impresttypes':
         await prisma.$queryRaw`DELETE FROM "ImprestTypeConfig" WHERE id = ${parseInt(id)}`;

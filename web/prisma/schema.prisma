@@ -27,6 +27,7 @@ model Employee {
   role                String               @default("EMPLOYEE")
   supervisorId        String?
   // Extended profile fields
+  photoUrl            String?
   phone               String?
   designation         String?
   position            String?
@@ -431,6 +432,33 @@ model SiteOffice {
   updatedAt    DateTime @updatedAt
 }
 
+model Designation {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Grade {
+  id          String   @id @default(cuid())
+  designation String   @default("")
+  name        String
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([designation, name])
+}
+
+model Position {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model Organization {
   id          String   @id @default(cuid())
   name        String
@@ -527,37 +555,37 @@ model ImprestHead {
 }
 
 model GeneratedDocument {
-  id               Int      @id @default(autoincrement())
-  employeeId       String
-  formType         String   // "FOOD_ALLOWANCE", "ACCOMMODATION"
-  formData         String   @db.Text // JSON string containing form data
-  status           String   @default("PENDING_SUPERVISOR") // PENDING_SUPERVISOR, PENDING_HOD, PENDING_HR, PENDING_ACCOUNTS, APPROVED, REJECTED
-  
+  id         Int    @id @default(autoincrement())
+  employeeId String
+  formType   String // "FOOD_ALLOWANCE", "ACCOMMODATION"
+  formData   String @db.Text // JSON string containing form data
+  status     String @default("PENDING_SUPERVISOR") // PENDING_SUPERVISOR, PENDING_HOD, PENDING_HR, PENDING_ACCOUNTS, APPROVED, REJECTED
+
   supervisorId     String?
   supervisorStatus String?
   supervisorDate   DateTime?
   supervisorNotes  String?   @db.Text
 
-  hodId            String?
-  hodStatus        String?
-  hodDate          DateTime?
-  hodNotes         String?   @db.Text
+  hodId     String?
+  hodStatus String?
+  hodDate   DateTime?
+  hodNotes  String?   @db.Text
 
-  hrId             String?
-  hrStatus         String?
-  hrDate           DateTime?
-  hrNotes          String?   @db.Text
+  hrId     String?
+  hrStatus String?
+  hrDate   DateTime?
+  hrNotes  String?   @db.Text
 
-  accountsId       String?
-  accountsStatus   String?
-  accountsDate     DateTime?
-  accountsNotes    String?   @db.Text
+  accountsId     String?
+  accountsStatus String?
+  accountsDate   DateTime?
+  accountsNotes  String?   @db.Text
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
   @@index([status])
   @@index([employeeId])
 }
@@ -571,25 +599,25 @@ model DocWorkflowMapping {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  hod        Employee? @relation("HodRelation", fields: [hodId], references: [id])
-  hr         Employee? @relation("HrRelation", fields: [hrId], references: [id])
-  accounts   Employee? @relation("AccountsDocRelation", fields: [accountsId], references: [id])
+  employee Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  hod      Employee? @relation("HodRelation", fields: [hodId], references: [id])
+  hr       Employee? @relation("HrRelation", fields: [hrId], references: [id])
+  accounts Employee? @relation("AccountsDocRelation", fields: [accountsId], references: [id])
 }
 
 model Candidate {
-  id           String   @id @default(cuid())
-  name         String
-  email        String?  @unique
-  phone        String?
-  appliedFor   String?
-  department   String?
-  status       String   @default("PENDING") // PENDING, REJECTED, HIRED
-  resumeUrl    String?
-  notes        String?  @db.Text
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
+  id         String   @id @default(cuid())
+  name       String
+  email      String?  @unique
+  phone      String?
+  appliedFor String?
+  department String?
+  status     String   @default("PENDING") // PENDING, REJECTED, HIRED
+  resumeUrl  String?
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
   orgChartNodeId String?
   orgChartNode   OrgChartNode? @relation(fields: [orgChartNodeId], references: [id], onDelete: SetNull)
 }
