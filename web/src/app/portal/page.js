@@ -107,7 +107,7 @@ export default function UnifiedPortal() {
             let finalName = mod.name;
             if (mod.id === 'Dashboard') {
               finalRoute = user?.role === 'admin' ? '/dashboard' : '/employee/dashboard';
-              finalName = user?.role === 'admin' ? 'Analytics Dashboard' : 'Employee Dashboard';
+              finalName = user?.role === 'admin' ? 'HR and Admin Dashboard' : 'Employee Dashboard';
             }
 
             if (isLocked) {

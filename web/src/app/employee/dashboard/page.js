@@ -10,6 +10,7 @@ import ImprestModal from './ImprestModal';
 export default function EmployeeDashboard() {
   const [statsData, setStatsData] = useState([]);
   const [leaveBalance, setLeaveBalance] = useState(null);
+  const [allEmployees, setAllEmployees] = useState([]);
 
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [employee, setEmployee] = useState(null);
@@ -105,8 +106,9 @@ export default function EmployeeDashboard() {
       fetch(`/api/employees?checkSupervisor=${id}`).then(r => r.json()).catch(() => ({ isSupervisor: false })),
       getImprestApprovals(id).catch(() => []),
       getMyImprestRequests(id).catch(() => []),
-      fetch('/api/synchronization/imprest-workflow').then(r => r.json()).catch(() => ({}))
-    ]).then(([locReqs, tripData, anns, locs, hols, supervisorFlag, imprestApprs, myImprests, wfConfig]) => {
+      fetch('/api/synchronization/imprest-workflow').then(r => r.json()).catch(() => ({})),
+      getEmployees().catch(() => [])
+    ]).then(([locReqs, tripData, anns, locs, hols, supervisorFlag, imprestApprs, myImprests, wfConfig, allEmps]) => {
       if (Array.isArray(locReqs)) {
         setPendingLocationRequests(locReqs.filter(r => r.status === 'PENDING' && r.employeeId === id));
         setActiveLocationRequests(locReqs.filter(r => r.status === 'APPROVED' && r.employeeId === id));
@@ -127,6 +129,7 @@ export default function EmployeeDashboard() {
 
       setPendingImprestApprovals(Array.isArray(imprestApprs) ? imprestApprs.filter(r => ['PENDING_SUPERVISOR', 'PENDING_PROJECTS_HEAD', 'PENDING_ACCOUNTS', 'PENDING_ADMIN'].includes(r.status)) : []);
       setMyImprestRequests(Array.isArray(myImprests) ? myImprests : []);
+      setAllEmployees(Array.isArray(allEmps) ? allEmps : []);
     }).catch(() => { });
   }
 
@@ -710,6 +713,42 @@ export default function EmployeeDashboard() {
   const pendingOutCount = pendingToday.filter(r => r.type === 'OUT').length;
   const hasPendingPunch = pendingToday.length > 0;
 
+  // Calculate upcoming events
+  const currentMonth = new Date().getMonth();
+  const currentDay = new Date().getDate();
+  
+  const upcomingEvents = [];
+  if (allEmployees && allEmployees.length > 0) {
+    allEmployees.forEach(emp => {
+      if (['Resigned', 'Retired', 'Terminated', 'Inactive'].includes(emp.employmentStatus)) return; // skip inactive
+      const checkEvent = (dateString, type, label, icon) => {
+        if (!dateString) return;
+        const d = new Date(dateString);
+        if (isNaN(d.getTime())) return;
+        const m = d.getMonth();
+        const day = d.getDate();
+        
+        // Show if it's in the current month and upcoming or today
+        if (m === currentMonth && day >= currentDay) {
+          upcomingEvents.push({
+            id: `${emp.id}-${type}`,
+            name: emp.name,
+            type: label,
+            icon: icon,
+            dayObj: day,
+            dayStr: day === currentDay ? 'Today!' : `on ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+          });
+        }
+      };
+
+      checkEvent(emp.dateOfBirth, 'birthday', 'Birthday', '🎂');
+      checkEvent(emp.joinedDate, 'work_anniv', 'Work Anniversary', '🎉');
+      checkEvent(emp.marriageAnniversary, 'marriage_anniv', 'Marriage Anniversary', '💍');
+    });
+  }
+  
+  upcomingEvents.sort((a, b) => a.dayObj - b.dayObj);
+
   return (
     <div className="dashboard-container">
       {hasPendingPunch && (
@@ -861,6 +900,31 @@ export default function EmployeeDashboard() {
 
       {/* --- DASHBOARD ACTION GRID --- */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+
+        {/* Upcoming Events Card */}
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
+            <span style={{ background: '#fdf4ff', padding: '6px', borderRadius: '8px', color: '#d946ef' }}>🎉</span>
+            Upcoming Events (Team)
+          </h3>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '180px', overflowY: 'auto' }}>
+            {upcomingEvents.length === 0 ? (
+              <li style={{ color: '#94a3b8', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                No upcoming events this month.
+              </li>
+            ) : (
+              upcomingEvents.map(evt => (
+                <li key={evt.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.95rem', color: '#475569' }}>
+                  <span style={{ fontSize: '1.1rem' }}>{evt.icon}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: 600, color: '#0f172a' }}>{evt.name}</span>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{evt.type} • {evt.dayStr}</span>
+                  </div>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
         
         {/* Attendance Card */}
         <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
@@ -937,6 +1001,11 @@ export default function EmployeeDashboard() {
             <li>
               <button onClick={() => router.push('/employee/documents')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ color: '#cbd5e1' }}>•</span> Documents
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/declarations')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Income Declarations
               </button>
             </li>
             <li>

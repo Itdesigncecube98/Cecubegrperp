@@ -387,6 +387,7 @@ export default function Employees() {
               <th>Organisation</th>
               <th>Contact Info</th>
               <th>Department</th>
+              <th>Date of Joining</th>
               <th>Status</th>
               <th>Supervisor</th>
               <th className="text-right">Actions</th>
@@ -395,7 +396,7 @@ export default function Employees() {
           <tbody>
             {filteredByCompany.length === 0 ? (
               <tr>
-                <td colSpan="7" className="empty-state">No employees found.</td>
+                <td colSpan="8" className="empty-state">No employees found.</td>
               </tr>
             ) : (
               filteredByCompany.map((emp) => (
@@ -439,6 +440,7 @@ export default function Employees() {
                     {emp.workTelephone && <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{emp.workTelephone}</div>}
                   </td>
                   <td><span className="badge badge-success">{emp.department}</span></td>
+                  <td><span style={{ color: '#64748b', fontSize: '0.9rem' }}>{emp.joinedDate || '-'}</span></td>
                   <td>
                     <span className="badge" style={{ 
                       background: ['Resigned', 'Retired', 'Terminated', 'Inactive'].includes(emp.employmentStatus) ? '#fee2e2' : 

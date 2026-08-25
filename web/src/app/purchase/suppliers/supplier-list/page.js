@@ -1,38 +1,68 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Home, ChevronRight, Search, Plus, Edit2, Users } from 'lucide-react';
 import '../../purchase.css';
 import Link from 'next/link';
 
 export default function SupplierList() {
-  const [suppliers] = useState([
-    { name: 'A ONE PRINTING COMPANY', group: 'Printing Job Work', owner: '', contact: '98111 68228', status: 'Regular' },
-    { name: 'A to Z Electrotrade India Pvt. Ltd', group: 'Miscellaneous', owner: 'Mr. Ashish Gulati', contact: '0910094194', status: 'Regular' },
-    { name: 'A.K. ENTERPRISES', group: 'Electrical Material Supplier', owner: 'Mr. Keshav Puri', contact: '9999944527', status: 'Regular' },
-    { name: 'A.N TRADING Co.', group: 'Miscellaneous', owner: 'M/s A.N Trading Co.', contact: '9818547814', status: 'Regular' },
-    { name: 'Aaditya Polymers', group: 'Hardware Material Supplier', owner: 'Mr. Sumit', contact: '9934664733', status: 'Regular' },
-    { name: 'Aarav Telecom Pvt. Ltd.', group: 'Fibre Cable Accessories', owner: 'Mr. S.K Aggarwal', contact: '011-43028585', status: 'Regular' },
-    { name: 'AB Pal Electric Pvt Ltd', group: 'Electrical Material Supplier', owner: 'Mr. Jasmeet', contact: '9811577444, 9711724055', status: 'Regular' },
-    { name: 'ABB India Pvt. Ltd.', group: 'Electrical Material Supplier', owner: 'Mr. Anil Gupta', contact: '9810127765', status: 'Regular' },
-    { name: 'ABC Transformers Pvt. Ltd.', group: 'Electrical Material Supplier', owner: 'Mr. K K Chauhan', contact: '97188 87707', status: 'Regular' },
-  ]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [groups, setGroups] = useState([
-    'Printing Job Work',
-    'Miscellaneous',
-    'Electrical Material Supplier',
-    'Hardware Material Supplier',
-    'Fibre Cable Accessories'
-  ]);
+  const [groups, setGroups] = useState([]);
+  const [loadingGroups, setLoadingGroups] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState('');
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [newGroup, setNewGroup] = useState('');
 
+  const fetchSuppliers = async () => {
+    try {
+      const res = await fetch('/api/suppliers');
+      if (res.ok) {
+        const data = await res.json();
+        setSuppliers(data);
+      }
+    } catch (error) {
+      console.error('Error fetching suppliers:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchGroups = async () => {
+    try {
+      const res = await fetch('/api/supplier-groups');
+      if (res.ok) {
+        const data = await res.json();
+        setGroups(data);
+      }
+    } catch (error) {
+      console.error('Error fetching groups:', error);
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSuppliers();
+    fetchGroups();
+  }, []);
+
   const filteredSuppliers = selectedGroup ? suppliers.filter(s => s.group === selectedGroup) : suppliers;
 
-  const handleAddGroup = () => {
-    if (newGroup.trim() && !groups.includes(newGroup.trim())) {
-      setGroups([...groups, newGroup.trim()]);
+  const handleSaveGroup = async () => {
+    if (newGroup.trim()) {
+      try {
+        const res = await fetch('/api/supplier-groups', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newGroup.trim() })
+        });
+        if (res.ok) {
+          fetchGroups();
+        }
+      } catch (error) {
+        console.error('Error creating group:', error);
+      }
       setNewGroup('');
       setShowGroupModal(false);
     }
@@ -58,9 +88,13 @@ export default function SupplierList() {
             <Search size={14} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
           </div>
           
-          <select className="purchase-input" style={{ width: '180px' }} value={selectedGroup} onChange={(e) => setSelectedGroup(e.target.value)}>
+          <select className="purchase-input" style={{ width: '250px' }} value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}>
             <option value="">All Groups</option>
-            {groups.map((g, idx) => <option key={idx} value={g}>{g}</option>)}
+            {loadingGroups ? (
+              <option disabled>Loading...</option>
+            ) : (
+              groups.map(g => <option key={g.id} value={g.name}>{g.name}</option>)
+            )}
           </select>
 
           <button className="btn-cyan" onClick={() => setShowGroupModal(true)}><Plus size={14} /> Add Group</button>
@@ -68,22 +102,7 @@ export default function SupplierList() {
             <button className="btn-cyan"><Plus size={14} /> Add Supplier</button>
           </Link>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem' }}>
-          <span>Show Rows:</span>
-          <select className="purchase-input" style={{ width: '60px' }}>
-            <option>40</option>
-          </select>
-          <span>Page 1 of 12</span>
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <button style={{ border: 'none', background: '#17a2b8', color: 'white', width: '24px', height: '24px', borderRadius: '50%', cursor: 'pointer' }}>1</button>
-            <button style={{ border: 'none', background: '#e2e8f0', color: '#64748b', width: '24px', height: '24px', borderRadius: '50%', cursor: 'pointer' }}>2</button>
-            <button style={{ border: 'none', background: '#e2e8f0', color: '#64748b', width: '24px', height: '24px', borderRadius: '50%', cursor: 'pointer' }}>3</button>
-            <span style={{ margin: '0 4px', color: '#94a3b8' }}>...</span>
-            <button style={{ border: 'none', background: '#17a2b8', color: 'white', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
+
       </div>
 
       <div className="purchase-table-wrapper">
@@ -99,19 +118,23 @@ export default function SupplierList() {
             </tr>
           </thead>
           <tbody>
-            {filteredSuppliers.map((sup, idx) => (
-              <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
+            {loading ? (
+              <tr><td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>Loading suppliers...</td></tr>
+            ) : filteredSuppliers.map((sup, idx) => (
+              <tr key={sup.id || idx} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
                 <td style={{ color: '#0284c7', fontWeight: 500 }}>{sup.name}</td>
                 <td>{sup.group}</td>
                 <td>{sup.owner}</td>
-                <td>{sup.contact}</td>
+                <td>{sup.contactNo || sup.contact}</td>
                 <td style={{ textAlign: 'center' }}>
                   <span style={{ background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
                     {sup.status}
                   </span>
                 </td>
                 <td style={{ textAlign: 'center' }}>
-                  <Edit2 size={16} className="action-icon" />
+                  <Link href={`/purchase/suppliers/add-supplier?id=${sup.id}`} style={{ color: 'inherit' }}>
+                    <Edit2 size={16} className="action-icon" style={{ cursor: 'pointer' }} />
+                  </Link>
                 </td>
               </tr>
             ))}
@@ -145,7 +168,7 @@ export default function SupplierList() {
               </button>
               <button 
                 className="btn-cyan" 
-                onClick={handleAddGroup}
+                onClick={handleSaveGroup}
                 style={{ padding: '8px 16px', fontSize: '0.9rem' }}
               >
                 Save Group

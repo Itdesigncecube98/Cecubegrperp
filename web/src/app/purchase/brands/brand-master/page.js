@@ -1,52 +1,59 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Home, ChevronRight, Search, Edit2, Trash2, Tag } from 'lucide-react';
 import '../../purchase.css';
 
 export default function BrandMaster() {
-  const [brands, setBrands] = useState([
-    '3M',
-    'ABB',
-    'ACC Cement',
-    'Accord',
-    'Adani',
-    'Adinath LA',
-    'AKG',
-    'Anchor',
-    'ASHLOK',
-    'Asian Paints',
-    'Astral',
-    'Bangur Cement',
-    'BEC',
-    'Bosch',
-    'Burger',
-    'Cellpack',
-    'CG',
-    'Comet',
-    'Commel',
-    'Complementary',
-    'Concord',
-    'concurrent',
-    'CP Plus',
-    'CRC',
-    'Creator Polymer',
-    'Crompton Greaves',
-    'D-Link',
-    'Dewalt'
-  ]);
+  const [brands, setBrands] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newBrand, setNewBrand] = useState('');
   const [editIndex, setEditIndex] = useState(null);
   const [deleteIndex, setDeleteIndex] = useState(null);
 
-  const handleSaveBrand = () => {
+  const fetchBrands = async () => {
+    try {
+      const res = await fetch('/api/brands');
+      if (res.ok) {
+        const data = await res.json();
+        setBrands(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch brands', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBrands();
+  }, []);
+
+  const handleSaveBrand = async () => {
     if (newBrand.trim()) {
-      if (editIndex !== null) {
-        const updatedBrands = [...brands];
-        updatedBrands[editIndex] = newBrand.trim();
-        setBrands(updatedBrands);
-      } else {
-        setBrands([newBrand.trim(), ...brands]);
+      try {
+        if (editIndex !== null) {
+          const brandToEdit = brands[editIndex];
+          const res = await fetch('/api/brands', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: brandToEdit.id, name: newBrand.trim() })
+          });
+          if (res.ok) {
+            fetchBrands();
+          }
+        } else {
+          const res = await fetch('/api/brands', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newBrand.trim() })
+          });
+          if (res.ok) {
+            fetchBrands();
+          }
+        }
+      } catch (error) {
+        console.error('Error saving brand', error);
       }
       setNewBrand('');
       setShowModal(false);
@@ -56,7 +63,7 @@ export default function BrandMaster() {
 
   const handleEdit = (idx) => {
     setEditIndex(idx);
-    setNewBrand(brands[idx]);
+    setNewBrand(brands[idx].name);
     setShowModal(true);
   };
 
@@ -64,10 +71,21 @@ export default function BrandMaster() {
     setDeleteIndex(idx);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteIndex !== null) {
-      const updatedBrands = brands.filter((_, i) => i !== deleteIndex);
-      setBrands(updatedBrands);
+      try {
+        const brandToDelete = brands[deleteIndex];
+        const res = await fetch('/api/brands', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: brandToDelete.id })
+        });
+        if (res.ok) {
+          fetchBrands();
+        }
+      } catch (error) {
+        console.error('Error deleting brand', error);
+      }
       setDeleteIndex(null);
     }
   };
@@ -95,21 +113,7 @@ export default function BrandMaster() {
             <Tag size={14} /> Add Brand
           </button>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem' }}>
-          <span>Show Rows:</span>
-          <select className="purchase-input" style={{ width: '60px' }}>
-            <option>40</option>
-          </select>
-          <span>Page 1 of 3</span>
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <button style={{ border: 'none', background: '#17a2b8', color: 'white', width: '24px', height: '24px', borderRadius: '50%', cursor: 'pointer' }}>1</button>
-            <button style={{ border: 'none', background: '#e2e8f0', color: '#64748b', width: '24px', height: '24px', borderRadius: '50%', cursor: 'pointer' }}>2</button>
-            <button style={{ border: 'none', background: '#e2e8f0', color: '#64748b', width: '24px', height: '24px', borderRadius: '50%', cursor: 'pointer' }}>3</button>
-            <button style={{ border: 'none', background: '#17a2b8', color: 'white', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
+
       </div>
 
       <div className="purchase-table-wrapper">
@@ -121,9 +125,11 @@ export default function BrandMaster() {
             </tr>
           </thead>
           <tbody>
-            {brands.map((brand, idx) => (
-              <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
-                <td>{brand}</td>
+            {loading ? (
+              <tr><td colSpan="2" style={{ textAlign: 'center', padding: '20px' }}>Loading brands...</td></tr>
+            ) : brands.map((brand, idx) => (
+              <tr key={brand.id || idx} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
+                <td>{brand.name}</td>
                 <td style={{ textAlign: 'center' }}>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
                     <Edit2 size={16} className="action-icon" onClick={() => handleEdit(idx)} />
@@ -179,7 +185,7 @@ export default function BrandMaster() {
               <Trash2 size={20} /> Delete Brand
             </h3>
             <p style={{ margin: '0 0 24px 0', color: '#475569', fontSize: '0.95rem', lineHeight: '1.5' }}>
-              Are you sure you want to delete the brand <strong>"{brands[deleteIndex]}"</strong>? This action cannot be undone.
+              Are you sure you want to delete the brand <strong>"{brands[deleteIndex]?.name}"</strong>? This action cannot be undone.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button 

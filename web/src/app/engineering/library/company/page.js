@@ -7,11 +7,20 @@ import '../../../../app/accounts/company/company.css';
 
 export default function CompanyAdder() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [companies, setCompanies] = useState([
-    { id: 1, name: 'CeCube Engineering India Private Limited', code: 'CC001', type: 'Engineering', status: 'Active' },
-    { id: 2, name: 'CeCube Green Energy Private Limited', code: 'CC002', type: 'Energy', status: 'Active' },
-    { id: 3, name: 'Tirupati Projects and Infra', code: 'TP001', type: 'Infrastructure', status: 'Inactive' }
-  ]);
+  const [companies, setCompanies] = useState([]);
+  
+  React.useEffect(() => {
+    fetchCompanies();
+  }, []);
+
+  const fetchCompanies = async () => {
+    try {
+      const res = await fetch('/api/companies');
+      if (res.ok) setCompanies(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
   
   // Form State
   const [isEditing, setIsEditing] = useState(false);
@@ -24,26 +33,50 @@ export default function CompanyAdder() {
     setFormData({ name: company.name, code: company.code, type: company.type, status: company.status });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this company?")) {
-      setCompanies(companies.filter(c => c.id !== id));
+      try {
+        const res = await fetch('/api/companies', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        if (res.ok) {
+          setCompanies(companies.filter(c => c.id !== id));
+        }
+      } catch (error) {
+        console.error('Error deleting company:', error);
+      }
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name) {
       alert("Company Name is required!");
       return;
     }
     
-    if (isEditing) {
-      setCompanies(companies.map(c => c.id === editingId ? { ...c, ...formData } : c));
-      setIsEditing(false);
-      setEditingId(null);
-    } else {
-      setCompanies([...companies, { id: Date.now(), ...formData }]);
+    try {
+      const method = isEditing ? 'PUT' : 'POST';
+      const body = isEditing ? { id: editingId, ...formData } : formData;
+      const res = await fetch('/api/companies', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        fetchCompanies();
+        setIsEditing(false);
+        setEditingId(null);
+        setFormData({ name: '', code: '', type: '', status: 'Active' });
+      } else {
+        const errorData = await res.json();
+        alert("Error saving company: " + (errorData.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save company.");
     }
-    setFormData({ name: '', code: '', type: '', status: 'Active' });
   };
 
   const handleCancel = () => {
@@ -52,10 +85,11 @@ export default function CompanyAdder() {
     setFormData({ name: '', code: '', type: '', status: 'Active' });
   };
 
-  const filteredCompanies = companies.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.code.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCompanies = companies.filter(c => {
+    const nameMatch = c.name ? c.name.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+    const codeMatch = c.code ? c.code.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+    return nameMatch || codeMatch;
+  });
 
   return (
     <div className="company-container">

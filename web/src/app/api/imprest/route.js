@@ -55,7 +55,7 @@ export async function GET(req) {
 
     if (approverId) {
       // Fetch workflow config (with raw query to pick up projectsHeadId2 column)
-      const wfRows = await prisma.$queryRaw`SELECT * FROM "ImprestWorkflowConfig" WHERE id = 1`;
+      const wfRows = await prisma.$queryRaw`SELECT id, "projectsHeadId", "projectsHeadId2", "accountsId" FROM "ImprestWorkflowConfig" WHERE id = 1`;
       const wf = wfRows[0] || {};
 
       const projectsHeadId = wf.projectsHeadId || '__none__';

@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronRight, Printer, Save, Trash2, ArrowLeft, Plus } from 'lucide-react';
 import '../../purchase.css';
 import Link from 'next/link';
@@ -37,6 +37,86 @@ const FormSection = ({ title, children, defaultOpen = true }) => {
 };
 
 export default function SupplierMaster() {
+  const [groups, setGroups] = useState([]);
+  const [loadingGroups, setLoadingGroups] = useState(true);
+
+  const initialFormState = {
+    group: '',
+    name: '',
+    owner: '',
+    contactNo: '',
+    status: 'Unapproved'
+  };
+  const [formData, setFormData] = useState(initialFormState);
+  
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const id = searchParams?.get('id');
+
+  useEffect(() => {
+    const fetchSupplier = async () => {
+      if (!id) return;
+      try {
+        const res = await fetch(`/api/suppliers?id=${id}`);
+        if (res.ok) {
+          const supplier = await res.json();
+          setFormData({
+            id: supplier.id,
+            group: supplier.group || '',
+            name: supplier.name || '',
+            owner: supplier.owner || '',
+            contactNo: supplier.contactNo || '',
+            status: supplier.status || 'Unapproved'
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching supplier", err);
+      }
+    };
+    fetchSupplier();
+  }, [id]);
+
+  const handleSave = async () => {
+    if (!formData.name.trim()) {
+      alert("Supplier Name is required!");
+      return;
+    }
+    const isEditing = !!formData.id;
+    try {
+      const res = await fetch('/api/suppliers', {
+        method: isEditing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        alert(`Supplier ${isEditing ? 'updated' : 'saved'} successfully!`);
+        if (!isEditing) setFormData(initialFormState);
+      } else {
+        const errorData = await res.json();
+        alert("Error saving supplier: " + (errorData.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save supplier.");
+    }
+  };
+
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const res = await fetch('/api/supplier-groups');
+        if (res.ok) {
+          const data = await res.json();
+          setGroups(data);
+        }
+      } catch (error) {
+        console.error('Error fetching groups', error);
+      } finally {
+        setLoadingGroups(false);
+      }
+    };
+    fetchGroups();
+  }, []);
+
   return (
     <div className="purchase-container">
       
@@ -58,16 +138,25 @@ export default function SupplierMaster() {
         <FormSection title="Add Supplier">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
             <FormGroup label="Supplier Group Name">
-              <select className="purchase-input" style={{ width: '100%' }}><option>-Select Group-</option></select>
+              <select className="purchase-input" style={{ width: '100%' }} value={formData.group} onChange={e => setFormData({...formData, group: e.target.value})}>
+                <option value="">-Select Group-</option>
+                {loadingGroups ? (
+                  <option disabled>Loading...</option>
+                ) : (
+                  groups.map((g) => (
+                    <option key={g.id} value={g.name}>{g.name}</option>
+                  ))
+                )}
+              </select>
             </FormGroup>
             <FormGroup label="Supplier Name" required>
-              <input type="text" className="purchase-input" style={{ width: '100%' }} />
+              <input type="text" className="purchase-input" style={{ width: '100%' }} value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
             </FormGroup>
             <FormGroup label="Supplier No.">
               <input type="text" className="purchase-input bg-gray" disabled style={{ width: '100%' }} />
             </FormGroup>
             <FormGroup label="Owner/Contact Person">
-              <input type="text" className="purchase-input" style={{ width: '100%' }} />
+              <input type="text" className="purchase-input" style={{ width: '100%' }} value={formData.owner} onChange={e => setFormData({...formData, owner: e.target.value})} />
             </FormGroup>
             
             <FormGroup label="Additional Contact Person">
@@ -98,7 +187,7 @@ export default function SupplierMaster() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
             <FormGroup label="Phone Office"><input type="text" className="purchase-input" style={{ width: '100%' }} /></FormGroup>
             <FormGroup label="Phone Residential"><input type="text" className="purchase-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="Mobile"><input type="text" className="purchase-input" style={{ width: '100%' }} /></FormGroup>
+            <FormGroup label="Mobile"><input type="text" className="purchase-input" style={{ width: '100%' }} value={formData.contactNo} onChange={e => setFormData({...formData, contactNo: e.target.value})} /></FormGroup>
             <FormGroup label="WhatsApp No.">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: '#17a2b8', fontWeight: 600 }}>
@@ -131,7 +220,10 @@ export default function SupplierMaster() {
               </div>
             </FormGroup>
             <FormGroup label="Status">
-              <select className="purchase-input" style={{ width: '100%' }}><option>Unapproved</option></select>
+              <select className="purchase-input" style={{ width: '100%' }} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                <option value="Unapproved">Unapproved</option>
+                <option value="Regular">Regular</option>
+              </select>
             </FormGroup>
 
             <FormGroup label="Status Change Remark" noMargin>
@@ -224,9 +316,9 @@ export default function SupplierMaster() {
 
         {/* Bottom Actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
-          <button className="btn-cyan"><Printer size={14} /> Print</button>
-          <button className="btn-cyan" style={{ backgroundColor: '#ef4444' }}><Trash2 size={14} /> Delete</button>
-          <button className="btn-cyan"><Save size={14} /> Save</button>
+          <button className="btn-cyan" onClick={() => window.print()}><Printer size={14} /> Print</button>
+          <button className="btn-cyan" style={{ backgroundColor: '#ef4444' }} onClick={() => setFormData(initialFormState)}><Trash2 size={14} /> Clear</button>
+          <button className="btn-cyan" onClick={handleSave}><Save size={14} /> Save</button>
         </div>
 
       </div>

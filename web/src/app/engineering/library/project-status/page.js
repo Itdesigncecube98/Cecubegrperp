@@ -1,23 +1,23 @@
 'use client';
 import React, { useState } from 'react';
 import { 
-  FolderTree, Search, Edit, Trash2, Plus, Save, X, Home, ChevronRight
+  Activity, Search, Edit, Trash2, Plus, Save, X, Home, ChevronRight
 } from 'lucide-react';
 import '../../../accounts/company/company.css';
 import Dialog from '../../../../components/Dialog';
 
-export default function ProjectCategory2() {
+export default function ProjectStatus() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [categories, setCategories] = useState([]);
+  const [statuses, setStatuses] = useState([]);
   
   React.useEffect(() => {
-    fetchCategories();
+    fetchStatuses();
   }, []);
 
-  const fetchCategories = async () => {
+  const fetchStatuses = async () => {
     try {
-      const res = await fetch('/api/project-categories-2');
-      if (res.ok) setCategories(await res.json());
+      const res = await fetch('/api/project-statuses');
+      if (res.ok) setStatuses(await res.json());
     } catch (err) {
       console.error(err);
     }
@@ -38,50 +38,46 @@ export default function ProjectCategory2() {
   const handleDelete = async () => {
     if (!deleteId) return;
     try {
-      const res = await fetch('/api/project-categories-2', {
+      const res = await fetch('/api/project-statuses', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: deleteId })
       });
-        if (res.ok) {
-          setCategories(categories.filter(c => c.id !== deleteId));
-        } else {
-          const err = await res.json();
-          alert("Error deleting category: " + (err.error || "Unknown"));
-        }
-      } catch (error) {
-        console.error('Error deleting category:', error);
-      } finally {
+      if (res.ok) {
+        setStatuses(statuses.filter(c => c.id !== deleteId));
         setDeleteId(null);
       }
+    } catch (error) {
+      console.error('Error deleting status:', error);
+    }
   };
 
   const handleSave = async () => {
     if (!formData.name) {
-      alert("Category Name is required!");
+      alert("Status Name is required!");
       return;
     }
     
     try {
       const method = isEditing ? 'PUT' : 'POST';
       const body = isEditing ? { id: editingId, ...formData } : formData;
-      const res = await fetch('/api/project-categories-2', {
+      const res = await fetch('/api/project-statuses', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
       if (res.ok) {
-        fetchCategories();
+        fetchStatuses();
         setIsEditing(false);
         setEditingId(null);
         setFormData({ name: '', code: '', description: '', status: 'Active' });
       } else {
         const errorData = await res.json();
-        alert("Error saving category: " + (errorData.error || "Unknown error"));
+        alert("Error saving status: " + (errorData.error || "Unknown error"));
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to save category.");
+      alert("Failed to save status.");
     }
   };
 
@@ -91,7 +87,7 @@ export default function ProjectCategory2() {
     setFormData({ name: '', code: '', description: '', status: 'Active' });
   };
 
-  const filteredCategories = categories.filter(c => {
+  const filteredStatuses = statuses.filter(c => {
     const nameMatch = c.name ? c.name.toLowerCase().includes(searchQuery.toLowerCase()) : false;
     const descMatch = c.description ? c.description.toLowerCase().includes(searchQuery.toLowerCase()) : false;
     return nameMatch || descMatch;
@@ -103,12 +99,12 @@ export default function ProjectCategory2() {
       <div className="page-header">
         <h2 className="page-title">
           <div style={{ background: '#e0f2fe', padding: '8px', borderRadius: '8px', display: 'flex', color: '#0ea5e9' }}>
-            <FolderTree size={24} />
+            <Activity size={24} />
           </div>
-          Project Category 2
+          Project Status Master
         </h2>
         <div className="breadcrumb">
-          <Home size={14} /> Home <ChevronRight size={14} /> Library <ChevronRight size={14} /> Project Category 2
+          <Home size={14} /> Home <ChevronRight size={14} /> Library <ChevronRight size={14} /> Project Status Master
         </div>
       </div>
 
@@ -117,18 +113,18 @@ export default function ProjectCategory2() {
         {/* Form Section */}
         <div style={{ background: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '32px' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#334155', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {isEditing ? 'Edit Category 2' : 'Add New Category 2'}
+            {isEditing ? 'Edit Project Status' : 'Add New Project Status'}
           </h3>
           
           <div className="form-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             <div>
-              <label className="modern-label" style={{ color: '#0ea5e9' }}>Category Name <span style={{ color: '#ef4444' }}>*</span></label>
+              <label className="modern-label" style={{ color: '#0ea5e9' }}>Status Name <span style={{ color: '#ef4444' }}>*</span></label>
               <input 
                 className="modern-input" 
                 type="text" 
                 value={formData.name}
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
-                placeholder="Enter category name" 
+                placeholder="Enter status name" 
               />
             </div>
             <div>
@@ -171,7 +167,7 @@ export default function ProjectCategory2() {
               </button>
             )}
             <button className="btn-primary" style={{ background: '#0ea5e9' }} onClick={handleSave}>
-              <Save size={16} /> {isEditing ? 'Update Category' : 'Save Category'}
+              <Save size={16} /> {isEditing ? 'Update Status' : 'Save Status'}
             </button>
           </div>
         </div>
@@ -179,12 +175,12 @@ export default function ProjectCategory2() {
         {/* List Section */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#334155' }}>Category 2 List</h3>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#334155' }}>Project Status List</h3>
             <div className="search-wrapper" style={{ position: 'relative', width: '300px' }}>
               <input 
                 type="text" 
                 className="modern-input" 
-                placeholder="Search Categories..." 
+                placeholder="Search Statuses..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ paddingRight: '32px', width: '100%' }} 
@@ -198,7 +194,7 @@ export default function ProjectCategory2() {
               <thead style={{ background: '#f8fafc' }}>
                 <tr>
                   <th style={{ color: '#64748b', fontWeight: 600 }}>S.No</th>
-                  <th style={{ color: '#64748b', fontWeight: 600 }}>Category Name</th>
+                  <th style={{ color: '#64748b', fontWeight: 600 }}>Status Name</th>
                   <th style={{ color: '#64748b', fontWeight: 600 }}>Code</th>
                   <th style={{ color: '#64748b', fontWeight: 600 }}>Description</th>
                   <th style={{ color: '#64748b', fontWeight: 600 }}>Status</th>
@@ -206,14 +202,14 @@ export default function ProjectCategory2() {
                 </tr>
               </thead>
               <tbody>
-                {filteredCategories.length === 0 ? (
+                {filteredStatuses.length === 0 ? (
                   <tr>
                     <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-                      No categories found matching your search.
+                      No statuses found matching your search.
                     </td>
                   </tr>
                 ) : (
-                  filteredCategories.map((c, index) => (
+                  filteredStatuses.map((c, index) => (
                     <tr key={c.id}>
                       <td style={{ color: '#64748b' }}>{index + 1}</td>
                       <td style={{ fontWeight: 500, color: '#334155' }}>{c.name}</td>
@@ -252,8 +248,8 @@ export default function ProjectCategory2() {
         <Dialog
           isOpen={!!deleteId}
           type="confirm"
-          title="Delete Category"
-          message="Are you sure you want to delete this Category 2? This action cannot be undone."
+          title="Delete Status"
+          message="Are you sure you want to delete this Project Status? This action cannot be undone."
           onConfirm={handleDelete}
           onCancel={() => setDeleteId(null)}
         />

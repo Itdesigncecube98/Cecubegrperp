@@ -38,7 +38,7 @@ const PurchaseSidebar = () => {
   };
 
   return (
-    <div className="sidebar" style={{ backgroundColor: colors.bg, width: '250px', display: 'flex', flexDirection: 'column', height: '100vh', color: colors.textMain, borderRight: `1px solid ${colors.border}` }}>
+    <div className="sidebar" style={{ flexShrink: 0, backgroundColor: colors.bg, width: '250px', display: 'flex', flexDirection: 'column', height: '100vh', color: colors.textMain, borderRight: `1px solid ${colors.border}` }}>
       
       {/* Brand Header */}
       <div style={{ padding: '24px 20px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

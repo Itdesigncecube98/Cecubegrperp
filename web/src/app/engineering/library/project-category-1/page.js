@@ -4,18 +4,29 @@ import {
   FolderTree, Search, Edit, Trash2, Plus, Save, X, Home, ChevronRight
 } from 'lucide-react';
 import '../../../accounts/company/company.css';
+import Dialog from '../../../../components/Dialog';
 
 export default function ProjectCategory1() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [categories, setCategories] = useState([
-    { id: 1, name: 'Residential', code: 'RES', description: 'Residential Housing Projects', status: 'Active' },
-    { id: 2, name: 'Commercial', code: 'COM', description: 'Commercial Office Spaces', status: 'Active' },
-    { id: 3, name: 'Industrial', code: 'IND', description: 'Factories and Warehouses', status: 'Active' }
-  ]);
+  const [categories, setCategories] = useState([]);
+  
+  React.useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch('/api/project-categories-1');
+      if (res.ok) setCategories(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Form State
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [deleteId, setDeleteId] = useState(null);
   const [formData, setFormData] = useState({ name: '', code: '', description: '', status: 'Active' });
 
   const handleEdit = (category) => {
@@ -24,26 +35,54 @@ export default function ProjectCategory1() {
     setFormData({ name: category.name, code: category.code, description: category.description, status: category.status });
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm("Are you sure you want to delete this Category 1?")) {
-      setCategories(categories.filter(c => c.id !== id));
-    }
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      const res = await fetch('/api/project-categories-1', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deleteId })
+      });
+        if (res.ok) {
+          setCategories(categories.filter(c => c.id !== deleteId));
+        } else {
+          const err = await res.json();
+          alert("Error deleting category: " + (err.error || "Unknown"));
+        }
+      } catch (error) {
+        console.error('Error deleting category:', error);
+      } finally {
+        setDeleteId(null);
+      }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name) {
       alert("Category Name is required!");
       return;
     }
     
-    if (isEditing) {
-      setCategories(categories.map(c => c.id === editingId ? { ...c, ...formData } : c));
-      setIsEditing(false);
-      setEditingId(null);
-    } else {
-      setCategories([...categories, { id: Date.now(), ...formData }]);
+    try {
+      const method = isEditing ? 'PUT' : 'POST';
+      const body = isEditing ? { id: editingId, ...formData } : formData;
+      const res = await fetch('/api/project-categories-1', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        fetchCategories();
+        setIsEditing(false);
+        setEditingId(null);
+        setFormData({ name: '', code: '', description: '', status: 'Active' });
+      } else {
+        const errorData = await res.json();
+        alert("Error saving category: " + (errorData.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save category.");
     }
-    setFormData({ name: '', code: '', description: '', status: 'Active' });
   };
 
   const handleCancel = () => {
@@ -52,10 +91,11 @@ export default function ProjectCategory1() {
     setFormData({ name: '', code: '', description: '', status: 'Active' });
   };
 
-  const filteredCategories = categories.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.code.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCategories = categories.filter(c => {
+    const nameMatch = c.name ? c.name.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+    const descMatch = c.description ? c.description.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+    return nameMatch || descMatch;
+  });
 
   return (
     <div className="company-container">
@@ -196,7 +236,7 @@ export default function ProjectCategory1() {
                           <div onClick={() => handleEdit(c)} style={{ padding: '6px', background: '#e0f2fe', borderRadius: '6px', color: '#0ea5e9', cursor: 'pointer' }}>
                             <Edit size={16} />
                           </div>
-                          <div onClick={() => handleDelete(c.id)} style={{ padding: '6px', background: '#fee2e2', borderRadius: '6px', color: '#ef4444', cursor: 'pointer' }}>
+                          <div onClick={() => setDeleteId(c.id)} style={{ padding: '6px', background: '#fee2e2', borderRadius: '6px', color: '#ef4444', cursor: 'pointer' }}>
                             <Trash2 size={16} />
                           </div>
                         </div>
@@ -209,6 +249,14 @@ export default function ProjectCategory1() {
           </div>
         </div>
 
+        <Dialog
+          isOpen={!!deleteId}
+          type="confirm"
+          title="Delete Category"
+          message="Are you sure you want to delete this Category 1? This action cannot be undone."
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteId(null)}
+        />
       </div>
     </div>
   );

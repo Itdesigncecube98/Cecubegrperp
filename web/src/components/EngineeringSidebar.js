@@ -80,6 +80,7 @@ export default function EngineeringSidebar() {
         { name: 'Material Quality Check', path: '/engineering/library/material-quality-check' },
         { name: 'Project Category 1', path: '/engineering/library/project-category-1' },
         { name: 'Project Category 2', path: '/engineering/library/project-category-2' },
+        { name: 'Project Status', path: '/engineering/library/project-status' },
       ]
     },
     { id: 'qualityCheck', label: 'Quality Check', icon: ThumbsUp, items: [] },

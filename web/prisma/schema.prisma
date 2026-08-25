@@ -27,6 +27,7 @@ model Employee {
   role                String               @default("EMPLOYEE")
   supervisorId        String?
   // Extended profile fields
+  title               String?
   photoUrl            String?
   phone               String?
   designation         String?
@@ -77,6 +78,10 @@ model Employee {
   hra                 String?
   conveyance          String?
   medical             String?
+  debitAccount        String?
+  creditAccount       String?
+  probationPeriod     String?
+  confirmationDate    String?
   specialAllowance    String?
   bonus               String?
   deductions          String?
@@ -620,4 +625,144 @@ model Candidate {
 
   orgChartNodeId String?
   orgChartNode   OrgChartNode? @relation(fields: [orgChartNodeId], references: [id], onDelete: SetNull)
+}
+
+model Supplier {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  group       String?
+  owner       String?
+  contactNo   String?
+  status      String   @default("Regular")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Brand {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  status      String   @default("Active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SupplierGroup {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  company     String
+  library     String
+  state       String
+  category1   String?
+  category2   String?
+  builtUpArea String?  @default("0.0000")
+  saleableArea String? @default("0.0000")
+  startDate   String?  @default("01/01/2026 00:00:00")
+  endDate     String?  @default("01/01/2026 00:00:00")
+  cost        String?  @default("0.0000\n01/01/1900")
+  status      String?  @default("Planning")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String?
+  type        String?
+  status      String?  @default("Active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Library {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  type        String?  // e.g. 'Material', 'Labour', 'General'
+  desc        String?
+  status      String?  @default("Active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProjectStatus {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String?
+  description String?
+  status      String?  @default("Active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProjectCategory1 {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String?
+  description String?
+  status      String?  @default("Active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProjectCategory2 {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String?
+  description String?
+  status      String?  @default("Active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TaxRegime {
+  id            String       @id @default(cuid())
+  name          String
+  financialYear String
+  brackets      TaxBracket[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model TaxBracket {
+  id            String    @id @default(cuid())
+  regimeId      String
+  category      String
+  lowerLimit    Float
+  upperLimit    Float?
+  rate          Float
+
+  regime        TaxRegime @relation(fields: [regimeId], references: [id], onDelete: Cascade)
+}
+
+model IncomeDeclaration {
+  id             String   @id @default(cuid())
+  financialYear  String
+  employeeId     String
+  department     String
+  panNumber      String?
+  
+  items          DeclarationItem[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model DeclarationItem {
+  id             String   @id @default(cuid())
+  declarationId  String
+  tdsType        String
+  tdsSection     String
+  itemName       String
+  actualAmount   Float    @default(0)
+  qualifyingAmount Float  @default(0)
+  finalAmount    Float    @default(0)
+  
+  declaration    IncomeDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
 }

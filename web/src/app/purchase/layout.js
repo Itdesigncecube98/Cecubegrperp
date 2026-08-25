@@ -31,7 +31,7 @@ export default function PurchaseLayout({ children }) {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <PurchaseSidebar />
-      <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#f1f5f9' }}>
+      <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#f1f5f9', minWidth: 0 }}>
         {children}
       </div>
     </div>

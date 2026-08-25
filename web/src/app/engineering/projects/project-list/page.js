@@ -24,65 +24,41 @@ export default function ProjectList() {
   const statuses = ['Planning', 'In Progress', 'On Hold', 'Completed'];
 
   React.useEffect(() => {
-    const saved = localStorage.getItem('engineering_projects');
-    if (saved) {
-      setProjects(JSON.parse(saved));
-    } else {
-      const defaultProjects = [
-        {
-          id: 1,
-          name: 'Unitech GBP Servicing of Busduct for DG Sets HVAC',
-          state: 'Haryana',
-          company: 'CeCube Engineering India Private Limited',
-          library: 'Unitech Library',
-          builtUpArea: '826800.0000',
-          saleableArea: '0.0000',
-          startDate: '31/12/2025 00:00:00',
-          endDate: '31/12/2025 00:00:00',
-          cost: '0.0000\n01/01/1900'
-        },
-        {
-          id: 2,
-          name: '"Godrej Panipat Consultancy Charge for EP Approval',
-          state: 'Haryana',
-          company: 'CeCube Engineering India Private Limited',
-          library: 'Consultancy',
-          builtUpArea: '3680000.0000',
-          saleableArea: '0.0000',
-          startDate: '20/12/2025 00:00:00',
-          endDate: '20/12/2025 00:00:00',
-          cost: '0.0000\n01/01/1900'
-        },
-        {
-          id: 3,
-          name: '10KWP Solar Power Plant at House No 608 Jhajjar',
-          state: 'Haryana',
-          company: 'CeCube Green Energy Private Limited',
-          library: 'CeCube Green Energy',
-          builtUpArea: '430000.0000',
-          saleableArea: '0.0000',
-          startDate: '07/08/2025 00:00:00',
-          endDate: '30/08/2025 00:00:00',
-          cost: '0.0000\n01/01/1900'
+    const fetchProjects = async () => {
+      try {
+        const res = await fetch('/api/projects');
+        if (res.ok) {
+          const data = await res.json();
+          setProjects(data);
         }
-      ];
-      setProjects(defaultProjects);
-      localStorage.setItem('engineering_projects', JSON.stringify(defaultProjects));
-    }
+      } catch (error) {
+        console.error('Error fetching projects:', error);
+      }
+    };
+    fetchProjects();
   }, []);
 
-  const handleDelete = (e, id) => {
-    e.stopPropagation(); // prevent row click routing
+  const handleDelete = async (e, id) => {
+    e.stopPropagation();
     if (window.confirm("Are you sure you want to delete this project? This action cannot be undone.")) {
-      const newProjects = projects.filter(p => p.id !== id);
-      setProjects(newProjects);
-      localStorage.setItem('engineering_projects', JSON.stringify(newProjects));
+      try {
+        const res = await fetch('/api/projects', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        if (res.ok) {
+          setProjects(projects.filter(p => p.id !== id));
+        }
+      } catch (error) {
+        console.error('Error deleting project:', error);
+      }
     }
   };
 
-  const handleEdit = (e) => {
-    e.stopPropagation(); // prevent double routing
-    router.push('/engineering/projects/add-project');
+  const handleEdit = (e, id) => {
+    e.stopPropagation();
+    router.push(`/engineering/projects/add-project?id=${id}`);
   };
 
   const filteredProjects = projects.filter(p => {
@@ -218,9 +194,9 @@ export default function ProjectList() {
                 </tr>
               ) : (
                 filteredProjects.map((p) => (
-                  <tr 
+                    <tr 
                     key={p.id} 
-                    onClick={() => router.push('/engineering/projects/add-project')} 
+                    onClick={() => router.push(`/engineering/projects/add-project?id=${p.id}`)} 
                     style={{ cursor: 'pointer' }}
                     onMouseOver={(e) => e.currentTarget.style.background = '#f8fafc'}
                     onMouseOut={(e) => e.currentTarget.style.background = 'white'}
@@ -244,8 +220,8 @@ export default function ProjectList() {
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{p.endDate}</div>
                     </td>
                     <td>
-                      <div style={{ color: '#334155', marginBottom: '4px' }}>{p.cost.split('\n')[0]}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{p.cost.split('\n')[1]}</div>
+                      <div style={{ color: '#334155', marginBottom: '4px' }}>{p.cost ? p.cost.split('\n')[0] : '0.0000'}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{p.cost ? (p.cost.split('\n')[1] || '') : '01/01/1900'}</div>
                     </td>
                     <td>
                       <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>

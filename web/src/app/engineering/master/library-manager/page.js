@@ -6,18 +6,65 @@ import {
 import '../../../../app/accounts/company/company.css';
 
 export default function LibraryManager() {
-  const [data, setData] = useState([
-    { id: 1, name: 'Government Tenders', desc: '39 Material(s), 36 Labour(s), 70 Task(s), 0 Equipment(s)' },
-    { id: 2, name: 'HT Fault Maintenance Work', desc: '46 Material(s), 14 Labour(s), 22 Task(s), 0 Equipment(s)' },
-    { id: 3, name: 'HVAC Works', desc: '7 Material(s), 37 Labour(s), 38 Task(s), 0 Equipment(s)' },
-    { id: 4, name: 'Misc. Project Expenses', desc: '2 Material(s), 0 Labour(s), 2 Task(s), 0 Equipment(s)' },
-    { id: 5, name: 'STP', desc: '0 Material(s), 21 Labour(s), 21 Task(s), 0 Equipment(s)' },
-    { id: 6, name: 'Tender Test Library', desc: '57 Material(s), 50 Labour(s), 62 Task(s), 0 Equipment(s)' },
-    { id: 7, name: 'Test Library 2', desc: '129 Material(s), 70 Labour(s), 127 Task(s), 0 Equipment(s)' },
-    { id: 8, name: 'Unitech Library', desc: '893 Material(s), 3172 Labour(s), 3546 Task(s), 0 Equipment(s)' }
-  ]);
+  const [data, setData] = useState([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newName, setNewName] = useState('');
   
-  const [isAdding, setIsAdding] = useState(true);
+  React.useEffect(() => {
+    fetchLibraries();
+  }, []);
+
+  const fetchLibraries = async () => {
+    try {
+      const res = await fetch('/api/libraries');
+      if (res.ok) {
+        const libs = await res.json();
+        // Since original UI had desc string, we can mock it or leave it blank
+        const mapped = libs.map(l => ({ ...l, desc: l.desc || '0 Material(s), 0 Labour(s), 0 Task(s)' }));
+        setData(mapped);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to delete this library?")) {
+      try {
+        const res = await fetch('/api/libraries', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        if (res.ok) fetchLibraries();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  const handleSave = async () => {
+    if (!newName) {
+      alert("Library name is required!");
+      return;
+    }
+    try {
+      const res = await fetch('/api/libraries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, type: 'General' })
+      });
+      if (res.ok) {
+        fetchLibraries();
+        setNewName('');
+        setIsAdding(false);
+      } else {
+        alert("Failed to add library");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
     <div className="company-container" style={{ padding: '0', display: 'flex', flexDirection: 'column', height: '100vh', background: '#f8fafc' }}>
@@ -54,12 +101,21 @@ export default function LibraryManager() {
                   <td style={{ padding: '12px 16px', fontSize: '0.875rem', color: '#64748b' }}>{row.desc}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                      <Edit size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} />
-                      <Trash2 size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} />
+                      <Trash2 size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => handleDelete(row.id)} />
                     </div>
                   </td>
                 </tr>
               ))}
+              {/* Add New Row Toggle */}
+              {!isAdding && (
+                <tr>
+                  <td colSpan="3" style={{ padding: '12px 16px', textAlign: 'center' }}>
+                    <button className="btn-primary" style={{ background: '#0ea5e9', padding: '6px 16px', fontSize: '0.85rem' }} onClick={() => setIsAdding(true)}>
+                      <Plus size={16} style={{ display: 'inline', marginRight: '4px' }} /> Add Library
+                    </button>
+                  </td>
+                </tr>
+              )}
               
               {/* Add New Row */}
               {isAdding && (
@@ -69,13 +125,16 @@ export default function LibraryManager() {
                       type="text" 
                       className="modern-input" 
                       style={{ padding: '6px 12px', width: '100%' }}
+                      placeholder="Enter library name"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
                     />
                   </td>
                   <td style={{ padding: '12px 16px' }}></td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                      <Save size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} />
-                      <X size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} />
+                      <Save size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={handleSave} />
+                      <X size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => { setIsAdding(false); setNewName(''); }} />
                     </div>
                   </td>
                 </tr>

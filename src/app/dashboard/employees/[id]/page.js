@@ -197,6 +197,21 @@ export default function EmployeeProfilePage({ params }) {
                     </select>
                   </div>
                 </div>
+
+                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                  Account Linking
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={labelSm}>Debit Account</label>
+                    <input value={f('debitAccount')} onChange={e => set('debitAccount', e.target.value)} style={inputStyle} placeholder="e.g. AAYUSHEE VARSHNEY_CEIPL084" />
+                  </div>
+                  <div>
+                    <label style={labelSm}>Credit Account</label>
+                    <input value={f('creditAccount')} onChange={e => set('creditAccount', e.target.value)} style={inputStyle} placeholder="e.g. AAYUSHEE VARSHNEY_CEIPL084" />
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -227,6 +242,27 @@ export default function EmployeeProfilePage({ params }) {
                     <option value="EMPLOYEE">Employee</option>
                     <option value="SUPERVISOR">Supervisor</option>
                   </select>
+                </div>
+                <div>
+                  <label style={labelSm}>Probation Period</label>
+                  <select value={f('probationPeriod')} onChange={e => {
+                      set('probationPeriod', e.target.value);
+                      if (e.target.value === '6 Months' && f('joinedDate')) {
+                         const jd = new Date(f('joinedDate'));
+                         jd.setMonth(jd.getMonth() + 6);
+                         set('confirmationDate', jd.toISOString().split('T')[0]);
+                      } else {
+                         set('confirmationDate', '');
+                      }
+                  }} style={inputStyle}>
+                    <option value="">Select</option>
+                    <option value="6 Months">6 Months</option>
+                    <option value="No Probation">No Probation</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelSm}>Confirmation Date</label>
+                  <input type="date" value={f('confirmationDate')} onChange={e => set('confirmationDate', e.target.value)} style={inputStyle} />
                 </div>
               </div>
             </div>

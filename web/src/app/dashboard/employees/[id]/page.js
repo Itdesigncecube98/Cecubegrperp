@@ -359,12 +359,12 @@ export default function EmployeeProfilePage({ params }) {
                 </>
               )}
             </div>
-            <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap', marginBottom: '16px' }}>
               {[
                 { label: 'Supervisor', value: employee.supervisor?.name || '—' },
                 { label: '📱 Mobile', value: employee.phone || '—' },
                 { label: '✉ E-Mail', value: employee.email },
-                { label: 'Joined Date', value: employee.joinedDate || '—' },
+                { label: 'Joined Date', value: employee.joinedDate ? employee.joinedDate.split('-').reverse().join('-') : '—' },
                 { label: 'Designation', value: employee.designation || '—' },
                 { label: 'Branch', value: employee.branch || '—' },
                 { label: 'Department', value: employee.department || '—' },
@@ -377,12 +377,12 @@ export default function EmployeeProfilePage({ params }) {
                 </div>
               ))}
             </div>
+            {id !== 'new' && (
+              <button onClick={handleSendLoginInstruction} style={{ padding: '8px 16px', background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>
+                Send Login Instruction
+              </button>
+            )}
           </div>
-          {id !== 'new' && (
-            <button onClick={handleSendLoginInstruction} style={{ padding: '10px 18px', background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}>
-              Send Login Instruction
-            </button>
-          )}
         </div>
       </div>
 
@@ -404,22 +404,37 @@ export default function EmployeeProfilePage({ params }) {
           {activeTab === 'basic' && (
             <div>
               <h3 style={{ margin: '0 0 24px', fontSize: '18px', fontWeight: 600, color: '#111827' }}>Basic Details</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '24px' }}>
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Name</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={labelSm}>Name</label>
-                  <input value={f('name')} onChange={e => set('name', e.target.value)} style={inputStyle} />
-                </div>
-
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Employee Code</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-                  <div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={labelSm}>Title & Name</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <select value={['Mr.', 'Mrs.', 'Ms.', ''].includes(f('title') || '') ? (f('title') || '') : 'Other'} onChange={e => {
+                         if(e.target.value !== 'Other') {
+                           set('title', e.target.value);
+                         } else {
+                           set('title', 'Other...'); // arbitrary value to trigger the input box
+                         }
+                      }} style={{ ...inputStyle, width: '100px', padding: '10px 8px' }}>
+                        <option value="">Title</option>
+                        <option value="Mr.">Mr.</option>
+                        <option value="Mrs.">Mrs.</option>
+                        <option value="Ms.">Ms.</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      {!['Mr.', 'Mrs.', 'Ms.', ''].includes(f('title') || '') && (
+                        <input value={f('title') === 'Other...' ? '' : (f('title') || '')} onChange={e => set('title', e.target.value)} style={{ ...inputStyle, width: '100px' }} placeholder="Specify" />
+                      )}
+                      <input value={f('name') || ''} onChange={e => set('name', e.target.value)} style={{ ...inputStyle, flex: 1 }} placeholder="Full Name" />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label style={labelSm}>Employee Code</label>
-                    <input value={f('empId')} onChange={e => set('empId', e.target.value)} style={inputStyle} />
+                    <input value={f('empId') || ''} onChange={e => set('empId', e.target.value)} style={inputStyle} />
                   </div>
                 </div>
 
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Other Details</div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelSm}>Date of Birth</label>
@@ -489,7 +504,7 @@ export default function EmployeeProfilePage({ params }) {
                   </div>
                 </div>
 
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Languages Known</div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelSm}>Read</label>
@@ -505,7 +520,7 @@ export default function EmployeeProfilePage({ params }) {
                   </div>
                 </div>
 
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Official Information</div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelSm}>Bank Name</label>
@@ -546,6 +561,21 @@ export default function EmployeeProfilePage({ params }) {
                     <input value={f('ndaNo')} onChange={e => set('ndaNo', e.target.value)} style={inputStyle} placeholder="NDA Number" />
                   </div>
                 </div>
+
+                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                  Account Linking
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={labelSm}>Debit Account</label>
+                    <input value={f('debitAccount')} onChange={e => set('debitAccount', e.target.value)} style={inputStyle} placeholder="e.g. AAYUSHEE VARSHNEY_CEIPL084" />
+                  </div>
+                  <div>
+                    <label style={labelSm}>Credit Account</label>
+                    <input value={f('creditAccount')} onChange={e => set('creditAccount', e.target.value)} style={inputStyle} placeholder="e.g. AAYUSHEE VARSHNEY_CEIPL084" />
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -572,7 +602,15 @@ export default function EmployeeProfilePage({ params }) {
                 </div>
                 <div>
                   <label style={labelSm}>Date of Joining</label>
-                  <input type="date" value={f('joinedDate')} onChange={e => set('joinedDate', e.target.value)} style={inputStyle} />
+                  <input type="date" value={f('joinedDate')} onChange={e => {
+                      const newJoinedDate = e.target.value;
+                      set('joinedDate', newJoinedDate);
+                      if (f('probationPeriod') && !isNaN(f('probationPeriod')) && newJoinedDate) {
+                         const jd = new Date(newJoinedDate);
+                         jd.setMonth(jd.getMonth() + parseInt(f('probationPeriod'), 10));
+                         set('confirmationDate', jd.toISOString().split('T')[0]);
+                      }
+                  }} style={inputStyle} />
                 </div>
                 <div>
                   <label style={labelSm}>Organization</label>
@@ -638,6 +676,31 @@ export default function EmployeeProfilePage({ params }) {
                     <option value="Contract">Contract</option>
                     <option value="Trainee">Trainee</option>
                   </select>
+                </div>
+                <div>
+                  <label style={labelSm}>Probation Period (Months)</label>
+                  <input 
+                    type="number"
+                    min="0"
+                    value={f('probationPeriod') || ''} 
+                    onChange={e => {
+                      const val = e.target.value;
+                      set('probationPeriod', val);
+                      if (val && !isNaN(val) && f('joinedDate')) {
+                         const jd = new Date(f('joinedDate'));
+                         jd.setMonth(jd.getMonth() + parseInt(val, 10));
+                         set('confirmationDate', jd.toISOString().split('T')[0]);
+                      } else {
+                         set('confirmationDate', '');
+                      }
+                    }} 
+                    style={inputStyle} 
+                    placeholder="e.g. 3"
+                  />
+                </div>
+                <div>
+                  <label style={labelSm}>Confirmation Date</label>
+                  <input type="date" value={f('confirmationDate') || ''} onChange={e => set('confirmationDate', e.target.value)} style={inputStyle} />
                 </div>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={labelSm}>Assigned Modules</label>

@@ -228,26 +228,45 @@ export default function EmployeeProfilePage() {
           {activeTab === 'basic' && (
             <div>
               <h3 style={{ margin: '0 0 24px', fontSize: '18px', fontWeight: 600, color: '#111827' }}>Basic Details</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '24px' }}>
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Name</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={labelSm}>Name</label>
-                  <input value={f('name')} onChange={e => set('name', e.target.value)} style={inputStyle} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={labelSm}>Title & Name</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <select value={['Mr.', 'Mrs.', 'Ms.', ''].includes(f('title') || '') ? (f('title') || '') : 'Other'} onChange={e => {
+                         if(e.target.value !== 'Other') {
+                           set('title', e.target.value);
+                         } else {
+                           set('title', 'Other...'); // arbitrary value to trigger the input box
+                         }
+                      }} style={{ ...inputStyle, width: '100px', padding: '10px 8px' }}>
+                        <option value="">Title</option>
+                        <option value="Mr.">Mr.</option>
+                        <option value="Mrs.">Mrs.</option>
+                        <option value="Ms.">Ms.</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      {!['Mr.', 'Mrs.', 'Ms.', ''].includes(f('title') || '') && (
+                        <input value={f('title') === 'Other...' ? '' : (f('title') || '')} onChange={e => set('title', e.target.value)} style={{ ...inputStyle, width: '100px' }} placeholder="Specify" />
+                      )}
+                      <input value={f('name') || ''} onChange={e => set('name', e.target.value)} style={{ ...inputStyle, flex: 1 }} placeholder="Full Name" />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={labelSm}>Employee Code</label>
+                    <input value={f('empId') || ''} disabled style={disabledInputStyle} />
+                  </div>
                 </div>
 
                 <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Organization Details</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={labelSm}>Employee Code</label>
-                    <input value={f('empId')} disabled style={disabledInputStyle} />
-                  </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
                   <div>
                     <label style={labelSm}>Organization</label>
                     <input value={f('organisation') || 'Cecube Engineering India Pvt Ltd'} disabled style={disabledInputStyle} />
                   </div>
                 </div>
 
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Other Details</div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelSm}>Gender</label>
@@ -316,7 +335,7 @@ export default function EmployeeProfilePage() {
                   </div>
                 </div>
 
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Languages Known</div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelSm}>Read</label>
@@ -332,7 +351,7 @@ export default function EmployeeProfilePage() {
                   </div>
                 </div>
 
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Login Details</div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelSm}>Portal Login Password</label>
@@ -359,7 +378,7 @@ export default function EmployeeProfilePage() {
                   </div>
                 </div>
 
-                <div style={{ color: '#374151', fontSize: '14px', fontWeight: 500, paddingTop: '10px' }}>Official Information</div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={labelSm}>Bank Name</label>
