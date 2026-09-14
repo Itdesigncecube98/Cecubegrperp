@@ -3,6 +3,8 @@ import React from 'react';
 export default function Dialog({ isOpen, type, title, message, onConfirm, onCancel }) {
   if (!isOpen) return null;
 
+  const handleConfirm = onConfirm || onCancel || (() => {});
+
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -32,7 +34,7 @@ export default function Dialog({ isOpen, type, title, message, onConfirm, onCanc
             </button>
           )}
           <button
-            onClick={onConfirm}
+            onClick={handleConfirm}
             style={{
               padding: '10px 16px', borderRadius: '8px', border: 'none',
               background: type === 'confirm' ? '#ef4444' : '#3b82f6', color: 'white', fontWeight: 600, cursor: 'pointer'

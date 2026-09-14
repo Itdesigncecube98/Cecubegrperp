@@ -233,7 +233,8 @@ export default function Employees() {
           isOpen: true,
           type: 'alert',
           title: 'Emails Sent',
-          message: `Successfully sent login instructions to ${successCount} employees.`
+          message: `Successfully sent login instructions to ${successCount} employees.`,
+          onConfirm: () => setDialogConfig(prev => ({ ...prev, isOpen: false }))
         });
       }
     });
