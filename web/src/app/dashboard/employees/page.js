@@ -218,7 +218,7 @@ export default function Employees() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 subject: 'Your Portal Login Instructions',
-                message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: ${dashboardUrl}/employeedashboard/login\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Please contact HR to set a password.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
+                message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal Login URL: ${dashboardUrl}/login\nEmployee App Login URL: ${dashboardUrl}/employeedashboard/login\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Please contact HR to set a password.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
                 recipientIds: [emp.id],
                 emailType: 'login-instruction'
               })
@@ -328,7 +328,7 @@ export default function Employees() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subject: 'Your Portal Login Instructions',
-          message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: ${dashboardUrl}/employeedashboard/login\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Please contact HR to set a password.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
+          message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal Login URL: ${dashboardUrl}/login\nEmployee App Login URL: ${dashboardUrl}/employeedashboard/login\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Please contact HR to set a password.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
           recipientIds: [emp.id],
           emailType: 'login-instruction'
         })
