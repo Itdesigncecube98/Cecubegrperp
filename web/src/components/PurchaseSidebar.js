@@ -1,324 +1,284 @@
 'use client';
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
-  Users, ChevronDown, ChevronRight, 
-  Layers, LogOut, Circle, Tag, ClipboardList, MessageSquare, FileText, Database
+  ShoppingCart, FileText, Settings, 
+  ChevronDown, ChevronRight, Users, 
+  LogOut, Search, X, 
+  ChevronLeft, Sparkles, BarChart2, Layers,
+  FileSignature, Truck, CheckSquare, ListOrdered
 } from 'lucide-react';
-import '../app/globals.css';
+import Dialog from './Dialog';
+import './sidebar.css';
 
-const PurchaseSidebar = () => {
+export default function PurchaseSidebar({ isCollapsed: propCollapsed, setIsCollapsed: propSetIsCollapsed }) {
   const pathname = usePathname();
-  // Auto-expand based on active route
+  const router = useRouter();
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showWidget, setShowWidget] = useState(true);
+
+  const [localCollapsed, setLocalCollapsed] = useState(false);
+  const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
+  const setIsCollapsed = propSetIsCollapsed || setLocalCollapsed;
+  
   const [expanded, setExpanded] = useState({
-    suppliers: pathname.includes('/suppliers'),
-    brands: pathname.includes('/brands'),
-    requisition: pathname.includes('/requisition'),
-    enquiry: pathname.includes('/enquiry'),
-    quotation: pathname.includes('/quotation'),
-    rateMaster: pathname.includes('/rate-master'),
+    dashboard: true,
+    procurement: true,
+    reports: true
   });
 
-  const toggleExpand = (menu) => {
-    setExpanded(prev => ({ ...prev, [menu]: !prev[menu] }));
+  const toggleSection = (section) => {
+    setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const isActive = (path) => pathname.includes(path);
-
-  // Light UI Colors matching the other modules
-  const colors = {
-    bg: '#ffffff',
-    textMain: '#475569',
-    textSub: '#64748b',
-    activeBg: '#e0f2fe',
-    activeText: '#0284c7',
-    border: '#e2e8f0',
-    subBg: '#f8fafc'
+  const confirmLogout = () => {
+    sessionStorage.removeItem('isAdmin');
+    router.push('/login');
   };
+
+  const menuConfig = [
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: BarChart2,
+      items: [
+        { name: 'Purchase Dashboard', path: '/purchase/dashboard' },
+      ]
+    },
+    {
+      id: 'procurement',
+      label: 'Procurement',
+      icon: ShoppingCart,
+      items: [
+        { name: 'Purchase Indent (PR)', path: '/purchase/pr' },
+        { name: 'Vendor Master', path: '/purchase/vendors' },
+        { name: 'Brand Master', path: '/purchase/brands' },
+        { name: 'Enquiry Generation', path: '/purchase/enquiry/generation' },
+        { name: 'Enquiry Browse', path: '/purchase/enquiry/browse' },
+        { name: 'Quotation', path: '/purchase/quotation' },
+        { name: 'Purchase Orders (PO)', path: '/purchase/po' },
+        { name: 'PO Material Browse', path: '/purchase/po/browse' },
+      ]
+    },
+    {
+      id: 'reports',
+      label: 'Reports & Analytics',
+      icon: BarChart2,
+      items: [
+        { name: 'Supplier Reports', path: '/purchase/reports/supplier' },
+        { name: 'Payment Details', path: '/purchase/reports/payment-summary' },
+      ]
+    }
+  ];
+
+  const allItems = menuConfig.flatMap(group => (
+    group.items.map(item => ({ ...item, group: group.label, icon: group.icon }))
+  ));
+
+  const filteredItems = searchQuery.trim() ? allItems.filter(item =>
+      item.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+  ) : null;
 
   return (
-    <div className="sidebar" style={{ flexShrink: 0, backgroundColor: colors.bg, width: '250px', display: 'flex', flexDirection: 'column', height: '100vh', color: colors.textMain, borderRight: `1px solid ${colors.border}` }}>
-      
-      {/* Brand Header */}
-      <div style={{ padding: '24px 20px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src="/logo.png" alt="CeCube Logo" style={{ height: '32px', objectFit: 'contain' }} />
+    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      <div 
+        className="sidebar-toggle-btn" 
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+        aria-label="Toggle sidebar"
+      >
+        {isCollapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
       </div>
 
-      <nav style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        
-        {/* Switch Module */}
-        <Link href="/portal" style={{ textDecoration: 'none' }}>
-          <div style={{ 
-            display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', 
-            borderRadius: '8px', cursor: 'pointer', color: colors.textMain,
-            marginBottom: '16px', fontWeight: 500
-          }}>
-            <Layers size={18} />
+      <div className="sidebar-header">
+        <Link href="/purchase/dashboard" className="sidebar-brand-wrapper">
+          <div className="sidebar-logo-container" style={{ background: '#f59e0b' }}>
+            <ShoppingCart size={20} color="white" />
+          </div>
+          {!isCollapsed && (
+            <div className="sidebar-brand-info">
+              <div className="sidebar-brand-name">
+                <span>Purchase</span>
+              </div>
+              <div className="sidebar-brand-sub">
+                <span>📦 Supply Chain</span>
+              </div>
+            </div>
+          )}
+        </Link>
+        {!isCollapsed && (
+          <button 
+            className="sidebar-header-btn" 
+            title="Switch Module"
+            onClick={() => router.push('/portal')}
+          >
+            <Layers size={14} />
+          </button>
+        )}
+      </div>
+
+      {!isCollapsed && (
+        <div className="sidebar-search-box">
+          <div className="sidebar-search-inner">
+            <Search size={14} color="#64748b" />
+            <input 
+              type="text"
+              placeholder="Search purchase..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="sidebar-search-input"
+            />
+            {searchQuery ? (
+              <X size={12} color="#94a3b8" style={{ cursor: 'pointer' }} onClick={() => setSearchQuery('')} />
+            ) : (
+              <span className="sidebar-search-kbd">⌘K</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <nav className="sidebar-nav">
+        <Link 
+          href="/portal" 
+          className="nav-item" 
+          title="Switch Module"
+        >
+          <div className="nav-item-left">
+            <Layers size={17} />
             <span>Switch Module</span>
           </div>
         </Link>
-        
-        {/* Suppliers Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('suppliers')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.suppliers ? colors.activeBg : 'transparent',
-              color: expanded.suppliers ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <Users size={18} />
-              <span>Suppliers</span>
-            </div>
-            {expanded.suppliers ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </div>
-          
-          {expanded.suppliers && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'Supplier Master', path: '/add-supplier' },
-                { name: 'Supplier List', path: '/supplier-list' },
-              ].map(sub => (
-                <Link key={sub.name} href={`/purchase/suppliers${sub.path}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ 
-                    padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                    color: isActive(sub.path) ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                    backgroundColor: isActive(sub.path) ? colors.activeBg : 'transparent',
-                    borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                    marginRight: '8px'
-                  }}>
-                    <Circle size={8} fill={isActive(sub.path) ? colors.activeText : "transparent"} />
-                    {sub.name}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Brands Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('brands')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.brands ? colors.activeBg : 'transparent',
-              color: expanded.brands ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <Tag size={18} />
-              <span>Brands</span>
-            </div>
-            {expanded.brands ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        {filteredItems ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {filteredItems.length === 0 ? (
+              <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: '12px', color: '#64748b' }}>
+                No results for &quot;{searchQuery}&quot;
+              </div>
+            ) : (
+              filteredItems.map(item => {
+                const Icon = item.icon;
+                const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`);
+                return (
+                  <Link
+                    key={item.path}
+                    href={item.path}
+                    className={`nav-item ${isActive ? 'active' : ''}`}
+                    title={item.name}
+                  >
+                    <div className="nav-item-left">
+                      <Icon size={17} />
+                      <span>{item.name}</span>
+                    </div>
+                  </Link>
+                );
+              })
+            )}
           </div>
-          
-          {expanded.brands && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'Brand Master', path: '/brand-master' },
-              ].map(sub => (
-                <Link key={sub.name} href={`/purchase/brands${sub.path}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ 
-                    padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                    color: isActive(sub.path) ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                    backgroundColor: isActive(sub.path) ? colors.activeBg : 'transparent',
-                    borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                    marginRight: '8px'
-                  }}>
-                    <Circle size={8} fill={isActive(sub.path) ? colors.activeText : "transparent"} />
-                    {sub.name}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+        ) : (
+          menuConfig.map((section) => {
+            const Icon = section.icon;
+            const isGroupOpen = expanded[section.id];
+            const hasActiveChild = section.items.some(item => pathname === item.path || pathname.startsWith(`${item.path}/`));
 
-        {/* Requisition Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('requisition')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.requisition ? colors.activeBg : 'transparent',
-              color: expanded.requisition ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <ClipboardList size={18} />
-              <span>Requisition</span>
-            </div>
-            {expanded.requisition ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </div>
-          
-          {expanded.requisition && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'Requisition Browse', path: '/browse' },
-              ].map(sub => (
-                <Link key={sub.name} href={`/purchase/requisition${sub.path}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ 
-                    padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                    color: isActive(sub.path) ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                    backgroundColor: isActive(sub.path) ? colors.activeBg : 'transparent',
-                    borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                    marginRight: '8px'
-                  }}>
-                    <Circle size={8} fill={isActive(sub.path) ? colors.activeText : "transparent"} />
-                    {sub.name}
+            return (
+              <div key={section.id} style={{ marginTop: '2px' }}>
+                <div 
+                  className={`nav-item ${hasActiveChild ? 'active' : ''}`}
+                  onClick={() => toggleSection(section.id)}
+                  title={section.label}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="nav-item-left">
+                    <Icon size={17} />
+                    <span>{section.label}</span>
                   </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+                  {!isCollapsed && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span className="group-badge-count">{section.items.length}</span>
+                      {isGroupOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </div>
+                  )}
+                </div>
 
-        {/* Enquiry Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('enquiry')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.enquiry ? colors.activeBg : 'transparent',
-              color: expanded.enquiry ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <MessageSquare size={18} />
-              <span>Enquiry</span>
-            </div>
-            {expanded.enquiry ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </div>
-          
-          {expanded.enquiry && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'Enquiry Generation', path: '/generation' },
-                { name: 'Enquiry Browse', path: '/browse' },
-              ].map(sub => (
-                <Link key={sub.name} href={`/purchase/enquiry${sub.path}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ 
-                    padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                    color: isActive(sub.path) ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                    backgroundColor: isActive(sub.path) ? colors.activeBg : 'transparent',
-                    borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                    marginRight: '8px'
-                  }}>
-                    <Circle size={8} fill={isActive(sub.path) ? colors.activeText : "transparent"} />
-                    {sub.name}
+                {!isCollapsed && isGroupOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', marginTop: '1px' }}>
+                    {section.items.map((item) => {
+                      const isActive = pathname === item.path || pathname.startsWith(`${item.path}/`);
+                      return (
+                        <Link
+                          key={item.path}
+                          href={item.path}
+                          className={`nav-subitem ${isActive ? 'active' : ''}`}
+                          title={item.name}
+                        >
+                          <div className="nav-subitem-bullet"></div>
+                          <span>{item.name}</span>
+                        </Link>
+                      );
+                    })}
                   </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Quotation Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('quotation')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.quotation ? colors.activeBg : 'transparent',
-              color: expanded.quotation ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <FileText size={18} />
-              <span>Quotation</span>
-            </div>
-            {expanded.quotation ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </div>
-          
-          {expanded.quotation && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'Quotation', path: '' },
-              ].map(sub => (
-                <Link key={sub.name} href={`/purchase/quotation${sub.path}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ 
-                    padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                    color: isActive(`/purchase/quotation`) ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                    backgroundColor: isActive(`/purchase/quotation`) ? colors.activeBg : 'transparent',
-                    borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                    marginRight: '8px'
-                  }}>
-                    <Circle size={8} fill={isActive(`/purchase/quotation`) ? colors.activeText : "transparent"} />
-                    {sub.name}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Rate Master Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('rateMaster')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.rateMaster ? colors.activeBg : 'transparent',
-              color: expanded.rateMaster ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <Database size={18} />
-              <span>Rate Master</span>
-            </div>
-            {expanded.rateMaster ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </div>
-          
-          {expanded.rateMaster && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'Rate Master', path: '' },
-              ].map(sub => (
-                <Link key={sub.name} href={`/purchase/rate-master${sub.path}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ 
-                    padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                    color: isActive(`/purchase/rate-master`) ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                    backgroundColor: isActive(`/purchase/rate-master`) ? colors.activeBg : 'transparent',
-                    borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                    marginRight: '8px'
-                  }}>
-                    <Circle size={8} fill={isActive(`/purchase/rate-master`) ? colors.activeText : "transparent"} />
-                    {sub.name}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
+                )}
+              </div>
+            );
+          })
+        )}
       </nav>
 
-      {/* Logout */}
-      <div style={{ padding: '16px 12px', borderTop: `1px solid ${colors.border}` }}>
-        <Link href="/" style={{ textDecoration: 'none' }}>
-          <div style={{ 
-            display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', 
-            borderRadius: '8px', cursor: 'pointer', color: '#ef4444',
-            fontWeight: 500
-          }}>
-            <LogOut size={18} />
-            <span>Logout</span>
+      <div className="sidebar-footer">
+        {!isCollapsed && showWidget && (
+          <div className="sidebar-widget-card" style={{ background: '#fef3c7', borderColor: '#fde68a' }}>
+            <div className="sidebar-widget-header">
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#b45309' }}>
+                <Sparkles size={13} color="#b45309" /> Purchase Savings
+              </span>
+              <button 
+                className="sidebar-widget-close" 
+                onClick={() => setShowWidget(false)}
+                title="Dismiss"
+              >
+                <X size={12} />
+              </button>
+            </div>
+            <div className="sidebar-widget-text" style={{ color: '#92400e' }}>
+              Negotiate hard to improve your purchase savings KPI.
+            </div>
           </div>
-        </Link>
+        )}
+
+        <div className="sidebar-user-row">
+          <div className="sidebar-user-left">
+            <div className="sidebar-avatar-wrapper">
+              <div className="sidebar-avatar" style={{ background: '#f59e0b' }}>
+                <span>P</span>
+              </div>
+              <span className="sidebar-online-dot"></span>
+            </div>
+            <div className="sidebar-user-meta">
+              <span className="sidebar-user-name">Purchase Mgr</span>
+              <span className="sidebar-user-email">purchase@cecube.com</span>
+            </div>
+          </div>
+          <button 
+            className="sidebar-logout-icon-btn" 
+            title="Sign out"
+            onClick={() => setShowLogoutDialog(true)}
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
       </div>
 
-    </div>
+      <Dialog
+        isOpen={showLogoutDialog}
+        type="confirm"
+        title="Logout"
+        message="Are you sure you want to logout?"
+        onConfirm={confirmLogout}
+        onCancel={() => setShowLogoutDialog(false)}
+      />
+    </aside>
   );
-};
-
-export default PurchaseSidebar;
+}
