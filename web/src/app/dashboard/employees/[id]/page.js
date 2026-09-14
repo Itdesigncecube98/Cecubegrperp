@@ -615,7 +615,7 @@ export default function EmployeeProfilePage({ params }) {
           subject: 'Your Portal Login Instructions',
           message: `Hello ${employee.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: ${dashboardUrl}/employeedashboard/login\nEmployee Code: ${employee.empId}\nEmail: ${employee.email}\nPassword: ${employee.password || 'Please contact HR to set a password.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
           recipientIds: [employee.id],
-          emailType: 'general'
+          emailType: 'login-instruction'
         })
       });
       const result = await res.json();

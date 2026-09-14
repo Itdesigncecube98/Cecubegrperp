@@ -220,7 +220,7 @@ export default function Employees() {
                 subject: 'Your Portal Login Instructions',
                 message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: ${dashboardUrl}/employeedashboard/login\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Please contact HR to set a password.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
                 recipientIds: [emp.id],
-                emailType: 'general'
+                emailType: 'login-instruction'
               })
             });
             successCount++;
@@ -329,7 +329,7 @@ export default function Employees() {
           subject: 'Your Portal Login Instructions',
           message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: ${dashboardUrl}/employeedashboard/login\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Please contact HR to set a password.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
           recipientIds: [emp.id],
-          emailType: 'general'
+          emailType: 'login-instruction'
         })
       });
       const result = await res.json();
