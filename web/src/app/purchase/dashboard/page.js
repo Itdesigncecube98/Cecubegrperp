@@ -152,10 +152,10 @@ export default function PurchaseDashboard() {
         </div>
         <div className="pur-grid-4" style={{ padding: '24px' }}>
           {[
-            { title: 'Supplier Reports', description: 'Supplier list, summary, rating, PO analysis, and supplier-wise reports.', href: '/purchase/reports/supplier', color: '#f59e0b' },
-            { title: 'Payment Summary', description: 'Review payment status and outstanding purchase liabilities.', href: '/purchase/reports/payment-summary', color: '#0ea5e9' },
-            { title: 'Payment Details', description: 'Open detailed payment transactions and invoice records.', href: '/purchase/reports/payment-details', color: '#10b981' },
-            { title: 'Payment Ageing', description: 'Track overdue payments by ageing buckets and due dates.', href: '/purchase/reports/payment-ageing', color: '#ef4444' },
+            { title: 'Supplier Reports', description: 'Supplier list, summary, rating, PO analysis, and supplier-wise reports.', href: '/purchase/reports/supplier/supplier', color: '#f59e0b' },
+            { title: 'Payment Summary', description: 'Review payment status and outstanding purchase liabilities.', href: '/purchase/reports/payment/summary', color: '#0ea5e9' },
+            { title: 'Payment Details', description: 'Open detailed payment transactions and invoice records.', href: '/purchase/reports/payment/details', color: '#10b981' },
+            { title: 'Payment Ageing', description: 'Track overdue payments by ageing buckets and due dates.', href: '/purchase/reports/payment/ageing', color: '#ef4444' },
           ].map((report) => (
             <Link key={report.href} href={report.href} className="pur-card" style={{ padding: '18px', textDecoration: 'none', borderTop: `3px solid ${report.color}` }}>
               <h3 style={{ margin: 0, color: '#0f172a', fontSize: '15px' }}>{report.title}</h3>

@@ -67,8 +67,17 @@ export default function PurchaseSidebar({ isCollapsed: propCollapsed, setIsColla
       label: 'Reports & Analytics',
       icon: BarChart2,
       items: [
-        { name: 'Supplier Reports', path: '/purchase/reports/supplier' },
-        { name: 'Payment Details', path: '/purchase/reports/payment-summary' },
+        { name: 'Supplier', path: '/purchase/reports/supplier/supplier' },
+        { name: 'Short Supplier', path: '/purchase/reports/supplier/short-supplier' },
+        { name: 'Supplier Summary', path: '/purchase/reports/supplier/summary' },
+        { name: 'Supplier Rating', path: '/purchase/reports/supplier/rating' },
+        { name: 'PO Analysis', path: '/purchase/reports/supplier/po-analysis' },
+        { name: 'Supplier Wise Transaction', path: '/purchase/reports/supplier/supplier-wise-transaction' },
+        { name: 'Supplier Wise PO', path: '/purchase/reports/supplier/supplier-wise-po' },
+        { name: 'Payment Summary', path: '/purchase/reports/payment/summary' },
+        { name: 'Payment Details', path: '/purchase/reports/payment/details' },
+        { name: 'Date Tracking', path: '/purchase/reports/payment/date-tracking' },
+        { name: 'Ageing', path: '/purchase/reports/payment/ageing' },
       ]
     }
   ];
