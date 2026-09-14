@@ -8,7 +8,15 @@ import './supervisor.css';
 
 export default function SupervisorDashboard() {
   const router = useRouter();
-  const [employee, setEmployee] = useState(null);
+  const [employee] = useState(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = localStorage.getItem('employeeData');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [requests, setRequests] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [imprestRequests, setImprestRequests] = useState([]);
@@ -47,14 +55,14 @@ export default function SupervisorDashboard() {
     } catch (err) {
       console.error('Failed to load doc requests', err);
     }
-  }, [employee?.id]);
+  }, [employee]);
 
   const loadLeaveRequests = useCallback(async () => {
     if (!employee?.id) return;
     const res = await fetch(`/api/leaves?role=SUPERVISOR&userId=${employee.id}`);
     const data = await res.json();
     setLeaveRequests(Array.isArray(data) ? data : []);
-  }, [employee?.id]);
+  }, [employee]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([loadRequests(), loadLeaveRequests()]);
@@ -66,13 +74,10 @@ export default function SupervisorDashboard() {
   });
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
-    if (!empData) {
+    if (!employee) {
       router.replace('/login');
-    } else {
-      setEmployee(JSON.parse(empData));
     }
-  }, [router]);
+  }, [employee, router]);
 
   useEffect(() => {
     if (!employee?.id) return;
@@ -178,7 +183,7 @@ export default function SupervisorDashboard() {
   });
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="dashboard-container" style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       {toast && (
         <div style={{
@@ -260,7 +265,7 @@ export default function SupervisorDashboard() {
 
       {activeTab === 'punch' && (
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden', opacity: refreshing && requests.length > 0 ? 0.92 : 1, transition: 'opacity 0.2s' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="supervisor-table-scroll"><table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>
                 <th style={{ padding: '1rem' }}>Date & Time</th>
@@ -339,13 +344,13 @@ export default function SupervisorDashboard() {
                 ))
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
       {activeTab === 'leave' && (
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="supervisor-table-scroll"><table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>
                 <th style={{ padding: '1rem' }}>Employee</th>
@@ -413,13 +418,13 @@ export default function SupervisorDashboard() {
                 ))
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
       {activeTab === 'imprest' && (
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="supervisor-table-scroll"><table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>
                 <th style={{ padding: '1rem' }}>Employee</th>
@@ -470,13 +475,13 @@ export default function SupervisorDashboard() {
                 ))
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
       {activeTab === 'docs' && (
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="supervisor-table-scroll"><table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>
                 <th style={{ padding: '1rem' }}>Date</th>
@@ -528,7 +533,7 @@ export default function SupervisorDashboard() {
                 ))
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>
