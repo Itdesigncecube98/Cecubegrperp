@@ -1,213 +1,214 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '../../../lib/prisma';
-
 export const dynamic = 'force-dynamic';
+import { NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
+
+// GET - Fetch all employees
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const role = searchParams.get('role');
-    const checkSupervisor = searchParams.get('checkSupervisor');
+    const checkSupervisorId = searchParams.get('checkSupervisor');
 
-    // Lightweight: is this employee a supervisor of anyone?
-    if (checkSupervisor) {
-      const count = await prisma.employee.count({
-        where: { supervisorId: checkSupervisor }
+    if (checkSupervisorId) {
+      const [employee, subordinateCount, pendingPunches, pendingLeaves] = await Promise.all([
+        prisma.employee.findUnique({
+          where: { id: checkSupervisorId },
+          select: { id: true, role: true, assignedModules: true }
+        }),
+        prisma.employee.count({ where: { supervisorId: checkSupervisorId } }),
+        prisma.punchRequest.count({
+          where: { status: 'PENDING', employee: { supervisorId: checkSupervisorId } }
+        }),
+        prisma.leaveRequest.count({
+          where: { targetSupervisorId: checkSupervisorId, status: 'PENDING_SUPERVISOR' }
+        })
+      ]);
+
+      if (!employee) {
+        return NextResponse.json({ isSupervisor: false, reason: 'Employee not found' }, { status: 404 });
+      }
+
+      const role = (employee.role || '').toUpperCase();
+      const assignedModules = employee.assignedModules || [];
+      const hasSupervisorModule = assignedModules.some((module) =>
+        String(module).toUpperCase().includes('SUPERVISOR')
+      );
+
+      const isSupervisor =
+        role.includes('SUPERVISOR') ||
+        hasSupervisorModule ||
+        subordinateCount > 0 ||
+        pendingPunches > 0 ||
+        pendingLeaves > 0;
+
+      return NextResponse.json({
+        isSupervisor,
+        subordinateCount,
+        pendingPunches,
+        pendingLeaves
       });
-      return NextResponse.json({ isSupervisor: count > 0 });
     }
 
-    const includeDetails = searchParams.get('details') === 'true';
-    const whereClause = role ? { role } : {};
-    const employees = await prisma.employee.findMany({ 
-      where: whereClause,
-      include: includeDetails ? {
-        dependents: true,
-        bankDetails: true,
-        workExperiences: true,
-        educations: true
-      } : undefined
-    });
-    return NextResponse.json(employees);
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-export async function POST(request) {
-  try {
-    const data = await request.json();
-    const { password, role, dependents, bankDetails, workExperiences, educations, id, supervisor, leaveBalance, _count, attendances, punchRequests, leaveRequests, locationRequests, documents, vehicles, tripLogs, createdAt, orgChartNode, jobHistories, ...otherData } = data;
-    if (otherData.supervisorId === '') otherData.supervisorId = null;
-    
-    let dependentCreate = undefined;
-    if (dependents && Array.isArray(dependents) && dependents.length > 0) {
-      dependentCreate = {
-        create: dependents.map(d => ({
-          name: d.name,
-          relationship: d.relationship,
-          dateOfBirth: d.dateOfBirth,
-          phone: d.phone
-        }))
-      };
-    }
-
-    let bankDetailCreate = undefined;
-    if (bankDetails && Array.isArray(bankDetails) && bankDetails.length > 0) {
-      bankDetailCreate = {
-        create: bankDetails.map(b => ({
-          bankName: b.bankName,
-          accountName: b.accountName,
-          accountNumber: b.accountNumber,
-          ifscCode: b.ifscCode,
-          branch: b.branch
-        }))
-      };
-    }
-
-    let workExperienceCreate = undefined;
-    if (workExperiences && Array.isArray(workExperiences) && workExperiences.length > 0) {
-      workExperienceCreate = {
-        create: workExperiences.map(w => ({
-          companyName: w.companyName,
-          jobTitle: w.jobTitle,
-          fromDate: w.fromDate,
-          toDate: w.toDate,
-          jobDescription: w.jobDescription
-        }))
-      };
-    }
-
-    let educationsCreate = undefined;
-    if (educations && Array.isArray(educations) && educations.length > 0) {
-      educationsCreate = {
-        create: educations.map(e => ({
-          institution: e.institution,
-          degree: e.degree,
-          year: e.year,
-          grade: e.grade
-        }))
-      };
-    }
-
-    const newEmployee = await prisma.employee.create({
-      data: {
-        ...otherData,
-        password: password,
-        role: role || 'EMPLOYEE',
-        dependents: dependentCreate,
-        bankDetails: bankDetailCreate,
-        workExperiences: workExperienceCreate,
-        educations: educationsCreate,
-        leaveBalance: {
-          create: {
-            casualLeaves: 1,
-            leaveWithoutPay: 0,
-            earnedLeaves: 2
+    const employees = await prisma.employee.findMany({
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        empId: true,
+        title: true,
+        name: true,
+        email: true,
+        password: true,
+        phone: true,
+        workTelephone: true,
+        otherEmail: true,
+        role: true,
+        department: true,
+        designation: true,
+        branch: true,
+        organisation: true,
+        employmentStatus: true,
+        supervisorId: true,
+        joinedDate: true,
+        photoUrl: true,
+        basicSalary: true,
+        hra: true,
+        conveyance: true,
+        medical: true,
+        specialAllowance: true,
+        bonus: true,
+        salaryRevisions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            components: {
+              select: {
+                amount: true,
+                salaryHead: {
+                  select: {
+                    description: true,
+                    id: true,
+                    calculationType: true,
+                    remark: true,
+                    isActive: true,
+                    headTypeId: true,
+                    createdAt: true,
+                  }
+                }
+              }
+            }
           }
         },
-        jobHistories: {
-          create: [{
-            siteOffice: otherData.siteOffice,
-            branch: otherData.branch,
-            department: otherData.department,
-            designation: otherData.designation,
-            chargeType: otherData.chargeType,
-            fromDate: otherData.joinedDate || new Date().toISOString().split('T')[0]
-          }]
-        }
       }
     });
-    return NextResponse.json(newEmployee);
+
+    return NextResponse.json(employees);
+
   } catch (error) {
+    console.error('Error fetching employees:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-export async function PUT(request) {
+// POST - Create new employee
+export async function POST(request) {
   try {
-    const data = await request.json();
-    // Strip relational/computed fields that Prisma cannot directly update
-    const { id, dependents, bankDetails, workExperiences, educations, supervisor, leaveBalance, _count, attendances, punchRequests, leaveRequests, locationRequests, documents, vehicles, tripLogs, createdAt, id: empDbId, orgChartNode, ...updateData } = data;
-    
-    // Only set role if it's explicitly provided
-    if (updateData.role === undefined) {
-      delete updateData.role;
-    }
-    if (updateData.supervisorId === '') {
-      updateData.supervisorId = null;
+    const body = await request.json();
+
+    if (Array.isArray(body.emergencyContacts) && body.emergencyContacts.length > 3) {
+      return NextResponse.json({ error: 'A maximum of 3 emergency contacts is allowed.' }, { status: 400 });
     }
 
-    if (dependents && Array.isArray(dependents)) {
-      updateData.dependents = {
-        deleteMany: {},
-        create: dependents.map(d => ({
-          name: d.name,
-          relationship: d.relationship,
-          dateOfBirth: d.dateOfBirth,
-          phone: d.phone
-        }))
-      };
+    const empIdRaw = body.empId ?? body.employeeId;
+    let empId = empIdRaw != null ? empIdRaw.toString().trim() : '';
+
+    const nameFromParts = [body.firstName, body.lastName].filter(Boolean).join(' ').trim();
+    const name = (typeof body.name === 'string' ? body.name.trim() : '') || nameFromParts;
+
+    const email = (body.email || '').trim();
+    const organisation = body.organisation ?? body.organization ?? null;
+
+    if (!email) {
+      return NextResponse.json({ error: 'Email is required to create an employee login.' }, { status: 400 });
+    }
+    if (!name) {
+      return NextResponse.json({ error: 'Employee name is required.' }, { status: 400 });
     }
 
-    if (bankDetails && Array.isArray(bankDetails)) {
-      updateData.bankDetails = {
-        deleteMany: {},
-        create: bankDetails.map(b => ({
-          bankName: b.bankName,
-          accountName: b.accountName,
-          accountNumber: b.accountNumber,
-          ifscCode: b.ifscCode,
-          branch: b.branch
-        }))
-      };
+    // A password must always be stored so the employee can log in. Fall back to
+    // the shared default (and surface it) when the admin leaves it blank.
+    const providedPassword = typeof body.password === 'string' ? body.password.trim() : '';
+    const password = providedPassword || 'default123';
+
+    if (!empId && organisation) {
+      const org = await prisma.organization.findFirst({ where: { name: organisation } });
+      const prefix = org?.code?.trim().toUpperCase();
+      if (prefix) {
+        const counter = await prisma.$transaction(async (tx) => {
+          const current = await tx.employeeCodeCounter.findUnique({ where: { prefix } });
+          if (current) {
+            return tx.employeeCodeCounter.update({ where: { prefix }, data: { nextNumber: { increment: 1 } } });
+          }
+          const existingEmployees = await tx.employee.findMany({
+            where: { empId: { startsWith: prefix, mode: 'insensitive' } },
+            select: { empId: true }
+          });
+          const highestExistingNumber = existingEmployees.reduce((highest, employee) => {
+            const match = employee.empId?.match(new RegExp(`^${prefix}(\\d+)$`, 'i'));
+            return match ? Math.max(highest, Number(match[1])) : highest;
+          }, 0);
+          return tx.employeeCodeCounter.create({ data: { prefix, nextNumber: highestExistingNumber + 1 } });
+        });
+        empId = `${prefix}${String(counter.nextNumber).padStart(3, '0')}`;
+      }
     }
 
-    if (workExperiences && Array.isArray(workExperiences)) {
-      updateData.workExperiences = {
-        deleteMany: {},
-        create: workExperiences.map(w => ({
-          companyName: w.companyName,
-          jobTitle: w.jobTitle,
-          fromDate: w.fromDate,
-          toDate: w.toDate,
-          jobDescription: w.jobDescription
-        }))
-      };
+    if (empId) {
+      const existingWithEmpId = await prisma.employee.findFirst({
+        where: { empId: { equals: empId, mode: 'insensitive' } }
+      });
+      if (existingWithEmpId) {
+        return NextResponse.json({
+          error: `Employee Code "${empId}" is already assigned to ${existingWithEmpId.name}. Employee Code cannot be duplicated.`
+        }, { status: 400 });
+      }
     }
 
-    if (educations && Array.isArray(educations)) {
-      updateData.educations = {
-        deleteMany: {},
-        create: educations.map(e => ({
-          institution: e.institution,
-          degree: e.degree,
-          year: e.year,
-          grade: e.grade
-        }))
-      };
-    }
-
-    const updatedEmployee = await prisma.employee.update({
-      where: { id },
-      data: updateData
+    const employee = await prisma.employee.create({
+      data: {
+        empId: empId || null,
+        name,
+        email,
+        password,
+        phone: body.phone ?? body.phoneNumber ?? null,
+        // `department` is a required (non-null) column on Employee.
+        department: (body.department != null ? String(body.department) : '').trim(),
+        designation: body.designation != null ? String(body.designation) : null,
+        role: body.role || 'EMPLOYEE',
+        employmentStatus: body.employmentStatus || body.status || 'Working',
+        organisation,
+        ...(Array.isArray(body.emergencyContacts) ? {
+          emergencyContacts: {
+            create: body.emergencyContacts.map(contact => ({
+              name: contact.name || null,
+              phone: contact.phone || null,
+              relationship: contact.relationship || null
+            }))
+          }
+        } : {})
+      }
     });
-    return NextResponse.json(updatedEmployee);
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
 
-export async function DELETE(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    
-    await prisma.employee.delete({
-      where: { id }
-    });
-    return NextResponse.json({ success: true });
+    return NextResponse.json(employee);
+
   } catch (error) {
+    console.error('Error creating employee:', error);
+    if (error.code === 'P2002') {
+      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(', ') : 'unique field';
+      return NextResponse.json({
+        error: `An employee with the same ${target} already exists. Email addresses must be unique.`
+      }, { status: 400 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

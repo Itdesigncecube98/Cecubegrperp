@@ -7,6 +7,17 @@ import Dialog from '../../../components/Dialog';
 import * as XLSX from 'xlsx';
 import './employees.css';
 
+const getSafeDisplayName = (name, fallback = 'Employee') => {
+  const cleaned = typeof name === 'string' ? name.trim() : '';
+  return cleaned || fallback;
+};
+
+const getDisplayInitial = (name, fallback = '?') => {
+  const cleaned = typeof name === 'string' ? name.trim() : '';
+  if (!cleaned) return fallback;
+  return cleaned.charAt(0).toUpperCase();
+};
+
 // Custom Civil Engineering Cap Icon
 const CivilEnggCap = ({ size = 24, color = 'currentColor', ...props }) => (
   <svg 
@@ -29,6 +40,54 @@ const CivilEnggCap = ({ size = 24, color = 'currentColor', ...props }) => (
     <rect x="10" y="6" width="4" height="4" rx="1"/>
   </svg>
 );
+
+const calculateGrossSalary = (emp) => {
+  if (emp.salaryRevisions && emp.salaryRevisions.length > 0) {
+    const rev = emp.salaryRevisions[0];
+    const grossComp = rev.components?.find(c => c.salaryHead?.description?.toLowerCase() === 'gross salary');
+    if (grossComp && grossComp.amount) {
+      return Number(grossComp.amount);
+    }
+  }
+  const basic = Number(emp.basicSalary || 0);
+  const hra = Number(emp.hra || 0);
+  const conveyance = Number(emp.conveyance || 0);
+  const medical = Number(emp.medical || 0);
+  const sa = Number(emp.specialAllowance || 0);
+  const total = basic + hra + conveyance + medical + sa;
+  return total > 0 ? total : 0;
+};
+
+const getEmploymentStatusMeta = (status) => {
+  const rawStatus = typeof status === 'string' ? status.trim() : '';
+  const normalized = rawStatus.toLowerCase();
+
+  if (!rawStatus || normalized === 'working' || normalized === 'active') {
+    return { label: 'Working', background: '#dcfce7', color: '#15803d' };
+  }
+
+  if (['resigned', 'retired', 'terminated', 'inactive'].includes(normalized)) {
+    return {
+      label: rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase(),
+      background: '#fee2e2',
+      color: '#b91c1c'
+    };
+  }
+
+  if (normalized === 'transfer') {
+    return { label: 'Transfer', background: '#fff7ed', color: '#c2410c' };
+  }
+
+  if (normalized === 'apprenticeship') {
+    return { label: 'Apprenticeship', background: '#e0f2fe', color: '#0369a1' };
+  }
+
+  return {
+    label: rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1),
+    background: '#e2e8f0',
+    color: '#475569'
+  };
+};
 
 export default function Employees() {
   const router = useRouter();
@@ -89,7 +148,11 @@ export default function Employees() {
   };
 
   useEffect(() => {
-    loadData();
+    const timeoutId = setTimeout(() => {
+      loadData();
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
   }, []);
 
   const openStatsModal = async (emp) => {
@@ -107,9 +170,28 @@ export default function Employees() {
       title: 'Delete Employee',
       message: 'Are you sure you want to delete this employee? This action cannot be undone.',
       onConfirm: async () => {
-        await deleteEmployee(id);
-        loadData();
-        setDialogConfig(prev => ({ ...prev, isOpen: false }));
+        try {
+          const result = await deleteEmployee(id);
+          if (result?.error) {
+            setDialogConfig({
+              isOpen: true,
+              type: 'alert',
+              title: 'Delete Failed',
+              message: result.error
+            });
+            return;
+          }
+
+          await loadData();
+          setDialogConfig(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          setDialogConfig({
+            isOpen: true,
+            type: 'alert',
+            title: 'Delete Failed',
+            message: error?.message || 'Unable to delete employee.'
+          });
+        }
       }
     });
   };
@@ -126,6 +208,7 @@ export default function Employees() {
         setDialogConfig(prev => ({ ...prev, isOpen: false }));
         setSendingBulk(true);
         let successCount = 0;
+        const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubegroupdashboard-mgzzagx6z-aditya-yadavs-projects-89d22bf1.vercel.app';
         
         for (const emp of filteredByCompany) {
           if (!emp.email) continue;
@@ -135,7 +218,7 @@ export default function Employees() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 subject: 'Your Portal Login Instructions',
-                message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: https://cecube-attendance-system.vercel.app\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Contact HR if you need a password reset.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
+                message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: ${dashboardUrl}/employeedashboard/login\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Please contact HR to set a password.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
                 recipientIds: [emp.id],
                 emailType: 'general'
               })
@@ -238,12 +321,13 @@ export default function Employees() {
       return;
     }
     try {
+      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubegroupdashboard-mgzzagx6z-aditya-yadavs-projects-89d22bf1.vercel.app';
       const res = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subject: 'Your Portal Login Instructions',
-          message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: https://cecube-attendance-system.vercel.app\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Contact HR if you need a password reset.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
+          message: `Hello ${emp.name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: ${dashboardUrl}/employeedashboard/login\nEmployee Code: ${emp.empId}\nEmail: ${emp.email}\nPassword: ${emp.password || 'Please contact HR to set a password.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`,
           recipientIds: [emp.id],
           emailType: 'general'
         })
@@ -276,18 +360,17 @@ export default function Employees() {
     return [...baseFilters, ...orgFilters];
   }, [organizations]);
 
-  const filteredByCompany = useMemo(() => {
-    let filtered = employees;
-    if (activeCompany !== 'all') {
-      filtered = filtered.filter(emp => {
+  const filteredByCompany = (() => {
+    const companyFiltered = activeCompany !== 'all'
+      ? employees.filter(emp => {
         const empOrgs = (emp.organisation || '').split(',').map(o => o.trim()).filter(Boolean);
         return empOrgs.includes(activeCompany);
-      });
-    }
+      })
+      : employees;
 
     if (searchTerm.trim()) {
       const lower = searchTerm.toLowerCase();
-      filtered = filtered.filter(emp => 
+      return companyFiltered.filter(emp => 
         (emp.name || '').toLowerCase().includes(lower) ||
         (emp.empId || '').toLowerCase().includes(lower) ||
         (emp.email || '').toLowerCase().includes(lower) ||
@@ -295,8 +378,8 @@ export default function Employees() {
       );
     }
     
-    return filtered;
-  }, [employees, activeCompany, searchTerm]);
+    return companyFiltered;
+  })();
 
 
   return (
@@ -388,6 +471,7 @@ export default function Employees() {
               <th>Contact Info</th>
               <th>Department</th>
               <th>Date of Joining</th>
+              <th>Gross Salary</th>
               <th>Status</th>
               <th>Supervisor</th>
               <th className="text-right">Actions</th>
@@ -401,18 +485,22 @@ export default function Employees() {
             ) : (
               filteredByCompany.map((emp) => (
                 <tr key={emp.id}>
+                  {(() => {
+                    const statusMeta = getEmploymentStatusMeta(emp.employmentStatus);
+                    return (
+                      <>
                   <td>
                     <div className="emp-name" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       {emp.photoUrl ? (
                         <>
                           <img src={emp.photoUrl} alt="avatar" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }} />
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0ea5e9', display: 'none', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600 }}>{emp.name.charAt(0).toUpperCase()}</div>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0ea5e9', display: 'none', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600 }}>{getDisplayInitial(emp.name, '?')}</div>
                         </>
                       ) : (
-                         <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0ea5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600 }}>{emp.name.charAt(0).toUpperCase()}</div>
+                         <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0ea5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600 }}>{getDisplayInitial(emp.name, '?')}</div>
                       )}
                       <div>
-                        <a href={`/dashboard/employees/${encodeURIComponent(emp.empId || emp.id)}`} style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 600 }}>{emp.name}</a>
+                        <a href={`/dashboard/employees/${encodeURIComponent(emp.empId || emp.id)}`} style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 600 }}>{[emp.title, getSafeDisplayName(emp.name, 'Employee')].filter(Boolean).join(' ')}</a>
                         <div style={{ fontSize: '11px', color: '#64748b' }}>{emp.empId || '-'}</div>
                       </div>
                       {emp.role === 'SUPERVISOR' && <span className="badge badge-warning" style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', marginLeft: 'auto' }}>Supervisor</span>}
@@ -440,17 +528,14 @@ export default function Employees() {
                     {emp.workTelephone && <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{emp.workTelephone}</div>}
                   </td>
                   <td><span className="badge badge-success">{emp.department}</span></td>
-                  <td><span style={{ color: '#64748b', fontSize: '0.9rem' }}>{emp.joinedDate || '-'}</span></td>
+                  <td><span style={{ color: '#64748b', fontSize: '0.9rem' }}>{emp.joinedDate ? emp.joinedDate.split('-').reverse().join('-') : '-'}</span></td>
+                  <td><span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 600 }}>{calculateGrossSalary(emp) > 0 ? `₹${calculateGrossSalary(emp)}` : '-'}</span></td>
                   <td>
                     <span className="badge" style={{ 
-                      background: ['Resigned', 'Retired', 'Terminated', 'Inactive'].includes(emp.employmentStatus) ? '#fee2e2' : 
-                                  emp.employmentStatus === 'Transfer' ? '#fff7ed' : 
-                                  emp.employmentStatus === 'Apprenticeship' ? '#e0f2fe' : '#dcfce7', 
-                      color: ['Resigned', 'Retired', 'Terminated', 'Inactive'].includes(emp.employmentStatus) ? '#b91c1c' : 
-                             emp.employmentStatus === 'Transfer' ? '#c2410c' : 
-                             emp.employmentStatus === 'Apprenticeship' ? '#0369a1' : '#15803d' 
+                      background: statusMeta.background,
+                      color: statusMeta.color
                     }}>
-                      {emp.employmentStatus || 'Working'}
+                      {statusMeta.label}
                     </span>
                   </td>
                   <td>
@@ -478,6 +563,9 @@ export default function Employees() {
                       </button>
                     </div>
                   </td>
+                      </>
+                    );
+                  })()}
                 </tr>
               ))
             )}
@@ -494,7 +582,7 @@ export default function Employees() {
         <div className="modal-overlay">
           <div className="modal-content glass-panel" style={{ maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
-              <h2>{selectedEmpName}'s Attendance Stats</h2>
+              <h2>{selectedEmpName}&apos;s Attendance Stats</h2>
               <button className="icon-btn" onClick={() => setIsStatsModalOpen(false)}><X size={20} /></button>
             </div>
             
