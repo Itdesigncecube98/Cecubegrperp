@@ -208,7 +208,7 @@ export default function Employees() {
         setDialogConfig(prev => ({ ...prev, isOpen: false }));
         setSendingBulk(true);
         let successCount = 0;
-        const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubegroupdashboard-mgzzagx6z-aditya-yadavs-projects-89d22bf1.vercel.app';
+        const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubegroupdashboard.vercel.app';
         
         for (const emp of filteredByCompany) {
           if (!emp.email) continue;
@@ -321,7 +321,7 @@ export default function Employees() {
       return;
     }
     try {
-      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubegroupdashboard-mgzzagx6z-aditya-yadavs-projects-89d22bf1.vercel.app';
+      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubegroupdashboard.vercel.app';
       const res = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

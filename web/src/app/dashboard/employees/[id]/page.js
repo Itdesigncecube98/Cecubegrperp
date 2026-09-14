@@ -607,7 +607,7 @@ export default function EmployeeProfilePage({ params }) {
 
   const handleSendLoginInstruction = async () => {
     try {
-      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubegroupdashboard-mgzzagx6z-aditya-yadavs-projects-89d22bf1.vercel.app';
+      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubegroupdashboard.vercel.app';
       const res = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
