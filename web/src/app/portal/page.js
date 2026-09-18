@@ -4,23 +4,21 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
   Briefcase, ShoppingCart, FileSignature, MapPin, 
-  TrendingUp, Tag, FileText, Settings, 
-  FileCheck, LayoutDashboard, Shield, Truck, Users, LogOut, Lock 
+  TrendingUp, FileText, 
+  FileCheck, LayoutDashboard, Shield, Users, LogOut, Lock 
 } from 'lucide-react';
 import './portal.css';
 
 const ALL_MODULES = [
   { id: 'Dashboard', name: 'Analytics Dashboard', icon: LayoutDashboard, color: '#3b82f6', route: '/dashboard' },
-  { id: 'Engineering', name: 'Engineering', icon: Briefcase, color: '#8b5cf6', route: '/engineering' },
-  { id: 'Purchase', name: 'Purchase', icon: ShoppingCart, color: '#f59e0b', route: '/purchase' },
+  { id: 'AdminDashboard', name: 'Admin Dashboard', icon: Shield, color: '#ef4444', route: '/admin-dashboard' },
+  { id: 'Engineering', name: 'Engineering', icon: Briefcase, color: '#8b5cf6', route: '/engineering/dashboard' },
+  { id: 'Purchase', name: 'Purchase', icon: ShoppingCart, color: '#f59e0b', route: '/purchase/dashboard' },
   { id: 'Contracting', name: 'Contracting', icon: FileSignature, color: '#14b8a6', route: '/contracting' },
   { id: 'Site', name: 'Site', icon: MapPin, color: '#f43f5e', route: '/coming-soon' },
-  { id: 'Marketing', name: 'Marketing', icon: TrendingUp, color: '#ec4899', route: '/coming-soon' },
-  { id: 'Sales', name: 'Sales', icon: Tag, color: '#0ea5e9', route: '/coming-soon' },
-  { id: 'Accounts', name: 'Accounts', icon: FileText, color: '#6366f1', route: '/accounts' },
-  { id: 'Workflow', name: 'Workflow', icon: Settings, color: '#64748b', route: '/coming-soon' },
-  { id: 'Tender', name: 'Tender', icon: FileCheck, color: '#84cc16', route: '/coming-soon' },
-  { id: 'Plant and Machinery', name: 'Plant & Machinery', icon: Truck, color: '#eab308', route: '/coming-soon' },
+  { id: 'Marketing', name: 'Marketing', icon: TrendingUp, color: '#ec4899', route: '/marketing/dashboard' },
+  { id: 'Accounts', name: 'Accounts', icon: FileText, color: '#6366f1', route: '/accounts/dashboard' },
+  { id: 'Tender', name: 'Tender', icon: FileCheck, color: '#84cc16', route: '/tender/dashboard' },
 ];
 
 export default function UnifiedPortal() {
@@ -32,7 +30,7 @@ export default function UnifiedPortal() {
   useEffect(() => {
     const isAdmin = sessionStorage.getItem('isAdmin') === 'true';
     const adminData = sessionStorage.getItem('adminData');
-    const empDataStr = sessionStorage.getItem('employeeData');
+    const empDataStr = localStorage.getItem('employeeData');
 
     if (isAdmin && adminData) {
       setUser({ role: 'admin', name: 'Administrator' });
@@ -102,12 +100,17 @@ export default function UnifiedPortal() {
           {ALL_MODULES.map((mod, index) => {
             const Icon = mod.icon;
             // Dashboard is the core app, always unlocked
-            const isLocked = mod.id !== 'Dashboard' && !allowedModuleIds.includes(mod.id);
+            const isLocked = mod.id !== 'Dashboard' && mod.id !== 'AdminDashboard' && !allowedModuleIds.some(m => m === mod.id || m.startsWith(`${mod.id}:`));
+            
+            if (mod.id === 'AdminDashboard' && user?.role !== 'admin') {
+              return null;
+            }
+
             let finalRoute = mod.route;
             let finalName = mod.name;
             if (mod.id === 'Dashboard') {
               finalRoute = user?.role === 'admin' ? '/dashboard' : '/employee/dashboard';
-              finalName = user?.role === 'admin' ? 'HR and Admin Dashboard' : 'Employee Dashboard';
+              finalName = user?.role === 'admin' ? 'HR Dashboard' : 'Employee Dashboard';
             }
 
             if (isLocked) {

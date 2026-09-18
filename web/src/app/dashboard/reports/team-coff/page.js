@@ -3,12 +3,14 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Download, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 import '../reports.css';
 
 export default function TeamCoffReport() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const filters = useReportFilters();
 
   const today = new Date();
   const currentMonthStr = today.toISOString().slice(0, 7); // YYYY-MM
@@ -68,16 +70,17 @@ export default function TeamCoffReport() {
 
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Select Month*</label>
-            <input 
-              type="month" 
-              className="filterInput" 
-              value={selectedMonth} 
-              onChange={e => setSelectedMonth(e.target.value)} 
-            />
-          </div>
-          <div className="filterGroup" style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <ReportFilters {...filters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+            <div className="filterGroup">
+              <label className="filterLabel">Select Month*</label>
+              <input 
+                type="month" 
+                className="filterInput" 
+                value={selectedMonth} 
+                onChange={e => setSelectedMonth(e.target.value)} 
+              />
+            </div>
             <button className="primaryButton" onClick={fetchData} style={{ padding: '8px 24px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', height: '38px' }}>
               View
             </button>
@@ -103,7 +106,7 @@ export default function TeamCoffReport() {
                 </tr>
               </thead>
               <tbody>
-                {data.map(emp => (
+                {filters.applyFilters(data).map(emp => (
                   <tr key={emp.id}>
                     <td>{emp.empId || '-'}</td>
                     <td>{emp.name}</td>

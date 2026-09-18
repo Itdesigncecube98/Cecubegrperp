@@ -1,18 +1,35 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, CalendarDays, Save, X, Printer, RotateCcw } from 'lucide-react';
 import Dialog from '@/components/Dialog';
 
 export default function MusterStatusPage() {
-  const [statuses, setStatuses] = useState([
-    { id: 1, description: 'Present', shortName: 'P', color: '#e5e7eb' },
-    { id: 2, description: 'First Half Casual Leave Second Half Present', shortName: 'FCLSP', color: '#ef4444' },
-    { id: 3, description: 'First Half Present Second Half Casual Leave', shortName: 'FPSCL', color: '#ef4444' },
-    { id: 4, description: 'First Half Earned Leave Second Half Present', shortName: 'FELSP', color: '#ef4444' },
-    { id: 5, description: 'Absent', shortName: 'A', color: '#e5e7eb' },
-    { id: 6, description: 'Work From Home', shortName: 'WFH', color: '#e5e7eb' },
-    { id: 7, description: 'Leave Without Pay', shortName: 'LWP', color: '#e5e7eb' },
-  ]);
+  const [statuses, setStatuses] = useState([]);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const fetchStatuses = async () => {
+    try {
+      const res = await fetch('/api/synchronisation2/muster-status');
+      if (res.ok) {
+        const json = await res.json();
+        setStatuses(json);
+      } else {
+        showToast('Failed to fetch muster statuses', 'error');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('Error connecting to server', 'error');
+    }
+  };
+
+  useEffect(() => {
+    fetchStatuses();
+  }, []);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -46,24 +63,46 @@ export default function MusterStatusPage() {
     setDeleteDialog({ isOpen: true, id });
   };
 
-  const confirmDelete = () => {
-    setStatuses(statuses.filter(s => s.id !== deleteDialog.id));
-    setDeleteDialog({ isOpen: false, id: null });
+  const confirmDelete = async () => {
+    try {
+      const res = await fetch(`/api/synchronisation2/muster-status/${deleteDialog.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('Muster status deleted successfully');
+        fetchStatuses();
+        setDeleteDialog({ isOpen: false, id: null });
+      } else {
+        showToast('Failed to delete muster status', 'error');
+      }
+    } catch (error) {
+      showToast('Error deleting', 'error');
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.description || !formData.shortName) {
-      alert('Description and Short Name are required');
+      showToast('Description and Short Name are required', 'error');
       return;
     }
 
-    if (editingId) {
-      setStatuses(statuses.map(s => s.id === editingId ? { ...formData, id: editingId } : s));
-    } else {
-      setStatuses([...statuses, { ...formData, id: Date.now() }]);
+    try {
+      const url = editingId ? `/api/synchronisation2/muster-status/${editingId}` : '/api/synchronisation2/muster-status';
+      const method = editingId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        showToast(editingId ? 'Muster status updated successfully' : 'Muster status added successfully');
+        fetchStatuses();
+        resetForm();
+      } else {
+        showToast('Failed to save muster status', 'error');
+      }
+    } catch (error) {
+      showToast('Error saving', 'error');
     }
-    resetForm();
   };
 
   const inputStyle = {
@@ -248,6 +287,12 @@ export default function MusterStatusPage() {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteDialog({ isOpen: false, id: null })}
       />
+
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: toast.type === 'error' ? '#dc2626' : '#16a34a', color: 'white', padding: '10px 24px', borderRadius: '30px', fontWeight: 500, zIndex: 9999 }}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }

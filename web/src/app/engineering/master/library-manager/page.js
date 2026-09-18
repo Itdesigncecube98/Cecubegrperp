@@ -9,6 +9,8 @@ export default function LibraryManager() {
   const [data, setData] = useState([]);
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newType, setNewType] = useState('Material');
+  const [editingId, setEditingId] = useState(null);
   
   React.useEffect(() => {
     fetchLibraries();
@@ -50,14 +52,16 @@ export default function LibraryManager() {
     }
     try {
       const res = await fetch('/api/libraries', {
-        method: 'POST',
+        method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName, type: 'General' })
+        body: JSON.stringify(editingId ? { id: editingId, name: newName, type: newType } : { name: newName, type: newType })
       });
       if (res.ok) {
         fetchLibraries();
         setNewName('');
+        setNewType('Material');
         setIsAdding(false);
+        setEditingId(null);
       } else {
         alert("Failed to add library");
       }
@@ -101,7 +105,8 @@ export default function LibraryManager() {
                   <td style={{ padding: '12px 16px', fontSize: '0.875rem', color: '#64748b' }}>{row.desc}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                      <Trash2 size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => handleDelete(row.id)} />
+                      <Edit size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => { setEditingId(row.id); setNewName(row.name); setNewType(row.type || 'Material'); setIsAdding(true); }} />
+                      <Trash2 size={16} color="#ef4444" style={{ cursor: 'pointer' }} onClick={() => handleDelete(row.id)} />
                     </div>
                   </td>
                 </tr>
@@ -110,7 +115,7 @@ export default function LibraryManager() {
               {!isAdding && (
                 <tr>
                   <td colSpan="3" style={{ padding: '12px 16px', textAlign: 'center' }}>
-                    <button className="btn-primary" style={{ background: '#0ea5e9', padding: '6px 16px', fontSize: '0.85rem' }} onClick={() => setIsAdding(true)}>
+                      <button className="btn-primary" style={{ background: '#0ea5e9', padding: '6px 16px', fontSize: '0.85rem' }} onClick={() => { setEditingId(null); setNewName(''); setNewType('Material'); setIsAdding(true); }}>
                       <Plus size={16} style={{ display: 'inline', marginRight: '4px' }} /> Add Library
                     </button>
                   </td>
@@ -129,12 +134,17 @@ export default function LibraryManager() {
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
                     />
+                    <select value={newType} onChange={(e) => setNewType(e.target.value)} style={{ width: '100%', marginTop: '8px', padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
+                      <option value="Material">Material Library</option>
+                      <option value="Equipment">Equipment Library</option>
+                      <option value="Labour">Labour Library</option>
+                    </select>
                   </td>
                   <td style={{ padding: '12px 16px' }}></td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
                       <Save size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={handleSave} />
-                      <X size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => { setIsAdding(false); setNewName(''); }} />
+                      <X size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => { setIsAdding(false); setNewName(''); setNewType('Material'); setEditingId(null); }} />
                     </div>
                   </td>
                 </tr>

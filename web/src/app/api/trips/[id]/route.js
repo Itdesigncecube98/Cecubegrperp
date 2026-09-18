@@ -1,7 +1,9 @@
+export const dynamic = 'force-dynamic';
 import { PrismaClient } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
 import { prisma } from '@/lib/prisma';
+import { amount, postJournal } from '@/lib/accounting';
 
 export async function PUT(request, { params }) {
   try {
@@ -43,6 +45,21 @@ export async function PUT(request, { params }) {
       where: { id },
       data: updateData
     });
+
+    if (['APPROVED', 'PAID'].includes(updatedTrip.status) && amount(updatedTrip.amount) > 0) {
+      const trip = await prisma.tripLog.findUnique({ where: { id }, include: { employee: true } });
+      await prisma.$transaction(async (tx) => {
+        await postJournal(tx, {
+          voucherNo: `VEHICLE-TRIP-${id}`,
+          type: 'Purchase',
+          narration: `Approved vehicle expense for ${trip.employee.name} on ${trip.date || 'trip'}`,
+          entries: [
+            { ledger: `Vehicle Expenses - ${trip.employee.name}`, ledgerType: 'Expense', type: 'Dr', amount: amount(updatedTrip.amount) },
+            { ledger: `Vehicle Payable - ${trip.employee.name}`, ledgerType: 'Liability', type: 'Cr', amount: amount(updatedTrip.amount) }
+          ]
+        });
+      }, { timeout: 30000 });
+    }
 
     return NextResponse.json(updatedTrip);
   } catch (error) {

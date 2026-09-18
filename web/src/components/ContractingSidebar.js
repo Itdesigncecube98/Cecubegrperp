@@ -1,274 +1,319 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   Users, ChevronDown, ChevronRight, FileText, 
-  HelpCircle, Settings, FileSearch, PieChart, Wrench, Circle, Layers, LogOut
+  HelpCircle, Settings, FileSearch, PieChart, Wrench, 
+  Layers, LogOut, Search, X, Sparkles, ChevronLeft, FileSignature
 } from 'lucide-react';
-import '../app/globals.css';
+import Dialog from './Dialog';
+import './sidebar.css';
 
-const ContractingSidebar = () => {
+export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCollapsed: propSetIsCollapsed }) {
   const pathname = usePathname();
-  // We want to auto-expand groups if they contain the active page
+  const router = useRouter();
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showWidget, setShowWidget] = useState(true);
+
+  const [localCollapsed, setLocalCollapsed] = useState(false);
+  const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
+  const setIsCollapsed = propSetIsCollapsed || setLocalCollapsed;
+
   const [expanded, setExpanded] = useState({
     contractors: pathname.includes('/contractors'),
     labour: pathname.includes('/labour'),
     workOrder: pathname.includes('/work-order'),
     raBills: pathname.includes('/ra-bills'),
+    enquiry: pathname.includes('/enquiry'),
   });
 
-  const toggleExpand = (menu) => {
+  const toggleSection = (menu) => {
     setExpanded(prev => ({ ...prev, [menu]: !prev[menu] }));
   };
 
-  const isActive = (path) => pathname.includes(path);
-
-  // New Light UI Colors
-  const colors = {
-    bg: '#ffffff',
-    textMain: '#475569',
-    textSub: '#64748b',
-    activeBg: '#e0f2fe',
-    activeText: '#0284c7',
-    border: '#e2e8f0',
-    subBg: '#f8fafc'
+  const confirmLogout = () => {
+    sessionStorage.removeItem('isAdmin');
+    router.push('/login');
   };
 
+  const menuConfig = [
+    {
+      id: 'contractors',
+      label: 'Contractors',
+      icon: Users,
+      items: [
+        { name: 'Contractor List', path: '/contracting/contractors/contractor-list' },
+        { name: 'Add Group', path: '/contracting/contractors/add-group' },
+        { name: 'Registered Suppliers', path: '/contracting/contractors/registered-suppliers' },
+        { name: 'Insurance Policy Detail', path: '/contracting/contractors/insurance/policy-detail' },
+        { name: 'Labour Master', path: '/contracting/contractors/labour-master' },
+      ]
+    },
+    {
+      id: 'labour',
+      label: 'Labour Management',
+      icon: Wrench,
+      items: [
+        { name: 'Requisition Generation', path: '/contracting/labour/requisition' },
+        { name: 'Requisition Browse', path: '/contracting/labour/requisition-browse' },
+        { name: 'Rate Master', path: '/contracting/labour/rate-master' },
+      ]
+    },
+    {
+      id: 'workOrder',
+      label: 'Work Order',
+      icon: FileText,
+      items: [
+        { name: 'Raise Work Order', path: '/contracting/work-order/raise' },
+        { name: 'Browse Work Order', path: '/contracting/work-order/browse' },
+      ]
+    },
+    {
+      id: 'raBills',
+      label: 'RA Bills',
+      icon: FileSearch,
+      items: [
+        { name: 'RA Bill Generation', path: '/contracting/ra-bills/generation' },
+        { name: 'RA Bill Browse', path: '/contracting/ra-bills/browse' },
+        { name: 'RA Bill Approve', path: '/contracting/ra-bills/approve' },
+      ]
+    },
+    {
+      id: 'enquiry',
+      label: 'Enquiry',
+      icon: HelpCircle,
+      items: [
+        { name: 'Enquiry Generation', path: '/contracting/enquiry/enquiry-generation' }
+      ]
+    }
+  ];
+
+  const allItems = useMemo(() => {
+    const list = [];
+    menuConfig.forEach(group => {
+      group.items.forEach(item => {
+        list.push({ ...item, group: group.label, icon: group.icon });
+      });
+    });
+    return list;
+  }, []);
+
+  const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return null;
+    return allItems.filter(item =>
+      item.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+    );
+  }, [searchQuery, allItems]);
+
   return (
-    <div className="sidebar" style={{ backgroundColor: colors.bg, width: '250px', display: 'flex', flexDirection: 'column', height: '100vh', color: colors.textMain, borderRight: `1px solid ${colors.border}` }}>
-      
-      {/* Brand Header */}
-      <div style={{ padding: '24px 20px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src="/logo.png" alt="CeCube Logo" style={{ height: '32px', objectFit: 'contain' }} />
+    <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+      {/* CHOCH (Toggle Notch on Sidebar Edge) */}
+      <div 
+        className="sidebar-toggle-btn" 
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        title={isCollapsed ? "Expand Sidebar (Choch)" : "Collapse Sidebar (Choch)"}
+        aria-label="Toggle sidebar"
+      >
+        {isCollapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
       </div>
 
-      <nav style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        
-        {/* Switch Module */}
-        <Link href="/portal" style={{ textDecoration: 'none' }}>
-          <div style={{ 
-            display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', 
-            borderRadius: '8px', cursor: 'pointer', color: colors.textMain,
-            marginBottom: '16px', fontWeight: 500
-          }}>
-            <Layers size={18} />
+      {/* WORKSPACE HEADER */}
+      <div className="sidebar-header">
+        <Link href="/contracting/contractors/contractor-list" className="sidebar-brand-wrapper">
+          <div className="sidebar-logo-container">
+            <img src="/logo.png" alt="CeCube Group" className="sidebar-logo-img" />
+          </div>
+          {!isCollapsed && (
+            <div className="sidebar-brand-info">
+              <div className="sidebar-brand-name">
+                <span>Contracting</span>
+              </div>
+              <div className="sidebar-brand-sub">
+                <span>📝 CeCube Subcontracting</span>
+              </div>
+            </div>
+          )}
+        </Link>
+        {!isCollapsed && (
+          <button 
+            className="sidebar-header-btn" 
+            title="Switch Module"
+            onClick={() => router.push('/portal')}
+          >
+            <Layers size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* SEARCH BAR (⌘K style) */}
+      {!isCollapsed && (
+        <div className="sidebar-search-box">
+          <div className="sidebar-search-inner">
+            <Search size={14} color="#64748b" />
+            <input 
+              type="text"
+              placeholder="Search contracting..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="sidebar-search-input"
+            />
+            {searchQuery ? (
+              <X size={12} color="#94a3b8" style={{ cursor: 'pointer' }} onClick={() => setSearchQuery('')} />
+            ) : (
+              <span className="sidebar-search-kbd">⌘K</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* NAVIGATION */}
+      <nav className="sidebar-nav">
+        {/* Switch Module Quick Nav */}
+        <Link 
+          href="/portal" 
+          className="nav-item" 
+          title="Switch Module"
+        >
+          <div className="nav-item-left">
+            <Layers size={17} />
             <span>Switch Module</span>
           </div>
         </Link>
-        
-        {/* Contractors Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('contractors')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.contractors ? colors.activeBg : 'transparent',
-              color: expanded.contractors ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <Users size={18} />
-              <span>Contractors</span>
-            </div>
-            {expanded.contractors ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </div>
-          
-          {expanded.contractors && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'Contractor', path: '/contractor-list' },
-                { name: 'Contractor Insurance', path: '/insurance' },
-                { name: 'Labour Master', path: '/labour-master' },
-              ].map(sub => (
-                <Link key={sub.name} href={`/contracting/contractors${sub.path}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ 
-                    padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                    color: isActive(sub.path) ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                    backgroundColor: isActive(sub.path) ? colors.activeBg : 'transparent',
-                    borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                    marginRight: '8px'
-                  }}>
-                    <Circle size={8} fill={isActive(sub.path) ? colors.activeText : "transparent"} />
-                    {sub.name}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Labour Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('labour')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.labour ? colors.activeBg : 'transparent',
-              color: expanded.labour ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <Users size={18} />
-              <span>Labour</span>
-            </div>
-            {expanded.labour ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </div>
-          
-          {expanded.labour && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'Labour Requisition', path: '/requisition', strict: true },
-                { name: 'Labour Req. Browse', path: '/requisition-browse' },
-                { name: 'Labour Rate Master', path: '/rate-master' },
-              ].map(sub => {
-                // strict check for /requisition vs /requisition-browse
-                const isItemActive = sub.strict 
-                  ? isActive(sub.path) && !isActive('browse')
-                  : isActive(sub.path);
-                  
+        {/* Filtered Search Results */}
+        {filteredItems ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {filteredItems.length === 0 ? (
+              <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: '12px', color: '#64748b' }}>
+                No results for "{searchQuery}"
+              </div>
+            ) : (
+              filteredItems.map(item => {
+                const Icon = item.icon;
+                const isActive = pathname === item.path;
                 return (
-                  <Link key={sub.name} href={`/contracting/labour${sub.path}`} style={{ textDecoration: 'none' }}>
-                    <div style={{ 
-                      padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                      color: isItemActive ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                      backgroundColor: isItemActive ? colors.activeBg : 'transparent',
-                      borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                      marginRight: '8px'
-                    }}>
-                      <Circle size={8} fill={isItemActive ? colors.activeText : "transparent"} />
-                      {sub.name}
+                  <Link
+                    key={item.path}
+                    href={item.path}
+                    className={`nav-item ${isActive ? 'active' : ''}`}
+                    title={item.name}
+                  >
+                    <div className="nav-item-left">
+                      <Icon size={17} />
+                      <span>{item.name}</span>
                     </div>
                   </Link>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Work Order Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('workOrder')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.workOrder ? colors.activeBg : 'transparent',
-              color: expanded.workOrder ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <Settings size={18} />
-              <span>Work Order</span>
-            </div>
-            {expanded.workOrder ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                );
+              })
+            )}
           </div>
-          
-          {expanded.workOrder && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'Raise Work Order', path: '/raise' },
-                { name: 'WO Browse', path: '/browse' },
-              ].map(sub => (
-                <Link key={sub.name} href={`/contracting/work-order${sub.path}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ 
-                    padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                    color: isActive(sub.path) ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                    backgroundColor: isActive(sub.path) ? colors.activeBg : 'transparent',
-                    borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                    marginRight: '8px'
-                  }}>
-                    <Circle size={8} fill={isActive(sub.path) ? colors.activeText : "transparent"} />
-                    {sub.name}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+        ) : (
+          /* Normal Accordion Groups */
+          menuConfig.map((section) => {
+            const Icon = section.icon;
+            const isGroupOpen = expanded[section.id];
+            const hasActiveChild = section.items.some(item => pathname === item.path);
 
-        {/* RA Bills Group */}
-        <div style={{ marginBottom: '4px' }}>
-          <div 
-            onClick={() => toggleExpand('raBills')}
-            style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              cursor: 'pointer', backgroundColor: expanded.raBills ? colors.activeBg : 'transparent',
-              color: expanded.raBills ? colors.activeText : colors.textMain,
-              borderRadius: '8px', fontWeight: 500
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem' }}>
-              <FileSearch size={18} />
-              <span>RA Bills</span>
-            </div>
-            {expanded.raBills ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </div>
-          
-          {expanded.raBills && (
-            <div style={{ backgroundColor: colors.subBg, margin: '4px 0 8px 12px', borderRadius: '8px', padding: '8px 0', borderLeft: `2px solid ${colors.border}` }}>
-              {[
-                { name: 'RA Bill Generation', path: '/generation' },
-                { name: 'RA Bill Browse', path: '/browse' },
-                { name: 'RA Bill Approve', path: '/approve' },
-              ].map(sub => (
-                <Link key={sub.name} href={`/contracting/ra-bills${sub.path}`} style={{ textDecoration: 'none' }}>
-                  <div style={{ 
-                    padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '8px',
-                    color: isActive(sub.path) ? colors.activeText : colors.textSub, fontSize: '0.85rem',
-                    backgroundColor: isActive(sub.path) ? colors.activeBg : 'transparent',
-                    borderTopRightRadius: '20px', borderBottomRightRadius: '20px',
-                    marginRight: '8px'
-                  }}>
-                    <Circle size={8} fill={isActive(sub.path) ? colors.activeText : "transparent"} />
-                    {sub.name}
+            return (
+              <div key={section.id} style={{ marginTop: '2px' }}>
+                <div 
+                  className={`nav-item ${hasActiveChild ? 'active' : ''}`}
+                  onClick={() => toggleSection(section.id)}
+                  title={section.label}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="nav-item-left">
+                    <Icon size={17} />
+                    <span>{section.label}</span>
                   </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+                  {!isCollapsed && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span className="group-badge-count">{section.items.length}</span>
+                      {isGroupOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </div>
+                  )}
+                </div>
 
-        {/* Other Items */}
-        {[
-          { name: 'Requisitions', icon: FileText, path: '/requisitions' },
-          { name: 'Enquiry', icon: HelpCircle, path: '/enquiry' },
-          { name: 'Reports', icon: PieChart, path: '/reports' },
-          { name: 'Tools', icon: Wrench, path: '/tools' },
-        ].map(item => (
-          <Link key={item.name} href={`/contracting${item.path}`} style={{ textDecoration: 'none' }}>
-            <div style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', 
-              color: colors.textMain, cursor: 'pointer', borderRadius: '8px', marginBottom: '4px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem', fontWeight: 500 }}>
-                <item.icon size={18} />
-                <span>{item.name}</span>
+                {/* Sub Items */}
+                {!isCollapsed && isGroupOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', marginTop: '1px' }}>
+                    {section.items.map((item) => {
+                      const isActive = pathname === item.path;
+                      return (
+                        <Link
+                          key={item.path}
+                          href={item.path}
+                          className={`nav-subitem ${isActive ? 'active' : ''}`}
+                          title={item.name}
+                        >
+                          <div className="nav-subitem-bullet"></div>
+                          <span>{item.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          </Link>
-        ))}
-
+            );
+          })
+        )}
       </nav>
 
-      {/* Logout */}
-      <div style={{ padding: '16px 12px', borderTop: `1px solid ${colors.border}` }}>
-        <Link href="/" style={{ textDecoration: 'none' }}>
-          <div style={{ 
-            display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', 
-            borderRadius: '8px', cursor: 'pointer', color: '#ef4444',
-            fontWeight: 500
-          }}>
-            <LogOut size={18} />
-            <span>Logout</span>
+      {/* FOOTER & PROFILE */}
+      <div className="sidebar-footer">
+        {!isCollapsed && showWidget && (
+          <div className="sidebar-widget-card">
+            <div className="sidebar-widget-header">
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Sparkles size={13} color="#14b8a6" /> Subcontracts Active
+              </span>
+              <button 
+                className="sidebar-widget-close" 
+                onClick={() => setShowWidget(false)}
+                title="Dismiss"
+              >
+                <X size={12} />
+              </button>
+            </div>
+            <div className="sidebar-widget-text">
+              Labour contracts & RA billing verifications automated.
+            </div>
           </div>
-        </Link>
+        )}
+
+        <div className="sidebar-user-row">
+          <div className="sidebar-user-left">
+            <div className="sidebar-avatar-wrapper">
+              <div className="sidebar-avatar" style={{ background: '#0d9488' }}>
+                <span>C</span>
+              </div>
+              <span className="sidebar-online-dot"></span>
+            </div>
+            <div className="sidebar-user-meta">
+              <span className="sidebar-user-name">Aditya Yadav</span>
+              <span className="sidebar-user-email">admin@cecubeindia.com</span>
+            </div>
+          </div>
+          <button 
+            className="sidebar-logout-icon-btn" 
+            title="Sign out"
+            onClick={() => setShowLogoutDialog(true)}
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
       </div>
 
-    </div>
+      <Dialog
+        isOpen={showLogoutDialog}
+        type="confirm"
+        title="Logout"
+        message="Are you sure you want to logout?"
+        onConfirm={confirmLogout}
+        onCancel={() => setShowLogoutDialog(false)}
+      />
+    </aside>
   );
-};
-
-export default ContractingSidebar;
+}

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 
@@ -5,16 +6,16 @@ export async function GET(request) {
   try {
     const employees = await prisma.employee.findMany();
     
-    // Get current month dates (rudimentary approach for demo: past 30 days)
+    // Get dates for past 10 days
     const today = new Date();
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+    const tenDaysAgo = new Date(today);
+    tenDaysAgo.setDate(today.getDate() - 10);
+    const tenDaysAgoStr = tenDaysAgo.toISOString().split('T')[0];
     
     const attendances = await prisma.attendance.findMany({
       where: {
         date: {
-          gte: thirtyDaysAgoStr
+          gte: tenDaysAgoStr
         }
       }
     });

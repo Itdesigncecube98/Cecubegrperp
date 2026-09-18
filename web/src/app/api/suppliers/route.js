@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 
@@ -12,7 +13,10 @@ export async function GET(req) {
       return NextResponse.json(supplier);
     }
     
-    const suppliers = await prisma.supplier.findMany({ orderBy: { name: 'asc' } });
+    const suppliers = await prisma.supplier.findMany({ 
+      include: { contractors: true },
+      orderBy: { name: 'asc' } 
+    });
     return NextResponse.json(suppliers);
   } catch (error) {
     console.error('Error fetching suppliers:', error);
@@ -23,7 +27,14 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const data = await req.json();
-    const supplier = await prisma.supplier.create({ data });
+    let createData = { ...data };
+    if (data.contractorIds && Array.isArray(data.contractorIds)) {
+      createData.contractors = {
+        connect: data.contractorIds.map(id => ({ id }))
+      };
+      delete createData.contractorIds;
+    }
+    const supplier = await prisma.supplier.create({ data: createData, include: { contractors: true } });
     return NextResponse.json(supplier);
   } catch (error) {
     console.error('Error creating supplier:', error);
@@ -34,8 +45,19 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     const data = await req.json();
-    const { id, ...updateData } = data;
-    const supplier = await prisma.supplier.update({ where: { id }, data: updateData });
+    const { id, contractorIds, ...updateData } = data;
+    
+    if (contractorIds && Array.isArray(contractorIds)) {
+      updateData.contractors = {
+        set: contractorIds.map(cid => ({ id: cid }))
+      };
+    }
+    
+    const supplier = await prisma.supplier.update({ 
+      where: { id }, 
+      data: updateData,
+      include: { contractors: true }
+    });
     return NextResponse.json(supplier);
   } catch (error) {
     console.error('Error updating supplier:', error);

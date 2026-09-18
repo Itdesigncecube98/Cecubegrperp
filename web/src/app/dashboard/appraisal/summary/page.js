@@ -1,27 +1,63 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import MultiSelect from '@/components/MultiSelect';
 
 export default function AppraisalSummary() {
   const [showIncrement, setShowIncrement] = useState(false);
+  const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [selectedEmployees, setSelectedEmployees] = useState([]);
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [selectedBranches, setSelectedBranches] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/synchronization?type=siteoffices').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) {
+        const names = d.map(x => x.name || x.siteOfficeName || x).filter(Boolean);
+        setBranches(names);
+        setSelectedBranches(names);
+      }
+    }).catch(console.error);
+
+    fetch('/api/synchronization?type=departments').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) {
+        const names = d.map(x => x.name || x.departmentName || x).filter(Boolean);
+        setDepartments(names);
+        setSelectedDepartments(names);
+      }
+    }).catch(console.error);
+
+    fetch('/api/employees').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) {
+        setEmployees(d);
+        setSelectedEmployees(d.map(e => `${e.name} (${e.empId})`));
+      }
+    }).catch(console.error);
+  }, []);
 
   // Note: the screenshot shows an empty table
   const mockData = [];
 
   return (
     <div>
-      <div className="filter-bar" style={{ marginBottom: '1rem' }}>
+      <div className="filter-bar" style={{ marginBottom: '1rem', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem' }}>
         <div className="filter-group">
           <label>Financial Year</label>
           <select><option>2026-2027</option></select>
         </div>
         <div className="filter-group">
+          <label>Organization / Branch</label>
+          <MultiSelect options={branches} selected={selectedBranches} onChange={setSelectedBranches} placeholder="Select Branch" />
+        </div>
+        <div className="filter-group">
           <label>Department</label>
-          <select><option>11 all selected</option></select>
+          <MultiSelect options={departments} selected={selectedDepartments} onChange={setSelectedDepartments} placeholder="Select Department" />
         </div>
         <div className="filter-group">
           <label>Employee</label>
-          <select><option>151 all selected</option></select>
+          <MultiSelect options={employees.map(e => `${e.name} (${e.empId})`)} selected={selectedEmployees} onChange={setSelectedEmployees} placeholder="Select Employee" />
         </div>
         <div className="filter-group">
           <label>Type</label>

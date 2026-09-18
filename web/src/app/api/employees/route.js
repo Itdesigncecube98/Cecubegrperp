@@ -4,6 +4,13 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const getOrganizationCode = (organization) => {
+  const name = String(organization || '').trim().toLowerCase();
+  if (name.includes('green energy')) return { prefix: 'CGEPL', width: 2 };
+  if (name.includes('cecube') && name.includes('engineering')) return { prefix: 'CEIPL', width: 3 };
+  return null;
+};
+
 // GET - Fetch all employees
 export async function GET(request) {
   try {
@@ -65,14 +72,33 @@ export async function GET(request) {
         role: true,
         department: true,
         designation: true,
+        position: true,
+        grade: true,
+        employeeType: true,
         branch: true,
+        siteOffice: true,
+        jobHistories: {
+          orderBy: { fromDate: 'desc' },
+          take: 1,
+          select: {
+            designation: true,
+            department: true,
+            branch: true,
+            siteOffice: true,
+            fromDate: true,
+            toDate: true
+          }
+        },
         organisation: true,
         employmentStatus: true,
         supervisorId: true,
         joinedDate: true,
+        createdAt: true,
         photoUrl: true,
         basicSalary: true,
         hra: true,
+        annualCtc: true,
+        monthlyCtc: true,
         conveyance: true,
         medical: true,
         specialAllowance: true,
@@ -142,7 +168,9 @@ export async function POST(request) {
 
     if (!empId && organisation) {
       const org = await prisma.organization.findFirst({ where: { name: organisation } });
-      const prefix = org?.code?.trim().toUpperCase();
+      const configuredCode = getOrganizationCode(organisation);
+      const prefix = configuredCode?.prefix || org?.code?.trim().toUpperCase();
+      const codeWidth = configuredCode?.width || 3;
       if (prefix) {
         const counter = await prisma.$transaction(async (tx) => {
           const current = await tx.employeeCodeCounter.findUnique({ where: { prefix } });
@@ -159,7 +187,7 @@ export async function POST(request) {
           }, 0);
           return tx.employeeCodeCounter.create({ data: { prefix, nextNumber: highestExistingNumber + 1 } });
         });
-        empId = `${prefix}${String(counter.nextNumber).padStart(3, '0')}`;
+        empId = `${prefix}${String(counter.nextNumber).padStart(codeWidth, '0')}`;
       }
     }
 

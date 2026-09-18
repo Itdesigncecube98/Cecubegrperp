@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import MultiSelect from '../../../../components/MultiSelect';
 import styles from '../punches.module.css';
 
 function getDaysInRange(startDate, endDate) {
@@ -22,8 +23,8 @@ export default function TeamNightPunchesPage() {
   const [employee, setEmployee] = useState(null);
   const today = new Date().toISOString().split('T')[0];
   const [filters, setFilters] = useState({
-    organization: 'Cecube Engineering India Pvt Ltd',
-    employee: 'Any',
+    organization: [],
+    employee: [],
     startDate: today,
     endDate: today,
     modeOfEntry: 'Any',
@@ -40,7 +41,14 @@ export default function TeamNightPunchesPage() {
       try {
         const res = await fetch('/api/employees');
         const data = await res.json();
-        if (Array.isArray(data)) setEmployeesList(data);
+        if (Array.isArray(data)) {
+          setEmployeesList(data);
+          setFilters(prev => ({
+            ...prev,
+            employee: data.map(item => item.empId || item.id),
+            organization: [...new Set(data.map(item => item.organisation).filter(Boolean))]
+          }));
+        }
       } catch (e) {
         console.error(e);
       }
@@ -49,14 +57,14 @@ export default function TeamNightPunchesPage() {
   }, []);
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (empData) setEmployee(JSON.parse(empData));
   }, []);
 
   useEffect(() => {
     const employeeCode = searchParams.get('employeeCode');
     if (employeeCode) {
-      setFilters(prev => ({ ...prev, employee: employeeCode }));
+      setFilters(prev => ({ ...prev, employee: [employeeCode] }));
     }
   }, [searchParams]);
 
@@ -64,7 +72,7 @@ export default function TeamNightPunchesPage() {
     if (filters.startDate && filters.endDate) {
       fetchPunches();
     }
-  }, [filters.startDate, filters.endDate, filters.employee]);
+  }, [filters.startDate, filters.endDate, filters.employee, filters.organization]);
 
   const fetchPunches = async () => {
     setLoading(true);
@@ -91,7 +99,7 @@ export default function TeamNightPunchesPage() {
 
               if (slot.in && isNightTime(slot.in)) {
                 allPunches.push({
-                  org: 'Cecube Engineering India Pvt Ltd',
+                  org: myRecord.employee.organisation || 'Cecube Engineering India Pvt Ltd',
                   empCode: myRecord.employee.empId || '-',
                   name: myRecord.employee.name,
                   date: date,
@@ -131,7 +139,8 @@ export default function TeamNightPunchesPage() {
   };
 
   const filteredPunches = punches.filter(p => {
-    if (filters.employee !== 'Any' && p.empCode !== filters.employee) return false;
+    if (filters.employee.length > 0 && !filters.employee.includes(p.empCode)) return false;
+    if (filters.organization.length > 0 && !filters.organization.includes(p.org)) return false;
     if (filters.punchType !== 'Any' && p.type !== filters.punchType) return false;
     if (filters.modeOfEntry !== 'Any' && p.mode !== filters.modeOfEntry) return false;
     return true;
@@ -154,18 +163,11 @@ export default function TeamNightPunchesPage() {
           <div className={styles.filterGrid}>
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel}>Organization</label>
-              <select className={styles.filterSelect} value={filters.organization} onChange={e => setFilters({...filters, organization: e.target.value})}>
-                <option value="Cecube Engineering India Pvt Ltd">Cecube Engineering India Pvt Ltd</option>
-              </select>
+              <MultiSelect options={[...new Set(employeesList.map(item => item.organisation).filter(Boolean))]} selected={filters.organization} onChange={organization => setFilters({...filters, organization})} placeholder="Select organisations" />
             </div>
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel}>Employee</label>
-              <select className={styles.filterSelect} value={filters.employee} onChange={e => setFilters({...filters, employee: e.target.value})}>
-                <option value="Any">Any</option>
-                {employeesList.map(e => (
-                  <option key={e.id} value={e.empId || e.id}>{e.name} ({e.empId})</option>
-                ))}
-              </select>
+              <MultiSelect options={employeesList.map(item => item.empId || item.id)} selected={filters.employee} onChange={employee => setFilters({...filters, employee})} placeholder="Select employees" />
             </div>
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel}>Start Date</label>
@@ -202,7 +204,7 @@ export default function TeamNightPunchesPage() {
           <div className={styles.actionButtons}>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button className={styles.btnPrimary} onClick={fetchPunches}>View</button>
-              <button className={styles.btnPrimary} onClick={() => setFilters({...filters, startDate: today, endDate: today, punchType: 'Any', modeOfEntry: 'Any'})} style={{ background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb' }}>Clear</button>
+              <button className={styles.btnPrimary} onClick={() => setFilters({...filters, organization: [...new Set(employeesList.map(item => item.organisation).filter(Boolean))], employee: employeesList.map(item => item.empId || item.id), startDate: today, endDate: today, punchType: 'Any', modeOfEntry: 'Any'})} style={{ background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb' }}>Clear</button>
             </div>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button className={styles.btnPrimary} style={{ background: '#10b981' }} onClick={() => exportToCSV('team-night-punches.csv', filteredPunches)}>

@@ -1,0 +1,26 @@
+/* payslip.css */
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background: #fff;
+    margin: 0;
+  }
+  
+  .employee-navbar, .sidebar, .no-print {
+    display: none !important;
+  }
+  
+  .payslip-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .payslip-card {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 20px !important;
+    width: 100%;
+  }
+}

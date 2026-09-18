@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 
@@ -16,13 +17,14 @@ export async function GET() {
 export async function POST(request) {
   try {
     const data = await request.json();
-    
+
     // Create the announcement
     const announcement = await prisma.announcement.create({
       data: {
         subject: data.subject,
         message: data.message,
         isHoliday: data.isHoliday || false,
+        isWorkingDay: data.isWorkingDay || false,
         date: data.date || null
       }
     });

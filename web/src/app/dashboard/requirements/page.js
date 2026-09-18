@@ -1,157 +1,267 @@
 'use client';
-import React, { useState } from 'react';
-import { Plus, Search, FileDown, Pencil, Trash2 } from 'lucide-react';
-import './requirements.css';
-import AppModal from '@/components/AppModal';
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, FileSpreadsheet, Calendar } from 'lucide-react';
 import ActionToolbar from '@/components/ActionToolbar';
+import AppModal from '@/components/AppModal';
 
-const EMPTY = { positionName: '', department: '', raiseBy: '', raiseDate: '', empType: 'Permanent', indentType: 'New', reqFrom: '', approvedBy: '', handledBy: '', status: 'Pending' };
+const INITIAL_FILTERS = {
+  company: 'Select All',
+  branch: 'Select All',
+  position: 'Engineer',
+  raiseBy: 'Select',
+  raiseFrom: '2026-07-27',
+  raiseTo: '2026-08-27',
+  status: 'All',
+  type: 'All'
+};
 
-export default function Requirements() {
-  const [data, setData] = useState([
-    { id: 1, positionName: 'Civil Engineer', department: 'Operations / Projects', raiseBy: 'Anup Singh', raiseDate: '2026-07-01', empType: 'Permanent', indentType: 'New', reqFrom: '2026-07-15', approvedBy: 'Director', handledBy: 'HR', status: 'Approved' },
-    { id: 2, positionName: 'Design Engineer', department: 'General Administration', raiseBy: 'Aayushee Varshney', raiseDate: '2026-07-10', empType: 'Contract', indentType: 'Replacement', reqFrom: '2026-08-01', approvedBy: 'Manager', handledBy: 'HR', status: 'Pending' },
-  ]);
-  const [modal, setModal] = useState({ open: false, mode: 'add', row: null });
-  const [form, setForm] = useState(EMPTY);
-  const [deleteModal, setDeleteModal] = useState({ open: false, id: null });
+const EMPTY_FORM = {
+  positionName: '',
+  department: '',
+  raisedBy: 'Select',
+  raisedDate: '',
+  empType: 'Full-time',
+  indentType: 'New Requirement',
+  reqFromDate: '',
+  status: 'pending',
+  replacementFor: ''
+};
 
-  const openAdd = () => { setForm(EMPTY); setModal({ open: true, mode: 'add', row: null }); };
-  const openEdit = (row) => { setForm({ ...row }); setModal({ open: true, mode: 'edit', row }); };
-  const openDelete = (id) => setDeleteModal({ open: true, id });
+export default function PositionIndent() {
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  
+  const [options, setOptions] = useState({
+    companies: [],
+    branches: [],
+    positions: [],
+    departments: [],
+    employees: [],
+    grades: []
+  });
 
-  const handleSave = () => {
-    if (!form.positionName) return;
-    if (modal.mode === 'add') {
-      setData(prev => [...prev, { ...form, id: Date.now() }]);
-    } else {
-      setData(prev => prev.map(r => r.id === form.id ? form : r));
+  useEffect(() => {
+    fetchData();
+    fetchSyncData();
+  }, []);
+
+  const fetchSyncData = async () => {
+    try {
+      const res = await fetch('/api/recruitment/position-indent/sync-data');
+      if (res.ok) {
+        const json = await res.json();
+        setOptions({
+          companies: ['Select All', ...json.organizations],
+          branches: ['Select All', ...json.branches],
+          positions: ['Select', ...json.positions],
+          departments: ['Select', ...json.departments],
+          employees: ['Select', ...json.employees],
+          grades: ['Select', ...json.grades]
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch sync data', error);
     }
-    setModal({ open: false, mode: 'add', row: null });
   };
 
-  const handleDelete = () => {
-    setData(prev => prev.filter(r => r.id !== deleteModal.id));
-    setDeleteModal({ open: false, id: null });
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.company) params.append('company', filters.company);
+      if (filters.branch) params.append('branch', filters.branch);
+      if (filters.position) params.append('position', filters.position);
+      if (filters.status) params.append('status', filters.status);
+      if (filters.raiseBy) params.append('raiseBy', filters.raiseBy);
+
+      const res = await fetch(`/api/recruitment/position-indent?${params.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+      }
+    } catch (error) {
+      console.error('Failed to fetch data', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const Field = ({ label, field, type = 'text', options }) => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>{label}</label>
-      {options ? (
-        <select value={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))} style={{ padding: '0.45rem 0.65rem', border: '1px solid #e2e8f0', borderRadius: '7px', fontSize: '0.82rem' }}>
-          {options.map(o => <option key={o}>{o}</option>)}
-        </select>
-      ) : (
-        <input type={type} value={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-          style={{ padding: '0.45rem 0.65rem', border: '1px solid #e2e8f0', borderRadius: '7px', fontSize: '0.82rem' }} />
-      )}
-    </div>
-  );
+  const handleSearch = () => {
+    fetchData();
+  };
+
+  const handleAddSubmit = async () => {
+    if (!form.positionName || !form.department || !form.raisedBy) {
+      alert("Position, Department, and Raised By are required.");
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/recruitment/position-indent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      });
+      if (res.ok) {
+        await fetchData();
+        setModalOpen(false);
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to create indent');
+      }
+    } catch (error) {
+      console.error('Failed to create indent', error);
+    }
+  };
+
+  const openAddModal = () => {
+    setForm(EMPTY_FORM);
+    setModalOpen(true);
+  };
 
   return (
-    <div className="req-container">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Position Indent</h1>
-          <p className="page-subtitle">Manage manpower requirements and position indents.</p>
+    <div>
+      <ActionToolbar onReset={() => setFilters(INITIAL_FILTERS)} shareTitle="Position Indent" />
+
+      {/* Filter Criteria */}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ fontSize: '0.9rem', fontWeight: '600', color: '#475569', margin: 0 }}>Filter Criteria</h2>
+          <button className="btn-primary" onClick={openAddModal}>
+            <Plus size={14} /> Add
+          </button>
         </div>
-        <button className="btn-primary" onClick={openAdd} style={{ gap: '0.4rem' }}>
-          <Plus size={15} /> Add New
-        </button>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+          <FilterSelect label="Company *" value={filters.company} onChange={v => setFilters({ ...filters, company: v })} options={options.companies.length ? options.companies : ['Select All']} />
+          <FilterSelect label="Branch *" value={filters.branch} onChange={v => setFilters({ ...filters, branch: v })} options={options.branches.length ? options.branches : ['Select All']} />
+          <FilterSelect label="Designation" value={filters.position} onChange={v => setFilters({ ...filters, position: v })} options={options.positions.length ? options.positions : ['Select']} />
+          <FilterSelect label="Raise By" value={filters.raiseBy} onChange={v => setFilters({ ...filters, raiseBy: v })} options={options.employees.length ? options.employees : ['Select']} />
+          
+          <FilterInput label="Raise From" type="date" value={filters.raiseFrom} onChange={v => setFilters({ ...filters, raiseFrom: v })} />
+          <FilterInput label="Raise To" type="date" value={filters.raiseTo} onChange={v => setFilters({ ...filters, raiseTo: v })} />
+          
+          <FilterSelect label="Status" value={filters.status} onChange={v => setFilters({ ...filters, status: v })} options={['All', 'approved', 'non approved', 'pending', 'accepeted', 'not accepted', 'rejected']} />
+          <FilterSelect label="Type" value={filters.type} onChange={v => setFilters({ ...filters, type: v })} options={['All', 'Internal', 'External']} />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+          <button className="btn-primary" style={{ background: '#0ea5e9' }} onClick={handleSearch}>
+            <Search size={14} /> Search
+          </button>
+        </div>
       </div>
 
-      <div className="req-content">
-        <ActionToolbar onReset={() => {}} shareTitle="Position Indent" />
-        <div style={{ marginBottom: '1.25rem', borderBottom: '1px solid var(--req-glass-border)', paddingBottom: '1.25rem' }}>
-          <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b', marginBottom: '0.75rem' }}>Filter Criteria</h3>
-          <div className="filter-bar" style={{ marginBottom: '0.75rem' }}>
-            <div className="filter-group"><label>Company <span style={{ color: 'red' }}>*</span></label><select><option>10 all selected!</option></select></div>
-            <div className="filter-group"><label>Branch <span style={{ color: 'red' }}>*</span></label><select><option>5 all selected!</option></select></div>
-            <div className="filter-group"><label>Position</label><select><option>Select</option></select></div>
-            <div className="filter-group"><label>Raise By</label><select><option>Select</option></select></div>
-          </div>
-          <div className="filter-bar" style={{ marginBottom: '0.75rem' }}>
-            <div className="filter-group"><label>Raise From</label><input type="date" defaultValue="2026-07-20" /></div>
-            <div className="filter-group"><label>Raise To</label><input type="date" defaultValue="2026-08-20" /></div>
-            <div className="filter-group"><label>Status</label><select><option>All</option></select></div>
-            <div className="filter-group"><label>Type</label><select><option>All</option></select></div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="btn-primary" style={{ gap: '0.4rem' }}><Search size={14} /> Search</button>
-          </div>
-        </div>
-
-        <div className="action-bar">
-          <button className="btn-outline" style={{ gap: '0.4rem', borderColor: 'var(--req-primary)', color: 'var(--req-primary)' }}>
-            <FileDown size={14} /> Export To Excel
+      {/* Data Table Area */}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <button className="btn-primary" style={{ background: '#0ea5e9', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <FileSpreadsheet size={14} /> Export To excel
           </button>
-          <div className="pagination-controls">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#64748b' }}>
             <span>Show Rows:</span>
-            <select defaultValue="40"><option>40</option><option>100</option></select>
+            <select style={{ padding: '0.2rem', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+              <option>40</option>
+              <option>100</option>
+            </select>
             <span>Page: 1 of 1</span>
-            <div style={{ display: 'flex', gap: '3px' }}>
-              {['Go', '<<', '<', '>', '>>'].map(b => <button key={b} className="btn-outline">{b}</button>)}
-            </div>
+            <button className="btn-primary" style={{ background: '#0ea5e9', padding: '0.2rem 0.5rem' }}>Go</button>
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto', border: '1px solid var(--req-glass-border)', borderRadius: '10px', marginTop: '0.75rem' }}>
-          <table>
+        <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
-              <tr>
-                <th>Position Name</th><th>Department</th><th>Raise By</th><th>Raise Date</th>
-                <th>Emp Type</th><th>Indent Type</th><th>Req. From</th>
-                <th>Approved By</th><th>Handled By</th><th>Status</th>
-                <th style={{ width: '80px', textAlign: 'center' }}>Action</th>
+              <tr style={{ background: '#0ea5e9', color: 'white', fontSize: '0.85rem' }}>
+                <th style={{ padding: '0.75rem' }}>Designation</th>
+                <th style={{ padding: '0.75rem' }}>Department</th>
+                <th style={{ padding: '0.75rem' }}>Raise By</th>
+                <th style={{ padding: '0.75rem' }}>Raise Date</th>
+                <th style={{ padding: '0.75rem' }}>Emp Type</th>
+                <th style={{ padding: '0.75rem' }}>Indent Type</th>
+                <th style={{ padding: '0.75rem' }}>Req. From</th>
+                <th style={{ padding: '0.75rem' }}>Approved By</th>
+                <th style={{ padding: '0.75rem' }}>Handled By</th>
+                <th style={{ padding: '0.75rem' }}>Status</th>
+                <th style={{ padding: '0.75rem' }}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {data.length === 0 ? (
-                <tr><td colSpan="11" className="empty-state">No Details Found</td></tr>
-              ) : data.map(row => (
-                <tr key={row.id}>
-                  <td style={{ fontWeight: 500 }}>{row.positionName}</td>
-                  <td>{row.department}</td><td>{row.raiseBy}</td><td>{row.raiseDate}</td>
-                  <td>{row.empType}</td><td>{row.indentType}</td><td>{row.reqFrom}</td>
-                  <td>{row.approvedBy}</td><td>{row.handledBy}</td>
-                  <td><span style={{ padding: '2px 8px', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 600,
-                    background: row.status === 'Approved' ? '#dcfce7' : '#fef3c7',
-                    color: row.status === 'Approved' ? '#15803d' : '#b45309' }}>{row.status}</span></td>
-                  <td style={{ textAlign: 'center' }}>
-                    <button className="icon-btn edit-btn" title="Edit" onClick={() => openEdit(row)}><Pencil size={15} /></button>
-                    <button className="icon-btn delete-btn" title="Delete" onClick={() => openDelete(row.id)}><Trash2 size={15} /></button>
-                  </td>
-                </tr>
-              ))}
+              {loading ? (
+                <tr><td colSpan="11" style={{ textAlign: 'center', padding: '1rem', color: '#64748b' }}>Loading...</td></tr>
+              ) : data.length === 0 ? (
+                <tr><td colSpan="11" style={{ textAlign: 'center', padding: '1rem', color: '#64748b', background: '#f8fafc' }}>No Details Found</td></tr>
+              ) : (
+                data.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
+                    <td style={{ padding: '0.75rem' }}>{row.positionName}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.department}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.raisedBy}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.raisedDate}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.empType}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.indentType}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.reqFromDate || '-'}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.approvedBy || '-'}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.handledBy || '-'}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.status}</td>
+                    <td style={{ padding: '0.75rem' }}>-</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Add / Edit Modal */}
-      <AppModal isOpen={modal.open} title={modal.mode === 'add' ? 'Add Position Indent' : 'Edit Position Indent'}
-        onClose={() => setModal({ open: false })} onConfirm={handleSave} confirmLabel={modal.mode === 'add' ? 'Add' : 'Update'} size="lg">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <Field label="Position Name *" field="positionName" />
-          <Field label="Department" field="department" />
-          <Field label="Raise By" field="raiseBy" />
-          <Field label="Raise Date" field="raiseDate" type="date" />
-          <Field label="Emp Type" field="empType" options={['Permanent', 'Contract', 'Trainee']} />
-          <Field label="Indent Type" field="indentType" options={['New', 'Replacement']} />
-          <Field label="Required From" field="reqFrom" type="date" />
-          <Field label="Approved By" field="approvedBy" />
-          <Field label="Handled By" field="handledBy" />
-          <Field label="Status" field="status" options={['Pending', 'Approved', 'Rejected']} />
+      <AppModal isOpen={modalOpen} title="Raise Position Indent" onClose={() => setModalOpen(false)} onConfirm={handleAddSubmit} confirmLabel="Submit" size="lg">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <F label="Designation *" field="positionName" form={form} setForm={setForm} options={options.positions.length ? options.positions : undefined} />
+          <F label="Department *" field="department" form={form} setForm={setForm} options={options.departments.length ? options.departments : undefined} />
+          <F label="Raised By *" field="raisedBy" form={form} setForm={setForm} options={options.employees.length ? options.employees : ['Select']} />
+          <F label="Raise Date" field="raisedDate" type="date" form={form} setForm={setForm} />
+          <F label="Emp Type" field="empType" options={['Full-time', 'Part-time', 'Contract']} form={form} setForm={setForm} />
+          <F label="Indent Type" field="indentType" options={['New Requirement', 'Replacement']} form={form} setForm={setForm} />
+          
+          {form.indentType === 'Replacement' && (
+            <F label="Replacement For *" field="replacementFor" form={form} setForm={setForm} options={options.employees.length ? options.employees : ['Select']} />
+          )}
+          
+          <F label="Req. From Date" field="reqFromDate" type="date" form={form} setForm={setForm} />
         </div>
-      </AppModal>
-
-      {/* Delete Modal */}
-      <AppModal isOpen={deleteModal.open} title="Confirm Delete"
-        onClose={() => setDeleteModal({ open: false, id: null })}
-        onConfirm={handleDelete} confirmLabel="Delete" confirmColor="#ef4444" size="sm">
-        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Are you sure you want to delete this record? This action cannot be undone.</p>
       </AppModal>
     </div>
   );
 }
+
+const FilterSelect = ({ label, value, onChange, options }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+    <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#0ea5e9' }}>{label}</label>
+    <select value={value} onChange={e => onChange(e.target.value)} style={{ padding: '0.4rem', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.85rem' }}>
+      {options.map(o => <option key={o}>{o}</option>)}
+    </select>
+  </div>
+);
+
+const FilterInput = ({ label, type, value, onChange }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+    <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#0ea5e9' }}>{label}</label>
+    <div style={{ position: 'relative' }}>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} style={{ padding: '0.4rem', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }} />
+    </div>
+  </div>
+);
+
+const F = ({ label, field, type = 'text', options, form, setForm }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>{label}</label>
+    {options
+      ? <select value={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))} style={{ padding: '0.4rem 0.6rem', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.82rem' }}>
+          {options.map(o => <option key={o}>{o}</option>)}
+        </select>
+      : <input type={type} value={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))} style={{ padding: '0.4rem 0.6rem', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.82rem' }} />
+    }
+  </div>
+);

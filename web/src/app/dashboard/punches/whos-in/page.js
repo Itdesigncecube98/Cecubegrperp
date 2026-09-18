@@ -71,7 +71,7 @@ export default function WhosInPage() {
   });
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (empData) setEmployee(JSON.parse(empData));
     (async () => {
       setInitialLoading(true);

@@ -1,14 +1,18 @@
-.accounts-layout {
+.acc-layout {
   display: flex;
-  height: 100vh;
-  background: var(--background);
-  overflow: hidden;
+  min-height: 100vh;
+  background-color: #f8fafc;
 }
 
-.accounts-main {
+.acc-main {
   flex: 1;
+  min-width: 0;
   margin-left: 260px;
-  overflow-y: auto;
-  padding: 2rem;
-  background: var(--background);
+  display: flex;
+  flex-direction: column;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.acc-main.collapsed {
+  margin-left: 68px;
 }

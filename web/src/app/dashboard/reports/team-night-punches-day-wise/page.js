@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 import '../reports.css';
 
@@ -31,9 +32,10 @@ export default function TeamNightPunchesDayWiseReport() {
   const [punches, setPunches] = useState([]);
   const [employeesList, setEmployeesList] = useState([]);
   const [loading, setLoading] = useState(false);
+  const reportFilters = useReportFilters();
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (empData) setEmployee(JSON.parse(empData));
     
     // Fetch employees for dropdown
@@ -104,7 +106,10 @@ export default function TeamNightPunchesDayWiseReport() {
   };
 
   // Group by date
-  const filteredPunches = punches.filter(p => filters.employee === 'Any' || p.empCode === filters.employee);
+  const filteredPunches = reportFilters.applyFilters(
+    punches.filter(p => filters.employee === 'Any' || p.empCode === filters.employee),
+    (row) => ({ name: row.name, empId: row.empCode, siteOffice: null, department: null })
+  );
   
   const groupedByDate = {};
   filteredPunches.forEach(p => {
@@ -153,6 +158,7 @@ export default function TeamNightPunchesDayWiseReport() {
       </div>
 
       <div className="filtersRow card" style={{ padding: '1rem', marginBottom: '1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <ReportFilters {...reportFilters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
         <div className="filterGroup" style={{ flex: 1, minWidth: '200px' }}>
           <label className="filterLabel">Start Date</label>
           <input 
@@ -170,19 +176,6 @@ export default function TeamNightPunchesDayWiseReport() {
             value={filters.endDate}
             onChange={e => setFilters({...filters, endDate: e.target.value})}
           />
-        </div>
-        <div className="filterGroup" style={{ flex: 1, minWidth: '200px' }}>
-          <label className="filterLabel">Employee</label>
-          <select 
-            className="filterInput"
-            value={filters.employee}
-            onChange={e => setFilters({...filters, employee: e.target.value})}
-          >
-            <option value="Any">Team (All)</option>
-            {employeesList.map(emp => (
-              <option key={emp.id} value={emp.empId}>{emp.name} ({emp.empId})</option>
-            ))}
-          </select>
         </div>
       </div>
 

@@ -12,11 +12,17 @@ export async function GET(request) {
     const where = {};
     
     if (role === 'SUPERVISOR' && userId) {
-      where.employee = { supervisorId: userId };
+      where.OR = [
+        { targetSupervisorId: userId },
+        { targetSupervisorId: null, employee: { supervisorId: userId } }
+      ];
     } else if (role === 'ADMIN' && userId) {
       where.status = { in: ['PENDING_SUPERVISOR', 'PENDING_ADMIN'] };
     } else if (supervisorId) {
-      where.employee = { supervisorId: supervisorId };
+      where.OR = [
+        { targetSupervisorId: supervisorId },
+        { targetSupervisorId: null, employee: { supervisorId: supervisorId } }
+      ];
     }
     
     if (employeeId) {
@@ -60,14 +66,77 @@ export async function POST(request) {
   try {
     const data = await request.json();
     
-    // Get employee to check if they have a supervisor
+    // Get employee to check if they have a supervisor, and get demographics for validation
     const employee = await prisma.employee.findUnique({
       where: { id: data.employeeId },
-      select: { supervisorId: true }
+      select: { supervisorId: true, gender: true, joinedDate: true }
     });
+
+    if (!employee) {
+      return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
+    }
+
+    // --- Validation Logic ---
+    const start = new Date(data.startDate);
+    const end = new Date(data.endDate);
+    const diffTime = Math.abs(end - start);
+    let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    if (data.isHalfDay) diffDays = 0.5;
+
+    let tenureMonths = 0;
+    if (employee.joinedDate) {
+      const joinDate = new Date(employee.joinedDate);
+      if (!isNaN(joinDate)) {
+        tenureMonths = (new Date().getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+      }
+    }
+
+    const type = data.leaveType;
+    if (type === 'Casual Leave') {
+      if (diffDays > 4) {
+        return NextResponse.json({ error: 'Maximum 4 days of Casual Leave can be taken at a time.' }, { status: 400 });
+      }
+    } else if (type === 'Paid leave' || type === 'Earned Leave') {
+      if (data.isHalfDay) {
+        return NextResponse.json({ error: 'Half day is not allowed for Earned Leave.' }, { status: 400 });
+      }
+      if (employee.joinedDate && tenureMonths < 8) {
+        return NextResponse.json({ error: 'Earned Leave can only be availed after completion of 8 months of service (240 days).' }, { status: 400 });
+      }
+    } else if (type === 'Maternity Leave') {
+      if (employee.gender && employee.gender.toLowerCase() !== 'female') {
+        return NextResponse.json({ error: 'Maternity Leave is only applicable for female employees.' }, { status: 400 });
+      }
+      if (employee.joinedDate && tenureMonths < 24) {
+        return NextResponse.json({ error: 'Maternity Leave can only be availed after completion of 2 years of service.' }, { status: 400 });
+      }
+      if (diffDays > 183) { // approx 6 months
+        return NextResponse.json({ error: 'Maximum 6 months of Maternity Leave can be taken.' }, { status: 400 });
+      }
+    } else if (type === 'Paternity Leave') {
+      if (employee.gender && employee.gender.toLowerCase() !== 'male') {
+        return NextResponse.json({ error: 'Paternity Leave is only applicable for male employees.' }, { status: 400 });
+      }
+      if (diffDays > 4) {
+         return NextResponse.json({ error: 'Maximum 4 days of Paternity Leave can be taken.' }, { status: 400 });
+      }
+    }
+    // --- End Validation ---
 
     // Determine initial status based on whether employee has a supervisor
     const initialStatus = employee?.supervisorId ? 'PENDING_SUPERVISOR' : 'PENDING_ADMIN';
+    
+    // Determine the target supervisor for the request
+    let targetSupervisorId = employee?.supervisorId || null;
+    if (data.routeTo === 'NEXT_SENIOR' && employee?.supervisorId) {
+      const immediateSupervisor = await prisma.employee.findUnique({
+        where: { id: employee.supervisorId },
+        select: { supervisorId: true }
+      });
+      if (immediateSupervisor && immediateSupervisor.supervisorId) {
+        targetSupervisorId = immediateSupervisor.supervisorId;
+      }
+    }
     
     const newRequest = await prisma.leaveRequest.create({
       data: {
@@ -78,7 +147,8 @@ export async function POST(request) {
         reason: data.reason,
         attachment: data.attachment || null,
         isHalfDay: data.isHalfDay || false,
-        status: initialStatus
+        status: initialStatus,
+        targetSupervisorId: targetSupervisorId
       }
     });
     return NextResponse.json(newRequest);

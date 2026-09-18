@@ -1,262 +1,208 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, UserCog, Save, X, ToggleLeft, ToggleRight, Printer } from 'lucide-react';
 import Dialog from '@/components/Dialog';
 
 export default function SalaryHeadsPage() {
-  const [activeTab, setActiveTab] = useState('CTC');
   const [heads, setHeads] = useState([]);
-  const [headTypes, setHeadTypes] = useState([
-    { name: 'CTC', isActive: true },
-    { name: 'Earning', isActive: true },
-    { name: 'Deduction', isActive: true },
-    { name: 'Other', isActive: true }
-  ]);
-
-  useEffect(() => {
-    const savedTypes = localStorage.getItem('headTypes');
-    if (savedTypes) {
-      setHeadTypes(JSON.parse(savedTypes));
-    }
-  }, []);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('salaryHeads');
-    if (saved) {
-      setHeads(JSON.parse(saved));
-    } else {
-      setHeads([
-        { id: 1, category: 'CTC', description: 'Gross Salary', calculationType: 'Calculate By Formula', remark: '', isActive: true },
-        { id: 2, category: 'CTC', description: 'Employer PF', calculationType: 'Fixed Amount', remark: '', isActive: true },
-        { id: 3, category: 'Earning', description: 'Basic', calculationType: 'Calculate By Formula', remark: '', isActive: true },
-        { id: 4, category: 'Earning', description: 'HRA', calculationType: 'Calculate By Formula', remark: '', isActive: true },
-        { id: 5, category: 'Deduction', description: 'Advance', calculationType: 'Fixed Amount', remark: '', isActive: true },
-        { id: 6, category: 'Other', description: 'Special Allowance', calculationType: 'Fixed Amount', remark: '', isActive: true },
-      ]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (heads.length > 0) {
-      localStorage.setItem('salaryHeads', JSON.stringify(heads));
-    }
-  }, [heads]);
-
+  const [headTypes, setHeadTypes] = useState([]);
+  const [activeTab, setActiveTab] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-
-  const [formData, setFormData] = useState({
-    description: '',
-    calculationType: 'C : Calculate By Formula',
-    remark: '',
-    isActive: true
-  });
-
+  const [formData, setFormData] = useState({ description: '', calculationType: 'C : Calculate By Formula', remark: '', isActive: true });
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, id: null });
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      const [headsRes, typesRes] = await Promise.all([
+        fetch('/api/setup/salary-heads'),
+        fetch('/api/setup/head-types')
+      ]);
+      const headsData = await headsRes.json();
+      const typesData = await typesRes.json();
+
+      if (Array.isArray(typesData) && typesData.length > 0) {
+        const activeTypes = typesData.filter(t => t.isActive);
+        setHeadTypes(activeTypes);
+        if (!activeTab) setActiveTab(activeTypes[0]?.name || '');
+      }
+      if (Array.isArray(headsData)) {
+        setHeads(headsData.map(h => ({ ...h, category: h.headType?.name || '' })));
+      }
+    } catch (e) {
+      console.error('Failed to fetch data:', e);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchAll();
+  }, []);
+
   const resetForm = () => {
-    setFormData({
-      description: '',
-      calculationType: 'C : Calculate By Formula',
-      remark: '',
-      isActive: true
-    });
+    setFormData({ description: '', calculationType: 'C : Calculate By Formula', remark: '', isActive: true });
     setEditingId(null);
     setIsFormOpen(false);
   };
 
-  const handleAdd = () => {
-    resetForm();
-    setIsFormOpen(true);
-  };
-
   const handleEdit = (head) => {
-    setFormData({ ...head });
+    setFormData({ description: head.description, calculationType: head.calculationType, remark: head.remark || '', isActive: head.isActive });
     setEditingId(head.id);
     setIsFormOpen(true);
   };
 
-  const handleDeleteClick = (id) => {
-    setDeleteDialog({ isOpen: true, id });
-  };
-
-  const confirmDelete = () => {
-    setHeads(heads.filter(h => h.id !== deleteDialog.id));
-    setDeleteDialog({ isOpen: false, id: null });
-  };
-
-  const toggleStatus = (id) => {
-    setHeads(heads.map(h => h.id === id ? { ...h, isActive: !h.isActive } : h));
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.description) {
+    if (!formData.description.trim()) {
       setInfoDialog({ isOpen: true, title: 'Validation Error', message: 'Description is required' });
       return;
     }
-
-    if (editingId) {
-      setHeads(heads.map(h => h.id === editingId ? { ...formData, id: editingId, category: activeTab } : h));
-    } else {
-      setHeads([...heads, { ...formData, id: Date.now(), category: activeTab }]);
+    setSaving(true);
+    try {
+      const method = editingId ? 'PUT' : 'POST';
+      const payload = { ...formData, category: activeTab, ...(editingId && { id: editingId }) };
+      const res = await fetch('/api/setup/salary-heads', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setInfoDialog({ isOpen: true, title: 'Error', message: err.error || 'Failed to save' });
+      } else {
+        await fetchAll();
+        resetForm();
+      }
+    } catch (e) {
+      setInfoDialog({ isOpen: true, title: 'Error', message: 'Something went wrong' });
     }
-    resetForm();
+    setSaving(false);
+  };
+
+  const toggleStatus = async (id, current) => {
+    try {
+      await fetch('/api/setup/salary-heads', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, isActive: !current })
+      });
+      await fetchAll();
+    } catch (e) { console.error(e); }
+  };
+
+  const confirmDelete = async () => {
+    try {
+      await fetch(`/api/setup/salary-heads?id=${deleteDialog.id}`, { method: 'DELETE' });
+      await fetchAll();
+    } catch (e) { console.error(e); }
+    setDeleteDialog({ isOpen: false, id: null });
   };
 
   const filteredHeads = heads.filter(h => h.category === activeTab);
 
-  const inputStyle = {
-    width: '100%',
-    padding: '8px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: '6px',
-    fontSize: '14px',
-    color: '#374151',
-    outline: 'none',
-    background: '#fff'
-  };
-
-  const labelStyle = {
-    display: 'block',
-    fontSize: '13px',
-    fontWeight: 600,
-    color: '#0ea5e9',
-    marginBottom: '6px'
-  };
+  const inp = { width: '100%', padding: '9px 12px', border: '1.5px solid #e2e8f0', borderRadius: '7px', fontSize: '14px', color: '#1e293b', outline: 'none', background: '#fff', boxSizing: 'border-box' };
+  const lbl = { display: 'block', fontSize: '12px', fontWeight: 600, color: '#0ea5e9', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.04em' };
 
   return (
     <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#374151', fontSize: '18px', fontWeight: 700 }}>
-          <UserCog size={24} />
-          Salary Heads Master <span style={{ fontSize: '14px', fontWeight: 400, color: '#6b7280' }}>Manage all salary components</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: 40, height: 40, borderRadius: '10px', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <UserCog size={20} color="#fff" />
+          </div>
+          <div>
+            <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>Salary Heads Master</div>
+            <div style={{ fontSize: '13px', color: '#64748b' }}>Manage all salary components</div>
+          </div>
         </div>
         {!isFormOpen && (
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => window.print()}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                padding: '8px 16px', background: '#f3f4f6', color: '#374151',
-                border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', fontWeight: 500,
-                cursor: 'pointer'
-              }}
-            >
-              <Printer size={18} /> Print
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px', background: '#f8fafc', color: '#475569', border: '1.5px solid #e2e8f0', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}>
+              <Printer size={15} /> Print
             </button>
-            <button
-              onClick={handleAdd}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                padding: '8px 16px', background: '#0ea5e9', color: '#fff',
-                border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: 500,
-                cursor: 'pointer'
-              }}
-            >
-              <Plus size={18} /> Add {activeTab} Head
+            <button onClick={() => { resetForm(); setIsFormOpen(true); }} disabled={!activeTab} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', background: activeTab ? 'linear-gradient(135deg,#0ea5e9,#6366f1)' : '#e2e8f0', color: activeTab ? '#fff' : '#94a3b8', border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: activeTab ? 'pointer' : 'not-allowed', boxShadow: activeTab ? '0 2px 8px rgba(14,165,233,0.3)' : 'none' }}>
+              <Plus size={16} /> Add {activeTab} Head
             </button>
           </div>
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '1px solid #e5e7eb', paddingBottom: '12px', overflowX: 'auto' }}>
-        {headTypes.filter(ht => ht.isActive).map(tab => (
-          <button
-            key={tab.name}
-            onClick={() => { setActiveTab(tab.name); setIsFormOpen(false); }}
-            style={{
-              padding: '8px 24px',
-              background: activeTab === tab.name ? '#0ea5e9' : '#f3f4f6',
-              color: activeTab === tab.name ? '#fff' : '#4b5563',
-              border: 'none',
-              borderRadius: '6px',
-              fontWeight: 500,
-              fontSize: '14px',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {tab.name} Heads
-          </button>
-        ))}
-      </div>
-
-      {isFormOpen && (
-        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '24px', overflow: 'hidden' }}>
-          <div style={{ background: '#f1f5f9', padding: '12px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: '16px', color: '#334155' }}>
-              {editingId ? `Edit ${activeTab} Head` : `Add ${activeTab} Head`}
-            </h3>
-            <button onClick={resetForm} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
-              <X size={20} />
+      {/* Tabs */}
+      {loading ? (
+        <div style={{ padding: '16px 0', color: '#94a3b8', fontSize: '14px' }}>Loading head types...</div>
+      ) : headTypes.length === 0 ? (
+        <div style={{ padding: '20px', background: '#fef9c3', border: '1px solid #fde047', borderRadius: '10px', color: '#92400e', marginBottom: '24px', fontSize: '14px' }}>
+          ⚠️ No Head Types found. Please go to <strong>Head Types</strong> tab and add some (e.g. CTC, Earning, Deduction, Other).
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '2px solid #e2e8f0', paddingBottom: '0', overflowX: 'auto' }}>
+          {headTypes.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => { setActiveTab(tab.name); setIsFormOpen(false); }}
+              style={{
+                padding: '10px 22px',
+                background: 'none',
+                color: activeTab === tab.name ? '#0ea5e9' : '#64748b',
+                border: 'none',
+                borderBottom: activeTab === tab.name ? '3px solid #0ea5e9' : '3px solid transparent',
+                fontWeight: activeTab === tab.name ? 700 : 500,
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                whiteSpace: 'nowrap',
+                marginBottom: '-2px'
+              }}
+            >
+              {tab.name} Heads
             </button>
-          </div>
+          ))}
+        </div>
+      )}
 
+      {/* Add/Edit Form */}
+      {isFormOpen && (
+        <div style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '12px', marginBottom: '24px', overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' }}>
+          <div style={{ background: 'linear-gradient(135deg,#f1f5f9,#e8f4fd)', padding: '14px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 700, fontSize: '15px', color: '#1e293b' }}>{editingId ? `Edit ${activeTab} Head` : `Add ${activeTab} Head`}</span>
+            <button onClick={resetForm} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}><X size={20} /></button>
+          </div>
           <form onSubmit={handleSubmit} style={{ padding: '24px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
               <div>
-                <label style={labelStyle}>Description <span style={{ color: '#ef4444' }}>*</span></label>
-                <input
-                  type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  style={inputStyle}
-                  autoFocus
-                />
+                <label style={lbl}>Description <span style={{ color: '#ef4444' }}>*</span></label>
+                <input type="text" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} style={inp} placeholder="e.g. Basic Salary" autoFocus />
               </div>
               <div>
-                <label style={labelStyle}>Calculation Type</label>
-                <select
-                  value={formData.calculationType}
-                  onChange={(e) => setFormData({ ...formData, calculationType: e.target.value })}
-                  style={inputStyle}
-                >
+                <label style={lbl}>Calculation Type</label>
+                <select value={formData.calculationType} onChange={e => setFormData({ ...formData, calculationType: e.target.value })} style={inp}>
                   <option value="C : Calculate By Formula">C : Calculate By Formula</option>
                   <option value="F : Fixed Amount">F : Fixed Amount</option>
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Status</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: formData.isActive ? '#0ea5e9' : '#9ca3af' }}
-                  >
-                    {formData.isActive ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                <label style={lbl}>Status</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
+                  <button type="button" onClick={() => setFormData({ ...formData, isActive: !formData.isActive })} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: formData.isActive ? '#0ea5e9' : '#94a3b8' }}>
+                    {formData.isActive ? <ToggleRight size={34} /> : <ToggleLeft size={34} />}
                   </button>
-                  <span style={{ fontSize: '14px', fontWeight: 500, color: formData.isActive ? '#0ea5e9' : '#6b7280' }}>
-                    {formData.isActive ? 'Active' : 'Inactive'}
-                  </span>
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: formData.isActive ? '#0ea5e9' : '#94a3b8' }}>{formData.isActive ? 'Active' : 'Inactive'}</span>
                 </div>
               </div>
               <div>
-                <label style={labelStyle}>Remark</label>
-                <input
-                  type="text"
-                  value={formData.remark}
-                  onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
-                  style={inputStyle}
-                />
+                <label style={lbl}>Remark</label>
+                <input type="text" value={formData.remark} onChange={e => setFormData({ ...formData, remark: e.target.value })} style={inp} placeholder="Optional note" />
               </div>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
-              <button
-                type="button"
-                onClick={resetForm}
-                style={{ padding: '8px 16px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: '6px', color: '#475569', fontWeight: 500, cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 24px', background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 500, cursor: 'pointer' }}
-              >
-                <Save size={16} /> Save
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+              <button type="button" onClick={resetForm} style={{ padding: '9px 20px', border: '1.5px solid #e2e8f0', background: '#fff', borderRadius: '8px', color: '#475569', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}>Cancel</button>
+              <button type="submit" disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 24px', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}>
+                <Save size={15} /> {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
           </form>
@@ -264,79 +210,46 @@ export default function SalaryHeadsPage() {
       )}
 
       {/* Table */}
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#374151' }}>Description</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#374151' }}>Calculation Type</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#374151' }}>Status</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#374151' }}>Remark</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '13px', fontWeight: 600, color: '#374151' }}>Actions</th>
+            <tr style={{ background: 'linear-gradient(135deg,#f8fafc,#f1f5f9)', borderBottom: '1.5px solid #e2e8f0' }}>
+              <th style={{ padding: '13px 18px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Description</th>
+              <th style={{ padding: '13px 18px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Calculation Type</th>
+              <th style={{ padding: '13px 18px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Status</th>
+              <th style={{ padding: '13px 18px', textAlign: 'left', fontSize: '12px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Remark</th>
+              <th style={{ padding: '13px 18px', textAlign: 'right', fontSize: '12px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredHeads.map((head, i) => (
-              <tr key={head.id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                <td style={{ padding: '12px 16px', fontSize: '14px', color: '#111827', fontWeight: 500 }}>{head.description}</td>
-                <td style={{ padding: '12px 16px', fontSize: '14px', color: '#4b5563' }}>{head.calculationType}</td>
-                <td style={{ padding: '12px 16px', fontSize: '14px', color: '#4b5563' }}>
-                  <button
-                    onClick={() => toggleStatus(head.id)}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: head.isActive ? '#e0f2fe' : '#f3f4f6',
-                      color: head.isActive ? '#0ea5e9' : '#6b7280',
-                    }}
-                  >
-                    {head.isActive ? 'Active' : 'Inactive'}
+            {loading ? (
+              <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Loading...</td></tr>
+            ) : filteredHeads.length === 0 ? (
+              <tr><td colSpan="5" style={{ padding: '48px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>No {activeTab} heads found. Click &quot;Add {activeTab} Head&quot; to add one.</td></tr>
+            ) : filteredHeads.map((head, i) => (
+              <tr key={head.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                <td style={{ padding: '13px 18px', fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>{head.description}</td>
+                <td style={{ padding: '13px 18px', fontSize: '13px', color: '#64748b' }}>{head.calculationType}</td>
+                <td style={{ padding: '13px 18px' }}>
+                  <button onClick={() => toggleStatus(head.id, head.isActive)} style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600, border: 'none', cursor: 'pointer', background: head.isActive ? '#dcfce7' : '#f1f5f9', color: head.isActive ? '#16a34a' : '#64748b' }}>
+                    {head.isActive ? '● Active' : '○ Inactive'}
                   </button>
                 </td>
-                <td style={{ padding: '12px 16px', fontSize: '14px', color: '#4b5563' }}>{head.remark}</td>
-                <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                <td style={{ padding: '13px 18px', fontSize: '13px', color: '#94a3b8' }}>{head.remark || '—'}</td>
+                <td style={{ padding: '13px 18px', textAlign: 'right' }}>
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                    <button onClick={() => handleEdit(head)} style={{ padding: '6px', background: '#eff6ff', color: '#3b82f6', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                      <Edit2 size={16} />
-                    </button>
-                    <button onClick={() => handleDeleteClick(head.id)} style={{ padding: '6px', background: '#fef2f2', color: '#ef4444', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                      <Trash2 size={16} />
-                    </button>
+                    <button onClick={() => handleEdit(head)} style={{ padding: '6px 10px', background: '#eff6ff', color: '#3b82f6', border: 'none', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Edit2 size={15} /></button>
+                    <button onClick={() => setDeleteDialog({ isOpen: true, id: head.id })} style={{ padding: '6px 10px', background: '#fef2f2', color: '#ef4444', border: 'none', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><Trash2 size={15} /></button>
                   </div>
                 </td>
               </tr>
             ))}
-            {filteredHeads.length === 0 && (
-              <tr>
-                <td colSpan="5" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
-                  No {activeTab} heads found.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
 
-      <Dialog
-        isOpen={deleteDialog.isOpen}
-        type="confirm"
-        title="Delete Head"
-        message="Are you sure you want to delete this item? This action cannot be undone."
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteDialog({ isOpen: false, id: null })}
-      />
-      <Dialog
-        isOpen={infoDialog.isOpen}
-        type="info"
-        title={infoDialog.title}
-        message={infoDialog.message}
-        onConfirm={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-        onCancel={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-      />
+      <Dialog isOpen={deleteDialog.isOpen} type="confirm" title="Delete Salary Head" message="Are you sure you want to delete this salary head? This action cannot be undone." onConfirm={confirmDelete} onCancel={() => setDeleteDialog({ isOpen: false, id: null })} />
+      <Dialog isOpen={infoDialog.isOpen} type="info" title={infoDialog.title} message={infoDialog.message} onConfirm={() => setInfoDialog({ isOpen: false, title: '', message: '' })} onCancel={() => setInfoDialog({ isOpen: false, title: '', message: '' })} />
     </div>
   );
 }

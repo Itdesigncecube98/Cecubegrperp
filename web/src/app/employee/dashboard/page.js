@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { getEmployeeStats, updateEmployee, getPunchRequests, createPunchRequest, getEmployees, getAnnouncements, getLocationRequests, updateLocationRequest, pingLocation, getLocations, getHolidays, getLeaveBalance, getImprestApprovals, updateImprestRequest, getMyImprestRequests } from '../../../lib/data';
 import dynamic from 'next/dynamic';
 const LocationPicker = dynamic(() => import('@/components/LocationPicker'), { ssr: false });
-import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Edit2, Plus, X, Trash2, UserCircle, Shield, Bell, MapPin, Car, IndianRupee, ClipboardList, Layers } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Edit2, Plus, X, Trash2, UserCircle, Shield, Bell, MapPin, Car, IndianRupee, ClipboardList, Layers, Sun, Moon, Star, Briefcase, ShoppingCart, FileSignature, FileText, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import ImprestModal from './ImprestModal';
 
@@ -11,6 +11,7 @@ export default function EmployeeDashboard() {
   const [statsData, setStatsData] = useState([]);
   const [leaveBalance, setLeaveBalance] = useState(null);
   const [allEmployees, setAllEmployees] = useState([]);
+  const [isMobileApp, setIsMobileApp] = useState(false);
 
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [employee, setEmployee] = useState(null);
@@ -60,11 +61,44 @@ export default function EmployeeDashboard() {
   const [isImprestModalOpen, setIsImprestModalOpen] = useState(false);
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    if (typeof window !== 'undefined') {
+      const isApp = localStorage.getItem('isMobileApp') === 'true' || 
+                    Boolean(window.Capacitor?.isNativePlatform?.());
+      setIsMobileApp(isApp);
+    }
+  }, []);
+
+  const assignedList = React.useMemo(() => {
+    if (!employee || !Array.isArray(employee.assignedModules)) return [];
+    const available = [
+      { id: 'Engineering', name: 'Engineering Dashboard', desc: 'Projects, WBS, Budgets, Unit Master & Planning', route: '/engineering', icon: Briefcase, color: '#8b5cf6' },
+      { id: 'Purchase', name: 'Purchase Dashboard', desc: 'Suppliers, Purchase Orders, Items & Inward', route: '/purchase', icon: ShoppingCart, color: '#f59e0b' },
+      { id: 'Contracting', name: 'Contracting Dashboard', desc: 'Work Orders, Subcontractors & Billing', route: '/contracting', icon: FileSignature, color: '#14b8a6' },
+      { id: 'Accounts', name: 'Accounts Dashboard', desc: 'Finance, Ledgers, Vouchers & Invoicing', route: '/accounts', icon: FileText, color: '#6366f1' },
+    ];
+    return available.filter(mod => 
+      employee.assignedModules.some(m => m === mod.id || m.startsWith(`${mod.id}:`))
+    );
+  }, [employee]);
+
+  useEffect(() => {
+    const empData = localStorage.getItem('employeeData');
     if (empData) {
       const parsed = JSON.parse(empData);
       setEmployee(parsed);
       loadStats(parsed.id);
+      
+      // Fetch fresh employee data in background to sync any edits
+      fetch(`/api/employees/${parsed.id}`)
+        .then(res => res.json())
+        .then(freshData => {
+          if (freshData && freshData.id) {
+            setEmployee(freshData);
+            localStorage.setItem('employeeData', JSON.stringify(freshData));
+          }
+        })
+        .catch(err => console.error('Failed to sync fresh employee data', err));
+
       const interval = setInterval(() => {
         loadStats(parsed.id, false);
       }, 60000);
@@ -196,26 +230,65 @@ export default function EmployeeDashboard() {
 
   const handlePunch = async (action, todayRecord, todayDate) => {
     if (isPunching) return;
+    
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    if (action === 'in') {
+      const activeShiftObj = employee?.shifts?.[0]?.shift;
+      if (activeShiftObj?.startTime) {
+        const [sh, sm] = activeShiftObj.startTime.split(':').map(Number);
+        const shiftStartMins = sh * 60 + sm;
+        const currentMins = now.getHours() * 60 + now.getMinutes();
+        
+        if (currentMins < shiftStartMins - 60) {
+          const allowedH = Math.floor((shiftStartMins - 60) / 60);
+          const allowedM = (shiftStartMins - 60) % 60;
+          alert(`You cannot punch in more than 1 hour before your shift starts. (Allowed from ${String(allowedH).padStart(2, '0')}:${String(allowedM).padStart(2, '0')})`);
+          return;
+        }
+      }
+    }
+
     setIsPunching(true);
     // Instant button switch — NEVER wait for supervisor approval
     setLocalPunchState(action === 'in' ? 'in' : 'out');
 
-    const now = new Date();
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    // Duplicate declarations removed
     const isNight = isNightShiftTime();
-    // After 7 PM, always Night shift regardless of existing record
-    const shiftTypeToSave = isNight ? 'Night' : (todayRecord?.shiftType || selectedShift);
-    let newSlots = todayRecord?.timeSlots ? todayRecord.timeSlots.map(s => ({ ...s })) : [];
-
-    // --- DAY ROLLOVER LOGIC ---
-    // If punch time is <= 08:00 AM, the shift actually belongs to yesterday
+    
+    // --- SMART DAY ROLLOVER LOGIC ---
     let targetDate = todayDate;
-    if (currentTime <= '08:00') {
-      const dObj = new Date(targetDate);
-      dObj.setDate(dObj.getDate() - 1);
-      targetDate = dObj.toISOString().split('T')[0];
+    let activeRecord = todayRecord;
+
+    if (action === 'out') {
+      // For OUT punches, first check if there's an open shift TODAY
+      let hasOpenShiftToday = false;
+      if (todayRecord?.timeSlots) {
+        hasOpenShiftToday = todayRecord.timeSlots.some(s => s.in && !s.out);
+      }
+
+      if (!hasOpenShiftToday && currentTime <= '12:00') {
+        // No open shift today, and it's morning. Check if yesterday has an open night shift.
+        const dObj = new Date(todayDate);
+        dObj.setDate(dObj.getDate() - 1);
+        const yesterdayStr = dObj.toISOString().split('T')[0];
+        
+        const yesterdayRecord = statsData.find(s => s.date === yesterdayStr);
+        if (yesterdayRecord?.timeSlots) {
+          const hasOpenShiftYesterday = yesterdayRecord.timeSlots.some(s => s.in && !s.out);
+          if (hasOpenShiftYesterday) {
+            targetDate = yesterdayStr;
+            activeRecord = yesterdayRecord;
+          }
+        }
+      }
     }
-    // --------------------------
+    // IN punches always use todayDate (the literal calendar date)
+    // --------------------------------
+
+    const shiftTypeToSave = isNight ? 'Night' : (activeRecord?.shiftType || selectedShift);
+    let newSlots = activeRecord?.timeSlots ? activeRecord.timeSlots.map(s => ({ ...s })) : [];
 
     try {
       if (action === 'in') {
@@ -280,7 +353,7 @@ export default function EmployeeDashboard() {
           employeeId: employee.id,
           type: action === 'in' ? 'IN' : 'OUT',
           time: currentTime,
-          date: todayDate,
+          date: targetDate,
           status: 'PENDING',
           ...(coords || {})
         },
@@ -304,7 +377,7 @@ export default function EmployeeDashboard() {
                 body: JSON.stringify({
                   employeeId: employee.id,
                   type: action === 'in' ? 'IN' : 'OUT',
-                  date: todayDate,
+                  date: targetDate,
                   latitude: position.coords.latitude,
                   longitude: position.coords.longitude
                 })
@@ -360,7 +433,7 @@ export default function EmployeeDashboard() {
       if (res.id) {
         // Update local state and session storage
         setEmployee(res);
-        sessionStorage.setItem('employeeData', JSON.stringify(res));
+        localStorage.setItem('employeeData', JSON.stringify(res));
         setIsProfileModalOpen(false);
         showToast('Profile updated successfully!');
       }
@@ -831,21 +904,39 @@ export default function EmployeeDashboard() {
 
 
 
-      <div style={{ marginBottom: '2.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0', letterSpacing: '-0.5px' }}>Welcome back, {employee.name.split(' ')[0]}!</h1>
-          <p style={{ fontSize: '15px', color: '#64748b', margin: 0, fontWeight: 500 }}>Here is your attendance overview.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button 
-            onClick={() => router.push('/portal')} 
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s' }}
-            onMouseOver={e => e.currentTarget.style.background = '#f1f5f9'}
-            onMouseOut={e => e.currentTarget.style.background = '#f8fafc'}
-          >
-            <Layers size={16} /> Switch Module
-          </button>
-
+      <div style={{ marginBottom: '2.5rem', display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
+        {employee.photoUrl ? (
+          <img src={employee.photoUrl} alt="Profile" style={{ width: '72px', height: '72px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #ffffff', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }} />
+        ) : (
+          <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid #ffffff', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}>
+            <UserCircle size={40} color="#94a3b8" />
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span className="portal-badge" style={{ display: 'inline-flex', alignItems: 'center', width: 'fit-content' }}>Employee Portal</span>
+            {!isMobileApp && assignedList.length > 0 && (
+              <button
+                type="button"
+                onClick={() => router.push('/portal')}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                  border: '1px solid #bfdbfe', color: '#1d4ed8',
+                  padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+                title="Switch to Assigned Workspaces"
+              >
+                <Layers size={13} />
+                <span>Assigned Workspaces ({assignedList.length})</span>
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+            <h1 style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.5px' }}>Welcome back, {employee.name}!</h1>
+            
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
           {todayHoliday && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', padding: '8px 16px', borderRadius: '10px', border: '1px solid #86efac', boxShadow: '0 2px 8px rgba(34, 197, 94, 0.15)' }}>
               <span style={{ fontSize: '20px' }}>🌴</span>
@@ -856,46 +947,242 @@ export default function EmployeeDashboard() {
             </div>
           )}
           {isPunchedIn ? (
-            <button
-              onClick={() => handlePunch('out', todayRecord, todayDate)}
-              disabled={isPunching}
-              className="btn-danger"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', borderRadius: '10px', fontWeight: 700, fontSize: '14px', cursor: isPunching ? 'not-allowed' : 'pointer', opacity: isPunching ? 0.6 : 1 }}
-            >
-              <Clock size={16} /> {isPunching ? 'Saving...' : 'Punch Out'}
-            </button>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: '#ffffff', padding: '6px', borderRadius: '14px', border: '1px solid #fee2e2', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
+                padding: '6px 14px', borderRadius: '10px',
+                border: '1px solid #fca5a5',
+                boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.8)'
+              }}>
+                <span style={{ fontSize: '14px', filter: 'drop-shadow(0 2px 2px rgba(220,38,38,0.2))' }}>🔴</span>
+                <span style={{ fontWeight: 700, fontSize: '13px', color: '#dc2626', letterSpacing: '0.02em', userSelect: 'none' }}>Active Shift</span>
+              </div>
+              <button
+                onClick={() => handlePunch('out', todayRecord, todayDate)}
+                disabled={isPunching}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 22px', borderRadius: '10px',
+                  fontWeight: 700, fontSize: '14px', cursor: isPunching ? 'not-allowed' : 'pointer',
+                  opacity: isPunching ? 0.6 : 1,
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  color: 'white', border: 'none',
+                  boxShadow: '0 4px 10px rgba(220, 38, 38, 0.25)',
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 14px rgba(220, 38, 38, 0.35)' }}
+                onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(220, 38, 38, 0.25)' }}
+              >
+                <Clock size={16} /> {isPunching ? 'Saving...' : 'Punch Out'}
+              </button>
+            </div>
           ) : (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: '#fff', padding: '4px', borderRadius: '12px', border: `1px solid ${isCurrentlyNightTime ? '#c7d2fe' : '#e2e8f0'}`, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+            <div style={{ display: 'flex', gap: '14px', alignItems: 'center', background: '#ffffff', padding: '6px', borderRadius: '24px', border: '1px solid #f1f5f9', boxShadow: '0 4px 16px rgba(0,0,0,0.04)' }}>
               {isCurrentlyNightTime ? (
-                <span style={{
-                  fontWeight: 700, fontSize: '13px', color: '#5b21b6',
-                  padding: '4px 10px', userSelect: 'none'
+                <div style={{
+                  position: 'relative', width: '120px', height: '38px', borderRadius: '19px', overflow: 'hidden',
+                  background: 'rgba(248, 250, 252, 0.7)', backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.9)',
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.03), inset 0 2px 5px rgba(255,255,255,0.8)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px 0 14px'
                 }}>
-                  🌙 Night Shift
-                </span>
+                  {/* Blue/Purple Blob on the right */}
+                  <div style={{ position: 'absolute', right: '-8px', top: '-6px', width: '46px', height: '46px', borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6, #6366f1)', filter: 'blur(8px)', zIndex: 0 }}></div>
+                  
+                  {/* Text on left */}
+                  <span style={{ position: 'relative', zIndex: 1, fontWeight: 600, fontSize: '13px', color: '#475569', letterSpacing: '0.3px', userSelect: 'none' }}>Night</span>
+                  
+                  {/* Icon wrapper on right */}
+                  <div style={{ position: 'relative', zIndex: 1, width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent' }}>
+                    <Moon size={14} color="#ffffff" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.2))' }} />
+                  </div>
+                </div>
               ) : (
-                <select
-                  value={selectedShift}
-                  onChange={(e) => setSelectedShift(e.target.value)}
-                  style={{
-                    border: 'none', background: 'transparent', outline: 'none', fontWeight: 600,
-                    color: '#0369a1', fontSize: '13px', cursor: 'pointer', padding: '4px 8px'
-                  }}
-                >
-                  <option value="Day">☀️ Day Shift</option>
-                </select>
+                <div style={{
+                  position: 'relative', width: '120px', height: '38px', borderRadius: '19px', overflow: 'hidden',
+                  background: 'rgba(248, 250, 252, 0.7)', backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.9)',
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.03), inset 0 2px 5px rgba(255,255,255,0.8)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px 0 4px'
+                }}>
+                  {/* Orange/Yellow Blob on the left */}
+                  <div style={{ position: 'absolute', left: '-8px', top: '-6px', width: '46px', height: '46px', borderRadius: '50%', background: 'linear-gradient(135deg, #f97316, #fbbf24)', filter: 'blur(8px)', zIndex: 0 }}></div>
+                  
+                  {/* Icon wrapper on left */}
+                  <div style={{ position: 'relative', zIndex: 1, width: '28px', height: '28px', borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent' }}>
+                    <Sun size={15} color="#ffffff" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.2))' }} />
+                  </div>
+                  
+                  {/* Text on right */}
+                  <span style={{ position: 'relative', zIndex: 1, fontWeight: 600, fontSize: '13px', color: '#475569', letterSpacing: '0.3px', userSelect: 'none' }}>Day</span>
+                </div>
               )}
               <button
                 onClick={() => handlePunch('in', todayRecord, todayDate)}
                 disabled={isPunching}
-                className="btn-primary"
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 20px', borderRadius: '8px', fontWeight: 700, fontSize: '14px', cursor: isPunching ? 'not-allowed' : 'pointer', opacity: isPunching ? 0.6 : 1, background: isCurrentlyNightTime ? 'linear-gradient(135deg, #0ea5e9, #0284c7)' : undefined }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 24px', borderRadius: '19px',
+                  fontWeight: 700, fontSize: '14px', cursor: isPunching ? 'not-allowed' : 'pointer',
+                  opacity: isPunching ? 0.6 : 1,
+                  background: isCurrentlyNightTime ? '#1e293b' : '#0f172a',
+                  color: 'white', border: 'none',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.2)' }}
+                onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)' }}
               >
-                <Clock size={16} /> {isPunching ? 'Saving...' : isCurrentlyNightTime ? 'Night Punch In' : 'Punch In'}
+                <Clock size={16} /> {isPunching ? 'Saving...' : 'Punch In'}
               </button>
             </div>
           )}
+
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '13px', color: '#475569', fontWeight: 500, alignItems: 'center' }}>
+            {employee.empId && <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>{employee.empId}</span>}
+            {employee.designation && <span>{employee.designation}</span>}
+            {employee.department && <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#cbd5e1' }}></span> {employee.department}</span>}
+            {employee.siteOffice && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}><span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#cbd5e1', marginRight: '2px' }}></span> <MapPin size={12} /> {employee.siteOffice}</span>}
+            {employee.branch && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}><span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#cbd5e1', marginRight: '2px' }}></span> <MapPin size={12} /> {employee.branch}</span>}
+          </div>
         </div>
+      </div>
+
+      {/* --- ASSIGNED WORKSPACES & MODULES (Web Only) --- */}
+      {!isMobileApp && assignedList.length > 0 && (
+        <div style={{
+          marginBottom: '2rem',
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+          borderRadius: '16px',
+          padding: '1.25rem 1.5rem',
+          color: '#ffffff',
+          boxShadow: '0 8px 24px -4px rgba(15, 23, 42, 0.25)',
+          border: '1px solid rgba(255, 255, 255, 0.1)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a5b4fc', border: '1px solid rgba(165, 180, 252, 0.2)' }}>
+                <Layers size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#f8fafc' }}>Your Assigned Workspaces</h3>
+                <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>You have access to the following departmental modules</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push('/portal')}
+              style={{
+                background: 'rgba(255, 255, 255, 0.12)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#ffffff',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span>View All Workspaces</span>
+              <span>→</span>
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+            {assignedList.map(mod => {
+              const IconComp = mod.icon;
+              return (
+                <div
+                  key={mod.id}
+                  onClick={() => router.push(mod.route)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRadius: '12px',
+                    padding: '14px 16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: `${mod.color}25`, color: mod.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <IconComp size={20} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#f8fafc' }}>{mod.name}</div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>{mod.desc}</div>
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 8px', display: 'flex', alignItems: 'center', color: '#38bdf8', fontSize: '12px', fontWeight: 600 }}>
+                    Open →
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* --- EMPLOYEE DETAILS WIDGETS --- */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginBottom: '2.5rem' }}>
+        
+        {/* Basic Info Card */}
+        <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#6366f1', fontWeight: 700, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <UserCircle size={16} /> Basic Details
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Aadhaar No</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.aadharNo || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>PAN No</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.pan || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Gender</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.gender || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Blood Group</span><span style={{ color: '#ef4444', fontWeight: 600 }}>{employee.bloodGroup || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Nationality</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.nationality || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Marital Status</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.maritalStatus || 'N/A'}</span></div>
+          </div>
+        </div>
+
+        {/* Job Details Card */}
+        <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#10b981', fontWeight: 700, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <ClipboardList size={16} /> Job Details
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Designation</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.designation || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Department</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.department || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Position</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.position || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Grade</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.grade || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: '1 / -1' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Joined Date</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.joinedDate ? new Date(employee.joinedDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}</span></div>
+          </div>
+        </div>
+
+        {/* Account Details Card */}
+        <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#f59e0b', fontWeight: 700, fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <IndianRupee size={16} /> Account Details
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '13px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Account Owner</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.name || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Bank Name</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.bankName || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Account No.</span><span style={{ color: '#1e293b', fontWeight: 600, fontFamily: 'monospace', letterSpacing: '0.5px' }}>{employee.bankAccountNo || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>IFSC Code</span><span style={{ color: '#1e293b', fontWeight: 600, fontFamily: 'monospace', letterSpacing: '0.5px' }}>{employee.ifscCode || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>UAN No.</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.uan || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>ESIC No.</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.esicNo || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Debit Account</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.debitAccount || 'N/A'}</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}><span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Credit Account</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{employee.creditAccount || 'N/A'}</span></div>
+          </div>
+        </div>
+
       </div>
 
       {/* --- DASHBOARD ACTION GRID --- */}
@@ -926,16 +1213,21 @@ export default function EmployeeDashboard() {
           </ul>
         </div>
         
-        {/* Attendance Card */}
+        {/* Muster Card */}
         <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
             <span style={{ background: '#e0f2fe', padding: '6px', borderRadius: '8px', color: '#0ea5e9' }}><CheckCircle size={18} /></span>
-            Attendance
+            Muster
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <li>
               <button onClick={() => { setRegularizeData({ date: new Date().toISOString().split('T')[0], reason: '', inTime: '', outTime: '' }); setIsRegularizeModalOpen(true); }} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'color 0.2s' }}>
                 <span style={{ color: '#cbd5e1' }}>•</span> Regularize Attendance
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/dashboard/payslips')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'color 0.2s' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Pay Slip
               </button>
             </li>
           </ul>
@@ -986,13 +1278,18 @@ export default function EmployeeDashboard() {
           </ul>
         </div>
 
-        {/* Organization Card */}
+        {/* Org 1 Card (Formerly Appraisals) */}
         <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
-            <span style={{ background: '#ede9fe', padding: '6px', borderRadius: '8px', color: '#7c3aed' }}><Shield size={18} /></span>
-            Organization
+            <span style={{ background: '#ecfdf5', padding: '6px', borderRadius: '8px', color: '#10b981' }}><Star size={18} /></span>
+            Org 1
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <li>
+              <button onClick={() => router.push('/employee/appraisal')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> View Appraisals
+              </button>
+            </li>
             <li>
               <button onClick={() => router.push('/employee/announcements')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ color: '#cbd5e1' }}>•</span> Announcements
@@ -1009,18 +1306,33 @@ export default function EmployeeDashboard() {
               </button>
             </li>
             <li>
+              <button onClick={() => router.push('/employee/tds')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> File TDS
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        {/* Org 2 Card (Formerly Organization) */}
+        <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
+            <span style={{ background: '#ede9fe', padding: '6px', borderRadius: '8px', color: '#7c3aed' }}><Shield size={18} /></span>
+            Org 2
+          </h3>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <li>
               <button onClick={() => router.push('/employee/dashboard/doc-generator')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ color: '#cbd5e1' }}>•</span> Doc Generator
               </button>
             </li>
             <li>
-              <button onClick={() => router.push('/employee/dashboard/doc-generator')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#cbd5e1' }}>•</span> My Doc Appns
+              <button onClick={() => router.push('/employee/profile')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Profile
               </button>
             </li>
             <li>
-              <button onClick={() => router.push('/employee/profile')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#cbd5e1' }}>•</span> Profile
+              <button onClick={() => router.push('/employee/requirements')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Position Indent
               </button>
             </li>
           </ul>
@@ -1270,9 +1582,10 @@ export default function EmployeeDashboard() {
                                     </td>
                                     <td style={{ padding: '0.75rem 1rem' }}>
                                       <span className={`badge ${d.status === 'Present' ? 'badge-success' :
+                                        (d.status === 'Half Day' || d.status === 'HD') ? 'badge-info' :
                                         d.status === 'Absent' ? 'badge-danger' :
                                           d.status === 'Holiday' ? 'badge-warning' : ''
-                                        }`}>{d.status}</span>
+                                        }`}>{d.status === 'Half Day' ? 'HD' : d.status}</span>
                                     </td>
                                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.85rem' }}>
                                       {(() => {
@@ -1305,23 +1618,41 @@ export default function EmployeeDashboard() {
                                       })()}
                                     </td>
                                     <td style={{ padding: '0.75rem 1rem' }}>
-                                      {d.timeSlots && d.timeSlots.length > 0 ? (
-                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                          {d.timeSlots.map((slot, i) => {
-                                            const isNight = slot.in ? (slot.in > '19:00' || slot.in <= '08:00') : false;
-                                            return (
-                                              <span key={i} className="badge" style={{
-                                                backgroundColor: isNight ? '#f3e8ff' : '#e0f2fe',
-                                                color: isNight ? '#6b21a8' : '#0369a1'
-                                              }}>
-                                                {slot.in || '?'} - {slot.out || '?'}
+                                      {(() => {
+                                        const pendingReg = pendingRequests.find(pr => pr.date === d.date && pr.type === 'REGULARIZE');
+                                        let reqSlots = null;
+                                        if (pendingReg && pendingReg.time) {
+                                          try { reqSlots = JSON.parse(pendingReg.time); } catch(e){}
+                                        }
+
+                                        if (d.timeSlots && d.timeSlots.length > 0) {
+                                          return (
+                                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                              {d.timeSlots.map((slot, i) => {
+                                                const isNight = slot.in ? (slot.in > '19:00' || slot.in <= '08:00') : false;
+                                                return (
+                                                  <span key={i} className="badge" style={{
+                                                    backgroundColor: isNight ? '#f3e8ff' : '#e0f2fe',
+                                                    color: isNight ? '#6b21a8' : '#0369a1'
+                                                  }}>
+                                                    {slot.in || '?'} - {slot.out || '?'}
+                                                  </span>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        } else if (reqSlots) {
+                                          return (
+                                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                              <span className="badge" style={{ backgroundColor: '#fffbeb', color: '#b45309', border: '1px dashed #fcd34d' }}>
+                                                Requested: {reqSlots.in || '?'} - {reqSlots.out || '?'}
                                               </span>
-                                            );
-                                          })}
-                                        </div>
-                                      ) : (
-                                        <span style={{ color: 'var(--text-secondary)' }}>-</span>
-                                      )}
+                                            </div>
+                                          );
+                                        } else {
+                                          return <span style={{ color: 'var(--text-secondary)' }}>-</span>;
+                                        }
+                                      })()}
                                     </td>
                                     <td style={{ padding: '0.75rem 1rem', fontWeight: '500', color: 'var(--text-primary)' }}>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -1480,7 +1811,7 @@ export default function EmployeeDashboard() {
                 <label>Reason for Regularization</label>
                 <textarea
                   required
-                  value={regularizeData.reason}
+                  value={regularizeData.reason || ''}
                   onChange={e => setRegularizeData({ ...regularizeData, reason: e.target.value })}
                   placeholder="E.g., Forgot to punch in, Biometric issue, etc."
                   rows={3}
@@ -1492,7 +1823,7 @@ export default function EmployeeDashboard() {
                 <label>Location Name (Where were you present?)</label>
                 <input
                   type="text"
-                  value={regularizeData.locationName}
+                  value={regularizeData.locationName || ''}
                   onChange={e => setRegularizeData({ ...regularizeData, locationName: e.target.value })}
                   placeholder="E.g., Client Office (ABC Corp), Delhi"
                   style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%' }}

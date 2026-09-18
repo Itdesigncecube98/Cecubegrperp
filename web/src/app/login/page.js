@@ -7,6 +7,7 @@ import './login.css';
 
 export default function Login() {
   const [loginType, setLoginType] = useState('admin'); // 'admin' or 'employee'
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -91,6 +92,8 @@ export default function Login() {
       if (adminData && adminData.success) {
         sessionStorage.setItem('isAdmin', 'true');
         sessionStorage.setItem('adminData', JSON.stringify(adminData));
+        localStorage.removeItem('employeeData');
+        localStorage.removeItem('isMobileApp');
         router.push('/portal');
       } else {
         setError('Invalid admin email or password');
@@ -99,8 +102,11 @@ export default function Login() {
       try {
         const empData = await loginEmployee(email, password);
         if (empData && empData.success && empData.employee) {
-          sessionStorage.setItem('employeeData', JSON.stringify(empData.employee));
-          router.push('/portal');
+          sessionStorage.removeItem('isAdmin');
+          sessionStorage.removeItem('adminData');
+          localStorage.setItem('employeeData', JSON.stringify(empData.employee));
+          localStorage.removeItem('isMobileApp');
+          router.push('/employee/dashboard');
         } else {
           setError('Invalid employee email or password');
         }
@@ -114,18 +120,21 @@ export default function Login() {
     <div className="login-container">
       
       <div className="login-card glass-panel">
-        <div className="login-logo" style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <div className="login-logo" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <img alt="Cecube Logo" src="/logo.png" style={{ maxWidth: '160px' }} />
         </div>
         
-        <div className="login-toggle">
+        {/* Admin / Employee Toggle */}
+        <div className="login-toggle" style={{ marginBottom: '1.5rem' }}>
           <button 
+            type="button"
             className={`toggle-btn ${loginType === 'admin' ? 'active' : ''}`}
             onClick={() => { setLoginType('admin'); setError(''); }}
           >
             <Shield size={16} /> Admin
           </button>
           <button 
+            type="button"
             className={`toggle-btn ${loginType === 'employee' ? 'active' : ''}`}
             onClick={() => { setLoginType('employee'); setError(''); }}
           >
@@ -134,20 +143,24 @@ export default function Login() {
         </div>
 
         <div className="login-header">
-          <h2>Welcome Back!</h2>
-          <p>Please enter your details to sign in.</p>
+          <h2>{loginType === 'admin' ? 'Admin Login' : 'Employee Login'}</h2>
+          <p>
+            {loginType === 'admin' 
+              ? 'Sign in to access admin dashboard & management modules.' 
+              : 'Sign in to access your employee portal & assigned dashboards.'}
+          </p>
         </div>
 
         <form onSubmit={handleLogin} className="login-form">
           {error && <div className="error-message">{error}</div>}
           
           <div className="input-group">
-            <label>Email</label>
+            <label>{loginType === 'admin' ? 'Admin Email' : 'Employee Email'}</label>
             <input 
               type="email" 
               value={email} 
               onChange={(e) => setEmail(e.target.value)} 
-              placeholder={loginType === 'admin' ? "admin@cecube.com" : "employee@cecube.com"} 
+              placeholder={loginType === 'admin' ? "admin@cecubeindia.com" : "employee@cecubeindia.com"} 
               required 
             />
           </div>

@@ -19,7 +19,7 @@ export default function MyAttendanceRecords() {
   const [endDate, setEndDate] = useState(todayStr);
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     const adminData = sessionStorage.getItem('adminData');
     if (empData) {
       const parsed = JSON.parse(empData);
@@ -140,6 +140,7 @@ export default function MyAttendanceRecords() {
 
   const renderStatus = (status) => {
     const s = (status || '').toLowerCase();
+    if (s === 'half day' || s === 'hd') return <span style={{ padding: '4px 10px', borderRadius: '8px', background: '#dbeafe', color: '#2563eb', fontSize: '11px', fontWeight: 700 }}>HD</span>;
     if (s === 'present') return <span className="badge badge-success">{status}</span>;
     if (s === 'late') return <span className="badge badge-warning">{status}</span>;
     if (s === 'absent') return <span className="badge badge-danger">{status}</span>;

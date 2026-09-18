@@ -9,7 +9,7 @@ export default function MyRegularizationRequests() {
   const [employee, setEmployee] = useState(null);
   
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (empData) setEmployee(JSON.parse(empData));
   }, []);
 

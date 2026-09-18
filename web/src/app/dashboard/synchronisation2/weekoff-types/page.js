@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
 import AppModal from '@/components/AppModal';
 import ActionToolbar from '@/components/ActionToolbar';
@@ -8,33 +8,91 @@ const EMPTY = { name: '', days: [], assignedTo: 'All Employees' };
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function WeekoffTypes() {
-  const [data, setData] = useState([
-    { id: 1, name: 'Sunday Off', days: ['Sunday'], assignedTo: 'All Employees' },
-    { id: 2, name: 'Weekend Off', days: ['Saturday', 'Sunday'], assignedTo: 'Selected Employees' },
-    { id: 3, name: 'Monday Off', days: ['Monday'], assignedTo: 'Selected Employees' },
-  ]);
+  const [data, setData] = useState([]);
   const [modal, setModal] = useState({ open: false, mode: 'add', row: null });
   const [form, setForm] = useState(EMPTY);
   const [deleteModal, setDeleteModal] = useState({ open: false, id: null });
   const [searchTerm, setSearchTerm] = useState('');
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const fetchWeekoffTypes = async () => {
+    try {
+      const res = await fetch('/api/synchronisation2/weekoff-types');
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+      } else {
+        showToast('Failed to fetch weekoff types', 'error');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('Error connecting to server', 'error');
+    }
+  };
+
+  useEffect(() => {
+    fetchWeekoffTypes();
+  }, []);
 
   const openAdd = () => { setForm(EMPTY); setModal({ open: true, mode: 'add', row: null }); };
   const openEdit = (row) => { setForm({ ...row }); setModal({ open: true, mode: 'edit', row }); };
   const openDelete = (id) => setDeleteModal({ open: true, id });
 
-  const handleSave = () => {
-    if (!form.name || form.days.length === 0) return;
-    if (modal.mode === 'add') {
-      setData(prev => [...prev, { ...form, id: Date.now() }]);
-    } else {
-      setData(prev => prev.map(r => r.id === form.id ? form : r));
+  const handleSave = async () => {
+    if (!form.name || form.days.length === 0) {
+      showToast('Name and at least one day are required', 'error');
+      return;
     }
-    setModal({ open: false, mode: 'add', row: null });
+    
+    try {
+      const url = modal.mode === 'add' 
+        ? '/api/synchronisation2/weekoff-types' 
+        : `/api/synchronisation2/weekoff-types/${form.id}`;
+      const method = modal.mode === 'add' ? 'POST' : 'PUT';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      });
+
+      if (res.ok) {
+        showToast(`Weekoff type ${modal.mode === 'add' ? 'added' : 'updated'} successfully`);
+        fetchWeekoffTypes();
+        setModal({ open: false, mode: 'add', row: null });
+      } else {
+        const errorData = await res.json();
+        showToast(errorData.error || 'Failed to save weekoff type', 'error');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('An error occurred while saving', 'error');
+    }
   };
 
-  const handleDelete = () => {
-    setData(prev => prev.filter(r => r.id !== deleteModal.id));
-    setDeleteModal({ open: false, id: null });
+  const handleDelete = async () => {
+    try {
+      const res = await fetch(`/api/synchronisation2/weekoff-types/${deleteModal.id}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        showToast('Weekoff type deleted successfully');
+        fetchWeekoffTypes();
+        setDeleteModal({ open: false, id: null });
+      } else {
+        const errorData = await res.json();
+        showToast(errorData.error || 'Failed to delete weekoff type', 'error');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('An error occurred while deleting', 'error');
+    }
   };
 
   const toggleDay = (day) => {
@@ -171,6 +229,12 @@ export default function WeekoffTypes() {
         onConfirm={handleDelete} confirmLabel="Delete" confirmColor="#ef4444" size="sm">
         <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Are you sure you want to delete this weekoff type? This action cannot be undone.</p>
       </AppModal>
+
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: toast.type === 'error' ? '#dc2626' : '#16a34a', color: 'white', padding: '10px 24px', borderRadius: '30px', fontWeight: 500, zIndex: 9999 }}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }

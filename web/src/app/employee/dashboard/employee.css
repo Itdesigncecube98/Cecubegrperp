@@ -66,8 +66,41 @@
 
 .employee-main {
   max-width: 1200px;
+  width: 100%;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 2rem;
+  min-width: 0;
+}
+
+.trip-report-page,
+.trip-report-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.trip-report-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.trip-report-table {
+  width: max-content !important;
+  min-width: 760px;
+}
+
+@media (max-width: 640px) {
+  .employee-main {
+    padding: 1rem;
+  }
+
+  .trip-report-page {
+    width: 100%;
+    overflow-x: hidden;
+  }
 }
 
 /* Utilities */

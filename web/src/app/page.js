@@ -6,7 +6,12 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // Redirect to dashboard by default. AdminLayout will check for login.
+    const empData = localStorage.getItem('employeeData');
+    if (empData) {
+      router.replace('/employee/dashboard');
+      return;
+    }
+
     router.replace('/login');
   }, [router]);
 

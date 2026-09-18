@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 
 function fmt(dateObj) {
@@ -34,6 +35,7 @@ export default function LiveTrackingDayWise() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [tableData, setTableData] = useState([]);
+  const filters = useReportFilters();
 
   const today = new Date();
   const monday = new Date(today);
@@ -123,27 +125,18 @@ export default function LiveTrackingDayWise() {
       </div>
 
       <div className="card">
-        {/* Row 1 */}
+        {/* Filters */}
         <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Organization</label>
-            <select className="filterInput">
-              <option>Cecube Engineering India Pvt Ltd</option>
-            </select>
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Employee</label>
-            <select className="filterInput">
-              <option>Any</option>
-            </select>
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Start Date</label>
-            <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">End Date</label>
-            <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          <ReportFilters {...filters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '1rem' }}>
+            <div className="filterGroup">
+              <label className="filterLabel">Start Date</label>
+              <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="filterGroup">
+              <label className="filterLabel">End Date</label>
+              <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
           </div>
         </div>
 
@@ -195,8 +188,8 @@ export default function LiveTrackingDayWise() {
                 <tr>
                   <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', background: '#f9fafb' }}>Loading tracking data...</td>
                 </tr>
-              ) : tableData.length > 0 ? (
-                tableData.map(row => (
+              ) : filters.applyFilters(tableData).length > 0 ? (
+                filters.applyFilters(tableData).map(row => (
                   <tr key={row.id}>
                     <td>{row.employee?.empId || '—'}</td>
                     <td style={{ fontWeight: 600 }}>{row.employee?.name}</td>

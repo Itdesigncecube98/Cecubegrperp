@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { PrismaClient } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
@@ -24,7 +25,13 @@ export async function PUT(request, { params }) {
   try {
     const { id: paramId } = await params;
     const id = parseInt(paramId);
-    const data = await request.json();
+    
+    let data = {};
+    try {
+      data = await request.json();
+    } catch (e) {
+      // Body might be empty or missing, default to empty object
+    }
     const { startLocation, endLocation } = data; // Optional names from the user
 
     const trip = await prisma.tripLog.findUnique({

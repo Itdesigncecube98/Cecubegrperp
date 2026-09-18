@@ -1,9 +1,70 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, RotateCcw, Calculator, FileDown, Save, Info } from 'lucide-react';
+import MultiSelect from '@/components/MultiSelect';
 
 export default function TaxCalculations() {
+  const [employees, setEmployees] = useState([]);
+  const [taxSlabs, setTaxSlabs] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [selectedBranches, setSelectedBranches] = useState([]);
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [selectedEmployees, setSelectedEmployees] = useState([]);
+  const [filters, setFilters] = useState({
+    financialYear: '2026-2027',
+    department: '',
+    employeeId: '',
+    regimeName: 'Old Tax Regime'
+  });
+
+  useEffect(() => {
+    fetch('/api/employees').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) {
+        setEmployees(data);
+        setSelectedEmployees(data.map(e => `${e.name} (${e.empId})`));
+      }
+    }).catch(console.error);
+
+    fetch('/api/tax-slabs').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) setTaxSlabs(data);
+    }).catch(console.error);
+
+    fetch('/api/synchronization?type=siteoffices').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) {
+        const names = data.map(d => d.name || d.siteOfficeName || d).filter(Boolean);
+        setBranches(names);
+        setSelectedBranches(names);
+      }
+    }).catch(console.error);
+
+    fetch('/api/synchronization?type=departments').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) {
+        const names = data.map(d => d.name || d.departmentName || d).filter(Boolean);
+        setSelectedDepartments(names);
+      }
+    }).catch(console.error);
+  }, []);
+
+  const uniqueDepartments = [...new Set(employees.map(e => e.department).filter(Boolean))].sort();
+  const uniqueFinYears = [...new Set(taxSlabs.map(t => t.financialYear).filter(Boolean))].sort().reverse();
+  const uniqueRegimes = [...new Set(taxSlabs.map(t => t.name).filter(Boolean))].sort();
+
+  const isAllBranches = selectedBranches.length === branches.length || branches.length === 0;
+  const isAllDepts = selectedDepartments.length === uniqueDepartments.length || uniqueDepartments.length === 0;
+  const isAllEmps = selectedEmployees.length === employees.length || employees.length === 0;
+
+  const filteredEmployees = employees.filter(e => {
+    const branchMatch = isAllBranches || (e.siteOffice && selectedBranches.includes(e.siteOffice));
+    const deptMatch = isAllDepts || (e.department && selectedDepartments.includes(e.department));
+    const empLabel = `${e.name} (${e.empId})`;
+    const empMatch = isAllEmps || selectedEmployees.includes(empLabel);
+    return branchMatch && deptMatch && empMatch;
+  });
+
+  const handleFilterChange = (field, value) => {
+    setFilters(prev => ({ ...prev, [field]: value }));
+  };
   return (
     <div>
       <style>{`
@@ -62,35 +123,44 @@ export default function TaxCalculations() {
         }
       `}</style>
 
-      <div className="filter-bar">
+      <div className="filter-bar" style={{ flexDirection: 'column', gap: '0.75rem' }}>
         <div style={{ width: '100%', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
           Filter Criteria
         </div>
-        <div className="filter-group">
-          <label>Financial Year</label>
-          <select defaultValue="2026-2027">
-            <option value="2026-2027">2026-2027</option>
-          </select>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem' }}>
+          <div className="filter-group">
+            <label>Organization / Branch</label>
+            <MultiSelect options={branches} selected={selectedBranches} onChange={setSelectedBranches} placeholder="Select Branch" />
+          </div>
+          <div className="filter-group">
+            <label>Department</label>
+            <MultiSelect options={uniqueDepartments} selected={selectedDepartments} onChange={setSelectedDepartments} placeholder="Select Department" />
+          </div>
+          <div className="filter-group">
+            <label>Employee</label>
+            <MultiSelect options={employees.map(e => `${e.name} (${e.empId})`)} selected={selectedEmployees} onChange={setSelectedEmployees} placeholder="Select Employee" />
+          </div>
+          <div className="filter-group">
+            <label>Financial Year</label>
+            <select value={filters.financialYear} onChange={e => handleFilterChange('financialYear', e.target.value)}>
+              <option value="2026-2027">2026-2027</option>
+              {uniqueFinYears.filter(fy => fy !== '2026-2027').map(fy => (
+                <option key={fy} value={fy}>{fy}</option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-group">
+            <label>Current TDS Scheme</label>
+            <select value={filters.regimeName} onChange={e => handleFilterChange('regimeName', e.target.value)}>
+              <option value="Old Tax Regime">Old Tax Regime</option>
+              {uniqueRegimes.filter(r => r !== 'Old Tax Regime').map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="filter-group">
-          <label>Department</label>
-          <select defaultValue="">
-            <option value="">Select Here</option>
-          </select>
-        </div>
-        <div className="filter-group">
-          <label>Employee <span style={{color: 'red'}}>*</span></label>
-          <select defaultValue="Ajay">
-            <option value="Ajay">Ajay - HEL047</option>
-          </select>
-        </div>
-        <div className="filter-group">
-          <label>Current TDS Scheme</label>
-          <input type="text" defaultValue="Old Tax Regime" readOnly style={{ backgroundColor: '#f8fafc' }} />
-        </div>
-        
         <div className="filter-actions" style={{ width: '100%', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-          <button className="btn-primary" style={{ backgroundColor: '#0ea5e9' }}>
+          <button className="btn-primary" style={{ backgroundColor: '#0ea5e9' }} onClick={() => { setFilters({ financialYear: '2026-2027', department: '', employeeId: '', regimeName: 'Old Tax Regime' }); setSelectedBranches(branches); setSelectedDepartments(uniqueDepartments); setSelectedEmployees(employees.map(e => `${e.name} (${e.empId})`)); }}>
             <RotateCcw size={14} /> Reset
           </button>
           <button className="btn-primary" style={{ backgroundColor: '#0ea5e9' }}>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 
 // Tries to extract a number from a string like "2 hours" or "2"
@@ -18,6 +19,7 @@ export default function MonthlyOvertimeReport() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [tableData, setTableData] = useState([]);
+  const reportFilters = useReportFilters();
   
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -86,9 +88,12 @@ export default function MonthlyOvertimeReport() {
     setSearch('');
   };
 
-  const filteredData = tableData.filter(row => 
-    row.name.toLowerCase().includes(search.toLowerCase()) || 
-    row.empId.toLowerCase().includes(search.toLowerCase())
+  const filteredData = reportFilters.applyFilters(
+    tableData.filter(row => 
+      row.name.toLowerCase().includes(search.toLowerCase()) || 
+      row.empId.toLowerCase().includes(search.toLowerCase())
+    ),
+    (row) => ({ name: row.name, empId: row.empId, siteOffice: row.siteOffice, department: row.department })
   );
 
   const handleExport = () => {
@@ -115,18 +120,20 @@ export default function MonthlyOvertimeReport() {
 
       <div className="card">
         <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Select Month</label>
-            <input 
-              type="month" 
-              className="filterInput" 
-              value={month} 
-              onChange={e => setMonth(e.target.value)} 
-            />
-          </div>
-          
-          <div className="filterGroup" style={{ flexDirection: 'row', alignItems: 'flex-end', gap: '1rem', flex: 'none' }}>
-            <button className="btn btnSecondary" onClick={handleClear}>Clear</button>
+          <ReportFilters {...reportFilters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+            <div className="filterGroup">
+              <label className="filterLabel">Select Month</label>
+              <input 
+                type="month" 
+                className="filterInput" 
+                value={month} 
+                onChange={e => setMonth(e.target.value)} 
+              />
+            </div>
+            <div className="filterGroup" style={{ flexDirection: 'row', alignItems: 'flex-end', gap: '1rem', flex: 'none' }}>
+              <button className="btn btnSecondary" onClick={handleClear}>Clear</button>
+            </div>
           </div>
         </div>
       </div>

@@ -52,42 +52,23 @@ export async function POST(request) {
     let finalDate = data.date;
     const timeStr = data.time || '';
     
-    // If this is an OUT punch and the time is after 08:00 AM, we need to check if they were working the night shift from yesterday.
-    // However, if the time is > 08:00, finalDate will be today.
-    // If they were on a night shift, their IN punch was yesterday. 
-    // We should look up if they have an open night shift yesterday, and if so, this OUT punch belongs to yesterday's shift!
     let shiftType = data.shiftType || 'Day';
     let isOvertime = false;
     let overtimeHours = 0;
 
-    if (data.type === 'OUT' && timeStr > '08:00') {
-      // Check if they have an open night shift yesterday
-      const yesterdayObj = new Date(data.date);
-      yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-      const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
+    // If it's an early morning punch out for a night shift, the shift actually belongs to the previous calendar day
+    if (data.type === 'OUT' && shiftType === 'Night' && timeStr < '12:00') {
+      const d = new Date(`${data.date}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - 1);
+      finalDate = d.toISOString().split('T')[0];
+    }
 
-      const yesterdayAttendance = await prisma.attendance.findUnique({
-        where: { employeeId_date: { employeeId: data.employeeId, date: yesterdayStr } }
-      });
-
-      if (yesterdayAttendance && yesterdayAttendance.shiftType === 'Night') {
-        try {
-          const slots = JSON.parse(yesterdayAttendance.timeSlots || '[]');
-          const openSlot = slots.find(s => s.in && !s.out);
-          if (openSlot) {
-            // Found an open night shift! This OUT punch belongs to yesterday.
-            finalDate = yesterdayStr;
-            shiftType = 'Night';
-
-            // Calculate overtime. 08:00 AM is the end of night shift.
-            // timeStr is e.g. "09:30". Overtime is 09:30 - 08:00 = 2.5 hours.
-            const [otH, otM] = timeStr.split(':').map(Number);
-            overtimeHours = (otH - 8) + (otM / 60);
-            if (overtimeHours > 0) {
-              isOvertime = true;
-            }
-          }
-        } catch (e) {}
+    // Overtime logic if needed
+    if (data.type === 'OUT' && timeStr > '08:00' && shiftType === 'Night') {
+      const [otH, otM] = timeStr.split(':').map(Number);
+      overtimeHours = (otH - 8) + (otM / 60);
+      if (overtimeHours > 0) {
+        isOvertime = true;
       }
     }
 

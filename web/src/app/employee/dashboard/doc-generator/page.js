@@ -24,21 +24,29 @@ export default function EmployeeDocGenerator() {
   const printRef = useRef(null);
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (empData) {
       setEmployee(JSON.parse(empData));
     }
 
-    const savedTemplates = localStorage.getItem('docGenerator_templates');
-    if (savedTemplates) {
-      setTemplates(JSON.parse(savedTemplates));
-    }
+    const fetchTemplates = async () => {
+      try {
+        const res = await fetch('/api/doc-generator/templates');
+        if (res.ok) {
+          const data = await res.json();
+          setTemplates(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch document templates', err);
+      }
+    };
+    fetchTemplates();
 
     loadSubmissions();
   }, []);
 
   const loadSubmissions = () => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (!empData) return;
     const emp = JSON.parse(empData);
 

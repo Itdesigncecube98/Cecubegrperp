@@ -71,15 +71,20 @@ export default function ApplyLeave() {
     
     setLoading(true);
     try {
-      await createLeaveRequest({
+      const result = await createLeaveRequest({
         ...formData,
         employeeId: formData.employeeId
       });
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      
       alert('Leave request submitted successfully!');
       router.push('/dashboard/leaves/requests');
     } catch (err) {
       console.error('Failed to submit leave', err);
-      alert('Failed to submit leave request');
+      alert(`Failed to submit leave request: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -130,7 +135,10 @@ export default function ApplyLeave() {
           <select 
             className="formInput"
             value={formData.leaveType}
-            onChange={(e) => setFormData({...formData, leaveType: e.target.value})}
+            onChange={(e) => {
+              const val = e.target.value;
+              setFormData({...formData, leaveType: val, isHalfDay: (val === 'Paid leave' || val === 'Earned Leave') ? false : formData.isHalfDay});
+            }}
             required
           >
             <option value="">-- Select Category --</option>
@@ -188,13 +196,14 @@ export default function ApplyLeave() {
         <div className="formGroup">
           <label className="formLabel">Are there any Half Days? <Info size={16} style={{ color: '#f59e0b' }} /></label>
           <div className="radioGroup">
-            <label className="radioLabel">
+            <label className="radioLabel" style={{ opacity: (formData.leaveType === 'Paid leave' || formData.leaveType === 'Earned Leave') ? 0.5 : 1 }}>
               <input 
                 type="radio" 
                 name="halfday" 
                 value="yes" 
                 checked={formData.isHalfDay} 
                 onChange={() => setFormData({...formData, isHalfDay: true})} 
+                disabled={formData.leaveType === 'Paid leave' || formData.leaveType === 'Earned Leave'}
               /> Yes
             </label>
             <label className="radioLabel">
@@ -207,6 +216,9 @@ export default function ApplyLeave() {
               /> No
             </label>
           </div>
+          {(formData.leaveType === 'Paid leave' || formData.leaveType === 'Earned Leave') && (
+            <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>* Half day is not allowed for Earned Leave</div>
+          )}
         </div>
 
         <div className="formGroup">

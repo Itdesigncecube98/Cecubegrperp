@@ -6,16 +6,17 @@ import {
   Search, RefreshCw, Plus, ChevronDown, ChevronRight, Home, LayoutList, MapPin, Edit, Trash2
 } from 'lucide-react';
 import '../../../../app/accounts/company/company.css';
+import MultiSelect from '../../../../components/MultiSelect';
 
 export default function ProjectList() {
   const router = useRouter();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [projects, setProjects] = useState([]);
-  const [filterCompany, setFilterCompany] = useState('');
-  const [filterLibrary, setFilterLibrary] = useState('');
-  const [filterCategory1, setFilterCategory1] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterCompany, setFilterCompany] = useState([]);
+  const [filterLibrary, setFilterLibrary] = useState([]);
+  const [filterCategory1, setFilterCategory1] = useState([]);
+  const [filterStatus, setFilterStatus] = useState([]);
   
   // Dummy data for dropdowns
   const companies = ['CeCube Engineering India Private Limited', 'CeCube Green Energy Private Limited', 'Godrej Properties Ltd', 'Unitech Group'];
@@ -63,18 +64,19 @@ export default function ProjectList() {
 
   const filteredProjects = projects.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.company.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCompany = filterCompany ? p.company === filterCompany : true;
-    const matchesLibrary = filterLibrary ? p.library === filterLibrary : true;
-    // Category/Status logic could be added here if we had that data in our dummy objects
-    return matchesSearch && matchesCompany && matchesLibrary;
+    const matchesCompany = filterCompany.length > 0 ? filterCompany.includes(p.company) : true;
+    const matchesLibrary = filterLibrary.length > 0 ? filterLibrary.includes(p.library) : true;
+    const matchesCategory = filterCategory1.length > 0 ? filterCategory1.includes(p.category) : true;
+    const matchesStatus = filterStatus.length > 0 ? filterStatus.includes(p.status) : true;
+    return matchesSearch && matchesCompany && matchesLibrary && matchesCategory && matchesStatus;
   });
 
   const resetFilters = () => {
     setSearchQuery('');
-    setFilterCompany('');
-    setFilterLibrary('');
-    setFilterCategory1('');
-    setFilterStatus('');
+    setFilterCompany([]);
+    setFilterLibrary([]);
+    setFilterCategory1([]);
+    setFilterStatus([]);
   };
 
   return (
@@ -108,47 +110,19 @@ export default function ProjectList() {
           </div>
           <div>
             <label className="modern-label" style={{ color: '#0ea5e9' }}>Company</label>
-            <select 
-              className="modern-input modern-select"
-              value={filterCompany}
-              onChange={(e) => setFilterCompany(e.target.value)}
-            >
-              <option value="">-- Select Company --</option>
-              {companies.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <MultiSelect options={companies} selected={filterCompany} onChange={setFilterCompany} placeholder="-- Select Company --" />
           </div>
           <div>
             <label className="modern-label" style={{ color: '#0ea5e9' }}>Library</label>
-            <select 
-              className="modern-input modern-select"
-              value={filterLibrary}
-              onChange={(e) => setFilterLibrary(e.target.value)}
-            >
-              <option value="">-- Select Library --</option>
-              {libraries.map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
+            <MultiSelect options={libraries} selected={filterLibrary} onChange={setFilterLibrary} placeholder="-- Select Library --" />
           </div>
           <div>
             <label className="modern-label" style={{ color: '#0ea5e9' }}>Category 1</label>
-            <select 
-              className="modern-input modern-select"
-              value={filterCategory1}
-              onChange={(e) => setFilterCategory1(e.target.value)}
-            >
-              <option value="">-- Select Category 1 --</option>
-              {categories1.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <MultiSelect options={categories1} selected={filterCategory1} onChange={setFilterCategory1} placeholder="-- Select Category 1 --" />
           </div>
           <div>
             <label className="modern-label" style={{ color: '#0ea5e9' }}>Status</label>
-            <select 
-              className="modern-input modern-select"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="">-- Select Status --</option>
-              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <MultiSelect options={statuses} selected={filterStatus} onChange={setFilterStatus} placeholder="-- Select Status --" />
           </div>
           <button className="btn-outline" style={{ height: '40px' }} onClick={resetFilters}><RefreshCw size={14} /> Reset</button>
           <button className="btn-primary" style={{ height: '40px', background: '#0ea5e9' }}><Search size={14} /> Search</button>

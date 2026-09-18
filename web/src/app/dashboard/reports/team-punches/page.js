@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import MultiSelect from '../../../../components/MultiSelect';
 import '../../attendance/attendance.css';
 
 function fmt(dateObj) {
@@ -14,19 +15,48 @@ export default function TeamPunches() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [tableData, setTableData] = useState([]);
+  
   const [employeesList, setEmployeesList] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  
+  const [selectedBranches, setSelectedBranches] = useState([]);
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [selectedEmployees, setSelectedEmployees] = useState([]);
 
   useEffect(() => {
-    async function loadEmployees() {
+    async function loadFilters() {
       try {
-        const res = await fetch('/api/employees');
-        const data = await res.json();
-        if (Array.isArray(data)) setEmployeesList(data);
+        const [empRes, branchRes, deptRes] = await Promise.all([
+          fetch('/api/employees'),
+          fetch('/api/synchronization?type=siteoffices'),
+          fetch('/api/synchronization?type=departments')
+        ]);
+        
+        if (empRes.ok) {
+          const data = await empRes.json();
+          if (Array.isArray(data)) {
+            setEmployeesList(data);
+            setSelectedEmployees(data.map(e => `${e.name} (${e.empId})`));
+          }
+        }
+        if (branchRes.ok) {
+          const data = await branchRes.json();
+          const names = data.map(d => d.name || d.siteOfficeName || d);
+          setBranches(names);
+          setSelectedBranches(names);
+        }
+        if (deptRes.ok) {
+          const data = await deptRes.json();
+          const names = data.map(d => d.name || d.departmentName || d);
+          setDepartments(names);
+          setSelectedDepartments(names);
+        }
       } catch (e) {
         console.error(e);
       }
     }
-    loadEmployees();
+    loadFilters();
   }, []);
 
   const today = new Date();
@@ -76,10 +106,21 @@ export default function TeamPunches() {
     setTableData([]);
   };
 
-  const filteredData = tableData.filter(row => 
-    row.employee?.name?.toLowerCase().includes(search.toLowerCase()) || 
-    row.employee?.empId?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredData = tableData.filter(row => {
+    const searchMatch = row.employee?.name?.toLowerCase().includes(search.toLowerCase()) || 
+                        row.employee?.empId?.toLowerCase().includes(search.toLowerCase());
+    
+    const isAllBranchesSelected = selectedBranches.length === branches.length;
+    const isAllDeptsSelected = selectedDepartments.length === departments.length;
+    const isAllEmployeesSelected = selectedEmployees.length === employeesList.length;
+
+    const branchMatch = isAllBranchesSelected || (row.employee?.siteOffice && selectedBranches.includes(row.employee.siteOffice));
+    const deptMatch = isAllDeptsSelected || (row.employee?.department && selectedDepartments.includes(row.employee.department));
+    const empLabel = `${row.employee?.name} (${row.employee?.empId})`;
+    const empMatch = isAllEmployeesSelected || selectedEmployees.includes(empLabel);
+
+    return searchMatch && branchMatch && deptMatch && empMatch;
+  });
 
   return (
     <div className="pageContainer">
@@ -93,21 +134,33 @@ export default function TeamPunches() {
 
       <div className="card">
         {/* Row 1 */}
-        <div className="filtersRow">
+        <div className="filtersRow" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
           <div className="filterGroup">
-            <label className="filterLabel">Organization</label>
-            <select className="filterInput">
-              <option>Cecube Engineering India Pvt Ltd</option>
-            </select>
+            <label className="filterLabel">Organization / Branch</label>
+            <MultiSelect
+              options={branches}
+              selected={selectedBranches}
+              onChange={setSelectedBranches}
+              placeholder="Select Branch"
+            />
+          </div>
+          <div className="filterGroup">
+            <label className="filterLabel">Department</label>
+            <MultiSelect
+              options={departments}
+              selected={selectedDepartments}
+              onChange={setSelectedDepartments}
+              placeholder="Select Department"
+            />
           </div>
           <div className="filterGroup">
             <label className="filterLabel">Employee</label>
-            <select className="filterInput" value={search} onChange={e => setSearch(e.target.value)}>
-              <option value="">Any</option>
-              {employeesList.map(e => (
-                <option key={e.id} value={e.empId || e.name}>{e.name} ({e.empId})</option>
-              ))}
-            </select>
+            <MultiSelect
+              options={employeesList.map(e => `${e.name} (${e.empId})`)}
+              selected={selectedEmployees}
+              onChange={setSelectedEmployees}
+              placeholder="Select Employee"
+            />
           </div>
           <div className="filterGroup">
             <label className="filterLabel">Start Date</label>

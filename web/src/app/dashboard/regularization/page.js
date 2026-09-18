@@ -10,7 +10,7 @@ export default function RegularizationRequestsPage() {
   const [requests, setRequests] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [toast, setToast] = useState(null);
-  const [filter, setFilter] = useState('PENDING');
+  const [filter, setFilter] = useState('ALL');
 
   const loadRequests = useCallback(async () => {
     const data = await getPunchRequests();

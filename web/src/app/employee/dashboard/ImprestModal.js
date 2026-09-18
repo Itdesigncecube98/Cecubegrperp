@@ -8,7 +8,8 @@ export default function ImprestModal({ isOpen, onClose, employee, onSubmit }) {
     requiredDate: '',
     purpose: '',
     projectSite: employee?.siteOffice || '',
-    imprestHead: ''
+    imprestHead: '',
+    routeTo: 'SENIOR'
   });
   const [imprestHeads, setImprestHeads] = useState([]);
 
@@ -63,6 +64,13 @@ export default function ImprestModal({ isOpen, onClose, employee, onSubmit }) {
                 {imprestHeads.map(head => (
                   <option key={head.id} value={head.name}>{head.name}</option>
                 ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '14px', fontWeight: 500, color: '#475569' }}>Route To</label>
+              <select value={formData.routeTo || 'SENIOR'} onChange={e => setFormData({...formData, routeTo: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#fff' }}>
+                <option value="SENIOR">Immediate Senior</option>
+                <option value="NEXT_SENIOR">Next Senior</option>
               </select>
             </div>
           </div>

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
@@ -65,7 +66,7 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { type, name, organization, description, textColor, bgColor, department, grade, designation, imprestHead } = body;
+    const { type, name, organization, description, textColor, bgColor, department, grade, designation, imprestHead, code } = body;
 
     if (!type || !name) {
       return NextResponse.json({ error: 'Type and name are required' }, { status: 400 });
@@ -93,6 +94,7 @@ export async function POST(request) {
         item = await prisma.organization.create({
           data: {
             name,
+            code: code?.trim() || null,
             description: description || null,
             textColor: textColor || '#1f2937',
             bgColor: bgColor || '#f3f4f6'
@@ -138,7 +140,7 @@ export async function POST(request) {
 export async function PUT(request) {
   try {
     const body = await request.json();
-    const { type, id, name, organization, description, textColor, bgColor, department, grade, designation, imprestHead } = body;
+    const { type, id, name, organization, description, textColor, bgColor, department, grade, designation, imprestHead, code } = body;
 
     if (!type || !id || !name) {
       return NextResponse.json({ error: 'Type, id, and name are required' }, { status: 400 });
@@ -176,6 +178,7 @@ export async function PUT(request) {
           where: { id },
           data: { 
             name, 
+            code: code?.trim() || null,
             description: description || null,
             textColor: textColor || '#1f2937',
             bgColor: bgColor || '#f3f4f6'

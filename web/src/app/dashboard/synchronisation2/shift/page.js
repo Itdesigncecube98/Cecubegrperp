@@ -1,34 +1,34 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Clock, Save, ArrowLeft } from 'lucide-react';
 import Dialog from '@/components/Dialog';
 
 export default function ShiftPage() {
   const [shifts, setShifts] = useState([]);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const fetchShifts = async () => {
+    try {
+      const res = await fetch('/api/synchronisation2/shift');
+      if (res.ok) {
+        const json = await res.json();
+        setShifts(json);
+      } else {
+        showToast('Failed to fetch shifts', 'error');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('Error connecting to server', 'error');
+    }
+  };
 
   useEffect(() => {
-    const savedShifts = localStorage.getItem('employeeShifts');
-    if (savedShifts) {
-      setShifts(JSON.parse(savedShifts));
-    } else {
-      const defaultShifts = [
-        { 
-          id: 1, 
-          shiftName: 'General', 
-          shortName: '', 
-          startTime: '09:30 AM', 
-          endTime: '06:30 PM', 
-          timeInHalfDay: '10:00 AM', 
-          timeOutHalfDay: '05:15 PM', 
-          latemarkAllow: '3', 
-          gracePeriod: '0', 
-          latemarkUpto: '0', 
-          remark: '' 
-        }
-      ];
-      setShifts(defaultShifts);
-      localStorage.setItem('employeeShifts', JSON.stringify(defaultShifts));
-    }
+    fetchShifts();
   }, []);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -37,14 +37,14 @@ export default function ShiftPage() {
   const [formData, setFormData] = useState({
     shiftName: '',
     shortName: '',
-    startTime: '12:00 AM',
+    startTime: '09:00 AM',
     shiftTimeHours: '0',
     shiftTimeMinutes: '0',
-    endTime: '12:00 AM',
+    endTime: '06:00 PM',
     timeInAfterEnabled: true,
-    timeInAfter: '12:00 AM',
+    timeInAfter: '11:00 AM',
     timeOutBeforeEnabled: true,
-    timeOutBefore: '12:00 AM',
+    timeOutBefore: '04:00 PM',
     latemarksAllowed: '',
     totalLateMinutes: '',
     graceInTime: '',
@@ -58,14 +58,14 @@ export default function ShiftPage() {
     setFormData({
       shiftName: '',
       shortName: '',
-      startTime: '12:00 AM',
+      startTime: '09:00 AM',
       shiftTimeHours: '0',
       shiftTimeMinutes: '0',
-      endTime: '12:00 AM',
+      endTime: '06:00 PM',
       timeInAfterEnabled: true,
-      timeInAfter: '12:00 AM',
+      timeInAfter: '11:00 AM',
       timeOutBeforeEnabled: true,
-      timeOutBefore: '12:00 AM',
+      timeOutBefore: '04:00 PM',
       latemarksAllowed: '',
       totalLateMinutes: '',
       graceInTime: '',
@@ -86,15 +86,17 @@ export default function ShiftPage() {
     setFormData({
       ...formData,
       shiftName: s.shiftName,
-      shortName: s.shortName,
-      startTime: s.startTime,
-      endTime: s.endTime,
+      shortName: s.shortName || '',
+      startTime: s.startTime || '09:00 AM',
+      endTime: s.endTime || '06:00 PM',
       latemarksAllowed: s.latemarkAllow,
       graceInTime: s.gracePeriod,
       latemarkUpto: s.latemarkUpto,
-      remark: s.remark,
-      timeInAfter: s.timeInHalfDay,
-      timeOutBefore: s.timeOutHalfDay
+      remark: s.remark || '',
+      timeInAfter: s.timeInHalfDay || '11:00 AM',
+      timeOutBefore: s.timeOutHalfDay || '04:00 PM',
+      timeInAfterEnabled: Boolean(s.timeInHalfDay),
+      timeOutBeforeEnabled: Boolean(s.timeOutHalfDay)
     });
     setEditingId(s.id);
     setIsFormOpen(true);
@@ -104,17 +106,25 @@ export default function ShiftPage() {
     setDeleteDialog({ isOpen: true, id });
   };
 
-  const confirmDelete = () => {
-    const newShifts = shifts.filter(s => s.id !== deleteDialog.id);
-    setShifts(newShifts);
-    localStorage.setItem('employeeShifts', JSON.stringify(newShifts));
-    setDeleteDialog({ isOpen: false, id: null });
+  const confirmDelete = async () => {
+    try {
+      const res = await fetch(`/api/synchronisation2/shift/${deleteDialog.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('Shift deleted successfully');
+        fetchShifts();
+        setDeleteDialog({ isOpen: false, id: null });
+      } else {
+        showToast('Failed to delete shift', 'error');
+      }
+    } catch (error) {
+      showToast('Error deleting', 'error');
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.shiftName) {
-      alert('Name of Shift is required');
+      showToast('Name of Shift is required', 'error');
       return;
     }
 
@@ -123,23 +133,32 @@ export default function ShiftPage() {
       shortName: formData.shortName,
       startTime: formData.startTime,
       endTime: formData.endTime,
-      timeInHalfDay: formData.timeInAfter,
-      timeOutHalfDay: formData.timeOutBefore,
-      latemarkAllow: formData.latemarksAllowed || '0',
-      gracePeriod: formData.graceInTime || '0',
-      latemarkUpto: formData.latemarkUpto || '0',
+      timeInHalfDay: formData.timeInAfterEnabled ? formData.timeInAfter : null,
+      timeOutHalfDay: formData.timeOutBeforeEnabled ? formData.timeOutBefore : null,
+      latemarkAllow: '0',
+      gracePeriod: '0',
+      latemarkUpto: '0',
       remark: formData.remark
     };
 
-    let newShifts;
-    if (editingId) {
-      newShifts = shifts.map(s => s.id === editingId ? { ...newShift, id: editingId } : s);
-    } else {
-      newShifts = [...shifts, { ...newShift, id: Date.now() }];
+    try {
+      const url = editingId ? `/api/synchronisation2/shift/${editingId}` : '/api/synchronisation2/shift';
+      const method = editingId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newShift)
+      });
+      if (res.ok) {
+        showToast(editingId ? 'Shift updated successfully' : 'Shift added successfully');
+        fetchShifts();
+        resetForm();
+      } else {
+        showToast('Failed to save shift', 'error');
+      }
+    } catch (error) {
+      showToast('Error saving', 'error');
     }
-    setShifts(newShifts);
-    localStorage.setItem('employeeShifts', JSON.stringify(newShifts));
-    resetForm();
   };
 
   const inputStyle = {
@@ -202,7 +221,7 @@ export default function ShiftPage() {
               </div>
               <div>
                 <label style={labelStyle}>Short Name</label>
-                <input type="text" value={formData.shortName} onChange={e => setFormData({...formData, shortName: e.target.value})} style={inputStyle} />
+                <input type="text" value={formData.shortName || ''} onChange={e => setFormData({...formData, shortName: e.target.value})} style={inputStyle} />
               </div>
 
               {/* Row 2 */}
@@ -227,45 +246,27 @@ export default function ShiftPage() {
               </div>
               <div>
                 <label style={labelStyle}>End Time</label>
-                <input type="text" value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} style={{ ...inputStyle, background: '#f3f4f6' }} readOnly />
+                <input type="text" value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} style={inputStyle} />
               </div>
 
               {/* Row 3 */}
               <div style={{ gridColumn: 'span 2' }}>
                 <label style={labelStyle}>
-                  Time In After <input type="checkbox" checked={formData.timeInAfterEnabled} onChange={e => setFormData({...formData, timeInAfterEnabled: e.target.checked})} />
+                  Time In Before - Half Day <input type="checkbox" checked={formData.timeInAfterEnabled} onChange={e => setFormData({...formData, timeInAfterEnabled: e.target.checked})} />
                 </label>
                 <input type="text" value={formData.timeInAfter} onChange={e => setFormData({...formData, timeInAfter: e.target.value})} style={inputStyle} disabled={!formData.timeInAfterEnabled} />
               </div>
               <div style={{ gridColumn: 'span 2' }}>
                 <label style={labelStyle}>
-                  Time Out Before <input type="checkbox" checked={formData.timeOutBeforeEnabled} onChange={e => setFormData({...formData, timeOutBeforeEnabled: e.target.checked})} />
+                  Time Out After - Half Day <input type="checkbox" checked={formData.timeOutBeforeEnabled} onChange={e => setFormData({...formData, timeOutBeforeEnabled: e.target.checked})} />
                 </label>
                 <input type="text" value={formData.timeOutBefore} onChange={e => setFormData({...formData, timeOutBefore: e.target.value})} style={inputStyle} disabled={!formData.timeOutBeforeEnabled} />
               </div>
 
-              {/* Row 4 */}
-              <div>
-                <label style={labelStyle}>No. of Latemarks Allowed</label>
-                <input type="number" value={formData.latemarksAllowed} onChange={e => setFormData({...formData, latemarksAllowed: e.target.value})} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Total Late Minutes Allowed</label>
-                <input type="number" value={formData.totalLateMinutes} onChange={e => setFormData({...formData, totalLateMinutes: e.target.value})} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Grace In Time (In Minutes)</label>
-                <input type="number" value={formData.graceInTime} onChange={e => setFormData({...formData, graceInTime: e.target.value})} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Latemark Upto (In Minutes)</label>
-                <input type="number" value={formData.latemarkUpto} onChange={e => setFormData({...formData, latemarkUpto: e.target.value})} style={inputStyle} />
-              </div>
-
-              {/* Row 5 */}
+              {/* Row 4 - Simplified, removed complex late mark fields */}
               <div style={{ gridColumn: 'span 4' }}>
                 <label style={labelStyle}>Remark</label>
-                <input type="text" value={formData.remark} onChange={e => setFormData({...formData, remark: e.target.value})} style={inputStyle} />
+                <input type="text" value={formData.remark || ''} onChange={e => setFormData({...formData, remark: e.target.value})} style={inputStyle} />
               </div>
             </div>
             
@@ -283,19 +284,16 @@ export default function ShiftPage() {
 
       {/* Table */}
       {!isFormOpen && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
             <thead>
               <tr style={{ background: '#0ea5e9', color: '#fff' }}>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Shift Name</th>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Short Name</th>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Start Time</th>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>End Time</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Time In Half Day</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Time Out Half Day</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>LateMark Allow(No)</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Grace Period</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Latemark Upto</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Half Day - Time In Before</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Half Day - Time Out After</th>
                 <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Remark</th>
                 <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '13px', fontWeight: 600 }}>Action</th>
               </tr>
@@ -307,11 +305,8 @@ export default function ShiftPage() {
                   <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.shortName}</td>
                   <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.startTime}</td>
                   <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.endTime}</td>
-                  <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.timeInHalfDay}</td>
-                  <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.timeOutHalfDay}</td>
-                  <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.latemarkAllow}</td>
-                  <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.gracePeriod}</td>
-                  <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.latemarkUpto}</td>
+                  <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.timeInHalfDay || '-'}</td>
+                  <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.timeOutHalfDay || '-'}</td>
                   <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{shift.remark}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -327,7 +322,7 @@ export default function ShiftPage() {
               ))}
               {shifts.length === 0 && (
                 <tr>
-                  <td colSpan="11" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
+                  <td colSpan="8" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
                     No Shifts found.
                   </td>
                 </tr>
@@ -345,6 +340,12 @@ export default function ShiftPage() {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteDialog({ isOpen: false, id: null })}
       />
+
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: toast.type === 'error' ? '#dc2626' : '#16a34a', color: 'white', padding: '10px 24px', borderRadius: '30px', fontWeight: 500, zIndex: 9999 }}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }

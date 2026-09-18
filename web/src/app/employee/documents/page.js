@@ -1,13 +1,18 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import '../dashboard/employee.css';
 import { getDocuments, createDocument, deleteDocument } from '@/lib/data';
+import { createWorker } from 'tesseract.js';
 const showToast = (msg) => alert(msg);
 
 export default function EmployeeDocuments() {
-  const [employee, setEmployee] = useState(null);
+  const employeeStorage = useSyncExternalStore(() => () => {}, () => localStorage.getItem('employeeData'), () => null);
+  const employee = useMemo(() => {
+    if (!employeeStorage) return null;
+    try { return JSON.parse(employeeStorage); } catch { return null; }
+  }, [employeeStorage]);
   const [activeTab, setActiveTab] = useState('Personal'); // 'Personal', 'Company', or 'Dependent'
   const [documents, setDocuments] = useState([]);
   const [docTypes, setDocTypes] = useState([]);
@@ -22,20 +27,7 @@ export default function EmployeeDocuments() {
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-
-  useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
-    if (empData) {
-      const parsed = JSON.parse(empData);
-      setEmployee(parsed);
-      loadData(parsed.id, activeTab);
-    }
-    
-    const savedTypes = localStorage.getItem('documentTypes');
-    if (savedTypes) {
-      setDocTypes(JSON.parse(savedTypes));
-    }
-  }, [activeTab]);
+  const [ocrStatus, setOcrStatus] = useState('');
 
   const loadData = async (empId, type) => {
     setLoading(true);
@@ -49,6 +41,14 @@ export default function EmployeeDocuments() {
     setLoading(false);
   };
 
+  useEffect(() => {
+    // Data loading is intentionally triggered when the portal tab or employee changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (employee?.id) loadData(employee.id, activeTab);
+    const savedTypes = localStorage.getItem('documentTypes');
+    if (savedTypes) setDocTypes(JSON.parse(savedTypes));
+  }, [activeTab, employee?.id]);
+
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -61,42 +61,101 @@ export default function EmployeeDocuments() {
     }
   };
 
+  const extractOcrText = async (file) => {
+    const worker = await createWorker('eng');
+    try {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      if (!isPdf) {
+        const result = await worker.recognize(file);
+        return result.data.text.trim();
+      }
+
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer(), disableWorker: true }).promise;
+      const pageTexts = [];
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const result = await worker.recognize(canvas);
+        pageTexts.push(result.data.text.trim());
+      }
+      return pageTexts.filter(Boolean).join('\n\n');
+    } finally {
+      await worker.terminate();
+    }
+  };
+
+  const extractDocumentNumber = (ocrText, documentName) => {
+    const name = String(documentName || '').toLowerCase();
+    const text = String(ocrText || '').replace(/\s+/g, ' ');
+    if (name.includes('aadhaar') || name.includes('aadhar')) {
+      const match = text.match(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/);
+      return match ? match[0].replace(/[\s-]/g, '') : '';
+    }
+    if (name.includes('pan')) {
+      const match = text.match(/\b[A-Z]{5}\s?\d{4}\s?[A-Z]\b/i);
+      return match ? match[0].replace(/\s/g, '').toUpperCase() : '';
+    }
+    if (name.includes('passport')) {
+      const match = text.match(/\b[A-Z][0-9]{7}\b/i);
+      return match ? match[0].toUpperCase() : '';
+    }
+    return '';
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedFile || !employee) return;
 
     setUploading(true);
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(selectedFile);
-      reader.onload = async () => {
-        const payload = {
-          employeeId: employee.id,
-          documentType: activeTab,
-          documentName: formData.documentName === 'Other' ? formData.customDocumentName : formData.documentName,
-          documentNumber: formData.documentNumber,
-          expiryDate: formData.expiryDate,
-          fileData: reader.result,
-          fileName: selectedFile.name,
-          fileType: selectedFile.type,
-        };
-
-        const res = await createDocument(payload);
-        if (res.error) {
-          showToast(res.error, 'error');
-        } else {
-          showToast('Document uploaded successfully');
-          setShowModal(false);
-          setFormData({ documentName: '', customDocumentName: '', documentNumber: '', expiryDate: '' });
-          setSelectedFile(null);
-          loadData(employee.id, activeTab);
-        }
-        setUploading(false);
+      setOcrStatus(`Reading ${selectedFile.name}...`);
+      const fileData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Failed to read the selected file'));
+        reader.readAsDataURL(selectedFile);
+      });
+      let ocrText = '';
+      try {
+        ocrText = await extractOcrText(selectedFile);
+      } catch (ocrError) {
+        console.warn('Portal OCR failed', ocrError);
+      }
+      const documentName = formData.documentName === 'Other' ? formData.customDocumentName : formData.documentName;
+      const extractedNumber = extractDocumentNumber(ocrText, documentName);
+      const payload = {
+        employeeId: employee.id,
+        documentType: activeTab,
+        documentName,
+        documentNumber: extractedNumber || formData.documentNumber,
+        expiryDate: formData.expiryDate,
+        fileData,
+        fileName: selectedFile.name,
+        fileType: selectedFile.type,
+        ocrText,
       };
+
+      const res = await createDocument(payload);
+      if (res.error) {
+        showToast(res.error, 'error');
+      } else {
+        showToast(extractedNumber ? `Document uploaded. Number detected: ${extractedNumber}` : 'Document uploaded successfully');
+        setShowModal(false);
+        setFormData({ documentName: '', customDocumentName: '', documentNumber: '', expiryDate: '' });
+        setSelectedFile(null);
+        loadData(employee.id, activeTab);
+      }
     } catch (err) {
       console.error(err);
       showToast('Failed to upload', 'error');
+    } finally {
       setUploading(false);
+      setOcrStatus('');
     }
   };
 
@@ -320,6 +379,7 @@ export default function EmployeeDocuments() {
                   disabled={uploading}
                   style={{ width: '100%', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db' }}
                 />
+                {ocrStatus && <div style={{ marginTop: '0.5rem', color: '#2563eb', fontSize: '0.85rem' }}>{ocrStatus}</div>}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>

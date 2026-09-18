@@ -1,19 +1,34 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { amount, postJournal } from '@/lib/accounting';
 
 // ─── POST: Create new imprest request ───────────────────────────────────────
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { employeeId, amountRequested, requiredDate, purpose, projectSite, imprestHead, imprestType, isDraft } = body;
+    const { employeeId, amountRequested, requiredDate, purpose, projectSite, imprestHead, imprestType, isDraft, routeTo } = body;
 
     if (!employeeId) {
       return NextResponse.json({ error: 'employeeId is required' }, { status: 400 });
     }
+    
+    // Fetch employee to get supervisor
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { supervisorId: true }
+    });
 
-    const countResult = await prisma.$queryRaw`SELECT COUNT(*)::int AS cnt FROM "ImprestRequest"`;
-    const count = Number(countResult[0]?.cnt || 0);
-    const reqId = `CIPID-${String(count + 1).padStart(4, '0')}`;
+    let targetSupId = employee?.supervisorId || null;
+    if (routeTo === 'NEXT_SENIOR' && employee?.supervisorId) {
+      const immediateSupervisor = await prisma.employee.findUnique({
+        where: { id: employee.supervisorId },
+        select: { supervisorId: true }
+      });
+      if (immediateSupervisor && immediateSupervisor.supervisorId) {
+        targetSupId = immediateSupervisor.supervisorId;
+      }
+    }
 
     const status = isDraft ? 'DRAFT' : 'PENDING_SUPERVISOR';
     const amt = parseFloat(amountRequested) || 0;
@@ -23,17 +38,28 @@ export async function POST(req) {
     const head = imprestHead || null;
     const typeStr = imprestType || null;
 
-    const result = await prisma.$queryRaw`
-      INSERT INTO "ImprestRequest" (
-        "requestId", "employeeId", "amountRequested", "requiredDate",
-        "purpose", "projectSite", "imprestHead", "imprestType", "status", "createdAt", "updatedAt"
-      ) VALUES (
-        ${reqId}, ${employeeId}, ${amt}, ${rDate},
-        ${purp}, ${site}, ${head}, ${typeStr}, ${status}, NOW(), NOW()
-      )
-      RETURNING id, "requestId", "employeeId", "amountRequested", "requiredDate",
-                "purpose", "projectSite", "imprestHead", "imprestType", "status", "createdAt"
-    `;
+    const result = await prisma.$transaction(async (tx) => {
+      // Serialize request-number allocation so concurrent submissions cannot reuse an ID.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('cecube.imprest.request-number'))`;
+      const maxResult = await tx.$queryRaw`
+        SELECT COALESCE(MAX(CAST(SUBSTRING("requestId" FROM 'CIPID-([0-9]+)$') AS INTEGER)), 0)::int AS max_number
+        FROM "ImprestRequest"
+      `;
+      const nextNumber = Number(maxResult[0]?.max_number || 0) + 1;
+      const reqId = `CIPID-${String(nextNumber).padStart(4, '0')}`;
+
+      return tx.$queryRaw`
+        INSERT INTO "ImprestRequest" (
+          "requestId", "employeeId", "amountRequested", "requiredDate",
+          "purpose", "projectSite", "imprestHead", "imprestType", "status", "targetSupervisorId", "createdAt", "updatedAt"
+        ) VALUES (
+          ${reqId}, ${employeeId}, ${amt}, ${rDate},
+          ${purp}, ${site}, ${head}, ${typeStr}, ${status}, ${targetSupId}, NOW(), NOW()
+        )
+        RETURNING id, "requestId", "employeeId", "amountRequested", "requiredDate",
+                  "purpose", "projectSite", "imprestHead", "imprestType", "status", "targetSupervisorId", "createdAt"
+      `;
+    });
 
     return NextResponse.json(result[0], { status: 201 });
   } catch (error) {
@@ -76,7 +102,7 @@ export async function GET(req) {
         FROM "ImprestRequest" ir
         LEFT JOIN "Employee" e ON e.id = ir."employeeId"
         WHERE (
-          (ir.status = 'PENDING_SUPERVISOR' AND e."supervisorId" = ${approverId})
+          (ir.status = 'PENDING_SUPERVISOR' AND (ir."targetSupervisorId" = ${approverId} OR (ir."targetSupervisorId" IS NULL AND e."supervisorId" = ${approverId})))
           OR (ir.status = 'PENDING_ACCOUNTS' AND ${isAccounts}::boolean)
           OR (ir.status = 'PENDING_PROJECTS_HEAD' AND ${isProjectsHead}::boolean)
           OR (ir.status = 'PENDING_PROJECTS_HEAD_2' AND ${isProjectsHead2}::boolean)
@@ -291,6 +317,25 @@ export async function PUT(req) {
         `;
       }
 
+      if (nextStatus === 'APPROVED') {
+        await prisma.$transaction(async (tx) => {
+          const request = await tx.imprestRequest.findUnique({ where: { id: reqId }, include: { employee: true, expenses: true } });
+          const approvedAmount = amount(request?.approvedAmount || request?.amountRequested);
+          if (request && approvedAmount > 0) {
+            await postJournal(tx, {
+              voucherNo: `IMPREST-APPROVAL-${reqId}`,
+              type: 'JV',
+              narration: `Approved imprest advance for ${request.employee.name}`,
+              project: request.projectSite,
+              entries: [
+                { ledger: `Imprest Advance - ${request.employee.name}`, ledgerType: 'Asset', type: 'Dr', amount: approvedAmount },
+                { ledger: `Imprest Payable - ${request.employee.name}`, ledgerType: 'Liability', type: 'Cr', amount: approvedAmount }
+              ]
+            });
+          }
+        });
+      }
+
     } else if (safeAction === 'reject') {
       const remarks = updateData.remarks || null;
       await prisma.$queryRaw`
@@ -312,22 +357,70 @@ export async function PUT(req) {
       const paymentMode = updateData.paymentMode || null;
       const transactionRef = updateData.transactionRef || null;
       const issueDate = updateData.issueDate ? new Date(updateData.issueDate) : new Date();
-      await prisma.$queryRaw`
-        UPDATE "ImprestRequest"
-        SET status = 'ISSUED', "issuedAmount" = ${issuedAmount},
-            "paymentMode" = ${paymentMode}, "transactionRef" = ${transactionRef},
-            "issueDate" = ${issueDate}, "updatedAt" = NOW()
-        WHERE id = ${reqId}
-      `;
+      await prisma.$transaction(async (tx) => {
+        const request = await tx.imprestRequest.findUnique({ where: { id: reqId }, include: { employee: true } });
+        if (!request || request.status !== 'APPROVED') {
+          throw new Error('Imprest must be approved before it can be issued');
+        }
+        if (issuedAmount > 0) {
+          await postJournal(tx, {
+            voucherNo: `IMPREST-ISSUE-${reqId}`,
+            type: 'Payment',
+            narration: `Imprest advance issued to ${request.employee.name}`,
+            project: request.projectSite,
+            entries: [
+              { ledger: `Imprest Payable - ${request.employee.name}`, ledgerType: 'Liability', type: 'Dr', amount: amount(issuedAmount) },
+              { ledger: 'Cash / Bank', ledgerType: 'Asset', type: 'Cr', amount: amount(issuedAmount) }
+            ]
+          });
+        }
+        await tx.$executeRaw`
+          UPDATE "ImprestRequest"
+          SET status = 'ISSUED', "issuedAmount" = ${issuedAmount},
+              "paymentMode" = ${paymentMode}, "transactionRef" = ${transactionRef},
+              "issueDate" = ${issueDate}, "updatedAt" = NOW()
+          WHERE id = ${reqId}
+        `;
+      }, { timeout: 30000 });
 
     } else if (safeAction === 'settle') {
       const settledStatus = updateData.settledStatus || 'SETTLED';
       const settlementDate = new Date();
-      await prisma.$queryRaw`
-        UPDATE "ImprestRequest"
-        SET "settledStatus" = ${settledStatus}, "settlementDate" = ${settlementDate}, "updatedAt" = NOW()
-        WHERE id = ${reqId}
-      `;
+      await prisma.$transaction(async (tx) => {
+        const expenses = await tx.imprestExpense.findMany({ where: { imprestRequestId: reqId } });
+        const total = amount(expenses.reduce((sum, expense) => sum + expense.billAmount, 0));
+        if (total > 0) {
+          const request = await tx.imprestRequest.findUnique({ where: { id: reqId }, include: { employee: true } });
+          if (!request || !['APPROVED', 'ISSUED'].includes(request.status)) {
+            throw new Error('Imprest must be fully approved before it can be posted to Accounts');
+          }
+          await postJournal(tx, {
+            voucherNo: `IMPREST-EXPENSE-${reqId}`,
+            type: 'Purchase',
+            narration: `Approved vehicle expense for ${request.employee.name}`,
+            project: request.projectSite,
+            entries: [
+              { ledger: expenses[0]?.category || 'Vehicle Expenses', ledgerType: 'Expense', type: 'Dr', amount: total },
+              { ledger: `Imprest Payable - ${request.employee.name}`, ledgerType: 'Liability', type: 'Cr', amount: total }
+            ]
+          });
+          await postJournal(tx, {
+            voucherNo: `IMPREST-SETTLEMENT-${reqId}`,
+            type: 'Payment',
+            narration: `Imprest expenses paid for request CIPID-${String(reqId).padStart(4, '0')}`,
+            entries: [
+              { ledger: `Imprest Payable - ${request?.employee?.name || reqId}`, ledgerType: 'Liability', type: 'Dr', amount: total },
+              { ledger: 'Cash / Bank', ledgerType: 'Asset', type: 'Cr', amount: total }
+            ]
+          });
+          await tx.imprestExpense.updateMany({ where: { imprestRequestId: reqId }, data: { status: 'VERIFIED' } });
+        }
+        await tx.$executeRaw`
+          UPDATE "ImprestRequest"
+          SET "settledStatus" = ${settledStatus}, "settlementDate" = ${settlementDate}, "updatedAt" = NOW()
+          WHERE id = ${reqId}
+        `;
+      });
 
     } else {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

@@ -1,36 +1,31 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, FileText, Save, X, Download } from 'lucide-react';
 import Dialog from '@/components/Dialog';
 
 export default function DocumentTypesPage() {
   const [documents, setDocuments] = useState([]);
-
-  React.useEffect(() => {
-    const saved = localStorage.getItem('documentTypes');
-    if (saved) {
-      setDocuments(JSON.parse(saved));
-    } else {
-      setDocuments([
-        { id: 1, type: '10th Certificate', remark: '', viewInPortal: true, uploadInPortal: true, category: 'EMPLOYEE', scope: 'Individual' },
-        { id: 2, type: '12th Certificate', remark: '', viewInPortal: true, uploadInPortal: true, category: 'EMPLOYEE', scope: 'Individual' },
-        { id: 3, type: 'Aadhar Card', remark: '', viewInPortal: true, uploadInPortal: true, category: 'EMPLOYEE', scope: 'Individual' },
-        { id: 4, type: 'Address Proof', remark: '', viewInPortal: true, uploadInPortal: true, category: 'EMPLOYEE', scope: 'Individual' },
-        { id: 5, type: 'Appraisal & Promotion', remark: '', viewInPortal: true, uploadInPortal: true, category: 'EMPLOYEE', scope: 'Individual' },
-        { id: 6, type: 'CeCube Offer Letter', remark: '', viewInPortal: true, uploadInPortal: true, category: 'EMPLOYEE', scope: 'Company' },
-        { id: 7, type: 'Company Policies', remark: '', viewInPortal: true, uploadInPortal: false, category: 'EMPLOYEE', scope: 'Company' },
-        { id: 8, type: 'Non Disclosure & Confidentiality Agreement', remark: 'NDA', viewInPortal: true, uploadInPortal: true, category: 'EMPLOYEE', scope: 'Company' },
-      ]);
-    }
-  }, []);
-
-  React.useEffect(() => {
-    if (documents.length > 0) {
-      localStorage.setItem('documentTypes', JSON.stringify(documents));
-    }
-  }, [documents]);
-
+  const [loading, setLoading] = useState(true);
   const [filterScope, setFilterScope] = useState('All');
+
+  const fetchDocuments = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/synchronisation2/document-types');
+      if (response.ok) {
+        const result = await response.json();
+        setDocuments(result);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -65,7 +60,14 @@ export default function DocumentTypesPage() {
   };
 
   const handleEdit = (doc) => {
-    setFormData({ ...doc });
+    setFormData({
+      type: doc.type,
+      remark: doc.remark || '',
+      viewInPortal: doc.viewInPortal,
+      uploadInPortal: doc.uploadInPortal,
+      category: doc.category,
+      scope: doc.scope
+    });
     setEditingId(doc.id);
     setIsFormOpen(true);
   };
@@ -74,28 +76,74 @@ export default function DocumentTypesPage() {
     setDeleteDialog({ isOpen: true, id });
   };
 
-  const confirmDelete = () => {
-    setDocuments(documents.filter(d => d.id !== deleteDialog.id));
+  const confirmDelete = async () => {
+    try {
+      const response = await fetch(`/api/synchronisation2/document-types/${deleteDialog.id}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        fetchDocuments();
+      } else {
+        console.error('Failed to delete document type');
+      }
+    } catch (error) {
+      console.error('Error deleting:', error);
+    }
     setDeleteDialog({ isOpen: false, id: null });
   };
 
-  const toggleCheckbox = (id, field) => {
-    setDocuments(documents.map(d => d.id === id ? { ...d, [field]: !d[field] } : d));
+  const toggleCheckbox = async (doc, field) => {
+    try {
+      const response = await fetch(`/api/synchronisation2/document-types/${doc.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...doc, [field]: !doc[field] })
+      });
+      if (response.ok) {
+        fetchDocuments();
+      }
+    } catch (error) {
+      console.error('Error toggling:', error);
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.type) {
+    if (!formData.type.trim()) {
       alert('Document Type is required');
       return;
     }
 
-    if (editingId) {
-      setDocuments(documents.map(d => d.id === editingId ? { ...formData, id: editingId } : d));
-    } else {
-      setDocuments([...documents, { ...formData, id: Date.now() }]);
+    try {
+      if (editingId) {
+        const response = await fetch(`/api/synchronisation2/document-types/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        if (response.ok) {
+          fetchDocuments();
+        } else {
+          const err = await response.json();
+          alert(err.error || 'Failed to update document type');
+        }
+      } else {
+        const response = await fetch('/api/synchronisation2/document-types', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        if (response.ok) {
+          fetchDocuments();
+        } else {
+          const err = await response.json();
+          alert(err.error || 'Failed to add document type');
+        }
+      }
+      resetForm();
+    } catch (error) {
+      console.error('Error saving:', error);
     }
-    resetForm();
   };
 
   const filteredDocs = filterScope === 'All' ? documents : documents.filter(d => d.scope === filterScope);
@@ -226,20 +274,34 @@ export default function DocumentTypesPage() {
       {/* Table */}
       {!isFormOpen && (
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#0ea5e9', color: '#fff' }}>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Document Type</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Remark</th>
-                <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', fontWeight: 600 }}>View in Employee Portal</th>
-                <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', fontWeight: 600 }}>Upload in Employee Portal</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Document Category</th>
-                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Document Scope</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '13px', fontWeight: 600 }}>Action</th>
-              </tr>
-            </thead>
+          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '600px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                <tr style={{ background: '#0ea5e9', color: '#fff' }}>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Document Type</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Remark</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', fontWeight: 600 }}>View in Employee Portal</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', fontWeight: 600 }}>Upload in Employee Portal</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Document Category</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Document Scope</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '13px', fontWeight: 600 }}>Action</th>
+                </tr>
+              </thead>
+
             <tbody>
-              {filteredDocs.map((doc, i) => (
+              {loading ? (
+                <tr>
+                  <td colSpan="7" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
+                    Loading documents...
+                  </td>
+                </tr>
+              ) : filteredDocs.length === 0 ? (
+                <tr>
+                  <td colSpan="7" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
+                    No Document Types found.
+                  </td>
+                </tr>
+              ) : filteredDocs.map((doc, i) => (
                 <tr key={doc.id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
                   <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{doc.type}</td>
                   <td style={{ padding: '12px 16px', fontSize: '13px', color: '#4b5563' }}>{doc.remark}</td>
@@ -247,7 +309,7 @@ export default function DocumentTypesPage() {
                     <input 
                       type="checkbox" 
                       checked={doc.viewInPortal} 
-                      onChange={() => toggleCheckbox(doc.id, 'viewInPortal')}
+                      onChange={() => toggleCheckbox(doc, 'viewInPortal')}
                       style={{ cursor: 'pointer' }}
                     />
                   </td>
@@ -255,7 +317,7 @@ export default function DocumentTypesPage() {
                     <input 
                       type="checkbox" 
                       checked={doc.uploadInPortal} 
-                      onChange={() => toggleCheckbox(doc.id, 'uploadInPortal')}
+                      onChange={() => toggleCheckbox(doc, 'uploadInPortal')}
                       style={{ cursor: 'pointer' }}
                     />
                   </td>
@@ -280,15 +342,9 @@ export default function DocumentTypesPage() {
                   </td>
                 </tr>
               ))}
-              {filteredDocs.length === 0 && (
-                <tr>
-                  <td colSpan="7" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
-                    No Document Types found.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

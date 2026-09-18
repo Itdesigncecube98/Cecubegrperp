@@ -33,70 +33,78 @@ export default function FormBuilderPage() {
   }, [description, isFormOpen]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('docGenerator_templates');
-    if (saved) {
+    const fetchTemplates = async () => {
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.length > 0) {
-          setTemplates(parsed);
-          return; // Templates exist, no need to seed
+        const res = await fetch('/api/doc-generator/templates');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length > 0) {
+            setTemplates(data);
+            return;
+          }
         }
-      } catch (e) {
-        console.error(e);
+        
+        // Seed default templates if empty
+        const defaultTemplates = [
+          {
+            formName: "Accommodation Reimbursement Form",
+            description: "Applicable for Employees Stationed Outside Gurgaon Region\n\nEligibility Declaration:\n- I confirm that I am currently stationed outside Gurgaon region for official company work during the above-mentioned period.\n- I confirm that the accommodation reimbursement claimed below is as per company policy communicated through HR.\n- I understand that submission of incorrect information may lead to rejection of claim and disciplinary action as per company policy.",
+            fields: [
+              { id: 101, name: "Employee Name", type: "text", width: "half" },
+              { id: 102, name: "Employee Code", type: "text", width: "half" },
+              { id: 103, name: "Designation", type: "text", width: "half" },
+              { id: 104, name: "Department", type: "text", width: "half" },
+              { id: 105, name: "Project / Site Name", type: "text", width: "half" },
+              { id: 106, name: "Month & Year of Claim", type: "text", width: "half" },
+              { id: 107, name: "Reporting Manager", type: "text", width: "half" },
+              { id: 108, name: "Location of Deployment", type: "text", width: "half" }
+            ],
+            tableColumns: [
+              { id: 201, name: "Sr. No.", type: "text" },
+              { id: 202, name: "Stay Period", type: "text" },
+              { id: 203, name: "Accommodation Location / Hotel", type: "text" },
+              { id: 204, name: "Bill / Invoice No.", type: "text" },
+              { id: 205, name: "Amount Claimed", type: "number" },
+              { id: 206, name: "Remarks", type: "text" }
+            ]
+          },
+          {
+            formName: "Food Allowance Reimbursement Form",
+            description: "Applicable for Employees Stationed Outside Gurgaon Region\n\nEligibility Declaration:\n- I confirm that I am currently stationed outside Gurgaon region for official company work during the above-mentioned period.\n- I confirm that the reimbursement claimed below is as per company policy communicated through HR circular dated 05 May 2026.\n- I understand that submission of incorrect information may lead to rejection of claim and disciplinary action as per company policy.",
+            fields: [
+              { id: 301, name: "Employee Name", type: "text", width: "half" },
+              { id: 302, name: "Employee Code", type: "text", width: "half" },
+              { id: 303, name: "Designation", type: "text", width: "half" },
+              { id: 304, name: "Department", type: "text", width: "half" },
+              { id: 305, name: "Project / Site Name", type: "text", width: "half" },
+              { id: 306, name: "Month & Year of Claim", type: "text", width: "half" },
+              { id: 307, name: "Reporting Manager", type: "text", width: "half" },
+              { id: 308, name: "Location of Deployment", type: "text", width: "half" }
+            ],
+            tableColumns: [
+              { id: 401, name: "Sr. No.", type: "text" },
+              { id: 402, name: "Period", type: "text" },
+              { id: 403, name: "Eligible Monthly Allowance", type: "number" },
+              { id: 404, name: "Amount Claimed", type: "number" }
+            ]
+          }
+        ];
+        
+        const seedRes = await fetch('/api/doc-generator/templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(defaultTemplates)
+        });
+        
+        if (seedRes.ok) {
+          const seededData = await seedRes.json();
+          setTemplates(seededData);
+        }
+      } catch (err) {
+        console.error(err);
       }
-    }
-
-    // Seed default templates if empty or not found
-    const defaultTemplates = [
-      {
-        id: "tmpl_accommodation",
-        formName: "Accommodation Reimbursement Form",
-        description: "Applicable for Employees Stationed Outside Gurgaon Region\n\nEligibility Declaration:\n- I confirm that I am currently stationed outside Gurgaon region for official company work during the above-mentioned period.\n- I confirm that the accommodation reimbursement claimed below is as per company policy communicated through HR.\n- I understand that submission of incorrect information may lead to rejection of claim and disciplinary action as per company policy.",
-        fields: [
-          { id: 101, name: "Employee Name", type: "text", width: "half" },
-          { id: 102, name: "Employee Code", type: "text", width: "half" },
-          { id: 103, name: "Designation", type: "text", width: "half" },
-          { id: 104, name: "Department", type: "text", width: "half" },
-          { id: 105, name: "Project / Site Name", type: "text", width: "half" },
-          { id: 106, name: "Month & Year of Claim", type: "text", width: "half" },
-          { id: 107, name: "Reporting Manager", type: "text", width: "half" },
-          { id: 108, name: "Location of Deployment", type: "text", width: "half" }
-        ],
-        tableColumns: [
-          { id: 201, name: "Sr. No.", type: "text" },
-          { id: 202, name: "Stay Period", type: "text" },
-          { id: 203, name: "Accommodation Location / Hotel", type: "text" },
-          { id: 204, name: "Bill / Invoice No.", type: "text" },
-          { id: 205, name: "Amount Claimed", type: "number" },
-          { id: 206, name: "Remarks", type: "text" }
-        ],
-        updatedAt: new Date().toISOString()
-      },
-      {
-        id: "tmpl_food",
-        formName: "Food Allowance Reimbursement Form",
-        description: "Applicable for Employees Stationed Outside Gurgaon Region\n\nEligibility Declaration:\n- I confirm that I am currently stationed outside Gurgaon region for official company work during the above-mentioned period.\n- I confirm that the reimbursement claimed below is as per company policy communicated through HR circular dated 05 May 2026.\n- I understand that submission of incorrect information may lead to rejection of claim and disciplinary action as per company policy.",
-        fields: [
-          { id: 301, name: "Employee Name", type: "text", width: "half" },
-          { id: 302, name: "Employee Code", type: "text", width: "half" },
-          { id: 303, name: "Designation", type: "text", width: "half" },
-          { id: 304, name: "Department", type: "text", width: "half" },
-          { id: 305, name: "Project / Site Name", type: "text", width: "half" },
-          { id: 306, name: "Month & Year of Claim", type: "text", width: "half" },
-          { id: 307, name: "Reporting Manager", type: "text", width: "half" },
-          { id: 308, name: "Location of Deployment", type: "text", width: "half" }
-        ],
-        tableColumns: [
-          { id: 401, name: "Sr. No.", type: "text" },
-          { id: 402, name: "Period", type: "text" },
-          { id: 403, name: "Eligible Monthly Allowance", type: "number" },
-          { id: 404, name: "Amount Claimed", type: "number" }
-        ],
-        updatedAt: new Date().toISOString()
-      }
-    ];
-    setTemplates(defaultTemplates);
-    localStorage.setItem('docGenerator_templates', JSON.stringify(defaultTemplates));
+    };
+    fetchTemplates();
   }, []);
 
   const resetForm = () => {
@@ -117,11 +125,60 @@ export default function FormBuilderPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id) => {
+  const handleSave = async () => {
+    if (!formName.trim()) {
+      alert('Form Name is required');
+      return;
+    }
+
+    const payload = {
+      formName,
+      description,
+      fields,
+      tableColumns
+    };
+
+    try {
+      if (editingId) {
+        const res = await fetch(`/api/doc-generator/templates/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setTemplates(templates.map(t => t.id === editingId ? updated : t));
+        }
+      } else {
+        const res = await fetch('/api/doc-generator/templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const created = await res.json();
+          setTemplates([created, ...templates]);
+        }
+      }
+      alert('Template saved successfully!');
+      resetForm();
+    } catch (error) {
+      console.error(error);
+      alert('Error saving template');
+    }
+  };
+
+  const handleDelete = async (id) => {
     if (confirm('Are you sure you want to delete this template?')) {
-      const updated = templates.filter(t => t.id !== id);
-      setTemplates(updated);
-      localStorage.setItem('docGenerator_templates', JSON.stringify(updated));
+      try {
+        const res = await fetch(`/api/doc-generator/templates/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          setTemplates(templates.filter(t => t.id !== id));
+        }
+      } catch (error) {
+        console.error(error);
+        alert('Error deleting template');
+      }
     }
   };
 
@@ -149,33 +206,6 @@ export default function FormBuilderPage() {
     setTableColumns(tableColumns.map(c => c.id === id ? { ...c, [key]: value } : c));
   };
 
-  const handleSave = () => {
-    if (!formName.trim()) {
-      alert('Form Name is required');
-      return;
-    }
-
-    const newTemplate = {
-      id: editingId || Date.now().toString(),
-      formName,
-      description,
-      fields,
-      tableColumns,
-      updatedAt: new Date().toISOString()
-    };
-
-    let updatedTemplates;
-    if (editingId) {
-      updatedTemplates = templates.map(t => t.id === editingId ? newTemplate : t);
-    } else {
-      updatedTemplates = [...templates, newTemplate];
-    }
-
-    setTemplates(updatedTemplates);
-    localStorage.setItem('docGenerator_templates', JSON.stringify(updatedTemplates));
-    alert('Template saved successfully!');
-    resetForm();
-  };
 
   const inputStyle = {
     width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', 

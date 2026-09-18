@@ -71,7 +71,7 @@ export default function EmployeeCardPage() {
           <div className="top-section">
             <div className="details-col">
               <Row label="Emp. Code" value={e.empId} label2="Date of Joining" value2={e.joinedDate} />
-              <Row label="Name" value={e.name} label2="Father Name" value2={e.fatherName} />
+              <Row label="Name" value={[e.title, e.name].filter(Boolean).join(' ')} label2="Father Name" value2={e.fatherName} />
               <Row label="Sex" value={e.gender} label2="Status" value2={e.employmentStatus || 'Working'} />
               <Row label="Department" value={e.department} label2="Branch" value2={e.branch} />
               <Row label="Designation" value={e.designation} fullWidth />
@@ -102,7 +102,7 @@ export default function EmployeeCardPage() {
             </div>
           </div>
 
-          <Row label="Tel. No" value={e.emergencyPhone} label2="Office No" value2={e.extension || e.workTelephone} />
+          <Row label="Emergency No." value={(e.emergencyContacts || []).map(c => c.phone).filter(Boolean).join(', ') || e.emergencyPhone} label2="Office No" value2={e.extension || e.workTelephone} />
           <Row label="Official No." value={e.workTelephone} label2="Personal No." value2={e.phone} />
           <Row label="Official Email" value={e.email} label2="Personal Email" value2={e.otherEmail} />
           

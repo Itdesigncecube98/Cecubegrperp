@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { getPunchRequests, updatePunchRequestStatus, getImprestApprovals, updateImprestRequest } from '../../../lib/data';
 import { Check, X, Clock, ArrowLeft, CalendarCheck, Map as MapIcon, RefreshCw, IndianRupee } from 'lucide-react';
@@ -8,19 +8,22 @@ import './supervisor.css';
 
 export default function SupervisorDashboard() {
   const router = useRouter();
-  const [employee] = useState(() => {
-    if (typeof window === 'undefined') return null;
+  const employeeStorage = useSyncExternalStore(
+    () => () => {},
+    () => localStorage.getItem('employeeData'),
+    () => null
+  );
+  const employee = useMemo(() => {
+    if (!employeeStorage) return null;
     try {
-      const stored = localStorage.getItem('employeeData');
-      return stored ? JSON.parse(stored) : null;
+      return JSON.parse(employeeStorage);
     } catch {
       return null;
     }
-  });
+  }, [employeeStorage]);
   const [requests, setRequests] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [imprestRequests, setImprestRequests] = useState([]);
-  const [docRequests, setDocRequests] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [leaveLoading, setLeaveLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -44,17 +47,6 @@ export default function SupervisorDashboard() {
       console.error('Failed to load imprest requests', err);
     }
 
-    try {
-      // Load Doc Requests from localStorage
-      const empRes = await fetch('/api/employees');
-      const allEmps = await empRes.json();
-      const subordinateIds = allEmps.filter(e => e.supervisorId === employee.id).map(e => e.id);
-      
-      const savedSubs = JSON.parse(localStorage.getItem('docGenerator_submissions') || '[]');
-      setDocRequests(savedSubs.filter(sub => subordinateIds.includes(sub.employeeId)));
-    } catch (err) {
-      console.error('Failed to load doc requests', err);
-    }
   }, [employee]);
 
   const loadLeaveRequests = useCallback(async () => {
@@ -142,30 +134,11 @@ export default function SupervisorDashboard() {
     }
   };
 
-  const handleDocAction = (id, action) => {
-    try {
-      const allSubs = JSON.parse(localStorage.getItem('docGenerator_submissions') || '[]');
-      const updated = allSubs.map(s => {
-        if (s.id === id) {
-          return { ...s, status: action === 'APPROVE' ? 'PENDING_HR' : 'REJECTED' };
-        }
-        return s;
-      });
-      localStorage.setItem('docGenerator_submissions', JSON.stringify(updated));
-      showToast(`Document ${action === 'APPROVE' ? 'approved (sent to HR)' : 'rejected'} successfully!`);
-      loadRequests();
-    } catch (e) {
-      console.error('Failed to update document', e);
-      showToast('Failed to update document request', 'error');
-    }
-  };
-
   if (!employee) return null;
 
   const pendingPunch = requests.filter(r => r.status === 'PENDING');
   const pendingLeave = leaveRequests.filter(r => r.status === 'PENDING_SUPERVISOR');
   const pendingImprest = imprestRequests.filter(r => r.status?.startsWith('PENDING'));
-  const pendingDocs = docRequests.filter(r => r.status === 'PENDING_SUPERVISOR');
 
   const tabStyle = (tab) => ({
     background: 'none',
@@ -229,7 +202,7 @@ export default function SupervisorDashboard() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
+      <div className="supervisor-tabs" role="tablist">
         <button style={tabStyle('punch')} onClick={() => setActiveTab('punch')}>
           <Clock size={16} /> Punch Requests {pendingPunch.length > 0 && (
             <span style={{ background: 'var(--accent-color)', color: 'white', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
@@ -251,13 +224,6 @@ export default function SupervisorDashboard() {
           <IndianRupee size={16} /> Imprest Approvals {pendingImprest.length > 0 && (
             <span style={{ background: '#d97706', color: 'white', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
               {pendingImprest.length}
-            </span>
-          )}
-        </button>
-        <button style={tabStyle('docs')} onClick={() => setActiveTab('docs')}>
-          <CalendarCheck size={16} /> Doc Approvals {pendingDocs.length > 0 && (
-            <span style={{ background: '#8b5cf6', color: 'white', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
-              {pendingDocs.length}
             </span>
           )}
         </button>
@@ -479,63 +445,6 @@ export default function SupervisorDashboard() {
         </div>
       )}
 
-      {activeTab === 'docs' && (
-        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-          <div className="supervisor-table-scroll"><table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>
-                <th style={{ padding: '1rem' }}>Date</th>
-                <th style={{ padding: '1rem' }}>Employee</th>
-                <th style={{ padding: '1rem' }}>Template Name</th>
-                <th style={{ padding: '1rem' }}>Status</th>
-                <th style={{ padding: '1rem', textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {initialLoading && pendingDocs.length === 0 ? (
-                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
-              ) : pendingDocs.length === 0 ? (
-                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No pending document requests.</td></tr>
-              ) : (
-                pendingDocs.map(req => (
-                  <tr key={req.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '1rem', color: '#4b5563', fontSize: '0.9rem' }}>
-                      {new Date(req.createdAt).toLocaleDateString('en-GB')}
-                    </td>
-                    <td style={{ padding: '1rem' }}>
-                      <div style={{ fontWeight: 600, color: '#111827' }}>{req.employeeName || 'Unknown'}</div>
-                    </td>
-                    <td style={{ padding: '1rem', color: '#4b5563', fontSize: '0.9rem' }}>
-                      {req.templateName}
-                    </td>
-                    <td style={{ padding: '1rem' }}>
-                      <span style={{ background: '#fef3c7', color: '#d97706', padding: '4px 10px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600 }}>
-                        Pending Supervisor
-                      </span>
-                    </td>
-                    <td style={{ padding: '1rem', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                        <button
-                          onClick={() => handleDocAction(req.id, 'APPROVE')}
-                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
-                        >
-                          <Check size={14} /> Approve
-                        </button>
-                        <button
-                          onClick={() => handleDocAction(req.id, 'REJECTED')}
-                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
-                        >
-                          <X size={14} /> Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table></div>
-        </div>
-      )}
     </div>
   );
 }

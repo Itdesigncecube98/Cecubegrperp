@@ -1,138 +1,171 @@
 'use client';
-import React, { useState } from 'react';
-import { Edit2, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Pencil, Trash2, Search } from 'lucide-react';
+import AppModal from '@/components/AppModal';
+import ActionToolbar from '@/components/ActionToolbar';
 import Dialog from '@/components/Dialog';
 
+const EMPTY = { name: '', status: 'Active' };
+
 export default function IssuingAuthorityPage() {
-  const [authorities, setAuthorities] = useState([
-    { id: 1, name: 'Pune University' },
-    { id: 2, name: 'NICMAR' },
-    { id: 3, name: 'Delhi University' },
-    { id: 4, name: 'BSER' },
-    { id: 5, name: 'Jaipur National University' },
-    { id: 6, name: 'MDU Rohtak' },
-    { id: 7, name: 'HBSE' },
-    { id: 8, name: 'Board of UP' },
-    { id: 9, name: 'CBSE Board' },
-    { id: 10, name: 'Rajiv Gandhi Prodyogiki Vishwavidyalaya' },
-    { id: 11, name: 'Kumaon University' },
-    { id: 12, name: 'MPBSE' },
-    { id: 13, name: 'West Bengal University of Technology' },
-    { id: 14, name: 'N.P.T.I.' },
-    { id: 15, name: 'SRM' },
-    { id: 16, name: 'BSEB' },
-    { id: 17, name: 'ITI, Hathua' },
-    { id: 18, name: 'JAC Ranchi' },
-    { id: 19, name: 'Magadh University' },
-    { id: 20, name: 'National ITC' },
-  ]);
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState({ open: false, mode: 'add', row: null });
+  const [form, setForm] = useState(EMPTY);
+  const [deleteModal, setDeleteModal] = useState({ open: false, id: null });
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: '', title: '', message: '', onConfirm: null });
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingAuthority, setEditingAuthority] = useState(null);
-
-  const showDialog = (type, title, message, onConfirm = null) => {
-    setDialogConfig({ isOpen: true, type, title, message, onConfirm });
-  };
-
-  const handleEdit = (id) => {
-    const item = authorities.find(a => a.id === id);
-    setEditingAuthority({ ...item });
-    setEditModalOpen(true);
-  };
-
-  const saveEdit = (e) => {
-    e.preventDefault();
-    if (editingAuthority && editingAuthority.name.trim()) {
-      setAuthorities(authorities.map(a => a.id === editingAuthority.id ? { ...a, name: editingAuthority.name } : a));
-      setEditModalOpen(false);
-      setEditingAuthority(null);
+  const fetchAuthorities = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/synchronisation2/issuing-authority');
+      if (response.ok) {
+        const result = await response.json();
+        setData(result);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDelete = (id) => {
-    showDialog('confirm', 'Confirm Delete', 'Are you sure you want to delete this authority?', () => {
-      setAuthorities(authorities.filter(a => a.id !== id));
-      setDialogConfig(prev => ({ ...prev, isOpen: false }));
-    });
+  useEffect(() => {
+    fetchAuthorities();
+  }, []);
+
+  const openAdd = () => { setForm(EMPTY); setModal({ open: true, mode: 'add', row: null }); };
+  const openEdit = (row) => { setForm({ ...row }); setModal({ open: true, mode: 'edit', row }); };
+  const openDelete = (id) => setDeleteModal({ open: true, id });
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    
+    try {
+      if (modal.mode === 'add') {
+        const response = await fetch('/api/synchronisation2/issuing-authority', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form)
+        });
+        if (response.ok) {
+          fetchAuthorities();
+        }
+      } else {
+        const response = await fetch(`/api/synchronisation2/issuing-authority/${form.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form)
+        });
+        if (response.ok) {
+          fetchAuthorities();
+        }
+      }
+      setModal({ open: false, mode: 'add', row: null });
+    } catch (error) {
+      console.error('Error saving:', error);
+    }
   };
 
+  const handleDelete = async () => {
+    try {
+      const response = await fetch(`/api/synchronisation2/issuing-authority/${deleteModal.id}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        fetchAuthorities();
+      }
+      setDeleteModal({ open: false, id: null });
+    } catch (error) {
+      console.error('Error deleting:', error);
+    }
+  };
+
+  const filteredData = data.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
   return (
-    <div style={{ padding: '32px', maxWidth: '1400px', margin: '0 auto' }}>
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+    <div>
+      <ActionToolbar onReset={() => setSearchTerm('')} shareTitle="Issuing Authority Configuration" />
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: '#fff', padding: '0.4rem 0.6rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
+          <Search size={16} color="#94a3b8" />
+          <input 
+            type="text" 
+            placeholder="Search authorities..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ border: 'none', outline: 'none', fontSize: '0.85rem', width: '200px' }} 
+          />
+        </div>
+        <button className="btn-primary" onClick={openAdd} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', background: '#0ea5e9', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>
+          <Plus size={15} /> Add Authority
+        </button>
+      </div>
+
+      <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', background: 'white' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#0ea5e9', color: '#fff' }}>
               <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600 }}>Institute/University</th>
+              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, width: '150px' }}>Status</th>
               <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px', fontWeight: 600, width: '100px' }}>Action</th>
             </tr>
           </thead>
           <tbody>
-            {authorities.map((item, index) => (
-              <tr key={item.id} style={{ borderBottom: '1px solid #f3f4f6', background: index % 2 === 0 ? '#f8fafc' : '#fff' }}>
-                <td style={{ padding: '8px 16px', fontSize: '13px', color: '#4b5563' }}>
-                  {item.name}
+            {loading ? (
+              <tr><td colSpan="3" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading...</td></tr>
+            ) : filteredData.length === 0 ? (
+              <tr><td colSpan="3" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No Records Found</td></tr>
+            ) : filteredData.map((row, index) => (
+              <tr key={row.id} style={{ borderBottom: '1px solid #f3f4f6', background: index % 2 === 0 ? '#f8fafc' : '#fff' }}>
+                <td style={{ padding: '8px 16px', fontSize: '13px', color: '#4b5563', fontWeight: 500 }}>{row.name}</td>
+                <td style={{ padding: '8px 16px' }}>
+                  <span style={{ 
+                    padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 600,
+                    background: row.status === 'Active' ? '#e0f2fe' : '#f1f5f9',
+                    color: row.status === 'Active' ? '#0ea5e9' : '#64748b' 
+                  }}>
+                    {row.status}
+                  </span>
                 </td>
                 <td style={{ padding: '8px 16px', textAlign: 'center' }}>
                   <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                    <button onClick={() => handleEdit(item.id)} style={{ padding: 0, color: '#0ea5e9', border: 'none', background: 'none', cursor: 'pointer' }}>
-                      <Edit2 size={14} />
-                    </button>
-                    <button onClick={() => handleDelete(item.id)} style={{ padding: 0, color: '#0ea5e9', border: 'none', background: 'none', cursor: 'pointer' }}>
-                      <Trash2 size={14} />
-                    </button>
+                    <button title="Edit" onClick={() => openEdit(row)} style={{ padding: '4px', background: 'none', border: 'none', cursor: 'pointer', color: '#0284c7' }}><Pencil size={14} /></button>
+                    <button title="Delete" onClick={() => openDelete(row.id)} style={{ padding: '4px', background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>
             ))}
-            {authorities.length === 0 && (
-              <tr>
-                <td colSpan="2" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>No records found.</td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
 
-      {/* Edit Modal */}
-      {editModalOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9998
-        }}>
-          <div style={{
-            background: 'white', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)'
-          }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#0f172a', fontWeight: 700 }}>
-              Edit Issuing Authority
-            </h3>
-            <form onSubmit={saveEdit}>
-              <input 
-                autoFocus
-                type="text" 
-                value={editingAuthority?.name || ''} 
-                onChange={e => setEditingAuthority({...editingAuthority, name: e.target.value})}
-                style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', marginBottom: '24px', fontSize: '14px', outline: 'none' }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                <button type="button" onClick={() => setEditModalOpen(false)} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', background: 'white', fontWeight: 600, color: '#475569', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#0ea5e9', color: 'white', fontWeight: 600, cursor: 'pointer' }}>Save</button>
-              </div>
-            </form>
+      {/* Add / Edit Modal */}
+      <AppModal isOpen={modal.open} title={modal.mode === 'add' ? 'Add Issuing Authority' : 'Edit Issuing Authority'}
+        onClose={() => setModal({ open: false, row: null })} onConfirm={handleSave} confirmLabel={modal.mode === 'add' ? 'Save' : 'Update'} size="md">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Institute/University *</label>
+            <input type="text" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+              style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', outline: 'none' }} autoFocus />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>Status</label>
+            <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))} style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', outline: 'none' }}>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
           </div>
         </div>
-      )}
+      </AppModal>
 
-      <Dialog 
-        isOpen={dialogConfig.isOpen}
-        type={dialogConfig.type}
-        title={dialogConfig.title}
-        message={dialogConfig.message}
-        onConfirm={dialogConfig.onConfirm}
-        onCancel={() => setDialogConfig(prev => ({ ...prev, isOpen: false }))}
-      />
+      {/* Delete Modal */}
+      <AppModal isOpen={deleteModal.open} title="Confirm Delete"
+        onClose={() => setDeleteModal({ open: false, id: null })}
+        onConfirm={handleDelete} confirmLabel="Delete" confirmColor="#ef4444" size="sm">
+        <p style={{ color: '#64748b', fontSize: '14px' }}>Are you sure you want to delete this issuing authority? This action cannot be undone.</p>
+      </AppModal>
     </div>
   );
 }

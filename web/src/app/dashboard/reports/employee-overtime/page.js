@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 
 function fmt(dateObj) {
@@ -15,6 +16,7 @@ export default function EmployeeOvertimeReport() {
   const [loading, setLoading] = useState(false);
   const [tableData, setTableData] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const reportFilters = useReportFilters();
 
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -68,9 +70,11 @@ export default function EmployeeOvertimeReport() {
     setSearch('');
   };
 
-  const filteredData = tableData.filter(row => 
-    row.employee?.name?.toLowerCase().includes(search.toLowerCase()) || 
-    row.employee?.empId?.toLowerCase().includes(search.toLowerCase())
+  const filteredData = reportFilters.applyFilters(
+    tableData.filter(row => 
+      row.employee?.name?.toLowerCase().includes(search.toLowerCase()) || 
+      row.employee?.empId?.toLowerCase().includes(search.toLowerCase())
+    )
   );
 
   const handleExport = () => {
@@ -99,26 +103,19 @@ export default function EmployeeOvertimeReport() {
 
       <div className="card">
         <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Employee</label>
-            <select className="filterInput" value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
-              <option value="all">All Employees</option>
-              {employees.map(e => (
-                <option key={e.id} value={e.id}>{e.name} ({e.empId})</option>
-              ))}
-            </select>
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Start Date</label>
-            <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">End Date</label>
-            <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
-          
-          <div className="filterGroup" style={{ flexDirection: 'row', alignItems: 'flex-end', gap: '1rem', flex: 'none' }}>
-            <button className="btn btnSecondary" onClick={handleClear}>Clear</button>
+          <ReportFilters {...reportFilters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem' }}>
+            <div className="filterGroup">
+              <label className="filterLabel">Start Date</label>
+              <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="filterGroup">
+              <label className="filterLabel">End Date</label>
+              <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+            <div className="filterGroup" style={{ flexDirection: 'row', alignItems: 'flex-end', gap: '1rem', flex: 'none' }}>
+              <button className="btn btnSecondary" onClick={handleClear}>Clear</button>
+            </div>
           </div>
         </div>
       </div>

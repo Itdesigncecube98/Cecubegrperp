@@ -43,7 +43,8 @@ export default function AttendanceSummaryPage() {
         const present = empRecords.filter(r => r.status === 'Present').length;
         const absent = empRecords.filter(r => r.status === 'Absent' || r.status === 'Not Marked').length;
         const late = empRecords.filter(r => r.status === 'Late').length;
-        return { ...emp, present, absent, late, total: daysInMonth, marked: present + absent + late };
+        const halfDay = empRecords.filter(r => r.status === 'Half Day').length;
+        return { ...emp, present, absent, late, halfDay, total: daysInMonth, marked: present + absent + late + halfDay };
       });
 
       setData(report);
@@ -83,14 +84,14 @@ export default function AttendanceSummaryPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-                {['Employee', 'Department', 'Working Days', 'Present', 'Absent/Unmarked', 'Late', 'Attendance %'].map(h => (
+                {['Employee', 'Department', 'Working Days', 'Present', 'Half Day', 'Absent/Unmarked', 'Late', 'Attendance %'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map(emp => {
-                const pct = emp.total > 0 ? Math.round((emp.present / emp.total) * 100) : 0;
+                const pct = emp.total > 0 ? Math.round(((emp.present + emp.halfDay * 0.5) / emp.total) * 100) : 0;
                 return (
                   <tr key={emp.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '14px 16px' }}>
@@ -101,6 +102,9 @@ export default function AttendanceSummaryPage() {
                     <td style={{ padding: '14px 16px', fontWeight: 700, textAlign: 'center' }}>{emp.total}</td>
                     <td style={{ padding: '14px 16px', textAlign: 'center' }}>
                       <span style={{ background: '#dcfce7', color: '#16a34a', padding: '4px 12px', borderRadius: '12px', fontWeight: 700 }}>{emp.present}</span>
+                    </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                      <span style={{ background: '#dbeafe', color: '#2563eb', padding: '4px 12px', borderRadius: '12px', fontWeight: 700 }}>{emp.halfDay}</span>
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'center' }}>
                       <span style={{ background: '#fee2e2', color: '#dc2626', padding: '4px 12px', borderRadius: '12px', fontWeight: 700 }}>{emp.absent}</span>
@@ -120,7 +124,7 @@ export default function AttendanceSummaryPage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan="7" style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>No data.</td></tr>
+                <tr><td colSpan="8" style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>No data.</td></tr>
               )}
             </tbody>
           </table>

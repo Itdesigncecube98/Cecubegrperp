@@ -10,7 +10,7 @@ export default function Announcements() {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [newAnnouncement, setNewAnnouncement] = useState({ subject: '', message: '', isHoliday: false, date: '' });
+  const [newAnnouncement, setNewAnnouncement] = useState({ subject: '', message: '', isHoliday: false, isWorkingDay: false, date: '' });
   const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null });
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export default function Announcements() {
     if (!newAnnouncement.subject) return;
     try {
       await createAnnouncement(newAnnouncement);
-      setNewAnnouncement({ subject: '', message: '', isHoliday: false, date: '' });
+      setNewAnnouncement({ subject: '', message: '', isHoliday: false, isWorkingDay: false, date: '' });
       setShowForm(false);
       fetchData();
     } catch (error) {
@@ -100,12 +100,16 @@ export default function Announcements() {
                 <textarea className="filterInput" rows="3" value={newAnnouncement.message} onChange={e => setNewAnnouncement({...newAnnouncement, message: e.target.value})} placeholder="Optional message..." />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input type="checkbox" id="isHoliday" checked={newAnnouncement.isHoliday} onChange={e => setNewAnnouncement({...newAnnouncement, isHoliday: e.target.checked})} />
+                <input type="checkbox" id="isHoliday" checked={newAnnouncement.isHoliday} onChange={e => setNewAnnouncement({...newAnnouncement, isHoliday: e.target.checked, isWorkingDay: e.target.checked ? false : newAnnouncement.isWorkingDay})} />
                 <label htmlFor="isHoliday" style={{ fontSize: '14px', fontWeight: 500 }}>Declare as Holiday</label>
               </div>
-              {newAnnouncement.isHoliday && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '-0.5rem' }}>
+                <input type="checkbox" id="isWorkingDay" checked={newAnnouncement.isWorkingDay} onChange={e => setNewAnnouncement({...newAnnouncement, isWorkingDay: e.target.checked, isHoliday: e.target.checked ? false : newAnnouncement.isHoliday})} />
+                <label htmlFor="isWorkingDay" style={{ fontSize: '14px', fontWeight: 500 }}>Declare as Working Day (e.g., Sunday)</label>
+              </div>
+              {(newAnnouncement.isHoliday || newAnnouncement.isWorkingDay) && (
                 <div className="filterGroup">
-                  <label className="filterLabel">Holiday Date</label>
+                  <label className="filterLabel">Date</label>
                   <input type="date" className="filterInput" required value={newAnnouncement.date} onChange={e => setNewAnnouncement({...newAnnouncement, date: e.target.value})} />
                 </div>
               )}
@@ -123,7 +127,7 @@ export default function Announcements() {
               <tr>
                 <th>SUBJECT</th>
                 <th>MESSAGE</th>
-                <th>HOLIDAY?</th>
+                <th>TYPE</th>
                 <th>DATE</th>
                 <th>SENT AT</th>
                 <th>ACTION</th>
@@ -144,7 +148,11 @@ export default function Announcements() {
                     <td style={{ fontWeight: 600 }}>{ann.subject}</td>
                     <td>{ann.message || '-'}</td>
                     <td>
-                      {ann.isHoliday ? <span style={{ background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>YES</span> : '-'}
+                      {ann.isHoliday ? (
+                        <span style={{ background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>HOLIDAY</span>
+                      ) : ann.isWorkingDay ? (
+                        <span style={{ background: '#e0e7ff', color: '#4f46e5', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>WORKING DAY</span>
+                      ) : '-'}
                     </td>
                     <td>{ann.date || '-'}</td>
                     <td>{new Date(ann.createdAt).toLocaleDateString()}</td>

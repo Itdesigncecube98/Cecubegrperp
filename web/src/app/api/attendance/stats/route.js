@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
+import { calculateAttendanceStatus } from '../../../../lib/attendanceCalculator';
 
 export async function GET(request) {
   try {
@@ -27,11 +28,16 @@ export async function GET(request) {
       }
     });
 
-    const [holidays, workWeeks, approvedLeaves] = await Promise.all([
+    const [holidays, workWeeks, approvedLeaves, employeeShifts] = await Promise.all([
       prisma.holiday.findMany(),
       prisma.workWeek.findMany(),
       prisma.leaveRequest.findMany({
         where: { employeeId, status: 'APPROVED' }
+      }),
+      prisma.employeeShift.findMany({
+        where: { employeeId },
+        include: { shift: true },
+        orderBy: { effectiveFrom: 'desc' }
       })
     ]);
     
@@ -78,6 +84,12 @@ export async function GET(request) {
         const firstIn = withIn.reduce((min, s) => (!min || s.in < min) ? s.in : min, null);
         return isNightTime(firstIn);
       }
+      
+      const hasOnlyOut = slots.length > 0 && slots.every(s => !s.in && s.out);
+      if (hasOnlyOut) {
+        return false;
+      }
+      
       return shiftType === 'Night' || shiftType === 'Night Shift' || effStatus === 'Night Shift';
     };
 
@@ -161,6 +173,13 @@ export async function GET(request) {
       if (record) {
         let effStatus = record.status;
         const slots = record.timeSlots ? JSON.parse(record.timeSlots) : [];
+        const completedSlot = slots.filter(s => s?.in && s?.out).slice(-1)[0];
+        const effectiveShift = employeeShifts.find(es =>
+          es.effectiveFrom <= dateStr && (!es.validTill || es.validTill >= dateStr)
+        );
+        if (completedSlot && effectiveShift?.shift) {
+          effStatus = calculateAttendanceStatus(effectiveShift.shift, completedSlot.in, completedSlot.out).status;
+        }
         if (dateStr < todayStr && effStatus !== 'Present' && effStatus !== 'Late' && effStatus !== 'Night Shift' && effStatus !== 'COFF') {
           if (slots.length === 0 || slots.some(s => !s.out || !s.in)) {
             effStatus = 'Absent';

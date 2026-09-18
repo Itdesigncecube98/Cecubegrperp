@@ -1,31 +1,30 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, ShieldAlert, Save, X } from 'lucide-react';
 import Dialog from '@/components/Dialog';
 
 export default function TDSCategoryPage() {
   const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  React.useEffect(() => {
-    const saved = localStorage.getItem('tdsCategories');
-    if (saved) {
-      setCategories(JSON.parse(saved));
-    } else {
-      setCategories([
-        { id: 1, name: 'Male' },
-        { id: 2, name: 'Female' },
-        { id: 3, name: 'Senior Citizen' },
-        { id: 4, name: 'Optional Scheme' },
-        { id: 5, name: 'Super Senior Citizen' },
-      ]);
+  const fetchCategories = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/synchronisation2/tds-category');
+      if (response.ok) {
+        const result = await response.json();
+        setCategories(result);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchCategories();
   }, []);
-
-  React.useEffect(() => {
-    if (categories.length > 0) {
-      localStorage.setItem('tdsCategories', JSON.stringify(categories));
-    }
-  }, [categories]);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -57,28 +56,59 @@ export default function TDSCategoryPage() {
     setDeleteDialog({ isOpen: true, id });
   };
 
-  const confirmDelete = () => {
-    setCategories(categories.filter(c => c.id !== deleteDialog.id));
+  const confirmDelete = async () => {
+    try {
+      const response = await fetch(`/api/synchronisation2/tds-category/${deleteDialog.id}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        fetchCategories();
+      } else {
+        console.error('Failed to delete category');
+      }
+    } catch (error) {
+      console.error('Error deleting:', error);
+    }
     setDeleteDialog({ isOpen: false, id: null });
-    
-    // Explicit update for local storage on delete
-    const remaining = categories.filter(c => c.id !== deleteDialog.id);
-    localStorage.setItem('tdsCategories', JSON.stringify(remaining));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       alert('Category Name is required');
       return;
     }
 
-    if (editingId) {
-      setCategories(categories.map(c => c.id === editingId ? { ...formData, id: editingId } : c));
-    } else {
-      setCategories([...categories, { ...formData, id: Date.now() }]);
+    try {
+      if (editingId) {
+        const response = await fetch(`/api/synchronisation2/tds-category/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        if (response.ok) {
+          fetchCategories();
+        } else {
+          const err = await response.json();
+          alert(err.error || 'Failed to update category');
+        }
+      } else {
+        const response = await fetch('/api/synchronisation2/tds-category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        if (response.ok) {
+          fetchCategories();
+        } else {
+          const err = await response.json();
+          alert(err.error || 'Failed to add category');
+        }
+      }
+      resetForm();
+    } catch (error) {
+      console.error('Error saving:', error);
     }
-    resetForm();
   };
 
   const inputStyle = {
@@ -177,7 +207,19 @@ export default function TDSCategoryPage() {
               </tr>
             </thead>
             <tbody>
-              {categories.map((cat, i) => (
+              {loading ? (
+                <tr>
+                  <td colSpan="2" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
+                    Loading categories...
+                  </td>
+                </tr>
+              ) : categories.length === 0 ? (
+                <tr>
+                  <td colSpan="2" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
+                    No Categories found.
+                  </td>
+                </tr>
+              ) : categories.map((cat, i) => (
                 <tr key={cat.id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
                   <td style={{ padding: '12px 16px', fontSize: '14px', color: '#4b5563', fontWeight: 500 }}>{cat.name}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}>
@@ -192,13 +234,6 @@ export default function TDSCategoryPage() {
                   </td>
                 </tr>
               ))}
-              {categories.length === 0 && (
-                <tr>
-                  <td colSpan="2" style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
-                    No Categories found.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>

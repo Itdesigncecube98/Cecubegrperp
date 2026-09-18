@@ -45,7 +45,7 @@ export default function EmployeeLocationReport() {
   const router = useRouter();
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (!empData) { router.push('/login'); return; }
     const parsed = JSON.parse(empData);
     setEmployee(parsed);

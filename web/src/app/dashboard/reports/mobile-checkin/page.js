@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 
 function fmt(dateObj) {
@@ -14,6 +15,7 @@ export default function MobileCheckin() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [tableData, setTableData] = useState([]);
+  const filters = useReportFilters();
 
   const today = new Date();
   const monday = new Date(today);
@@ -70,24 +72,27 @@ export default function MobileCheckin() {
       </div>
 
       <div className="card" style={{ marginTop: '1rem' }}>
-        {/* Row 1 */}
+        {/* Filters */}
         <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Start Date</label>
-            <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">End Date</label>
-            <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Location Type</label>
-            <select className="filterInput">
-              <option>Any</option>
-              <option>CUSTOMER</option>
-              <option>OFFICE</option>
-              <option>OTHERS</option>
-            </select>
+          <ReportFilters {...filters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem' }}>
+            <div className="filterGroup">
+              <label className="filterLabel">Start Date</label>
+              <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="filterGroup">
+              <label className="filterLabel">End Date</label>
+              <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+            <div className="filterGroup">
+              <label className="filterLabel">Location Type</label>
+              <select className="filterInput">
+                <option>Any</option>
+                <option>CUSTOMER</option>
+                <option>OFFICE</option>
+                <option>OTHERS</option>
+              </select>
+            </div>
           </div>
         </div>
         
@@ -143,8 +148,8 @@ export default function MobileCheckin() {
                 <tr>
                   <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', background: '#f9fafb' }}>Loading records...</td>
                 </tr>
-              ) : tableData.length > 0 ? (
-                tableData.map(row => (
+              ) : filters.applyFilters(tableData).length > 0 ? (
+                filters.applyFilters(tableData).map(row => (
                   <tr key={row.id}>
                     <td>
                       <div style={{ fontWeight: 600 }}>{row.employee?.name}</div>

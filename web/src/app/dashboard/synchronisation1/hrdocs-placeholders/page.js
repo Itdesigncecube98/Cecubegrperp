@@ -5,6 +5,21 @@ import { Plus, Edit2, Trash2, Save, X } from 'lucide-react';
 import Dialog from '../../../../components/Dialog';
 
 export default function HrDocsPlaceholders() {
+  const builtInPlaceholders = [
+    ['grossSalary', 'Gross salary from the latest salary revision or salary components'],
+    ['basicSalary', 'Basic salary'],
+    ['hra', 'House rent allowance'],
+    ['jobTitle', 'Job title or designation'],
+    ['position', 'Employee position'],
+    ['jobDescription', 'Job description'],
+    ['employeeType', 'Permanent, Contract, or Trainee'],
+    ['branch', 'Assigned branch'],
+    ['siteOffice', 'Assigned site office'],
+    ['grade', 'Employee grade'],
+    ['employmentStatus', 'Working, Resigned, or other status'],
+    ['organisation', 'Organisation name'],
+    ['joinedDate', 'Date of joining']
+  ];
   const [items, setItems] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -127,6 +142,20 @@ export default function HrDocsPlaceholders() {
       )}
 
       <div className="table-container">
+        <h3 style={{ margin: '0 0 12px', fontSize: '1rem' }}>Built-in Salary &amp; Job Placeholders</h3>
+        <table style={{ marginBottom: '24px' }}>
+          <thead><tr><th>Placeholder</th><th>Preview Format</th><th>Description</th></tr></thead>
+          <tbody>
+            {builtInPlaceholders.map(([name, description]) => (
+              <tr key={name}>
+                <td style={{ fontWeight: 600 }}>{name}</td>
+                <td><span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '13px' }}>{`{{${name}}}`}</span></td>
+                <td style={{ color: 'var(--text-secondary)' }}>{description}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <h3 style={{ margin: '0 0 12px', fontSize: '1rem' }}>Custom Placeholders</h3>
         <table>
           <thead>
             <tr>

@@ -2,16 +2,18 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import ContractingSidebar from '../../components/ContractingSidebar';
+import TopHeader from '../../components/TopHeader';
 
 export default function ContractingLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [authorized, setAuthorized] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
     const isAdmin = sessionStorage.getItem('isAdmin') === 'true';
     const adminData = sessionStorage.getItem('adminData');
-    const empDataStr = sessionStorage.getItem('employeeData');
+    const empDataStr = localStorage.getItem('employeeData');
 
     if (isAdmin && adminData) {
       setAuthorized(true);
@@ -49,8 +51,11 @@ export default function ContractingLayout({ children }) {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <ContractingSidebar />
-      <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#f1f5f9' }}>
+      <ContractingSidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+      <div style={{ flex: 1, marginLeft: isCollapsed ? '68px' : '260px', transition: 'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'auto', backgroundColor: '#f1f5f9' }}>
+        <div style={{ padding: '24px 24px 0 24px' }}>
+          <TopHeader title="Contracting Dashboard" />
+        </div>
         {children}
       </div>
     </div>

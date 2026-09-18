@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 
 function getDaysInRange(startDate, endDate) {
@@ -26,6 +27,7 @@ export default function TripMuster() {
   const [employees, setEmployees] = useState([]);
   const [tripMap, setTripMap] = useState({});
   const [loading, setLoading] = useState(false);
+  const filters = useReportFilters();
 
   // Date range - default current week
   const today = new Date();
@@ -91,48 +93,18 @@ export default function TripMuster() {
       </div>
 
       <div className="card">
-        {/* Row 1 */}
+        {/* Filters */}
         <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Organization</label>
-            <select className="filterInput">
-              <option>Cecube Engineering India Pvt Ltd</option>
-            </select>
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Employee</label>
-            <select className="filterInput">
-              <option>Any</option>
-            </select>
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Start Date</label>
-            <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">End Date</label>
-            <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
-        </div>
-        {/* Row 2 */}
-        <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Trip Status</label>
-            <select className="filterInput">
-              <option>All</option>
-            </select>
-          </div>
-          <div className="filterGroup" style={{ visibility: 'hidden' }}>
-            <label className="filterLabel">Hidden</label>
-            <input type="text" className="filterInput" />
-          </div>
-          <div className="filterGroup" style={{ visibility: 'hidden' }}>
-            <label className="filterLabel">Hidden</label>
-            <input type="text" className="filterInput" />
-          </div>
-          <div className="filterGroup" style={{ visibility: 'hidden' }}>
-            <label className="filterLabel">Hidden</label>
-            <input type="text" className="filterInput" />
+          <ReportFilters {...filters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '1rem' }}>
+            <div className="filterGroup">
+              <label className="filterLabel">Start Date</label>
+              <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="filterGroup">
+              <label className="filterLabel">End Date</label>
+              <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
           </div>
         </div>
 
@@ -200,7 +172,7 @@ export default function TripMuster() {
                 </tr>
               </thead>
               <tbody>
-                {employees.map((emp) => {
+                {filters.applyFilters(employees).map((emp) => {
                   return (
                     <tr key={emp.id} style={{ background: '#ffffff', borderBottom: '1px solid #f3f4f6' }}>
                       <td style={tdSt}>

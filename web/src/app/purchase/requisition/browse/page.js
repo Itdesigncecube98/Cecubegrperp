@@ -1,26 +1,175 @@
 'use client';
-import React, { useState } from 'react';
-import { Home, ChevronRight, Search, RefreshCw, FileText, Copy, Info, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Home, ChevronRight, Search, FileText, Edit2, Trash2, Plus, Info } from 'lucide-react';
 import '../../purchase.css';
 
-const FormGroup = ({ label, required, children }) => (
-  <div style={{ marginBottom: '16px' }}>
-    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
-      {label} {required && <span style={{ color: '#ef4444' }}>*</span>}
-    </label>
-    {children}
-  </div>
-);
-
 export default function RequisitionBrowse() {
-  const [requisitions] = useState([
-    { reqNo: '5261', date: '27-06-2026', project: 'Chintels 7.9Acre Sec-109 SITC of External&Sub work', material: 'Feeder Pillar SSFP-1A (NEW) ESS-1A-TR3 (IP 55 Protection)', unit: 'Nos', reqdDate: '27-06-2026', reqQty: '3.0000', appQty: '1.0000', status: 'Approved' },
-    { reqNo: '3190', date: '12-06-2025', project: 'Indiabulls SEL_ATH_CIT Sec 111 GGN 33 KV Swtch Stn', material: '250 W LED lamp water proof fitting', unit: 'Nos', reqdDate: '12-06-2025', reqQty: '10.0000', appQty: '4.0000', status: 'Approved' },
-    { reqNo: '2931', date: '25-04-2025', project: 'Reliance METL Sec 2A & 3 Jhajjar', material: 'MS Strip 50mm x 6mm', unit: 'Mtr', reqdDate: '26-04-2025', reqQty: '2200.0000', appQty: '1765.0000', status: 'Approved' },
-    { reqNo: '2006', date: '29-12-2024', project: 'Reliance Model Economic Township Ltd. Sec 2B & 7A', material: 'MS Chequered plate thickness 3mm', unit: 'Kg', reqdDate: '29-12-2024', reqQty: '1500.0000', appQty: '900.0000', status: 'Approved' },
-    { reqNo: '1880', date: '09-12-2024', project: 'Rehmat Reality 100KW New Electrical Connection', material: '50mm x 50mm x 6mm MS Angle', unit: 'Mtr', reqdDate: '09-12-2024', reqQty: '60.0000', appQty: '13.3500', status: 'Approved' },
-    { reqNo: '1879', date: '09-12-2024', project: 'Rehmat Reality 100KW New Electrical Connection', material: '40mm x 40mm x 5mm MS Angle', unit: 'Mtr', reqdDate: '09-12-2024', reqQty: '230.0000', appQty: '76.6600', status: 'Approved' },
-  ]);
+  const [requisitions, setRequisitions] = useState([]);
+  const [apiProjects, setApiProjects] = useState([]);
+  const [apiMaterials, setApiMaterials] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState('all');
+  const [loading, setLoading] = useState(true);
+  
+  // Modal states
+  const [showModal, setShowModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({});
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const res = await fetch('/api/projects');
+        if (res.ok) {
+          const data = await res.json();
+          setApiProjects(data);
+        }
+      } catch (error) {
+        console.error('Error fetching projects:', error);
+      }
+    };
+    
+    const fetchMaterials = async () => {
+      try {
+        const res = await fetch('/api/materials');
+        if (res.ok) {
+          const data = await res.json();
+          setApiMaterials(data);
+        }
+      } catch (error) {
+        console.error('Error fetching materials:', error);
+      }
+    };
+
+    fetchProjects();
+    fetchMaterials();
+  }, []);
+
+  const fetchRequisitions = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/requisitions?projectId=${selectedProjectId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRequisitions(data);
+      }
+    } catch (error) {
+      console.error('Error fetching requisitions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRequisitions();
+  }, [selectedProjectId]);
+
+  const handleOpenAdd = () => {
+    setIsEditing(false);
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      projectId: apiProjects.length > 0 ? apiProjects[0].id : '',
+      categoryId: '',
+      material: '',
+      unit: 'Nos',
+      reqdDate: new Date().toISOString().split('T')[0],
+      reqQty: '',
+      appQty: '',
+      status: 'Pending'
+    });
+    setShowModal(true);
+  };
+
+  const handleOpenEdit = (req) => {
+    setIsEditing(true);
+    // Find the category based on the material name if possible
+    let foundCategoryId = '';
+    for (const lib of (apiMaterials || [])) {
+      if (!lib) continue;
+      const groups = Array.isArray(lib.groups) ? lib.groups : [lib];
+      for (const group of groups) {
+        if (!group || !Array.isArray(group.materials)) continue;
+        if (group.materials.find(m => m && m.name === req.material)) {
+          foundCategoryId = group.id;
+          break;
+        }
+      }
+      if (foundCategoryId) break;
+    }
+
+    setFormData({
+      id: req.id,
+      date: req.date,
+      projectId: req.projectId || '',
+      categoryId: foundCategoryId,
+      material: req.material,
+      unit: req.unit,
+      reqdDate: req.reqdDate,
+      reqQty: req.reqQty,
+      appQty: req.appQty || '',
+      status: req.status
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to delete this requisition?")) {
+      try {
+        const res = await fetch(`/api/requisitions/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          fetchRequisitions();
+        }
+      } catch (error) {
+        console.error('Error deleting requisition:', error);
+      }
+    }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    try {
+      if (isEditing) {
+        await fetch(`/api/requisitions/${formData.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+      } else {
+        await fetch(`/api/requisitions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+      }
+      setShowModal(false);
+      fetchRequisitions();
+    } catch (error) {
+      console.error('Error saving requisition:', error);
+    }
+  };
+
+  // Extract all categories (groups) from libraries or root groups
+  const allCategories = Array.isArray(apiMaterials)
+    ? apiMaterials.flatMap(item => {
+        if (!item) return [];
+        if (Array.isArray(item.groups)) return item.groups;
+        if (item.id && item.name) return [item];
+        return [];
+      }).filter(Boolean)
+    : [];
+
+  // Get materials for the currently selected category
+  const currentCategory = allCategories.find(c => c?.id && c.id.toString() === formData.categoryId?.toString());
+  const availableMaterials = currentCategory?.materials || [];
+
+  const handleMaterialChange = (e) => {
+    const matName = e.target.value;
+    const selectedMat = availableMaterials.find(m => m?.name === matName);
+    setFormData({
+      ...formData,
+      material: matName,
+      unit: selectedMat ? selectedMat.unit : formData.unit
+    });
+  };
 
   return (
     <div className="purchase-container">
@@ -36,173 +185,186 @@ export default function RequisitionBrowse() {
         </div>
       </div>
 
-      {/* Filter Section */}
-      <div className="purchase-card" style={{ marginBottom: '24px' }}>
-        <div className="purchase-card-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ChevronRight size={16} /> Filter
-        </div>
-        <div className="purchase-card-body">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-            
-            <FormGroup label="Library" required>
-              <select className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} defaultValue="Electrical Work Library">
-                <option>Electrical Work Library</option>
-              </select>
-            </FormGroup>
-
-            <FormGroup label="Project List" required>
-              <select className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} defaultValue="193 all selected!">
-                <option>193 all selected!</option>
-              </select>
-            </FormGroup>
-
-            <FormGroup label="Select">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', height: '36px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#334155', cursor: 'pointer' }}>
-                  <input type="radio" name="selectType" defaultChecked style={{ accentColor: '#17a2b8' }} /> Requisition
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', color: '#334155', cursor: 'pointer' }}>
-                  <input type="radio" name="selectType" style={{ accentColor: '#17a2b8' }} /> Requirement
-                </label>
-              </div>
-            </FormGroup>
-
-            <FormGroup label="WBS Filter">
-              <div style={{ position: 'relative' }}>
-                <input type="text" className="purchase-input" placeholder="Select WBS Task" style={{ width: '100%', boxSizing: 'border-box' }} />
-                <Search size={14} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              </div>
-            </FormGroup>
-
-            <FormGroup label="Material Category">
-              <select className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }}>
-                <option>Select</option>
-              </select>
-            </FormGroup>
-
-            <FormGroup label="Material">
-              <input type="text" className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} />
-            </FormGroup>
-
-            <FormGroup label="From Date">
-              <input type="date" className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} defaultValue="2020-07-24" />
-            </FormGroup>
-
-            <FormGroup label="To Date">
-              <input type="date" className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} defaultValue="2026-08-24" />
-            </FormGroup>
-
-            <FormGroup label="Only Extra Requisition">
-              <div style={{ height: '36px', display: 'flex', alignItems: 'center' }}>
-                <input type="checkbox" style={{ width: '16px', height: '16px', accentColor: '#17a2b8', cursor: 'pointer' }} />
-              </div>
-            </FormGroup>
-
-            <FormGroup label="Status">
-              <select className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} defaultValue="Approved">
-                <option>Approved</option>
-                <option>Pending</option>
-              </select>
-            </FormGroup>
-
-            <FormGroup label="Select Role (Req. Entered by)">
-              <select className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }}>
-                <option>Select</option>
-              </select>
-            </FormGroup>
-
-            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', gap: '12px', height: '100%', paddingBottom: '16px' }}>
-              <button className="btn-cyan" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <RefreshCw size={14} /> Reset
-              </button>
-              <button className="btn-cyan" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Search size={14} /> Search
-              </button>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      {/* Actions and Table */}
-      <div className="purchase-actions-bar" style={{ marginTop: '0', borderTopLeftRadius: '8px', borderTopRightRadius: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#334155' }}>Total Record : 9</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
-              <input type="radio" name="viewType" defaultChecked style={{ accentColor: '#17a2b8' }} /> Summary
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>
-              <input type="radio" name="viewType" style={{ accentColor: '#17a2b8' }} /> Detail
-            </label>
-          </div>
-          <button className="btn-cyan" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 12px' }}>
-            Reports <ChevronDown size={14} />
-          </button>
-        </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem' }}>
-          <span>Show Rows:</span>
-          <select className="purchase-input" style={{ width: '60px', padding: '4px' }}>
-            <option>40</option>
-          </select>
-          <span>Page:</span>
-          <input type="text" className="purchase-input" defaultValue="1" style={{ width: '40px', padding: '4px', textAlign: 'center' }} />
-          <span>of 1</span>
-          <button className="btn-cyan" style={{ padding: '4px 8px' }}>Go</button>
+      {/* Actions and Filter Bar */}
+      <div className="purchase-actions-bar" style={{ marginTop: '24px', borderTopLeftRadius: '8px', borderTopRightRadius: '8px', background: 'white', border: '1px solid #e2e8f0', borderBottom: 'none', padding: '16px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
           
-          <div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
-            <button style={{ border: '1px solid #cbd5e1', background: 'white', color: '#94a3b8', width: '28px', height: '28px', cursor: 'not-allowed' }}>{'<<'}</button>
-            <button style={{ border: '1px solid #cbd5e1', background: 'white', color: '#94a3b8', width: '28px', height: '28px', cursor: 'not-allowed' }}>{'<'}</button>
-            <button style={{ border: 'none', background: '#17a2b8', color: 'white', width: '28px', height: '28px' }}>1</button>
-            <button style={{ border: '1px solid #cbd5e1', background: 'white', color: '#94a3b8', width: '28px', height: '28px', cursor: 'not-allowed' }}>{'>'}</button>
-            <button style={{ border: '1px solid #cbd5e1', background: 'white', color: '#94a3b8', width: '28px', height: '28px', cursor: 'not-allowed' }}>{'>>'}</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#334155' }}>Total Records : {requisitions.length}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Search by Project:</span>
+              <div style={{ position: 'relative' }}>
+                <select 
+                  className="purchase-input" 
+                  style={{ width: '300px', background: '#f8fafc', borderColor: '#e2e8f0' }}
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                >
+                  <option value="all">All Projects</option>
+                  {apiProjects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <Search size={14} color="#94a3b8" style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              </div>
+            </div>
           </div>
+          
+          <button className="btn-cyan" onClick={handleOpenAdd} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#0ea5e9', borderRadius: '8px' }}>
+            <Plus size={16} /> Add Requisition
+          </button>
+          
         </div>
       </div>
 
-      <div className="purchase-table-wrapper" style={{ marginTop: 0, borderRadius: '0 0 8px 8px' }}>
-        <table className="purchase-table">
+      {/* Table Section */}
+      <div className="purchase-table-wrapper" style={{ marginTop: 0, borderRadius: '0 0 8px 8px', overflowX: 'auto', background: 'white', border: '1px solid #e2e8f0' }}>
+        <table className="purchase-table" style={{ minWidth: '1400px', width: '100%' }}>
           <thead>
             <tr>
-              <th>Req Sr No.</th>
-              <th>Req. Date</th>
-              <th>Project Name</th>
-              <th>Material Name</th>
-              <th>Unit</th>
-              <th>Reqd Date</th>
-              <th style={{ textAlign: 'right' }}>Req Qty</th>
-              <th style={{ textAlign: 'right' }}>Approved Qty</th>
-              <th style={{ textAlign: 'center' }}>Status</th>
-              <th style={{ textAlign: 'center' }}>Action</th>
+              <th style={{ whiteSpace: 'nowrap', width: '100px' }}>Req Sr No.</th>
+              <th style={{ whiteSpace: 'nowrap', width: '120px' }}>Req. Date</th>
+              <th style={{ minWidth: '250px' }}>Project Name</th>
+              <th style={{ minWidth: '300px' }}>Material Name</th>
+              <th style={{ whiteSpace: 'nowrap', width: '80px' }}>Unit</th>
+              <th style={{ whiteSpace: 'nowrap', width: '120px' }}>Reqd Date</th>
+              <th style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '100px' }}>Req Qty</th>
+              <th style={{ textAlign: 'right', whiteSpace: 'nowrap', width: '120px' }}>Approved Qty</th>
+              <th style={{ textAlign: 'center', whiteSpace: 'nowrap', width: '100px' }}>Status</th>
+              <th style={{ textAlign: 'center', whiteSpace: 'nowrap', width: '100px' }}>Action</th>
             </tr>
           </thead>
           <tbody>
-            {requisitions.map((req, idx) => (
-              <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
-                <td style={{ color: '#0284c7', fontWeight: 500 }}>{req.reqNo} ↓</td>
-                <td>{req.date}</td>
-                <td>{req.project}</td>
-                <td style={{ color: '#0284c7', fontWeight: 500 }}>
-                  {req.material} ↓ <Info size={14} style={{ verticalAlign: 'middle', marginLeft: '4px' }} />
-                </td>
-                <td>{req.unit}</td>
-                <td>{req.reqdDate}</td>
-                <td style={{ textAlign: 'right' }}>{req.reqQty}</td>
-                <td style={{ textAlign: 'right' }}>{req.appQty}</td>
-                <td style={{ textAlign: 'center' }}>
-                  <span style={{ background: '#22c55e', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
-                    {req.status}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  <Copy size={16} className="action-icon" style={{ color: '#10b981' }} />
-                </td>
-              </tr>
-            ))}
+            {loading ? (
+              <tr><td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Loading requisitions...</td></tr>
+            ) : requisitions.length === 0 ? (
+              <tr><td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No requisitions found. Click 'Add Requisition' to create one.</td></tr>
+            ) : (
+              requisitions.map((req, idx) => (
+                <tr key={req.id || idx} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>
+                  <td style={{ color: '#0ea5e9', fontWeight: 500, whiteSpace: 'nowrap' }}>{req.reqNo} ↓</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{req.date}</td>
+                  <td style={{ color: '#475569' }}>{req.project ? req.project.name : '-'}</td>
+                  <td style={{ color: '#0ea5e9', fontWeight: 500 }}>
+                    {req.material} <Info size={14} style={{ verticalAlign: 'middle', marginLeft: '4px', color: '#cbd5e1' }} />
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{req.unit}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{req.reqdDate}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{req.reqQty}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{req.appQty || '-'}</td>
+                  <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <span style={{ 
+                      background: req.status === 'Approved' ? '#22c55e' : req.status === 'Rejected' ? '#ef4444' : '#f59e0b', 
+                      color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 
+                    }}>
+                      {req.status}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <Edit2 size={16} className="action-icon" style={{ color: '#0ea5e9', cursor: 'pointer' }} onClick={() => handleOpenEdit(req)} />
+                      <Trash2 size={16} className="action-icon" style={{ color: '#ef4444', cursor: 'pointer' }} onClick={() => handleDelete(req.id)} />
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* Modal for Add / Edit */}
+      {showModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(2px)' }}>
+          <div style={{ background: 'white', borderRadius: '12px', width: '600px', padding: '0', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: '#1e293b' }}>
+                {isEditing ? 'Edit Requisition' : 'Add New Requisition'}
+              </h3>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', fontSize: '1.5rem', color: '#94a3b8', cursor: 'pointer', lineHeight: 1 }}>&times;</button>
+            </div>
+            
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Project <span style={{ color: '#ef4444' }}>*</span></label>
+                  <select className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} value={formData.projectId} onChange={e => setFormData({...formData, projectId: e.target.value})} required>
+                    <option value="" disabled>Select Project</option>
+                    {apiProjects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Material Category <span style={{ color: '#ef4444' }}>*</span></label>
+                  <select className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} value={formData.categoryId || ''} onChange={e => setFormData({...formData, categoryId: e.target.value, material: ''})} required>
+                    <option value="" disabled>Select Category</option>
+                    {allCategories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Material Name <span style={{ color: '#ef4444' }}>*</span></label>
+                  <select className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} value={formData.material || ''} onChange={handleMaterialChange} required disabled={!formData.categoryId}>
+                    <option value="" disabled>Select Material</option>
+                    {availableMaterials.map(m => (
+                      <option key={m.id} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Requisition Date <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="date" className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Required By Date <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="date" className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} value={formData.reqdDate} onChange={e => setFormData({...formData, reqdDate: e.target.value})} required />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Req Quantity <span style={{ color: '#ef4444' }}>*</span></label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input type="number" step="0.01" className="purchase-input" style={{ width: '60%', boxSizing: 'border-box' }} value={formData.reqQty} onChange={e => setFormData({...formData, reqQty: e.target.value})} required />
+                    <input type="text" className="purchase-input" style={{ width: '40%', boxSizing: 'border-box', background: '#f1f5f9' }} value={formData.unit} readOnly />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Status</label>
+                  <select className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})}>
+                    <option value="Pending">Pending</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+
+                {formData.status === 'Approved' && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Approved Quantity</label>
+                    <input type="number" step="0.01" className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} value={formData.appQty} onChange={e => setFormData({...formData, appQty: e.target.value})} />
+                  </div>
+                )}
+                
+              </div>
+              
+              <div style={{ padding: '16px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
+                <button type="button" onClick={() => setShowModal(false)} style={{ padding: '8px 16px', border: '1px solid #cbd5e1', background: 'white', color: '#475569', borderRadius: '6px', fontWeight: 500, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-cyan" style={{ padding: '8px 20px', background: '#0ea5e9' }}>
+                  {isEditing ? 'Update Requisition' : 'Save Requisition'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

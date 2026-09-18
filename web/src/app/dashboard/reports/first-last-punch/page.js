@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 
 function getDaysInRange(startDate, endDate) {
@@ -26,6 +27,7 @@ export default function FirstLastPunchMuster() {
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [attendanceData, setAttendanceData] = useState({});
+  const filters = useReportFilters();
 
   const today = new Date();
   const startObj = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -81,7 +83,7 @@ export default function FirstLastPunchMuster() {
       </div>
 
       <div className="card">
-        <div className="filtersRow">
+        <div className="filtersRow" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: '1rem' }}>
           <div className="filterGroup">
             <label className="filterLabel">Date From*</label>
             <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
@@ -91,10 +93,16 @@ export default function FirstLastPunchMuster() {
             <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
           </div>
           <div className="filterGroup">
-            <label className="filterLabel">Organization</label>
-            <select className="filterInput">
-              <option>Cecube Engineering India Pvt Ltd</option>
-            </select>
+            <label className="filterLabel">Organization / Branch</label>
+            <ReportFilters {...filters} showDepartment={false} showEmployee={false} style={{ gridTemplateColumns: '1fr', marginBottom: 0 }} />
+          </div>
+          <div className="filterGroup">
+            <label className="filterLabel">Department</label>
+            <ReportFilters employees={filters.employees} branches={[]} departments={filters.departments} selectedBranches={[]} setSelectedBranches={() => {}} selectedDepartments={filters.selectedDepartments} setSelectedDepartments={filters.setSelectedDepartments} selectedEmployees={[]} setSelectedEmployees={() => {}} showEmployee={false} showDepartment={true} style={{ gridTemplateColumns: '1fr', marginBottom: 0 }} />
+          </div>
+          <div className="filterGroup">
+            <label className="filterLabel">Employee</label>
+            <ReportFilters employees={filters.employees} branches={[]} departments={[]} selectedBranches={[]} setSelectedBranches={() => {}} selectedDepartments={[]} setSelectedDepartments={() => {}} selectedEmployees={filters.selectedEmployees} setSelectedEmployees={filters.setSelectedEmployees} showEmployee={true} showDepartment={false} style={{ gridTemplateColumns: '1fr', marginBottom: 0 }} />
           </div>
         </div>
 
@@ -163,8 +171,8 @@ export default function FirstLastPunchMuster() {
                   <tr>
                     <td colSpan={4 + dateRange.length} style={{ textAlign: 'center', padding: '2rem' }}>Loading report...</td>
                   </tr>
-                ) : employees.length > 0 ? (
-                  employees.map(emp => (
+                ) : filters.applyFilters(employees).length > 0 ? (
+                  filters.applyFilters(employees).map(emp => (
                     <tr key={emp.id}>
                       <td className="stickyCol">{emp.empId}</td>
                       <td className="stickyCol" style={{ left: '100px' }}>{emp.branch || '—'}</td>

@@ -53,7 +53,7 @@ export default function ImprestApproval() {
     if (!selectedRequest) return;
     try {
       const adminData = JSON.parse(sessionStorage.getItem('adminData') || '{}');
-      const approverId = adminData.name || 'Admin';
+      const approverId = adminData.id || adminData.employeeId || adminData.name || 'Admin';
 
       const payload = {
         id: selectedRequest.id,

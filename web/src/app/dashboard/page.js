@@ -3,11 +3,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Users, UserPlus, Mail, MapPin, PlusCircle, FileText, 
   RefreshCw, Clock, CheckCircle, File, Building, PenTool, 
-  Map, BarChart2, Calendar, Settings
+  Map, BarChart2, Calendar, Settings, DollarSign, Activity, ChevronRight
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, YAxis, CartesianGrid, PieChart, Pie, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, YAxis, CartesianGrid, PieChart, Pie, Legend, LineChart, Line } from 'recharts';
+import { LineChart as LineChartIcon, BarChart3, PieChart as PieChartIcon } from 'lucide-react';
 import './dashboard.css';
 import oldStyles from '../employee/dashboard/dashboard.module.css';
 import { useAutoRefresh, formatRefreshTime } from '../../lib/useAutoRefresh';
@@ -34,7 +35,175 @@ export default function AdminDashboard() {
   const [statusDistribution, setStatusDistribution] = useState([]);
   const [topHours, setTopHours] = useState([]);
   const [topPresentDays, setTopPresentDays] = useState([]);
+  const [workforceKpis, setWorkforceKpis] = useState({
+    totalEmployees: 0,
+    genderSplit: { male: 0, female: 0 },
+    avgAge: 0,
+    avgTenureYears: 0,
+    avgSalary: 0,
+    avgOvertime: 0,
+    charts: {
+      empTypeData: [],
+      deptCountData: [],
+      deptSalaryData: [],
+      tenureData: []
+    }
+  });
   const empCountRef = useRef(0);
+
+  const [chartModes, setChartModes] = useState({
+    empType: 'pie',
+    empTenure: 'pie',
+    dailyTrend: 'bar',
+    topHours: 'bar',
+    topPresent: 'bar',
+    deptHeadcount: 'bar',
+    deptSalary: 'bar'
+  });
+  
+  const [chartLoading, setChartLoading] = useState({
+    dailyTrend: false,
+    topHours: false,
+    topPresent: false,
+    workforceKpis: false
+  });
+
+  const [trendStartDate, setTrendStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 9);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  
+  const [trendEndDate, setTrendEndDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+
+  const [statusStartDate, setStatusStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 9);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  
+  const [statusEndDate, setStatusEndDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+
+  const fetchDailyTrend = async () => {
+    setChartLoading(prev => ({ ...prev, dailyTrend: true }));
+    try {
+      const res = await fetch(`/api/attendance/daily-trend?startDate=${trendStartDate}&endDate=${trendEndDate}`);
+      const trendData = await res.json();
+      if (!trendData.error && Array.isArray(trendData)) {
+        setDailyTrend(trendData);
+      }
+    } catch (e) {}
+    setChartLoading(prev => ({ ...prev, dailyTrend: false }));
+  };
+
+  const fetchStatusDist = async () => {
+    setChartLoading(prev => ({ ...prev, statusDist: true }));
+    try {
+      const res = await fetch(`/api/attendance/daily-trend?startDate=${statusStartDate}&endDate=${statusEndDate}`);
+      const trendData = await res.json();
+      if (!trendData.error && Array.isArray(trendData)) {
+        const distPresent = trendData.reduce((sum, day) => sum + day.Present, 0);
+        const distCOff = trendData.reduce((sum, day) => sum + day.COff, 0);
+        const distAbsent = trendData.reduce((sum, day) => sum + day.Absent, 0);
+        const distHoliday = trendData.reduce((sum, day) => sum + day.Holiday, 0);
+        const distOff = trendData.reduce((sum, day) => sum + day.Off, 0);
+        const distLeave = trendData.reduce((sum, day) => sum + day.Leave, 0);
+        
+        setStatusDistribution([
+          { name: 'Present', value: distPresent, color: '#bbf7d0' },
+          { name: 'COff', value: distCOff, color: '#166534' },
+          { name: 'Absent', value: distAbsent, color: '#fca5a5' },
+          { name: 'Holiday', value: distHoliday, color: '#fcd34d' },
+          { name: 'Off', value: distOff, color: '#93c5fd' },
+          { name: 'Leave', value: distLeave, color: '#10b981' }
+        ]);
+      }
+    } catch (e) {}
+    setChartLoading(prev => ({ ...prev, statusDist: false }));
+  };
+
+  const fetchTopHours = async () => {
+    setChartLoading(prev => ({ ...prev, topHours: true }));
+    try {
+      const res = await fetch('/api/attendance/top-hours?days=30');
+      const data = await res.json();
+      setTopHours(Array.isArray(data) ? data : []);
+    } catch { setTopHours([]); }
+    setChartLoading(prev => ({ ...prev, topHours: false }));
+  };
+
+  const fetchTopPresentDays = async () => {
+    setChartLoading(prev => ({ ...prev, topPresent: true }));
+    try {
+      const res = await fetch('/api/attendance/top-present-days?days=30');
+      const data = await res.json();
+      setTopPresentDays(Array.isArray(data) ? data : []);
+    } catch { setTopPresentDays([]); }
+    setChartLoading(prev => ({ ...prev, topPresent: false }));
+  };
+
+  const fetchWorkforceKpis = async () => {
+    setChartLoading(prev => ({ ...prev, workforceKpis: true }));
+    try {
+      const res = await fetch('/api/analytics/workforce-kpis');
+      const data = await res.json();
+      if (!data.error) setWorkforceKpis(data);
+    } catch {}
+    setChartLoading(prev => ({ ...prev, workforceKpis: false }));
+  };
+
+  const toggleChartMode = (chartKey) => {
+    setChartModes(prev => ({
+      ...prev,
+      [chartKey]: prev[chartKey] === 'bar' ? 'line' : 'bar'
+    }));
+  };
+
+  const ChartToolbar = ({ chartKey, onRefresh, loading, hideToggle, supportPie }) => (
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+      {!hideToggle && (
+        <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '6px', padding: '2px' }}>
+          {supportPie && (
+            <button 
+              onClick={() => setChartModes(prev => ({...prev, [chartKey]: 'pie'}))}
+              style={{ all: 'unset', cursor: 'pointer', padding: '4px', borderRadius: '4px', background: chartModes[chartKey] === 'pie' ? '#fff' : 'transparent', boxShadow: chartModes[chartKey] === 'pie' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', color: chartModes[chartKey] === 'pie' ? '#0ea5e9' : '#64748b' }}
+              title="Pie Chart"
+            >
+              <PieChartIcon size={16} />
+            </button>
+          )}
+          <button 
+            onClick={() => setChartModes(prev => ({...prev, [chartKey]: 'bar'}))}
+            style={{ all: 'unset', cursor: 'pointer', padding: '4px', borderRadius: '4px', background: chartModes[chartKey] === 'bar' || (!chartModes[chartKey] && !supportPie) ? '#fff' : 'transparent', boxShadow: chartModes[chartKey] === 'bar' || (!chartModes[chartKey] && !supportPie) ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', color: chartModes[chartKey] === 'bar' || (!chartModes[chartKey] && !supportPie) ? '#0ea5e9' : '#64748b' }}
+            title="Bar Chart"
+          >
+            <BarChart3 size={16} />
+          </button>
+          <button 
+            onClick={() => setChartModes(prev => ({...prev, [chartKey]: 'line'}))}
+            style={{ all: 'unset', cursor: 'pointer', padding: '4px', borderRadius: '4px', background: chartModes[chartKey] === 'line' ? '#fff' : 'transparent', boxShadow: chartModes[chartKey] === 'line' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', color: chartModes[chartKey] === 'line' ? '#0ea5e9' : '#64748b' }}
+            title="Line Chart"
+          >
+            <LineChartIcon size={16} />
+          </button>
+        </div>
+      )}
+      <button 
+        onClick={onRefresh}
+        disabled={loading}
+        style={{ all: 'unset', cursor: loading ? 'default' : 'pointer', padding: '6px', borderRadius: '6px', background: '#eff6ff', color: '#3b82f6', opacity: loading ? 0.5 : 1 }}
+        title="Refresh"
+      >
+        <RefreshCw size={16} className={loading ? 'spin' : ''} />
+      </button>
+    </div>
+  );
 
   useEffect(() => {
     const adminData = sessionStorage.getItem('adminData');
@@ -81,17 +250,10 @@ export default function AdminDashboard() {
       setLoading(false);
     }
 
-    // Non-blocking: top hours chart
-    fetch('/api/attendance/top-hours?days=30')
-      .then(r => r.json())
-      .then(topData => setTopHours(Array.isArray(topData) ? topData : []))
-      .catch(() => setTopHours([]));
-
-    // Non-blocking: top present days chart
-    fetch('/api/attendance/top-present-days?days=30')
-      .then(r => r.json())
-      .then(data => setTopPresentDays(Array.isArray(data) ? data : []))
-      .catch(() => setTopPresentDays([]));
+    // Non-blocking fetching
+    fetchTopHours();
+    fetchTopPresentDays();
+    fetchWorkforceKpis();
   };
 
   // Silent auto-refresh also uses the fast summary endpoint
@@ -113,11 +275,16 @@ export default function AdminDashboard() {
       }));
       if (Array.isArray(summary.whoIsIn)) setWhoIsIn(summary.whoIsIn);
       if (Array.isArray(summary.statusDistribution)) setStatusDistribution(summary.statusDistribution);
-      if (Array.isArray(summary.dailyTrend)) setDailyTrend(summary.dailyTrend);
+      // Only update the trend chart if user hasn't changed the date range
+      // (i.e., trendEndDate still matches today)
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (trendEndDate === todayStr && Array.isArray(summary.dailyTrend)) {
+        setDailyTrend(summary.dailyTrend);
+      }
     } catch {
       // Server restarting / offline — ignore
     }
-  }, []);
+  }, [trendEndDate]);
 
   const { refresh, refreshing, lastRefreshed, autoRefresh, setAutoRefresh } = useAutoRefresh(refreshToday, {
     intervalMs: 15000,
@@ -348,6 +515,433 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Workforce Analytics */}
+      <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#334155', marginBottom: '1rem', marginTop: '1.5rem', letterSpacing: '-0.01em' }}>Workforce Analytics</h2>
+      <div className="statsRow">
+        <div className="card statCard" style={{ background: 'linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%)', border: '1px solid #e2e8f0' }}>
+          <div className="statIconWrapper" style={{ background: 'rgba(15,23,42,0.1)' }}>
+            <Users size={26} color="#0f172a" />
+          </div>
+          <div className="statInfo">
+            <span className="statLabel" style={{ color: '#475569' }}>Total Employees</span>
+            <span className="statValue" style={{ color: '#0f172a' }}>{workforceKpis.totalEmployees}</span>
+          </div>
+        </div>
+        <div className="card statCard" style={{ background: 'linear-gradient(135deg,#fdf4ff 0%,#fce7f3 100%)', border: '1px solid #fbcfe8' }}>
+          <div className="statIconWrapper" style={{ background: 'rgba(219,39,119,0.15)' }}>
+            <Activity size={26} color="#db2777" />
+          </div>
+          <div className="statInfo">
+            <span className="statLabel" style={{ color: '#be185d' }}>Gender Split (M/F)</span>
+            <span className="statValue" style={{ color: '#9d174d', fontSize: '1.5rem' }}>{workforceKpis.genderSplit.male} / {workforceKpis.genderSplit.female}</span>
+          </div>
+        </div>
+        <div className="card statCard" style={{ background: 'linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%)', border: '1px solid #fde68a' }}>
+          <div className="statIconWrapper" style={{ background: 'rgba(217,119,6,0.15)' }}>
+            <Calendar size={26} color="#d97706" />
+          </div>
+          <div className="statInfo">
+            <span className="statLabel" style={{ color: '#b45309' }}>Average Age</span>
+            <span className="statValue" style={{ color: '#92400e' }}>{workforceKpis.avgAge} <span style={{fontSize: '1rem'}}>yrs</span></span>
+          </div>
+        </div>
+        <div className="card statCard" style={{ background: 'linear-gradient(135deg,#ecfeff 0%,#cffafe 100%)', border: '1px solid #a5f3fc' }}>
+          <div className="statIconWrapper" style={{ background: 'rgba(8,145,178,0.15)' }}>
+            <Clock size={26} color="#0891b2" />
+          </div>
+          <div className="statInfo">
+            <span className="statLabel" style={{ color: '#0e7490' }}>Average Tenure</span>
+            <span className="statValue" style={{ color: '#164e63' }}>{workforceKpis.avgTenureYears} <span style={{fontSize: '1rem'}}>yrs</span></span>
+          </div>
+        </div>
+        <div className="card statCard" style={{ background: 'linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%)', border: '1px solid #bbf7d0' }}>
+          <div className="statIconWrapper" style={{ background: 'rgba(22,163,74,0.15)' }}>
+            <DollarSign size={26} color="#16a34a" />
+          </div>
+          <div className="statInfo">
+            <span className="statLabel" style={{ color: '#15803d' }}>Average Salary</span>
+            <span className="statValue" style={{ color: '#14532d' }}>₹{workforceKpis.avgSalary.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+        <div className="card statCard" style={{ background: 'linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)', border: '1px solid #bfdbfe' }}>
+          <div className="statIconWrapper" style={{ background: 'rgba(37,99,235,0.15)' }}>
+            <Clock size={26} color="#2563eb" />
+          </div>
+          <div className="statInfo">
+            <span className="statLabel" style={{ color: '#1d4ed8' }}>Avg Overtime/Wk</span>
+            <span className="statValue" style={{ color: '#1e3a8a' }}>{workforceKpis.avgOvertime} <span style={{fontSize: '1rem'}}>hrs</span></span>
+          </div>
+        </div>
+      </div>
+
+      {/* Workforce Charts */}
+      <div className="chartsRow" style={{ marginTop: '1.5rem' }}>
+        <div className="card" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Employment Type</h2>
+              <p className="cardSubtitle">Distribution by employment status</p>
+            </div>
+            <ChartToolbar chartKey="empType" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} supportPie={true} />
+          </div>
+          <div style={{ height: '300px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              {chartModes.empType === 'line' ? (
+                <LineChart data={workforceKpis.charts?.empTypeData || []} margin={{ top: 20, right: 30, left: -20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Line type="monotone" dataKey="value" name="Employees" stroke="#0ea5e9" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              ) : chartModes.empType === 'bar' ? (
+                <BarChart data={workforceKpis.charts?.empTypeData || []} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barSize={32}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip cursor={{ fill: 'rgba(14, 165, 233, 0.08)', radius: 8 }} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="value" name="Employees" radius={[6, 6, 0, 0]} fill="#0ea5e9" />
+                </BarChart>
+              ) : (
+                <PieChart>
+                  <Pie 
+                    data={workforceKpis.charts?.empTypeData || []} 
+                    innerRadius={80} 
+                    outerRadius={110} 
+                    paddingAngle={2} 
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {(workforceKpis.charts?.empTypeData || []).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={['#0ea5e9', '#f59e0b', '#10b981', '#6366f1'][index % 4]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend iconType="circle" verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px' }}/>
+                </PieChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="card" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Employee Tenure</h2>
+              <p className="cardSubtitle">Distribution of years of service</p>
+            </div>
+            <ChartToolbar chartKey="empTenure" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} supportPie={true} />
+          </div>
+          <div style={{ height: '300px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              {chartModes.empTenure === 'line' ? (
+                <LineChart data={workforceKpis.charts?.tenureData || []} margin={{ top: 20, right: 30, left: -20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Line type="monotone" dataKey="value" name="Employees" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              ) : chartModes.empTenure === 'bar' ? (
+                <BarChart data={workforceKpis.charts?.tenureData || []} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barSize={32}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip cursor={{ fill: 'rgba(59, 130, 246, 0.08)', radius: 8 }} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="value" name="Employees" radius={[6, 6, 0, 0]} fill="#3b82f6" />
+                </BarChart>
+              ) : (
+                <PieChart>
+                  <Pie 
+                    data={workforceKpis.charts?.tenureData || []} 
+                    innerRadius={0} 
+                    outerRadius={110} 
+                    paddingAngle={1} 
+                    dataKey="value"
+                    stroke="#fff"
+                  >
+                    {(workforceKpis.charts?.tenureData || []).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={['#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e'][index % 4]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend iconType="circle" verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px' }}/>
+                </PieChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="chartsRow" style={{ marginTop: '1.5rem' }}>
+        <div className="card" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Qualification Count</h2>
+              <p className="cardSubtitle">Number of employees holding each qualification</p>
+            </div>
+            <ChartToolbar chartKey="eduCount" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} hideToggle={true} />
+          </div>
+          <div style={{ marginTop: '16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+            {(!workforceKpis.charts?.eduCountData || workforceKpis.charts.eduCountData.length === 0) ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>No education data available</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {workforceKpis.charts.eduCountData.map((item, idx) => (
+                  <div key={idx} style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between', 
+                    padding: '12px 16px', 
+                    borderBottom: idx < workforceKpis.charts.eduCountData.length - 1 ? '1px solid #e2e8f0' : 'none',
+                    background: idx % 2 === 0 ? '#fff' : '#f8fafc',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = idx % 2 === 0 ? '#fff' : '#f8fafc'}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '14px', color: '#0ea5e9', fontWeight: 500 }}>{item.name}</span>
+                    </div>
+                    <span style={{ fontSize: '14px', color: '#475569', fontWeight: 500 }}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Attrition Tenure</h2>
+              <p className="cardSubtitle">Time spent by employees before quitting</p>
+            </div>
+            <ChartToolbar chartKey="attrition" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
+          </div>
+          <div style={{ height: '300px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              {chartModes.attrition === 'line' ? (
+                <LineChart data={workforceKpis.charts?.attritionData || []} margin={{ top: 20, right: 30, left: -20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Line type="monotone" dataKey="value" name="Employees" stroke="#ef4444" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              ) : (
+                <BarChart data={workforceKpis.charts?.attritionData || []} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barSize={32}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip cursor={{ fill: 'rgba(239, 68, 68, 0.08)', radius: 8 }} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="value" name="Employees" radius={[6, 6, 0, 0]} fill="#ef4444" />
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="chartsRow" style={{ marginTop: '1.5rem' }}>
+        <div className="card" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Resignations (Last 12 Months)</h2>
+              <p className="cardSubtitle">Trend of employees leaving the organisation</p>
+            </div>
+            <ChartToolbar chartKey="resignationTrend" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
+          </div>
+          <div style={{ height: '300px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              {chartModes.resignationTrend === 'line' ? (
+                <LineChart data={workforceKpis.charts?.resignationTrendData || []} margin={{ top: 20, right: 30, left: -20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Line type="monotone" dataKey="value" name="Resignations" stroke="#ef4444" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              ) : (
+                <BarChart data={workforceKpis.charts?.resignationTrendData || []} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barSize={32}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip cursor={{ fill: 'rgba(239, 68, 68, 0.08)', radius: 8 }} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="value" name="Resignations" radius={[6, 6, 0, 0]} fill="#ef4444" />
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="chartsRow">
+        <div className="card" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Headcount by Department</h2>
+              <p className="cardSubtitle">Top departments by number of employees</p>
+            </div>
+            <ChartToolbar chartKey="deptHeadcount" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
+          </div>
+          <div style={{ height: '360px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              {chartModes.deptHeadcount === 'line' ? (
+                <LineChart data={workforceKpis.charts?.deptCountData || []} margin={{ top: 20, right: 30, left: 0, bottom: 140 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }} dy={12} interval={0} angle={-40} textAnchor="end" />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} tickCount={6} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Line type="monotone" dataKey="value" name="Employees" stroke="#10b981" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              ) : (
+                <BarChart data={workforceKpis.charts?.deptCountData || []} margin={{ top: 20, right: 30, left: 0, bottom: 140 }} barSize={28}>
+                  <defs>
+                    <linearGradient id="deptCountGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#6ee7b7" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }} dy={12} interval={0} angle={-40} textAnchor="end" />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} tickCount={6} />
+                  <Tooltip cursor={{ fill: 'rgba(16, 185, 129, 0.08)', radius: 8 }} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="value" name="Employees" radius={[8, 8, 4, 4]}>
+                    {(workforceKpis.charts?.deptCountData || []).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill="url(#deptCountGrad)" />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="card" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Avg Salary by Department</h2>
+              <p className="cardSubtitle">Average basic salary across departments</p>
+            </div>
+            <ChartToolbar chartKey="deptSalary" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
+          </div>
+          <div style={{ height: '360px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              {chartModes.deptSalary === 'line' ? (
+                <LineChart data={workforceKpis.charts?.deptSalaryData || []} margin={{ top: 20, right: 30, left: 0, bottom: 140 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }} dy={12} interval={0} angle={-40} textAnchor="end" />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} tickCount={6} tickFormatter={(val) => `₹${val/1000}k`} />
+                  <Tooltip formatter={(value) => [`₹${value.toLocaleString()}`, 'Avg Salary']} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Line type="monotone" dataKey="avgSalary" name="Avg Salary" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              ) : (
+                <BarChart data={workforceKpis.charts?.deptSalaryData || []} margin={{ top: 20, right: 30, left: 0, bottom: 140 }} barSize={28}>
+                  <defs>
+                    <linearGradient id="deptSalGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f59e0b" />
+                      <stop offset="100%" stopColor="#fcd34d" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }} dy={12} interval={0} angle={-40} textAnchor="end" />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} tickCount={6} tickFormatter={(val) => `₹${val/1000}k`} />
+                  <Tooltip cursor={{ fill: 'rgba(245, 158, 11, 0.08)', radius: 8 }} formatter={(value) => [`₹${value.toLocaleString()}`, 'Avg Salary']} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="avgSalary" name="Salary" radius={[8, 8, 4, 4]}>
+                    {(workforceKpis.charts?.deptSalaryData || []).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill="url(#deptSalGrad)" />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 4: Salary Tables */}
+      <div className="chartsRow" style={{ marginTop: '1.5rem' }}>
+        <div className="card" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Salary by Designation</h2>
+              <p className="cardSubtitle">Total vs Avg Salary & Employee Count per Designation</p>
+            </div>
+            <ChartToolbar chartKey="designationSalary" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} hideToggle={true} />
+          </div>
+          <div style={{ overflowX: 'auto', marginTop: '16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600 }}>Designation</th>
+                  <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600 }}>Total Salary</th>
+                  <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600 }}>Avg Salary</th>
+                  <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600 }}>Employees</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(workforceKpis.charts?.designationSalaryData || []).map((row, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 1 ? '#f8fafc' : 'white' }}>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 500, color: '#334155' }}>{row.designation}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>₹{row.totalSalary.toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>₹{row.avgSalary.toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>
+                      <span style={{ background: '#dbeafe', color: '#1d4ed8', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>{row.empCount}</span>
+                    </td>
+                  </tr>
+                ))}
+                {(!workforceKpis.charts?.designationSalaryData || workforceKpis.charts.designationSalaryData.length === 0) && (
+                  <tr>
+                    <td colSpan="4" style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>No salary data available</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div className="chartsRow" style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+        <div className="card" style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Salary by Organisation</h2>
+              <p className="cardSubtitle">Total vs Avg Salary & Employee Count per Organisation</p>
+            </div>
+            <ChartToolbar chartKey="orgSalary" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} hideToggle={true} />
+          </div>
+          <div style={{ overflowX: 'auto', marginTop: '16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600 }}>Organisation</th>
+                  <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600 }}>Total Salary</th>
+                  <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600 }}>Avg Salary</th>
+                  <th style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600 }}>Employees</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(workforceKpis.charts?.orgSalaryData || []).map((row, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 1 ? '#f8fafc' : 'white' }}>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 500, color: '#334155' }}>{row.organisation}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>₹{row.totalSalary.toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>₹{row.avgSalary.toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>
+                      <span style={{ background: '#dbeafe', color: '#1d4ed8', padding: '4px 10px', borderRadius: '12px', fontWeight: 600 }}>{row.empCount}</span>
+                    </td>
+                  </tr>
+                ))}
+                {(!workforceKpis.charts?.orgSalaryData || workforceKpis.charts.orgSalaryData.length === 0) && (
+                  <tr>
+                    <td colSpan="4" style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>No organisation salary data available</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       {/* Organization Structure Shortcut */}
       <div className="card" style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -371,115 +965,208 @@ export default function AdminDashboard() {
 
       {/* Row 3: Daily Attendance Trend */}
       <div className="card" style={{ marginBottom: '1.5rem' }}>
-        <h2 className="cardTitle">Daily Attendance Trend</h2>
-        <p className="cardSubtitle">Overview of presence across the last 10 working days</p>
-        <div style={{ height: '300px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h2 className="cardTitle">Daily Attendance Trend</h2>
+            <p className="cardSubtitle">Overview of presence across selected dates</p>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input 
+                type="date" 
+                value={trendStartDate} 
+                onChange={e => setTrendStartDate(e.target.value)} 
+                style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none' }}
+              />
+              <span style={{ color: '#64748b', fontSize: '13px' }}>to</span>
+              <input 
+                type="date" 
+                value={trendEndDate} 
+                onChange={e => setTrendEndDate(e.target.value)} 
+                style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none' }}
+              />
+            </div>
+            <ChartToolbar chartKey="dailyTrend" onRefresh={fetchDailyTrend} loading={chartLoading.dailyTrend} />
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto', overflowY: 'hidden', marginTop: '16px' }}>
+          <div style={{ height: '300px', minWidth: `${Math.max(100, dailyTrend.length * 40)}px` }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={dailyTrend} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barSize={8}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={<CustomTick />} dy={10} interval={0} />
-              <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} domain={[0, 'auto']} />
-              <Tooltip content={<CustomTooltip />} cursor={{fill: '#f3f4f6'}} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
-              <Bar dataKey="Leave" fill="#10b981" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Absent" fill="#fca5a5" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Present" fill="#bbf7d0" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="COff" fill="#166534" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Holiday" fill="#fcd34d" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Off" fill="#93c5fd" radius={[4, 4, 0, 0]} />
-            </BarChart>
+            {chartModes.dailyTrend === 'line' ? (
+              <LineChart data={dailyTrend} margin={{ top: 20, right: 30, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={<CustomTick />} dy={10} interval={0} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} domain={[0, 'auto']} />
+                <Tooltip content={<CustomTooltip />} cursor={{fill: '#f3f4f6'}} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+                <Line type="monotone" dataKey="Leave" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="Absent" stroke="#fca5a5" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="Present" stroke="#bbf7d0" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="COff" stroke="#166534" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="Holiday" stroke="#fcd34d" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="Off" stroke="#93c5fd" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+              </LineChart>
+            ) : (
+              <BarChart data={dailyTrend} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barSize={8}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={<CustomTick />} dy={10} interval={0} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#6b7280'}} domain={[0, 'auto']} />
+                <Tooltip content={<CustomTooltip />} cursor={{fill: '#f3f4f6'}} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+                <Bar dataKey="Leave" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Absent" fill="#fca5a5" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Present" fill="#bbf7d0" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="COff" fill="#166534" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Holiday" fill="#fcd34d" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Off" fill="#93c5fd" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            )}
           </ResponsiveContainer>
+          </div>
         </div>
       </div>
 
       {/* Row 4: Status Distribution & Top Hours */}
       <div className="chartsRow">
         <div className="card" style={{ flex: 1 }}>
-          <h2 className="cardTitle">Attendance Status Distribution</h2>
-          <p className="cardSubtitle">Past 30 days distribution</p>
-          <div style={{ height: '300px', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Attendance Status Distribution</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                <input 
+                  type="date" 
+                  value={statusStartDate} 
+                  onChange={e => setStatusStartDate(e.target.value)} 
+                  className="date-input"
+                  style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                />
+                <span style={{ fontSize: '13px', color: '#64748b' }}>to</span>
+                <input 
+                  type="date" 
+                  value={statusEndDate} 
+                  onChange={e => setStatusEndDate(e.target.value)} 
+                  className="date-input"
+                  style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                />
+              </div>
+            </div>
+            <ChartToolbar chartKey="statusDist" onRefresh={fetchStatusDist} hideToggle={false} />
+          </div>
+          <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie 
-                  data={statusDistribution} 
-                  innerRadius={80} 
-                  outerRadius={110} 
-                  paddingAngle={2} 
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {statusDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend iconType="circle" verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px' }}/>
-              </PieChart>
+              {chartModes.statusDist === 'line' ? (
+                <LineChart data={statusDistribution} margin={{ top: 20, right: 30, left: -20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Line type="monotone" dataKey="value" name="Occurrences" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              ) : (
+                <BarChart data={statusDistribution} margin={{ top: 20, right: 30, left: -20, bottom: 5 }} barSize={40}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} allowDecimals={false} />
+                  <Tooltip cursor={{ fill: 'rgba(59, 130, 246, 0.08)', radius: 8 }} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="value" name="Occurrences" radius={[6, 6, 0, 0]}>
+                    {statusDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color || '#3b82f6'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )}
             </ResponsiveContainer>
           </div>
         </div>
 
         <div className="card" style={{ flex: 1 }}>
-          <h2 className="cardTitle">Average Hours Devoted (Top Employees)</h2>
-          <p className="cardSubtitle">Average daily hours over the past 30 days</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Average Hours Devoted (Top Employees)</h2>
+              <p className="cardSubtitle">Average daily hours over the past 30 days</p>
+            </div>
+            <ChartToolbar chartKey="topHours" onRefresh={fetchTopHours} loading={chartLoading.topHours} />
+          </div>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topHours} margin={{ top: 20, right: 30, left: 0, bottom: 40 }} barSize={28}>
-                <defs>
-                  <linearGradient id="hoursGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0ea5e9" />
-                    <stop offset="100%" stopColor="#7dd3fc" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }}
-                  dy={12}
-                  interval={0}
-                  angle={-20}
-                  textAnchor="end"
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 12, fill: '#6b7280' }}
-                  tickCount={6}
-                  domain={[0, dataMax => Math.max(10, Math.ceil(dataMax * 1.2))]}
-                  unit="h"
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(14, 165, 233, 0.08)', radius: 8 }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      return (
-                        <div style={{
-                          background: '#fff',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '10px',
-                          padding: '10px 16px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
-                        }}>
-                          <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4, fontSize: 13 }}>
-                            {payload[0].payload.name}
+              {chartModes.topHours === 'line' ? (
+                <LineChart data={topHours} margin={{ top: 20, right: 30, left: 0, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }} dy={12} interval={0} angle={-20} textAnchor="end" />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} tickCount={6} domain={[0, dataMax => Math.max(10, Math.ceil(dataMax * 1.2))]} unit="h" />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 16px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                            <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4, fontSize: 13 }}>{payload[0].payload.name}</div>
+                            <div style={{ color: '#6366f1', fontSize: 14, fontWeight: 600 }}>⏱ {payload[0].value} hrs / day</div>
                           </div>
-                          <div style={{ color: '#6366f1', fontSize: 14, fontWeight: 600 }}>
-                            ⏱ {payload[0].value} hrs / day
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Line type="monotone" dataKey="hours" stroke="#0ea5e9" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              ) : (
+                <BarChart data={topHours} margin={{ top: 20, right: 30, left: 0, bottom: 40 }} barSize={28}>
+                  <defs>
+                    <linearGradient id="hoursGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#0ea5e9" />
+                      <stop offset="100%" stopColor="#7dd3fc" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }}
+                    dy={12}
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12, fill: '#6b7280' }}
+                    tickCount={6}
+                    domain={[0, dataMax => Math.max(10, Math.ceil(dataMax * 1.2))]}
+                    unit="h"
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(14, 165, 233, 0.08)', radius: 8 }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div style={{
+                            background: '#fff',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '10px',
+                            padding: '10px 16px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                          }}>
+                            <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4, fontSize: 13 }}>
+                              {payload[0].payload.name}
+                            </div>
+                            <div style={{ color: '#6366f1', fontSize: 14, fontWeight: 600 }}>
+                              ⏱ {payload[0].value} hrs / day
+                            </div>
                           </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="hours" radius={[8, 8, 4, 4]} maxBarSize={40}>
-                  {topHours.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill="url(#hoursGradient)" />
-                  ))}
-                </Bar>
-              </BarChart>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="hours" radius={[8, 8, 4, 4]} maxBarSize={40}>
+                    {topHours.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill="url(#hoursGradient)" />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )}
             </ResponsiveContainer>
           </div>
         </div>
@@ -488,66 +1175,93 @@ export default function AdminDashboard() {
       {/* Row 5: Top Present Days */}
       <div className="chartsRow">
         <div className="card" style={{ flex: 1 }}>
-          <h2 className="cardTitle">Top Employees (Days Present)</h2>
-          <p className="cardSubtitle">Number of days present in the past 30 days</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 className="cardTitle">Top Employees (Days Present)</h2>
+              <p className="cardSubtitle">Number of days present in the past 30 days</p>
+            </div>
+            <ChartToolbar chartKey="topPresent" onRefresh={fetchTopPresentDays} loading={chartLoading.topPresent} />
+          </div>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topPresentDays} margin={{ top: 20, right: 30, left: 0, bottom: 40 }} barSize={28}>
-                <defs>
-                  <linearGradient id="daysGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0284c7" />
-                    <stop offset="100%" stopColor="#38bdf8" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }}
-                  dy={12}
-                  interval={0}
-                  angle={-20}
-                  textAnchor="end"
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 12, fill: '#6b7280' }}
-                  tickCount={6}
-                  domain={[0, 'dataMax']}
-                  unit=" days"
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(2, 132, 199, 0.08)', radius: 8 }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      return (
-                        <div style={{
-                          background: '#fff',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '10px',
-                          padding: '10px 16px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
-                        }}>
-                          <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4, fontSize: 13 }}>
-                            {payload[0].payload.name}
+              {chartModes.topPresent === 'line' ? (
+                <LineChart data={topPresentDays} margin={{ top: 20, right: 30, left: 0, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }} dy={12} interval={0} angle={-20} textAnchor="end" />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} tickCount={6} domain={[0, 'dataMax']} unit=" days" />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 16px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+                            <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4, fontSize: 13 }}>{payload[0].payload.name}</div>
+                            <div style={{ color: '#0284c7', fontSize: 14, fontWeight: 600 }}>📅 {payload[0].value} days present</div>
                           </div>
-                          <div style={{ color: '#0284c7', fontSize: 14, fontWeight: 600 }}>
-                            📅 {payload[0].value} days present
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Line type="monotone" dataKey="presentDays" stroke="#0284c7" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                </LineChart>
+              ) : (
+                <BarChart data={topPresentDays} margin={{ top: 20, right: 30, left: 0, bottom: 40 }} barSize={28}>
+                  <defs>
+                    <linearGradient id="daysGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#0284c7" />
+                      <stop offset="100%" stopColor="#38bdf8" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 10, fill: '#6b7280', fontWeight: 600 }}
+                    dy={12}
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 12, fill: '#6b7280' }}
+                    tickCount={6}
+                    domain={[0, 'dataMax']}
+                    unit=" days"
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(2, 132, 199, 0.08)', radius: 8 }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div style={{
+                            background: '#fff',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '10px',
+                            padding: '10px 16px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.08)'
+                          }}>
+                            <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4, fontSize: 13 }}>
+                              {payload[0].payload.name}
+                            </div>
+                            <div style={{ color: '#0284c7', fontSize: 14, fontWeight: 600 }}>
+                              📅 {payload[0].value} days present
+                            </div>
                           </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="presentDays" radius={[8, 8, 4, 4]} maxBarSize={40}>
-                  {topPresentDays.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill="url(#daysGradient)" />
-                  ))}
-                </Bar>
-              </BarChart>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="presentDays" radius={[8, 8, 4, 4]} maxBarSize={40}>
+                    {topPresentDays.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill="url(#daysGradient)" />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )}
             </ResponsiveContainer>
           </div>
         </div>
@@ -711,7 +1425,7 @@ export default function AdminDashboard() {
               <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Synchronization 2</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Head Types','/dashboard/synchronisation2/head-types'],['Salary Heads','/dashboard/synchronisation2/salary-heads'],['Advance Application','/dashboard/synchronisation2/advance-application'],['Bank Names','/dashboard/synchronisation2/bank-names'],['Weekoff Types','/dashboard/synchronisation2/weekoff-types'],['Leave Type','/dashboard/synchronisation2/leave-type'],['Muster Status','/dashboard/synchronisation2/muster-status'],['Shift','/dashboard/synchronisation2/shift'],['Document Types','/dashboard/synchronisation2/document-types'],['LTA Setup','/dashboard/synchronisation2/lta-setup'],['TDS Category','/dashboard/synchronisation2/tds-category'],['PF/NSSF Setup','/dashboard/synchronisation2/pf-nssf-setup'],['Issuing Authority','/dashboard/synchronisation2/issuing-authority'],['Skills','/dashboard/synchronisation2/skills']].map(([label,href])=>(
+              {[['Head Types','/dashboard/synchronisation2/head-types'],['Salary Heads','/dashboard/synchronisation2/salary-heads'],['Advance Application','/dashboard/synchronisation2/advance-application'],['Bank Names','/dashboard/synchronisation2/bank-names'],['Weekoff Types','/dashboard/synchronisation2/weekoff-types'],['Leave Type','/dashboard/synchronisation2/leave-type'],['Muster Status','/dashboard/synchronisation2/muster-status'],['Shift','/dashboard/synchronisation2/shift'],['Document Types','/dashboard/synchronisation2/document-types'],['LTA Setup','/dashboard/synchronisation2/lta-setup'],['TDS Category','/dashboard/synchronisation2/tds-category'],['PF/NSSF Setup','/dashboard/synchronisation2/pf-nssf-setup'],['Issuing Authority','/dashboard/synchronisation2/issuing-authority'],['Skills','/dashboard/synchronisation2/skills'],['Religion','/dashboard/synchronisation2/religion'],['Relationship','/dashboard/synchronisation2/relationship']].map(([label,href])=>(
                 <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#fdf2f8';e.currentTarget.style.color='#db2777'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#fbcfe8', flexShrink: 0 }} />
                   {label}

@@ -15,6 +15,7 @@ export default function EmployeeVehiclesPage() {
   
   // Tracking states
   const [trackingId, setTrackingId] = useState(null);
+  const [trackingMessage, setTrackingMessage] = useState('');
   // Watcher indicator state
   const [watcherCount, setWatcherCount] = useState(0);
   const watcherPollRef = useRef(null);
@@ -28,7 +29,7 @@ export default function EmployeeVehiclesPage() {
   const [tripData, setTripData] = useState({ date: new Date().toISOString().split('T')[0], vehicleId: '', startLocation: '', endLocation: '', distanceKm: '', reason: '' });
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (empData) {
       const parsed = JSON.parse(empData);
       setEmployee(parsed);
@@ -52,6 +53,7 @@ export default function EmployeeVehiclesPage() {
       
       const activeTrip = tripData.find(t => t.status === 'ACTIVE');
       if (activeTrip && trackingId === null) {
+        setTrackingMessage('Trip is stable now. Live location tracking is active. Keep this app open while travelling.');
         startTracking(activeTrip.id);
       }
     } catch (e) {
@@ -93,18 +95,35 @@ export default function EmployeeVehiclesPage() {
   }, [trips]);
 
   const handleStartTrip = async (tripId) => {
+    if (!navigator.geolocation) {
+      setTrackingMessage('This phone does not support location tracking. Please use a GPS-enabled phone.');
+      return;
+    }
     try {
+      setTrackingMessage('Checking your phone location permission...');
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+      });
       const res = await fetch(`/api/trips/${tripId}/start`, { method: 'PUT' });
       if (res.ok) {
-        startTracking(tripId);
+        startTracking(tripId, position);
+        if (window.AndroidTripTracking) {
+          window.AndroidTripTracking.startTrip(`${window.location.origin}/api/trips/${tripId}/ping`);
+        }
+        setTrackingMessage('Trip is stable now. Live location tracking is active. Keep this app open while travelling.');
         fetchData(employee.id);
+      } else {
+        setTrackingMessage('Trip could not start. Please try again.');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      setTrackingMessage(e.code === 1 ? 'Location permission was denied. Allow location access and start the trip again.' : 'GPS is unavailable. Turn on Location Services and try again.');
+    }
   };
 
   const notificationRef = React.useRef(null);
 
-  const startTracking = (tripId) => {
+  const startTracking = (tripId, initialPosition = null) => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser');
       return;
@@ -115,7 +134,7 @@ export default function EmployeeVehiclesPage() {
       Notification.requestPermission().then(permission => {
         if (permission === 'granted') {
           notificationRef.current = new Notification('Trip Active', {
-            body: 'Your live location is being tracked for the ongoing trip.',
+            body: 'Trip is stable now. Your live location is being tracked for this trip.',
             requireInteraction: true, // keeps it on screen until dismissed or closed programmatically
             icon: '/favicon.ico'
           });
@@ -123,14 +142,22 @@ export default function EmployeeVehiclesPage() {
       });
     }
 
+    const sendPing = async (position) => {
+      await fetch(`/api/trips/${tripId}/ping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude: position.coords.latitude, longitude: position.coords.longitude })
+      });
+    };
+
+    if (initialPosition) {
+      sendPing(initialPosition).catch(error => console.error('Initial location ping failed:', error));
+    }
+
     const id = navigator.geolocation.watchPosition(
       async (pos) => {
         try {
-          await fetch(`/api/trips/${tripId}/ping`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ latitude: pos.coords.latitude, longitude: pos.coords.longitude })
-          });
+          await sendPing(pos);
         } catch (e) { console.error('Ping failed:', e); }
       },
       (err) => {
@@ -140,6 +167,7 @@ export default function EmployeeVehiclesPage() {
           3: 'Location request timed out. Retrying...',
         };
         console.warn('Geolocation error:', messages[err.code] || err.message);
+        setTrackingMessage(messages[err.code] || 'Location tracking is trying again. Keep GPS enabled.');
         // Don't stop tracking on timeout — watchPosition will retry automatically
         if (err.code === 1) {
           alert(messages[1]);
@@ -155,6 +183,7 @@ export default function EmployeeVehiclesPage() {
       navigator.geolocation.clearWatch(trackingId);
       setTrackingId(null);
     }
+    if (window.AndroidTripTracking) window.AndroidTripTracking.stopTrip();
 
     // Close the notification
     if (notificationRef.current) {
@@ -263,6 +292,11 @@ export default function EmployeeVehiclesPage() {
 
       {activeTab === 'dashboard' && (
         <>
+          {trackingMessage && (
+            <div role="status" aria-live="polite" style={{ marginBottom: '1.5rem', padding: '1rem 1.25rem', borderRadius: '10px', background: trackingMessage.includes('active') || trackingMessage.includes('stable') ? '#dcfce7' : '#fef3c7', color: trackingMessage.includes('active') || trackingMessage.includes('stable') ? '#166534' : '#92400e', border: `1px solid ${trackingMessage.includes('active') || trackingMessage.includes('stable') ? '#86efac' : '#fcd34d'}`, fontWeight: 600 }}>
+              {trackingMessage}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
             <div className="saas-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>

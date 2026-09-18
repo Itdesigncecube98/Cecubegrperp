@@ -12,7 +12,7 @@ export default function SupervisorApprovalsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const userData = sessionStorage.getItem('adminData') || sessionStorage.getItem('employeeData');
+    const userData = sessionStorage.getItem('adminData') || localStorage.getItem('employeeData');
     if (!userData) {
       router.push('/login');
       return;

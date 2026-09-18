@@ -1,16 +1,21 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 
 export async function POST(request) {
   try {
     const { email, password } = await request.json();
-    
+
+    // Normalize so leading/trailing spaces and email casing never break login.
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const normalizedPassword = (password || '').trim();
+
     // Bypass DB completely for default employee credentials
     // This allows login on Vercel even if database is not connected
     const EMP_EMAIL = process.env.EMP_EMAIL || 'employee@cecube.com';
     const EMP_PASSWORD = process.env.EMP_PASSWORD || 'password123';
 
-    if (email === EMP_EMAIL && password === EMP_PASSWORD) {
+    if (normalizedEmail === EMP_EMAIL.toLowerCase() && normalizedPassword === EMP_PASSWORD) {
       return NextResponse.json({ 
         success: true, 
         employee: {
@@ -23,14 +28,16 @@ export async function POST(request) {
       });
     }
 
-    // Check if employee exists in DB
-    const employee = await prisma.employee.findUnique({ where: { email } });
+    // Check if employee exists in DB (email match is case-insensitive)
+    const employee = await prisma.employee.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } }
+    });
     
     if (!employee) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
     
-    if (employee.password === password) {
+    if ((employee.password || '').trim() === normalizedPassword) {
       return NextResponse.json({ 
         success: true, 
         employee: {

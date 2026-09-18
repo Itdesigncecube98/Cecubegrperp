@@ -17,7 +17,7 @@ export async function GET(request) {
     start.setDate(start.getDate() - (days - 1));
     const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
 
-    const [employeeCount, todayRecords, rangeRecords, gpsCount, holidays, todayLeaves] = await Promise.all([
+    const [employeeCount, todayRecords, rangeRecords, gpsCount, holidays, allLeaves] = await Promise.all([
       prisma.employee.count().catch(() => 0),
       prisma.attendance.findMany({
         where: { date: todayStr },
@@ -25,7 +25,7 @@ export async function GET(request) {
       }).catch(() => []),
       prisma.attendance.findMany({
         where: { date: { gte: startStr, lte: todayStr } },
-        select: { date: true, status: true }
+        select: { date: true, status: true, employeeId: true }
       }).catch(() => []),
       prisma.gpsLocation.count({ where: { isActive: true } }).catch(() => 0),
       prisma.holiday.findMany({
@@ -42,11 +42,15 @@ export async function GET(request) {
       }).catch(() => [])
     ]);
 
-    const presentToday = todayRecords.filter(a => a.status && a.status !== 'Not Marked').length;
+    // --- Today's who-is-in ---
+    // Only count truly worked statuses for "present today"
+    const workedStatuses = ['Present', 'P', 'Half Day', 'Late'];
+    const presentTodayRecords = todayRecords.filter(a => workedStatuses.includes(a.status));
+    const presentToday = presentTodayRecords.length;
+
     let inCount = 0;
     let outCount = 0;
-    todayRecords.forEach(a => {
-      if (!a.status || a.status === 'Not Marked') return;
+    presentTodayRecords.forEach(a => {
       let slots = [];
       try { slots = JSON.parse(a.timeSlots || '[]'); } catch (e) { slots = []; }
       const last = slots[slots.length - 1];
@@ -54,15 +58,23 @@ export async function GET(request) {
       else outCount++;
     });
 
-    const presentStatusCount = todayRecords.filter(
-      a => a.status === 'Present' || a.status === 'PRESENT' || a.status === 'Late'
-    ).length;
+    // --- Daily Trend for chart (same logic as /api/attendance/daily-trend) ---
+    // Group employees by Date and Status - only truly worked employees count
+    const workedByDate = {};
+    const leaveByDate = {};
 
-    // Daily present counts for trend
-    const byDate = {};
     rangeRecords.forEach(r => {
-      if (!r.status || r.status === 'Not Marked') return;
-      byDate[r.date] = (byDate[r.date] || 0) + 1;
+      const date = r.date;
+      const status = r.status || '';
+
+      if (!workedByDate[date]) workedByDate[date] = new Set();
+      if (!leaveByDate[date]) leaveByDate[date] = new Set();
+
+      if (workedStatuses.includes(status)) {
+        workedByDate[date].add(r.employeeId);
+      } else if (['Leave', 'L'].includes(status)) {
+        leaveByDate[date].add(r.employeeId);
+      }
     });
 
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -73,28 +85,48 @@ export async function GET(request) {
       const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const isSun = d.getDay() === 0;
       const isHol = holidays.some(h => h.date === dStr);
-      
+      const isOffDay = isHol || isSun;
+
       let note = '';
       if (isHol) note = 'Holiday';
       else if (isSun) note = 'Off';
-      
+
       const dateLabel = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} (${dayNames[d.getDay()]})` + (note ? `||${note}` : '');
-      const leavesOnDay = todayLeaves.filter(l => l.startDate <= dStr && l.endDate >= dStr);
-      const uniqueLeavesOnDay = new Set(leavesOnDay.map(l => l.employeeId)).size;
-      
-      const dayPresent = byDate[dStr] || 0;
-      const isOffDay = isHol || isSun;
-      const nonPresent = Math.max(0, employeeCount - dayPresent - uniqueLeavesOnDay);
-      
+
+      // Workers (physically punched in or marked Present/Late/Half Day)
+      const workedSet = workedByDate[dStr] || new Set();
+      const workedCount = workedSet.size;
+
+      // Leave (merge attendance Leave + approved LeaveRequests)
+      const leaveSet = leaveByDate[dStr] || new Set();
+      const approvedLeavesOnDay = allLeaves.filter(l => l.startDate <= dStr && l.endDate >= dStr);
+      approvedLeavesOnDay.forEach(l => leaveSet.add(l.employeeId));
+      // Remove anyone who worked from leave count
+      workedSet.forEach(empId => leaveSet.delete(empId));
+      const leaveCount = leaveSet.size;
+
+      const remainingCount = Math.max(0, employeeCount - workedCount - leaveCount);
+
+      let present = 0, coff = 0, absent = 0, holiday = 0, off = 0;
+      if (isOffDay) {
+        coff = workedCount;
+        if (isHol) holiday = remainingCount;
+        else off = remainingCount;
+      } else {
+        present = workedCount;
+        absent = remainingCount;
+      }
+
       dailyTrend.push({
         date: dateLabel,
         fullDate: dStr,
-        Present: isOffDay ? 0 : dayPresent,
-        COff: isOffDay ? dayPresent : 0,
-        Absent: isOffDay ? 0 : nonPresent,
-        Leave: uniqueLeavesOnDay,
-        Holiday: isHol ? nonPresent : 0,
-        Off: (isSun && !isHol) ? nonPresent : 0
+        all: employeeCount,
+        Present: present,
+        COff: coff,
+        Absent: absent,
+        Leave: leaveCount,
+        Holiday: holiday,
+        Off: off
       });
     }
 
@@ -107,14 +139,14 @@ export async function GET(request) {
 
     const todayIsSun = today.getDay() === 0;
     const todayIsHol = holidays.some(h => h.date === todayStr);
-    
-    // Calculate employees on leave today
-    const leavesToday = todayLeaves.filter(l => l.startDate <= todayStr && l.endDate >= todayStr);
-    const employeesOnLeaveCount = new Set(leavesToday.map(l => l.employeeId)).size;
-    
+
+    const leavesTodayList = allLeaves.filter(l => l.startDate <= todayStr && l.endDate >= todayStr);
+    const employeesOnLeaveCount = new Set(leavesTodayList.map(l => l.employeeId)).size;
+
     let todayStatus = 'Working';
     if (todayIsHol) todayStatus = 'Holiday';
     else if (todayIsSun) todayStatus = 'Off';
+
     const absentToday = (todayIsHol || todayIsSun) ? 0 : Math.max(0, employeeCount - presentToday - employeesOnLeaveCount);
 
     return NextResponse.json({
@@ -128,7 +160,7 @@ export async function GET(request) {
         { name: 'IN', value: inCount, color: '#22c55e', bg: '#dcfce7', c: '#15803d' },
         { name: 'OUT', value: outCount, color: '#3b82f6', bg: '#dbeafe', c: '#1d4ed8' },
         { name: 'COFF', value: (todayIsHol || todayIsSun) ? presentToday : 0, color: '#166534', bg: '#dcfce7', c: '#166534' },
-        { name: 'NO PUNCH', value: (todayIsHol || todayIsSun) ? 0 : Math.max(0, employeeCount - presentToday - employeesOnLeaveCount), color: '#ef4444', bg: '#fee2e2', c: '#dc2626' },
+        { name: 'NO PUNCH', value: (todayIsHol || todayIsSun) ? 0 : absentToday, color: '#ef4444', bg: '#fee2e2', c: '#dc2626' },
         { name: 'OFF', value: (todayIsSun && !todayIsHol) ? Math.max(0, employeeCount - presentToday - employeesOnLeaveCount) : 0, color: '#93c5fd', bg: '#eff6ff', c: '#2563eb' },
         { name: 'HOLIDAY', value: todayIsHol ? Math.max(0, employeeCount - presentToday - employeesOnLeaveCount) : 0, color: '#fcd34d', bg: '#fef3c7', c: '#d97706' },
         { name: 'ON LEAVE', value: employeesOnLeaveCount, color: '#10b981', bg: '#ecfdf5', c: '#047857' }

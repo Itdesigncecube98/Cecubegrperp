@@ -60,6 +60,7 @@ export default function PurchaseSidebar({ isCollapsed: propCollapsed, setIsColla
         { name: 'Quotation', path: '/purchase/quotation' },
         { name: 'Purchase Orders (PO)', path: '/purchase/po' },
         { name: 'PO Material Browse', path: '/purchase/po/browse' },
+        { name: 'Purchase Bills', path: '/purchase/bills' },
       ]
     },
     {

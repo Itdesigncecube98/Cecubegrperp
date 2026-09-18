@@ -32,7 +32,10 @@ export default function HrDocsPage() {
   const [standardPlaceholders, setStandardPlaceholders] = useState([
     'empName', 'empCode', 'designation', 'department', 'fatherName',
     'email', 'phone', 'dateOfJoining', 'dateOfBirth', 'panNumber',
-    'aadharNumber', 'bankName', 'bankAccountNo', 'basicSalary', 'annualCtc', 'currentDate'
+    'aadharNumber', 'bankName', 'bankAccountNo', 'grossSalary', 'basicSalary', 'hra',
+    'annualCtc', 'annualCTC', 'monthlyCtc', 'monthlyCTC', 'createdAt', 'createdAtDate', 'jobTitle', 'position', 'jobDescription', 'employeeType', 'branch',
+    'siteOffice', 'grade', 'employeePosition', 'jobPosition', 'employeeGrade', 'gradeName',
+    'designationName', 'employmentStatus', 'organisation', 'joinedDate', 'currentDate'
   ]);
 
   useEffect(() => {
@@ -62,7 +65,10 @@ export default function HrDocsPage() {
       const allKeys = new Set([
         'empName', 'empCode', 'designation', 'department', 'fatherName',
         'email', 'phone', 'dateOfJoining', 'dateOfBirth', 'panNumber',
-        'aadharNumber', 'bankName', 'bankAccountNo', 'basicSalary', 'annualCtc', 'currentDate'
+        'aadharNumber', 'bankName', 'bankAccountNo', 'grossSalary', 'basicSalary', 'hra',
+        'annualCtc', 'annualCTC', 'monthlyCtc', 'monthlyCTC', 'createdAt', 'createdAtDate', 'jobTitle', 'position', 'jobDescription', 'employeeType', 'branch',
+        'siteOffice', 'grade', 'employeePosition', 'jobPosition', 'employeeGrade', 'gradeName',
+        'designationName', 'employmentStatus', 'organisation', 'joinedDate', 'currentDate'
       ]);
       
       const extractKeys = (arr) => {
@@ -156,10 +162,62 @@ export default function HrDocsPage() {
       content = content.replace(/{{phone}}/g, emp.phone || emp.workTelephone || '');
       content = content.replace(/{{dateOfJoining}}/g, emp.joinedDate || '');
       content = content.replace(/{{currentDate}}/g, new Date().toLocaleDateString('en-GB'));
+
+      const salaryRevision = emp.salaryRevisions?.[0];
+      const revisionGross = salaryRevision?.components?.find(component =>
+        component.salaryHead?.description?.toLowerCase() === 'gross salary'
+      )?.amount;
+      const calculatedGross = [emp.basicSalary, emp.hra, emp.conveyance, emp.medical, emp.specialAllowance]
+        .reduce((total, amount) => total + (Number(amount) || 0), 0);
+      const formatDate = (value) => {
+        if (!value) return '';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('en-GB').format(date);
+      };
+      const createdAtDate = formatDate(emp.createdAt);
+      const placeholderValues = {
+        grossSalary: revisionGross ?? (calculatedGross || ''),
+        basicSalary: emp.basicSalary || '',
+        hra: emp.hra || '',
+        annualCtc: emp.annualCtc || '',
+        annualCTC: emp.annualCtc || '',
+        monthlyCtc: emp.monthlyCtc || (emp.annualCtc ? (Number(emp.annualCtc) / 12).toFixed(2) : ''),
+        monthlyCTC: emp.monthlyCtc || (emp.annualCtc ? (Number(emp.annualCtc) / 12).toFixed(2) : ''),
+        createdAt: createdAtDate,
+        createdAtDate,
+        jobTitle: emp.jobTitle || emp.designation || '',
+        position: emp.position || '',
+        jobDescription: emp.jobDescription || emp.workExperiences?.[0]?.jobDescription || '',
+        employeeType: emp.employeeType || '',
+        branch: emp.branch || '',
+        siteOffice: emp.siteOffice || '',
+        grade: emp.grade || '',
+        employmentStatus: emp.employmentStatus || '',
+        organisation: emp.organisation || '',
+        joinedDate: emp.joinedDate || ''
+      };
+      const latestJob = emp.jobHistories?.[0] || {};
+      const aliases = {
+        ...placeholderValues,
+        position: placeholderValues.position || latestJob.position || '',
+        employeePosition: placeholderValues.position || latestJob.position || '',
+        jobPosition: placeholderValues.position || latestJob.position || '',
+        employeeGrade: placeholderValues.grade,
+        gradeName: placeholderValues.grade,
+        designationName: emp.designation || latestJob.designation || '',
+        jobTitle: placeholderValues.jobTitle || latestJob.designation || '',
+        department: emp.department || latestJob.department || '',
+        branch: emp.branch || latestJob.branch || '',
+        siteOffice: emp.siteOffice || latestJob.siteOffice || ''
+      };
+      Object.entries(aliases).forEach(([key, value]) => {
+        content = content.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'gi'), String(value ?? ''));
+      });
       
       // 3. Replace dynamic standard placeholders directly from the employee object
+      const explicitPlaceholderKeys = new Set(Object.keys(aliases));
       Object.keys(emp).forEach(key => {
-        if (typeof emp[key] === 'string' || typeof emp[key] === 'number') {
+        if (!explicitPlaceholderKeys.has(key) && (typeof emp[key] === 'string' || typeof emp[key] === 'number')) {
           content = content.replace(new RegExp(`{{${key}}}`, 'g'), emp[key]);
         }
       });
@@ -483,8 +541,8 @@ export default function HrDocsPage() {
       )}
 
       {activeTab === 'GENERATE' && (
-        <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
-          <div style={{ width: '400px', background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', gap: '24px', alignItems: 'stretch', flexWrap: 'wrap', minWidth: 0 }}>
+          <div style={{ flex: '1 1 360px', width: 'min(400px, 100%)', minWidth: 0, background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '20px', boxSizing: 'border-box' }}>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Generate Document</h2>
             
             <div>
@@ -561,9 +619,9 @@ export default function HrDocsPage() {
             </div>
           </div>
 
-          <div style={{ flex: 1, background: '#e2e8f0', padding: '24px', borderRadius: '12px', display: 'flex', justifyContent: 'center', overflow: 'auto' }}>
+          <div style={{ flex: '2 1 560px', width: '100%', minWidth: 0, minHeight: '600px', background: '#e2e8f0', padding: '24px', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflow: 'auto', boxSizing: 'border-box' }}>
             {generatedContent ? (
-              <div id="document-preview" style={{ background: 'white', width: '210mm', minHeight: '297mm', padding: '1.31in 1in 0.63in 1in', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', boxSizing: 'border-box' }}>
+              <div id="document-preview" style={{ background: 'white', width: 'min(210mm, 100%)', minHeight: '297mm', maxWidth: '100%', padding: '1.31in 1in 0.63in 1in', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', boxSizing: 'border-box', overflowWrap: 'anywhere' }}>
                 {/* Content */}
                 <div 
                   contentEditable={true}

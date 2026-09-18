@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 
 function getDaysInRange(startDate, endDate) {
@@ -32,6 +33,7 @@ export default function GroupedSummary() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [tableData, setTableData] = useState([]);
+  const filters = useReportFilters();
 
   const today = new Date();
   const monday = new Date(today);
@@ -105,12 +107,12 @@ export default function GroupedSummary() {
     setTableData([]);
   };
 
-  // Grouping logic for rendering
+  let filteredTableData = filters.applyFilters(tableData);
   let groupedRender = [];
-  if (groupBy !== 'Any' && tableData.length > 0) {
+  if (groupBy !== 'Any' && filteredTableData.length > 0) {
     const key = groupBy.toLowerCase();
     const groups = {};
-    tableData.forEach(row => {
+    filteredTableData.forEach(row => {
       const gVal = row[key] || 'Unassigned';
       if (!groups[gVal]) groups[gVal] = [];
       groups[gVal].push(row);
@@ -139,7 +141,7 @@ export default function GroupedSummary() {
       );
     });
   } else {
-    groupedRender = tableData.map(row => (
+    groupedRender = filteredTableData.map(row => (
       <tr key={row.id}>
         <td>{row.empId || '—'}</td>
         <td style={{ fontWeight: 600 }}>{row.name}</td>
@@ -163,14 +165,9 @@ export default function GroupedSummary() {
       </div>
 
       <div className="card">
-        {/* Row 1 */}
         <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Organization*</label>
-            <select className="filterInput">
-              <option>Cecube Engineering India Pvt Ltd</option>
-            </select>
-          </div>
+          <ReportFilters {...filters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem' }}>
           <div className="filterGroup">
             <label className="filterLabel">Date From*</label>
             <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
@@ -187,6 +184,7 @@ export default function GroupedSummary() {
               <option value="Department">Department</option>
               <option value="Designation">Designation</option>
             </select>
+          </div>
           </div>
         </div>
         

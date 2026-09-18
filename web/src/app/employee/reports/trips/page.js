@@ -20,7 +20,7 @@ export default function EmployeeTripReport() {
   const router = useRouter();
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (!empData) { router.push('/login'); return; }
     const parsed = JSON.parse(empData);
     setEmployee(parsed);
@@ -74,8 +74,8 @@ export default function EmployeeTripReport() {
   if (loading || !employee) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
 
   return (
-    <div style={{ padding: '2rem', minHeight: '100vh', background: 'var(--bg-primary)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+    <div className="trip-report-page" style={{ padding: '2rem', minHeight: '100vh', background: 'var(--bg-primary)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
         <button onClick={() => router.push('/employee/dashboard')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', fontWeight: 500 }}>
           <ArrowLeft size={20} /> Back
         </button>
@@ -113,8 +113,8 @@ export default function EmployeeTripReport() {
       </div>
 
       {/* Trip Table */}
-      <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #f1f5f9', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="trip-report-table-wrap" style={{ background: '#fff', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #f1f5f9' }}>
+        <table className="trip-report-table" style={{ borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
               {['Date', 'Route', 'Vehicle', 'Distance', 'Amount', 'Status', 'Map'].map(h => (

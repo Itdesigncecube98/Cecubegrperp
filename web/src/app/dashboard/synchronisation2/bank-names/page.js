@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import AppModal from '@/components/AppModal';
 import ActionToolbar from '@/components/ActionToolbar';
@@ -7,33 +7,85 @@ import ActionToolbar from '@/components/ActionToolbar';
 const EMPTY = { name: '', status: 'Active' };
 
 export default function BankNames() {
-  const [data, setData] = useState([
-    { id: 1, name: 'State Bank of India', status: 'Active' },
-    { id: 2, name: 'HDFC Bank', status: 'Active' },
-    { id: 3, name: 'ICICI Bank', status: 'Active' },
-    { id: 4, name: 'Axis Bank', status: 'Active' },
-  ]);
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState({ open: false, mode: 'add', row: null });
   const [form, setForm] = useState(EMPTY);
   const [deleteModal, setDeleteModal] = useState({ open: false, id: null });
   const [searchTerm, setSearchTerm] = useState('');
 
+  const fetchBanks = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/synchronisation2/bank-names');
+      if (response.ok) {
+        const result = await response.json();
+        setData(result);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBanks();
+  }, []);
+
   const openAdd = () => { setForm(EMPTY); setModal({ open: true, mode: 'add', row: null }); };
   const openEdit = (row) => { setForm({ ...row }); setModal({ open: true, mode: 'edit', row }); };
   const openDelete = (id) => setDeleteModal({ open: true, id });
 
-  const handleSave = () => {
-    if (!form.name) return;
-    if (modal.mode === 'add') {
-      setData(prev => [...prev, { ...form, id: Date.now() }]);
-    } else {
-      setData(prev => prev.map(r => r.id === form.id ? form : r));
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    
+    try {
+      if (modal.mode === 'add') {
+        const response = await fetch('/api/synchronisation2/bank-names', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form)
+        });
+        if (response.ok) {
+          fetchBanks();
+        } else {
+          const err = await response.json();
+          alert(err.error || 'Failed to add bank name');
+        }
+      } else {
+        const response = await fetch(`/api/synchronisation2/bank-names/${form.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form)
+        });
+        if (response.ok) {
+          fetchBanks();
+        } else {
+          const err = await response.json();
+          alert(err.error || 'Failed to update bank name');
+        }
+      }
+    } catch (error) {
+      console.error('Error saving:', error);
     }
+    
     setModal({ open: false, mode: 'add', row: null });
   };
 
-  const handleDelete = () => {
-    setData(prev => prev.filter(r => r.id !== deleteModal.id));
+  const handleDelete = async () => {
+    try {
+      const response = await fetch(`/api/synchronisation2/bank-names/${deleteModal.id}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        fetchBanks();
+      } else {
+        console.error('Failed to delete bank name');
+      }
+    } catch (error) {
+      console.error('Error deleting:', error);
+    }
     setDeleteModal({ open: false, id: null });
   };
 
@@ -69,7 +121,9 @@ export default function BankNames() {
             </tr>
           </thead>
           <tbody>
-            {filteredData.length === 0 ? (
+            {loading ? (
+              <tr><td colSpan="3" className="empty-state" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading banks...</td></tr>
+            ) : filteredData.length === 0 ? (
               <tr><td colSpan="3" className="empty-state" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No Banks Found</td></tr>
             ) : filteredData.map(row => (
               <tr key={row.id}>

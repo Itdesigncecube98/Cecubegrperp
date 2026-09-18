@@ -9,7 +9,7 @@ export default function MobileCheckinPage() {
   const [activeTab, setActiveTab] = useState('My');
   
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (empData) setEmployee(JSON.parse(empData));
   }, []);
 

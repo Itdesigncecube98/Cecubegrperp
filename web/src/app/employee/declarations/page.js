@@ -53,7 +53,7 @@ export default function EmployeeDeclarationsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (!empData) {
       router.push('/login');
       return;

@@ -1,38 +1,23 @@
 'use client';
-import React, { useEffect, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import React from 'react';
 import PurchaseSidebar from '../../components/PurchaseSidebar';
+import TopHeader from '../../components/TopHeader';
+import './layout.css';
+import './purchase.css';
 
 export default function PurchaseLayout({ children }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const [authorized, setAuthorized] = useState(false);
-
-  useEffect(() => {
-    // Development bypass for Purchase module
-    setAuthorized(true);
-  }, [router]);
-
-  // If we are exactly on /purchase, redirect to the first sub-page
-  useEffect(() => {
-    if (pathname === '/purchase') {
-      router.replace('/purchase/suppliers/supplier-list');
-    }
-  }, [pathname, router]);
-
-  if (!authorized) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f8fafc' }}>
-        <div style={{ width: '40px', height: '40px', border: '3px solid #14b8a6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-      </div>
-    );
-  }
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <PurchaseSidebar />
-      <div style={{ flex: 1, overflow: 'auto', backgroundColor: '#f1f5f9', minWidth: 0 }}>
-        {children}
+    <div className={`purchase-layout ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <PurchaseSidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+      <div className={`purchase-main ${isCollapsed ? 'collapsed' : ''}`}>
+        <div style={{ padding: '24px 24px 0 24px', background: 'var(--bg-primary, #f8fafc)' }}>
+          <TopHeader title="Purchase Management" />
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', minWidth: 0 }} className="custom-horizontal-scrollbar">
+          {children}
+        </div>
       </div>
     </div>
   );

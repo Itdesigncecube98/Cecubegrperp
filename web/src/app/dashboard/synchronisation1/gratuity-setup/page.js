@@ -7,31 +7,21 @@ export default function GratuitySetupPage() {
   const [items, setItems] = useState([]);
 
   React.useEffect(() => {
-    const saved = localStorage.getItem('gratuitySetups');
-    if (saved) {
-      setItems(JSON.parse(saved));
-    } else {
-      setItems([
-        { 
-          id: 1, 
-          fromDate: '2026-08-21', 
-          toDate: '2027-03-31', 
-          minServedLimit: '60', 
-          maxPayableLimit: '2000000', 
-          formula: 'Basic * 15 / 26 * Years',
-          monthsRoundOff: 'No',
-          denominator: '26',
-          subtractor: '0'
-        }
-      ]);
-    }
+    fetchSetups();
   }, []);
 
-  React.useEffect(() => {
-    if (items.length > 0) {
-      localStorage.setItem('gratuitySetups', JSON.stringify(items));
+  const fetchSetups = async () => {
+    try {
+      const res = await fetch('/api/synchronization/gratuity-setup');
+      if (res.ok) {
+        const json = await res.json();
+        setItems(json);
+      }
+    } catch (err) {
+      console.error('Failed to fetch setups:', err);
     }
-  }, [items]);
+  };
+
   const [view, setView] = useState('list'); // 'list' | 'add' | 'edit'
   const [editingId, setEditingId] = useState(null);
   const [dialogState, setDialogState] = useState({ isOpen: false, type: 'info', message: '', onConfirm: null });
@@ -58,10 +48,15 @@ export default function GratuitySetupPage() {
       isOpen: true,
       type: 'confirm',
       message: 'Are you sure you want to delete this setup?',
-      onConfirm: () => {
-        const updated = items.filter(item => item.id !== id);
-        setItems(updated);
-        localStorage.setItem('gratuitySetups', JSON.stringify(updated));
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/synchronization/gratuity-setup?id=${id}`, { method: 'DELETE' });
+          if (res.ok) {
+            setItems(items.filter(item => item.id !== id));
+          }
+        } catch (err) {
+          console.error(err);
+        }
         setDialogState({ isOpen: false, type: 'info', message: '', onConfirm: null });
       }
     });
@@ -73,7 +68,7 @@ export default function GratuitySetupPage() {
     setView('edit');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.minServedLimit || !formData.maxPayableLimit) {
       setDialogState({
         isOpen: true,
@@ -84,21 +79,35 @@ export default function GratuitySetupPage() {
       return;
     }
 
-    if (view === 'add') {
-      setItems([...items, { ...formData, id: Date.now() }]);
-    } else {
-      setItems(items.map(item => item.id === editingId ? { ...item, ...formData } : item));
-    }
-    
-    setDialogState({
-      isOpen: true,
-      type: 'info',
-      message: `Gratuity Setup ${view === 'add' ? 'added' : 'updated'} successfully!`,
-      onConfirm: () => {
-        setDialogState({ isOpen: false, type: 'info', message: '', onConfirm: null });
-        setView('list');
+    try {
+      const payload = view === 'add' ? formData : { ...formData, id: editingId };
+      const res = await fetch('/api/synchronization/gratuity-setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (res.ok) {
+        await fetchSetups();
+        setDialogState({
+          isOpen: true,
+          type: 'info',
+          message: `Gratuity Setup ${view === 'add' ? 'added' : 'updated'} successfully!`,
+          onConfirm: () => {
+            setDialogState({ isOpen: false, type: 'info', message: '', onConfirm: null });
+            setView('list');
+          }
+        });
       }
-    });
+    } catch (err) {
+      console.error(err);
+      setDialogState({
+        isOpen: true,
+        type: 'info',
+        message: 'Failed to save gratuity setup.',
+        onConfirm: () => setDialogState({ isOpen: false, type: 'info', message: '', onConfirm: null })
+      });
+    }
   };
 
   if (view === 'list') {

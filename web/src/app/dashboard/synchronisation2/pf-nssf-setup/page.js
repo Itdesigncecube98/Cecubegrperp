@@ -4,49 +4,64 @@ import { Save, Plus, Settings } from 'lucide-react';
 import Dialog from '@/components/Dialog';
 
 export default function PfNssfSetupPage() {
-  const [formData, setFormData] = useState({
-    fromDate: '2020-03-01',
-    toDate: '2026-12-31',
-    employerEpfFpsPercent: '3.67',
-    employerFpsPercent: '8.33',
-    employeeEpfFpsPercent: '12',
-    employeeFpsPercent: '0',
-    ac02EpfAdminCharges: '0.5',
-    ac02RoundValue: '100',
+  const defaultFormData = {
+    fromDate: '',
+    toDate: '',
+    employerEpfFpsPercent: '',
+    employerFpsPercent: '',
+    employeeEpfFpsPercent: '',
+    employeeFpsPercent: '',
+    ac02EpfAdminCharges: '',
+    ac02RoundValue: '',
     ac02RoundSide: 'Both',
-    ac21EdliPercent: '0.5',
-    ac21RoundValue: '100',
+    ac21EdliPercent: '',
+    ac21RoundValue: '',
     ac21RoundSide: 'Both',
-    ac22EdliAdminCharges: '0.1',
-    ac22RoundValue: '100',
+    ac22EdliAdminCharges: '',
+    ac22RoundValue: '',
     ac22RoundSide: 'Both',
-    ac22InspectionCharges: '0',
+    ac22InspectionCharges: '',
     grossWagesFormula: '',
-    
-    // Limits
-    employeeSalaryEpfLimit: '15000',
-    employeeSalaryFpsLimit: '15000',
-    employerSalaryEpfLimit: '15000',
-    employerSalaryFpsLimit: '15000',
-    pfNssfSalary: '15000',
+    employeeSalaryEpfLimit: '',
+    employeeSalaryFpsLimit: '',
+    employerSalaryEpfLimit: '',
+    employerSalaryFpsLimit: '',
+    pfNssfSalary: '',
     roundSideLimit: 'Both',
-    exemptionAgeLimit: '58',
+    exemptionAgeLimit: '',
+    employeeEpfInterestRate: '',
+    employeeFpsInterestRate: '',
+    employerEpfInterestRate: '',
+    employerFpsInterestRate: ''
+  };
 
-    // Interest Rates
-    employeeEpfInterestRate: '0',
-    employeeFpsInterestRate: '0',
-    employerEpfInterestRate: '0',
-    employerFpsInterestRate: '0',
-  });
+  const [formData, setFormData] = useState(defaultFormData);
+  const [loading, setLoading] = useState(true);
+  const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: '', title: '', message: '', onConfirm: null });
+
+  const fetchSetup = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/synchronisation2/pf-nssf-setup');
+      if (res.ok) {
+        const data = await res.json();
+        // Fallback to empty string for null values
+        const parsedData = Object.keys(defaultFormData).reduce((acc, key) => {
+          acc[key] = data[key] !== null && data[key] !== undefined ? data[key] : '';
+          return acc;
+        }, {});
+        setFormData(parsedData);
+      }
+    } catch (error) {
+      console.error('Error fetching PF/NSSF Setup:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const saved = localStorage.getItem('pfNssfSetup');
-    if (saved) {
-      setFormData(JSON.parse(saved));
-    }
+    fetchSetup();
   }, []);
-
-  const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: '', title: '', message: '', onConfirm: null });
 
   const showDialog = (type, title, message, onConfirm = null) => {
     setDialogConfig({ isOpen: true, type, title, message, onConfirm });
@@ -56,21 +71,28 @@ export default function PfNssfSetupPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSave = () => {
-    localStorage.setItem('pfNssfSetup', JSON.stringify(formData));
-    showDialog('info', 'Success', 'PF/NSSF Setup saved successfully!', () => setDialogConfig({ ...dialogConfig, isOpen: false }));
+  const handleSave = async () => {
+    try {
+      const res = await fetch('/api/synchronisation2/pf-nssf-setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        showDialog('info', 'Success', 'PF/NSSF Setup saved successfully!', () => setDialogConfig({ ...dialogConfig, isOpen: false }));
+      } else {
+        const err = await res.json();
+        showDialog('info', 'Error', err.error || 'Failed to save setup', () => setDialogConfig({ ...dialogConfig, isOpen: false }));
+      }
+    } catch (error) {
+      console.error('Error saving:', error);
+      showDialog('info', 'Error', 'Failed to save setup', () => setDialogConfig({ ...dialogConfig, isOpen: false }));
+    }
   };
 
   const handleNew = () => {
     showDialog('confirm', 'Confirm New', 'Clear form to create new setup?', () => {
-      setFormData({
-        fromDate: '', toDate: '', employerEpfFpsPercent: '', employerFpsPercent: '', employeeEpfFpsPercent: '', employeeFpsPercent: '',
-        ac02EpfAdminCharges: '', ac02RoundValue: '', ac02RoundSide: 'Both', ac21EdliPercent: '', ac21RoundValue: '', ac21RoundSide: 'Both',
-        ac22EdliAdminCharges: '', ac22RoundValue: '', ac22RoundSide: 'Both', ac22InspectionCharges: '', grossWagesFormula: '',
-        employeeSalaryEpfLimit: '', employeeSalaryFpsLimit: '', employerSalaryEpfLimit: '', employerSalaryFpsLimit: '',
-        pfNssfSalary: '', roundSideLimit: 'Both', exemptionAgeLimit: '',
-        employeeEpfInterestRate: '', employeeFpsInterestRate: '', employerEpfInterestRate: '', employerFpsInterestRate: ''
-      });
+      setFormData(defaultFormData);
       setDialogConfig({ ...dialogConfig, isOpen: false });
     });
   };
@@ -95,6 +117,10 @@ export default function PfNssfSetupPage() {
   };
 
   const requiredAsterisk = <span style={{color: '#ef4444'}}>*</span>;
+
+  if (loading) {
+    return <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>Loading setup...</div>;
+  }
 
   return (
     <div style={{ padding: '32px', maxWidth: '1400px', margin: '0 auto' }}>

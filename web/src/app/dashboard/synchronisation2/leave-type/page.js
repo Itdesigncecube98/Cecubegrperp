@@ -1,18 +1,35 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, CalendarHeart, Save, X, ToggleLeft, ToggleRight } from 'lucide-react';
 import Dialog from '@/components/Dialog';
 
 export default function LeaveTypePage() {
-  const [leaveTypes, setLeaveTypes] = useState([
-    { id: 1, name: 'Earned Leave', isActive: true },
-    { id: 2, name: 'Casual Leave', isActive: true },
-    { id: 3, name: 'Sick Leave', isActive: false },
-    { id: 4, name: 'Maternity Leave', isActive: false },
-    { id: 5, name: 'Paternity Leave', isActive: false },
-    { id: 6, name: 'Compensatory Off', isActive: true },
-    { id: 7, name: 'Leave Without Pay', isActive: true },
-  ]);
+  const [leaveTypes, setLeaveTypes] = useState([]);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const fetchLeaveTypes = async () => {
+    try {
+      const res = await fetch('/api/synchronisation2/leave-type');
+      if (res.ok) {
+        const json = await res.json();
+        setLeaveTypes(json);
+      } else {
+        showToast('Failed to fetch leave types', 'error');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('Error connecting to server', 'error');
+    }
+  };
+
+  useEffect(() => {
+    fetchLeaveTypes();
+  }, []);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -45,28 +62,65 @@ export default function LeaveTypePage() {
     setDeleteDialog({ isOpen: true, id });
   };
 
-  const confirmDelete = () => {
-    setLeaveTypes(leaveTypes.filter(l => l.id !== deleteDialog.id));
-    setDeleteDialog({ isOpen: false, id: null });
+  const confirmDelete = async () => {
+    try {
+      const res = await fetch(`/api/synchronisation2/leave-type/${deleteDialog.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('Leave type deleted successfully');
+        fetchLeaveTypes();
+        setDeleteDialog({ isOpen: false, id: null });
+      } else {
+        showToast('Failed to delete leave type', 'error');
+      }
+    } catch (error) {
+      showToast('Error deleting', 'error');
+    }
   };
 
-  const toggleStatus = (id) => {
-    setLeaveTypes(leaveTypes.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l));
+  const toggleStatus = async (id) => {
+    const lt = leaveTypes.find(l => l.id === id);
+    if (!lt) return;
+    try {
+      const res = await fetch(`/api/synchronisation2/leave-type/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...lt, isActive: !lt.isActive })
+      });
+      if (res.ok) {
+        fetchLeaveTypes();
+      } else {
+        showToast('Failed to update status', 'error');
+      }
+    } catch (error) {
+      showToast('Error updating status', 'error');
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name) {
-      alert('LeaveType Name is required');
+      showToast('LeaveType Name is required', 'error');
       return;
     }
 
-    if (editingId) {
-      setLeaveTypes(leaveTypes.map(l => l.id === editingId ? { ...formData, id: editingId } : l));
-    } else {
-      setLeaveTypes([...leaveTypes, { ...formData, id: Date.now() }]);
+    try {
+      const url = editingId ? `/api/synchronisation2/leave-type/${editingId}` : '/api/synchronisation2/leave-type';
+      const method = editingId ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        showToast(editingId ? 'Leave type updated successfully' : 'Leave type added successfully');
+        fetchLeaveTypes();
+        resetForm();
+      } else {
+        showToast('Failed to save leave type', 'error');
+      }
+    } catch (error) {
+      showToast('Error saving', 'error');
     }
-    resetForm();
   };
 
   const inputStyle = {
@@ -231,6 +285,12 @@ export default function LeaveTypePage() {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteDialog({ isOpen: false, id: null })}
       />
+
+      {toast && (
+        <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: toast.type === 'error' ? '#dc2626' : '#16a34a', color: 'white', padding: '10px 24px', borderRadius: '30px', fontWeight: 500, zIndex: 9999 }}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }

@@ -19,7 +19,7 @@ export default function DocApprovalsDashboard() {
   };
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (!empData) {
       router.replace('/login');
     } else {

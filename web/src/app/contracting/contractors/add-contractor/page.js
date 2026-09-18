@@ -1,7 +1,7 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   Home, ChevronRight, Save, ArrowLeft, User, Phone, MapPin, FileText
 } from 'lucide-react';
@@ -40,7 +40,7 @@ const FormGroup = ({ label, required, children }) => (
   </div>
 );
 
-export default function AddContractor() {
+function AddContractorForm() {
   const router = useRouter();
   const [groups] = useState([
     'Water Tanker Supplier', 'Heavy Vehicle Rental Service Provider', 
@@ -60,19 +60,72 @@ export default function AddContractor() {
     status: 'Regular',
     email: '',
     address: '',
+    address: '',
     gst: ''
   });
+  
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id');
 
-  const handleSave = () => {
+  React.useEffect(() => {
+    if (id) {
+      fetch(`/api/contractors/${id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && !data.error) {
+            setFormData({
+              name: data.companyName || '',
+              group: '', // Not in DB currently
+              phone: data.phone || '',
+              mobile: data.phone || '',
+              pan: data.panNumber || '',
+              status: data.status || 'Regular',
+              email: data.email || '',
+              address: data.address || '',
+              gst: data.gstNumber || ''
+            });
+          }
+        })
+        .catch(err => console.error('Error fetching contractor:', err));
+    }
+  }, [id]);
+
+  const handleSave = async () => {
     if (!formData.name) {
       alert("Contractor Name is required!");
       return;
     }
     
-    // In a real app we would save to API/DB here
-    // For now we simulate save and redirect
-    alert("Contractor Saved Successfully!");
-    router.push('/contracting/contractors/contractor-list');
+    try {
+      const url = id ? `/api/contractors/${id}` : '/api/contractors';
+      const method = id ? 'PUT' : 'POST';
+      
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          companyName: formData.name,
+          email: formData.email,
+          phone: formData.mobile || formData.phone,
+          address: formData.address,
+          gstNumber: formData.gst,
+          panNumber: formData.pan,
+          status: formData.status
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || `Failed to ${id ? 'update' : 'add'} contractor`);
+      }
+
+      alert(`Contractor ${id ? 'Updated' : 'Saved'} Successfully!`);
+      router.push('/contracting/contractors/contractor-list');
+    } catch (error) {
+      alert(error.message);
+    }
   };
 
   return (
@@ -358,17 +411,23 @@ export default function AddContractor() {
           </div>
         </FormSection>
 
-        {/* Footer Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', paddingBottom: '32px' }}>
-          <button 
-            className="btn-cyan" 
-            style={{ padding: '10px 24px' }}
-            onClick={handleSave}
-          >
+        <div style={{ padding: '24px', background: 'white', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button className="btn-cyan" style={{ background: '#f1f5f9', color: '#475569' }} onClick={() => router.push('/contracting/contractors/contractor-list')}>
+            Cancel
+          </button>
+          <button className="btn-cyan" onClick={handleSave}>
             <Save size={16} /> Save Contractor
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AddContractor() {
+  return (
+    <Suspense fallback={<div style={{ padding: '20px' }}>Loading...</div>}>
+      <AddContractorForm />
+    </Suspense>
   );
 }

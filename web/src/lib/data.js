@@ -26,7 +26,7 @@ export const getEmployees = async (role = null) => {
 };
 
 export const getAnalytics = async () => {
-  const res = await fetch('/api/analytics');
+  const res = await fetch('/api/analytics', { cache: 'no-store' });
   return await res.json();
 };
 
@@ -40,7 +40,10 @@ export const addEmployee = async (employeeData) => {
 };
 
 export const updateEmployee = async (id, updatedData) => {
-  const res = await fetch('/api/employees', {
+  // The PUT handler lives on the per-employee route (/api/employees/[id]).
+  // The collection route (/api/employees) only supports GET and POST, so
+  // posting to it returned 405 and silently discarded the changes.
+  const res = await fetch(`/api/employees/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, ...updatedData })
@@ -49,7 +52,7 @@ export const updateEmployee = async (id, updatedData) => {
 };
 
 export const deleteEmployee = async (id) => {
-  const res = await fetch(`/api/employees?id=${id}`, {
+  const res = await fetch(`/api/employees/${encodeURIComponent(id)}`, {
     method: 'DELETE'
   });
   return await res.json();
@@ -57,7 +60,7 @@ export const deleteEmployee = async (id) => {
 
 export const getAttendance = async (date) => {
   const targetDate = date || new Date().toISOString().split('T')[0];
-  const res = await fetch(`/api/attendance?date=${targetDate}`);
+  const res = await fetch(`/api/attendance?date=${targetDate}`, { cache: 'no-store' });
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data) ? data : [];
@@ -73,12 +76,12 @@ export const markAttendance = async (employeeId, date, status, shiftType = 'Day'
 };
 
 export const getEmployeeStats = async (employeeId) => {
-  const res = await fetch(`/api/attendance/stats?employeeId=${employeeId}`);
+  const res = await fetch(`/api/attendance/stats?employeeId=${employeeId}`, { cache: 'no-store' });
   return await res.json();
 };
 
 export const getAdmins = async () => {
-  const res = await fetch('/api/admins');
+  const res = await fetch('/api/admins', { cache: 'no-store' });
   return await res.json();
 };
 
@@ -114,7 +117,7 @@ export const getPunchRequests = async (supervisorId = null, employeeId = null) =
   if (employeeId) params.append('employeeId', employeeId);
   if (params.toString()) url += `?${params.toString()}`;
   
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   return await res.json();
 };
 
@@ -143,7 +146,7 @@ export const getLeaveRequests = async (supervisorId = null, employeeId = null) =
   if (employeeId) params.append('employeeId', employeeId);
   if (params.toString()) url += `?${params.toString()}`;
   
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   return await res.json();
 };
 
@@ -166,7 +169,7 @@ export const updateLeaveRequestStatus = async (id, status, approvedBy = null, ro
 };
 
 export const getLeaveBalance = async (employeeId) => {
-  const res = await fetch(`/api/leaves/balance?employeeId=${employeeId}`);
+  const res = await fetch(`/api/leaves/balance?employeeId=${employeeId}`, { cache: 'no-store' });
   return await res.json();
 };
 
@@ -180,7 +183,7 @@ export const updateLeaveBalance = async (data) => {
 };
 
 export const getHolidays = async () => {
-  const res = await fetch('/api/leaves/holidays');
+  const res = await fetch('/api/leaves/holidays', { cache: 'no-store' });
   return await res.json();
 };
 
@@ -201,7 +204,7 @@ export const deleteHoliday = async (id) => {
 };
 
 export const getSettings = async () => {
-  const res = await fetch('/api/settings');
+  const res = await fetch('/api/settings', { cache: 'no-store' });
   return await res.json();
 };
 
@@ -215,7 +218,7 @@ export const updateSettings = async (data) => {
 };
 
 export const getWorkWeeks = async () => {
-  const res = await fetch('/api/setup/workweek');
+  const res = await fetch('/api/setup/workweek', { cache: 'no-store' });
   return await res.json();
 };
 
@@ -229,7 +232,7 @@ export const updateWorkWeeks = async (data) => {
 };
 
 export const getLeaveTypes = async () => {
-  const res = await fetch('/api/setup/leavetype');
+  const res = await fetch('/api/setup/leavetype', { cache: 'no-store' });
   return await res.json();
 };
 
@@ -250,7 +253,7 @@ export const deleteLeaveType = async (id) => {
 };
 
 export const getAnnouncements = async () => {
-  const res = await fetch('/api/announcements');
+  const res = await fetch('/api/announcements', { cache: 'no-store' });
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data) ? data : [];
@@ -306,7 +309,7 @@ export const getLocationRequests = async (employeeId = '', date = '') => {
   let url = '/api/location-requests?';
   if (employeeId) url += `employeeId=${employeeId}&`;
   if (date) url += `date=${date}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   return await res.json();
 };
 
@@ -348,7 +351,7 @@ export const getDocuments = async (employeeId = '', type = '') => {
   let url = '/api/documents?';
   if (employeeId) url += `employeeId=${employeeId}&`;
   if (type) url += `type=${type}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: 'no-store' });
   return await res.json();
 };
 
@@ -417,4 +420,3 @@ export const deleteCandidate = async (id) => {
   });
   return await res.json();
 };
-

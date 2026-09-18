@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { FileText, Download, Filter, Users, Calendar, RefreshCw, TrendingUp, IndianRupee, CheckCircle, XCircle, Clock } from 'lucide-react';
+import MultiSelect from '@/components/MultiSelect';
 
 const STATUS_COLORS = {
   PENDING_SUPERVISOR: { bg: '#fef9c3', color: '#854d0e', label: 'Pending Supervisor' },
@@ -14,9 +15,13 @@ const STATUS_COLORS = {
 };
 
 export default function ImprestReportsPage() {
-  const [mode, setMode] = useState('monthly'); // 'monthly' | 'employee'
   const [employees, setEmployees] = useState([]);
-  const [selectedEmployee, setSelectedEmployee] = useState('');
+  const [departments, setDepartments] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [selectedEmployees, setSelectedEmployees] = useState([]);
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [selectedBranches, setSelectedBranches] = useState([]);
+
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -26,9 +31,22 @@ export default function ImprestReportsPage() {
   const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {
-    fetch('/api/employees?fields=id,name,empId,department')
+    fetch('/api/employees?fields=id,name,empId,department,siteOffice')
       .then(r => r.json())
-      .then(d => setEmployees(Array.isArray(d) ? d : []))
+      .then(d => {
+        if (Array.isArray(d)) {
+          setEmployees(d);
+          setSelectedEmployees(d.map(e => `${e.name} (${e.empId})`));
+          
+          const uniqueDepts = [...new Set(d.map(x => x.department).filter(Boolean))];
+          const uniqueBranches = [...new Set(d.map(x => x.siteOffice).filter(Boolean))];
+          
+          setDepartments(uniqueDepts);
+          setSelectedDepartments(uniqueDepts);
+          setBranches(uniqueBranches);
+          setSelectedBranches(uniqueBranches);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -37,8 +55,7 @@ export default function ImprestReportsPage() {
     setHasFetched(true);
     try {
       const params = new URLSearchParams();
-      if (mode === 'monthly') params.set('month', selectedMonth);
-      if (mode === 'employee' && selectedEmployee) params.set('employeeId', selectedEmployee);
+      params.set('month', selectedMonth);
 
       const res = await fetch(`/api/imprest/reports?${params}`);
       const json = await res.json();
@@ -48,23 +65,36 @@ export default function ImprestReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [mode, selectedMonth, selectedEmployee]);
+  }, [selectedMonth]);
+
+  const filteredData = data.filter(r => {
+    const isAllDepts = selectedDepartments.length === departments.length || departments.length === 0;
+    const isAllBranches = selectedBranches.length === branches.length || branches.length === 0;
+    const isAllEmps = selectedEmployees.length === employees.length || employees.length === 0;
+
+    const deptMatch = isAllDepts || (r.employee?.department && selectedDepartments.includes(r.employee.department));
+    const branchMatch = isAllBranches || (r.employee?.siteOffice && selectedBranches.includes(r.employee.siteOffice));
+    const empLabel = r.employee ? `${r.employee.name} (${r.employee.empId})` : null;
+    const empMatch = isAllEmps || (empLabel && selectedEmployees.includes(empLabel));
+
+    return deptMatch && branchMatch && empMatch;
+  });
 
   // Summary stats
   const stats = {
-    total: data.length,
-    totalAmount: data.reduce((s, r) => s + (r.amountRequested || 0), 0),
-    approvedAmount: data.filter(r => ['APPROVED', 'ISSUED'].includes(r.status)).reduce((s, r) => s + (r.approvedAmount || r.amountRequested || 0), 0),
-    approved: data.filter(r => ['APPROVED', 'ISSUED'].includes(r.status)).length,
-    pending: data.filter(r => r.status?.startsWith('PENDING')).length,
-    rejected: data.filter(r => r.status === 'REJECTED').length,
+    total: filteredData.length,
+    totalAmount: filteredData.reduce((s, r) => s + (r.amountRequested || 0), 0),
+    approvedAmount: filteredData.filter(r => ['APPROVED', 'ISSUED'].includes(r.status)).reduce((s, r) => s + (r.approvedAmount || r.amountRequested || 0), 0),
+    approved: filteredData.filter(r => ['APPROVED', 'ISSUED'].includes(r.status)).length,
+    pending: filteredData.filter(r => r.status?.startsWith('PENDING')).length,
+    rejected: filteredData.filter(r => r.status === 'REJECTED').length,
   };
 
   const exportToExcel = () => {
-    if (!data.length) return;
+    if (!filteredData.length) return;
 
     const headers = ['Imprest ID', 'Employee Name', 'Emp Code', 'Department', 'Imprest Head', 'Amount Requested (₹)', 'Approved Amount (₹)', 'Purpose', 'Project/Site', 'Required Date', 'Status', 'Request Date'];
-    const rows = data.map(r => [
+    const rows = filteredData.map(r => [
       r.requestId || '',
       r.employee?.name || '',
       r.employee?.empId || '',
@@ -87,9 +117,7 @@ export default function ImprestReportsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const reportName = mode === 'monthly'
-      ? `Imprest_Report_${selectedMonth}`
-      : `Imprest_Report_${employees.find(e => e.id === selectedEmployee)?.name?.replace(/\s+/g, '_') || 'Employee'}`;
+    const reportName = `Imprest_Report_${selectedMonth}`;
     a.download = `${reportName}.csv`;
     a.click();
     URL.revokeObjectURL(url);
@@ -118,55 +146,31 @@ export default function ImprestReportsPage() {
           <span style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>Report Filters</span>
         </div>
 
-        {/* Mode Toggle */}
-        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem' }}>
-          {[{ id: 'monthly', label: 'Monthly Report', icon: Calendar }, { id: 'employee', label: 'Employee Report', icon: Users }].map(m => (
-            <button
-              key={m.id}
-              onClick={() => { setMode(m.id); setHasFetched(false); setData([]); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                border: mode === m.id ? '2px solid #0ea5e9' : '2px solid #e2e8f0',
-                backgroundColor: mode === m.id ? '#e0f2fe' : '#f8fafc',
-                color: mode === m.id ? '#0284c7' : '#64748b',
-                transition: 'all 0.15s'
-              }}
-            >
-              <m.icon size={14} /> {m.label}
-            </button>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Organization / Branch</label>
+            <MultiSelect options={branches} selected={selectedBranches} onChange={setSelectedBranches} placeholder="Select Branch" />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Department</label>
+            <MultiSelect options={departments} selected={selectedDepartments} onChange={setSelectedDepartments} placeholder="Select Department" />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Employee</label>
+            <MultiSelect options={employees.map(e => `${e.name} (${e.empId})`)} selected={selectedEmployees} onChange={setSelectedEmployees} placeholder="Select Employee" />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Select Month</label>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', color: '#0f172a', outline: 'none' }}
+            />
+          </div>
         </div>
 
-        {/* Inputs */}
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          {mode === 'monthly' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minWidth: '200px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Select Month</label>
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={e => setSelectedMonth(e.target.value)}
-                style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '14px', color: '#0f172a', outline: 'none' }}
-              />
-            </div>
-          )}
-
-          {mode === 'employee' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minWidth: '200px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Select Employee</label>
-              <select
-                value={selectedEmployee}
-                onChange={e => setSelectedEmployee(e.target.value)}
-                style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '14px', color: '#0f172a', backgroundColor: '#fff', outline: 'none' }}
-              >
-                <option value="">-- All Employees --</option>
-                {employees.map(emp => (
-                  <option key={emp.id} value={emp.id}>{emp.name} ({emp.empId})</option>
-                ))}
-              </select>
-            </div>
-          )}
 
           <button
             onClick={fetchReport}
@@ -183,7 +187,7 @@ export default function ImprestReportsPage() {
             {loading ? 'Loading...' : 'Generate Report'}
           </button>
 
-          {data.length > 0 && (
+          {filteredData.length > 0 && (
             <button
               onClick={exportToExcel}
               style={{
@@ -226,7 +230,7 @@ export default function ImprestReportsPage() {
       {/* Table */}
       {hasFetched && !loading && (
         <div style={{ backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-          {data.length === 0 ? (
+          {filteredData.length === 0 ? (
             <div style={{ padding: '4rem', textAlign: 'center', color: '#64748b' }}>
               <FileText size={48} color="#cbd5e1" style={{ margin: '0 auto 1rem' }} />
               <h3 style={{ margin: '0 0 0.5rem', color: '#0f172a' }}>No Records Found</h3>
@@ -243,7 +247,7 @@ export default function ImprestReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((r, i) => {
+                  {filteredData.map((r, i) => {
                     const sc = STATUS_COLORS[r.status] || { bg: '#f1f5f9', color: '#475569', label: r.status };
                     return (
                       <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: i % 2 === 0 ? '#fff' : '#fafafa' }}>

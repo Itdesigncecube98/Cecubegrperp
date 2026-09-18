@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import MultiSelect from '../../../../components/MultiSelect';
 import '../../attendance/attendance.css';
 
 function getDaysInRange(startDate, endDate) {
@@ -25,6 +26,14 @@ export default function DayWiseAttendance() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [tableData, setTableData] = useState([]);
+  
+  const [employeesList, setEmployeesList] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  
+  const [selectedBranches, setSelectedBranches] = useState([]);
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [selectedEmployees, setSelectedEmployees] = useState([]);
 
   const today = new Date();
   const monday = new Date(today);
@@ -36,69 +45,74 @@ export default function DayWiseAttendance() {
 
   const fetchData = async () => {
     setLoading(true);
-    const dateRange = getDaysInRange(startDate, endDate);
-
     try {
-      const empRes = await fetch('/api/employees');
-      const emps = await empRes.json();
-      const totalEmployees = emps.length;
-
-      const holRes = await fetch('/api/leaves/holidays');
-      const holidaysData = await holRes.json();
-      const holidaySet = new Set(holidaysData.map(h => h.date));
-
-      const results = [];
-      for (const d of dateRange) {
-        const dateStr = fmt(d);
-        const res = await fetch(`/api/attendance?date=${dateStr}`);
+      const res = await fetch(`/api/attendance/daily-trend?startDate=${startDate}&endDate=${endDate}`);
+      if (res.ok) {
         const data = await res.json();
         
-        let present = 0;
-        let absent = 0;
-        let late = 0;
-        let wo = 0;
-
-        if (Array.isArray(data)) {
-          data.forEach(rec => {
-            if (rec.status === 'Present') present++;
-            else if (rec.status === 'Absent') absent++; // explicit absents
-            else if (rec.status === 'Late') late++;
-            else if (rec.status === 'Weekly Off' || rec.status === 'WO') wo++;
-          });
-        }
-
-        const dateObj = new Date(d);
-        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-        const isSunday = dateObj.getDay() === 0;
-        const isHoliday = holidaySet.has(dateStr) || isSunday;
-
-        let finalAbsent = 0;
-        if (!isHoliday) {
-          // If no explicit absents were found but some employees didn't punch in, consider them absent
-          finalAbsent = Math.max(absent, totalEmployees - (present + late + wo));
-        }
-        
-        results.push({
-          date: dateStr,
-          dayName,
-          all: totalEmployees,
-          present,
-          absent: finalAbsent,
-          late,
-          earlyGoing: 0,
-          lcEg: 0,
-          holiday: (holidaySet.has(dateStr) && !isSunday) ? totalEmployees : 0,
-          wo: isSunday ? totalEmployees : wo,
-          halfDay: 0,
-          isHoliday
+        const results = data.map(day => {
+           const dateObj = new Date(day.fullDate);
+           const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+           
+           return {
+             date: day.fullDate,
+             dayName: dayName,
+             all: day.all || 0,
+             present: day.Present + day.COff, // Combine normal present + compensatory off present
+             absent: day.Absent,
+             late: day.Late || 0,
+             earlyGoing: 0,
+             lcEg: day.Late || 0, // Using late as LC/EG
+             holiday: day.Holiday,
+             wo: day.Off,
+             halfDay: day.HalfDay || 0,
+             isHoliday: day.Holiday > 0 || day.Off > 0
+           };
         });
+        
+        results.sort((a, b) => a.date.localeCompare(b.date));
+        setTableData(results);
       }
-
-      results.sort((a, b) => a.date.localeCompare(b.date));
-      setTableData(results);
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e); 
+    }
     setLoading(false);
   };
+
+  useEffect(() => {
+    async function loadFilters() {
+      try {
+        const [empRes, branchRes, deptRes] = await Promise.all([
+          fetch('/api/employees'),
+          fetch('/api/synchronization?type=siteoffices'),
+          fetch('/api/synchronization?type=departments')
+        ]);
+        
+        if (empRes.ok) {
+          const data = await empRes.json();
+          if (Array.isArray(data)) {
+            setEmployeesList(data);
+            setSelectedEmployees(data.map(e => `${e.name} (${e.empId})`));
+          }
+        }
+        if (branchRes.ok) {
+          const data = await branchRes.json();
+          const names = data.map(d => d.name || d.siteOfficeName || d);
+          setBranches(names);
+          setSelectedBranches(names);
+        }
+        if (deptRes.ok) {
+          const data = await deptRes.json();
+          const names = data.map(d => d.name || d.departmentName || d);
+          setDepartments(names);
+          setSelectedDepartments(names);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadFilters();
+  }, []);
 
   useEffect(() => {
     const adminData = sessionStorage.getItem('adminData');
@@ -124,12 +138,33 @@ export default function DayWiseAttendance() {
       </div>
 
       <div className="card">
-        <div className="filtersRow">
+        <div className="filtersRow" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
           <div className="filterGroup">
-            <label className="filterLabel">Organization*</label>
-            <select className="filterInput">
-              <option>Cecube Engineering India Pvt Ltd</option>
-            </select>
+            <label className="filterLabel">Organization / Branch</label>
+            <MultiSelect
+              options={branches}
+              selected={selectedBranches}
+              onChange={setSelectedBranches}
+              placeholder="Select Branch"
+            />
+          </div>
+          <div className="filterGroup">
+            <label className="filterLabel">Department</label>
+            <MultiSelect
+              options={departments}
+              selected={selectedDepartments}
+              onChange={setSelectedDepartments}
+              placeholder="Select Department"
+            />
+          </div>
+          <div className="filterGroup">
+            <label className="filterLabel">Employee</label>
+            <MultiSelect
+              options={employeesList.map(e => `${e.name} (${e.empId})`)}
+              selected={selectedEmployees}
+              onChange={setSelectedEmployees}
+              placeholder="Select Employee"
+            />
           </div>
           <div className="filterGroup">
             <label className="filterLabel">Date From*</label>

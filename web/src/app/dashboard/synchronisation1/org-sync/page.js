@@ -16,6 +16,7 @@ export default function SynchronizationPage() {
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '', type: 'info' });
   const [formData, setFormData] = useState({
     name: '',
+    code: '',
     organization: '',
     description: '',
     department: '',
@@ -202,7 +203,7 @@ export default function SynchronizationPage() {
       if (res.ok) {
         setIsModalOpen(false);
         setEditingItem(null);
-        setFormData({ name: '', organization: '', description: '', department: '', grade: '', designation: '', imprestHead: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
+        setFormData({ name: '', code: '', organization: '', description: '', department: '', grade: '', designation: '', imprestHead: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
         fetchItems();
       }
     } catch (err) {
@@ -232,6 +233,7 @@ export default function SynchronizationPage() {
     setEditingItem(item);
     setFormData({
       name: item.name,
+      code: item.code || '',
       organization: item.organization || '',
       description: item.description || '',
       department: item.department || '',
@@ -246,7 +248,7 @@ export default function SynchronizationPage() {
 
   const handleAdd = () => {
     setEditingItem(null);
-    setFormData({ name: '', organization: '', description: '', department: '', grade: '', designation: '', imprestHead: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
+    setFormData({ name: '', code: '', organization: '', description: '', department: '', grade: '', designation: '', imprestHead: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
     setIsModalOpen(true);
   };
 
@@ -630,6 +632,23 @@ export default function SynchronizationPage() {
                 />
               </div>
 
+              {activeTab === 'organizations' && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
+                    Employee Code Prefix *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.code}
+                    onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
+                    style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '0.95rem', outline: 'none' }}
+                    placeholder="e.g. CEIPL or CGEPL"
+                  />
+                  <div style={{ marginTop: '0.35rem', color: '#6b7280', fontSize: '0.8rem' }}>New employees will receive the next number under this prefix.</div>
+                </div>
+              )}
+
               {activeTab !== 'organizations' && activeTab !== 'imprestheads' && activeTab !== 'grades' && activeTab !== 'designations' && activeTab !== 'impresttypes' && (
                 <div style={{ marginBottom: '1.25rem' }}>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
@@ -743,7 +762,7 @@ export default function SynchronizationPage() {
                   onClick={() => {
                     setIsModalOpen(false);
                     setEditingItem(null);
-                    setFormData({ name: '', organization: '', description: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
+                    setFormData({ name: '', code: '', organization: '', description: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
                   }}
                   style={{
                     padding: '0.75rem 1.5rem',

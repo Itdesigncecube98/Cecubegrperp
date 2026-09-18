@@ -9,10 +9,13 @@ export default function PayrollLayout({ children }) {
 
   const tabs = [
     { name: 'Pay Cycle', path: '/dashboard/payroll/pay-cycle' },
+    { name: 'Attendance', path: '/dashboard/payroll/attendance' },
     { name: 'Salary Calculation', path: '/dashboard/payroll/salary-calculation' },
     { name: 'Arrears Calculation', path: '/dashboard/payroll/arrears-calculation' },
     { name: 'Bonus/Incentive', path: '/dashboard/payroll/bonus-incentive' },
     { name: 'Gratuity', path: '/dashboard/payroll/gratuity' },
+    { name: 'Leave Encashment', path: '/dashboard/payroll/leave-encashment' },
+    { name: 'Leave Travel Allowance', path: '/dashboard/payroll/lta' },
     { name: 'Post Salary', path: '/dashboard/payroll/post-salary' }
   ];
 

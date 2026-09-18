@@ -19,8 +19,8 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "Cecube Attendance System",
-  description: "Attendance & HR management system",
+  title: "CeCube Group",
+  description: "Dashboard for CeCube Group",
 };
 
 export default function RootLayout({ children }) {

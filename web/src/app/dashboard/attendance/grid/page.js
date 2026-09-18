@@ -115,6 +115,7 @@ export default function AttendanceGridPage() {
     if (status === 'Present') return 'P';
     if (status === 'Absent') return 'A';
     if (status === 'Late') return 'L';
+    if (status === 'Half Day') return 'HD';
     return status === 'Weekly Off' ? 'WO' : status.substring(0, 2).toUpperCase();
   };
 

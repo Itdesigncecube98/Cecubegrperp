@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 import '../reports.css';
 
@@ -29,9 +30,10 @@ export default function TeamNightPunchesEmployeeWiseReport() {
 
   const [punches, setPunches] = useState([]);
   const [loading, setLoading] = useState(false);
+  const reportFilters = useReportFilters();
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (empData) setEmployee(JSON.parse(empData));
   }, []);
 
@@ -95,9 +97,13 @@ export default function TeamNightPunchesEmployeeWiseReport() {
     }
   };
 
-  // Group by employee
+  // Group by employee (filtered)
+  const filteredPunches = reportFilters.applyFilters(
+    punches,
+    (row) => ({ name: row.name, empId: row.empCode, siteOffice: null, department: null })
+  );
   const groupedByEmployee = {};
-  punches.forEach(p => {
+  filteredPunches.forEach(p => {
     const key = `${p.empCode} - ${p.name}`;
     if (!groupedByEmployee[key]) {
       groupedByEmployee[key] = [];
@@ -139,7 +145,8 @@ export default function TeamNightPunchesEmployeeWiseReport() {
         </button>
       </div>
 
-      <div className="filtersRow card" style={{ padding: '1rem', marginBottom: '1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'flex-end' }}>
+      <div className="filtersRow card" style={{ padding: '1rem', marginBottom: '1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <ReportFilters {...reportFilters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
         <div className="filterGroup" style={{ flex: 1, minWidth: '200px' }}>
           <label className="filterLabel">Start Date</label>
           <input 

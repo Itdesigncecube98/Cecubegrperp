@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Download } from 'lucide-react';
 import { exportToCSV } from '../../../../lib/exportUtils';
+import ReportFilters, { useReportFilters } from '../../../../components/ReportFilters';
 import '../../attendance/attendance.css';
 
 function getDaysInRange(startDate, endDate) {
@@ -26,6 +27,7 @@ export default function LiveTrackingMuster() {
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [trackingData, setTrackingData] = useState({});
+  const filters = useReportFilters();
 
   const today = new Date();
   const startObj = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -88,19 +90,16 @@ export default function LiveTrackingMuster() {
 
       <div className="card">
         <div className="filtersRow">
-          <div className="filterGroup">
-            <label className="filterLabel">Date From*</label>
-            <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Date To*</label>
-            <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
-          <div className="filterGroup">
-            <label className="filterLabel">Organization</label>
-            <select className="filterInput">
-              <option>Cecube Engineering India Pvt Ltd</option>
-            </select>
+          <ReportFilters {...filters} style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: '0.5rem' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: '1rem' }}>
+            <div className="filterGroup">
+              <label className="filterLabel">Date From*</label>
+              <input type="date" className="filterInput" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="filterGroup">
+              <label className="filterLabel">Date To*</label>
+              <input type="date" className="filterInput" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
           </div>
         </div>
 
@@ -166,7 +165,7 @@ export default function LiveTrackingMuster() {
                     <td colSpan={4 + dateRange.length} style={{ textAlign: 'center', padding: '2rem' }}>Loading report...</td>
                   </tr>
                 ) : employees.length > 0 ? (
-                  employees.map(emp => (
+                  filters.applyFilters(employees).map(emp => (
                     <tr key={emp.id}>
                       <td className="stickyCol">{emp.empId}</td>
                       <td className="stickyCol" style={{ left: '100px' }}>{emp.branch || '—'}</td>

@@ -1,151 +1,174 @@
 'use client';
-import React from 'react';
-import { Search, RefreshCw, Calculator, Printer, FileDown } from 'lucide-react';
 
-export default function Gratuity() {
-  const [data, setData] = React.useState([
-    { id: 1, empNo: 'CEIPL084', name: 'Aayushee Varshney', dept: 'General Administration', pos: 'Design Engineer', status: 'Working', salary: '25000.00', doj: '01/01/2021', dol: '', uptoDate: '31/08/2026', period: '0', amount: '0.00' },
-    { id: 2, empNo: 'CEIPL065', name: 'Abhijit Chatterjee', dept: 'General Administration', pos: 'Manager -E&C', status: 'Working', salary: '50000.00', doj: '10/04/2015', dol: '', uptoDate: '31/08/2026', period: '0', amount: '0.00' },
-    { id: 3, empNo: 'HEL047', name: 'Ajay', dept: 'Operations / Projects', pos: 'Helper', status: 'Working', salary: '15000.00', doj: '01/01/2018', dol: '', uptoDate: '31/08/2026', period: '0', amount: '0.00' },
-    { id: 4, empNo: 'CEIPL111', name: 'Ajeet Kushwaha', dept: 'Operations / Projects', pos: 'Civil Engineer', status: 'Working', salary: '30000.00', doj: '01/10/2020', dol: '', uptoDate: '31/08/2026', period: '0', amount: '0.00' },
-    { id: 5, empNo: 'CEIPL110', name: 'Amit Kumar', dept: 'Marketing & Business Development', pos: 'Senior Manager', status: 'Working', salary: '60000.00', doj: '16/09/2010', dol: '', uptoDate: '31/08/2026', period: '0', amount: '0.00' }
-  ]);
+import { useState, useEffect, useMemo } from 'react';
+import { Search } from 'lucide-react';
+import MultiSelect from '@/components/MultiSelect';
+import '../../leaves/leaves.css';
 
-  const handleCalculate = () => {
-    const saved = localStorage.getItem('gratuitySetups');
-    if (saved) {
-      const setups = JSON.parse(saved);
-      if (setups.length > 0) {
-        const setup = setups[0];
-        const minLimit = parseInt(setup.minServedLimit) || 60; // in months
-        
-        setData(data.map(item => {
-          // simple mock calculation
-          const startYear = parseInt(item.doj.split('/')[2]);
-          const currentYear = 2026;
-          const yearsServed = currentYear - startYear;
-          const monthsServed = yearsServed * 12;
-          
-          let gratuityAmt = 0;
-          if (monthsServed >= minLimit) {
-            const baseSalary = parseFloat(item.salary);
-            gratuityAmt = (baseSalary * 15 / 26) * yearsServed;
-          }
-          
-          return {
-            ...item,
-            period: yearsServed.toString(),
-            amount: gratuityAmt.toFixed(2)
-          };
-        }));
+export default function GratuityCalculatorPage() {
+  const [gratuityList, setGratuityList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter States
+  const [selectedDepts, setSelectedDepts] = useState([]);
+  const [selectedEmps, setSelectedEmps] = useState([]);
+
+  useEffect(() => {
+    fetchGratuityData();
+  }, []);
+
+  const fetchGratuityData = async () => {
+    try {
+      const res = await fetch('/api/payroll/gratuity');
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to fetch gratuity data');
       }
-    } else {
-      alert("No Gratuity setup found. Please configure it in Synchronisation 1.");
+
+      setGratuityList(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
+
+  // Derive unique options
+  const uniqueDepts = useMemo(() => {
+    return [...new Set(gratuityList.map(r => r.department).filter(Boolean))].sort();
+  }, [gratuityList]);
+
+  const uniqueEmps = useMemo(() => {
+    return [...new Set(gratuityList.map(r => r.employeeName).filter(Boolean))].sort();
+  }, [gratuityList]);
+
+  const filteredList = gratuityList.filter(emp => {
+    const searchMatch = emp.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) || (emp.employeeCode && emp.employeeCode.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    // For MultiSelect, if empty or all selected, it's a match
+    const isAllDepts = selectedDepts.length === 0 || selectedDepts.length === uniqueDepts.length;
+    const isAllEmps = selectedEmps.length === 0 || selectedEmps.length === uniqueEmps.length;
+
+    const deptMatch = isAllDepts || (emp.department && selectedDepts.includes(emp.department));
+    const empMatch = isAllEmps || (emp.employeeName && selectedEmps.includes(emp.employeeName));
+
+    return searchMatch && deptMatch && empMatch;
+  });
 
   return (
     <div>
       <div className="filter-bar">
-        <div className="filter-group">
-          <label>Department</label>
-          <select><option>Select Here</option></select>
-        </div>
-        <div className="filter-group">
-          <label>Employee</label>
-          <select><option>Select Here</option></select>
-        </div>
-        <div className="filter-group">
-          <label>Employee Status</label>
-          <select><option>Select Here</option></select>
-        </div>
-        <div className="filter-group">
-          <label>Upto Date</label>
-          <input type="month" defaultValue="2026-08" />
-        </div>
-      </div>
-
-      <div className="filter-bar" style={{ marginTop: '-0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', alignItems: 'center' }}>
-        <div className="checkbox-group">
-          <input type="checkbox" id="calculated" />
-          <label htmlFor="calculated">Calculated</label>
-        </div>
-
-        <div className="filter-actions">
-          <button className="btn-outline" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <RefreshCw size={16} /> Reset
-          </button>
-          <button className="btn-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <Search size={16} /> Search
-          </button>
-        </div>
-      </div>
-
-      <div className="summary-badges" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button onClick={handleCalculate} className="btn-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#0ea5e9' }}>
-            <Calculator size={16} /> Calculate
-          </button>
-          <button className="btn-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#0ea5e9' }}>
-            <Printer size={16} /> Print
-          </button>
-          <button className="btn-outline" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', borderColor: 'var(--pay-primary)', color: 'var(--pay-primary)' }}>
-            <FileDown size={16} /> Export To excel
-          </button>
-        </div>
-        
-        <div className="pagination-controls" style={{ marginTop: 0 }}>
-          <span>Show Rows:</span>
-          <select defaultValue="40"><option>40</option><option>100</option></select>
-          <span>Page: 1 of 4</span>
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <button className="btn-outline" style={{ padding: '0.25rem 0.5rem' }}>Go</button>
-            <button className="btn-outline" style={{ padding: '0.25rem 0.5rem' }}>{'<<'}</button>
-            <button className="btn-outline" style={{ padding: '0.25rem 0.5rem' }}>{'<'}</button>
-            <button className="btn-primary" style={{ padding: '0.25rem 0.5rem' }}>1</button>
-            <button className="btn-outline" style={{ padding: '0.25rem 0.5rem' }}>2</button>
-            <button className="btn-outline" style={{ padding: '0.25rem 0.5rem' }}>3</button>
-            <button className="btn-outline" style={{ padding: '0.25rem 0.5rem' }}>{'>'}</button>
-            <button className="btn-outline" style={{ padding: '0.25rem 0.5rem' }}>{'>>'}</button>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem', width: '100%' }}>
+          <div className="filter-group">
+            <label>Department</label>
+            <MultiSelect
+              options={uniqueDepts}
+              selectedOptions={selectedDepts}
+              onChange={setSelectedDepts}
+              placeholder="Select Departments"
+            />
+          </div>
+          <div className="filter-group">
+            <label>Employee</label>
+            <MultiSelect
+              options={uniqueEmps}
+              selectedOptions={selectedEmps}
+              onChange={setSelectedEmps}
+              placeholder="Select Employees"
+            />
+          </div>
+          <div className="filter-group" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', padding: '0.5rem', borderRadius: '4px', border: '1px solid #e5e7eb', height: '38px', flex: 1 }}>
+              <Search size={16} color="#9ca3af" />
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ border: 'none', outline: 'none', width: '100%', fontSize: '14px' }}
+              />
+            </div>
+            <button className="btn btnPrimary" onClick={fetchGratuityData} disabled={loading} style={{ height: '38px', whiteSpace: 'nowrap' }}>
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
           </div>
         </div>
       </div>
 
-      <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-        <table>
+      {error && (
+        <div style={{ padding: '1rem', background: '#fee2e2', color: '#b91c1c', borderRadius: '6px', marginBottom: '1rem' }}>
+          {error}
+        </div>
+      )}
+
+      <div className="tableContainer">
+        <table className="dataTable">
           <thead>
             <tr>
-              <th style={{ width: '40px' }}><input type="checkbox" /></th>
-              <th>message</th>
-              <th>emp no</th>
-              <th>emp name</th>
-              <th>department</th>
-              <th>position</th>
-              <th>emp status</th>
-              <th>salary</th>
-              <th>date of joining</th>
-              <th>upto date</th>
-              <th>period served</th>
-              <th>gratuity amount</th>
+              <th>Employee Info</th>
+              <th>Joined Date</th>
+              <th>Service Duration</th>
+              <th>Last Drawn Basic</th>
+              <th>Gratuity Amount</th>
+              <th>Eligibility</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {data.map(row => (
-              <tr key={row.id}>
-                <td><input type="checkbox" /></td>
-                <td><input type="checkbox" disabled /></td>
-                <td>{row.empNo}</td>
-                <td style={{ color: 'var(--text-color)', fontWeight: '500' }}>{row.name}</td>
-                <td>{row.dept}</td>
-                <td>{row.pos}</td>
-                <td>{row.status}</td>
-                <td>{row.salary}</td>
-                <td>{row.doj}</td>
-                <td>{row.uptoDate}</td>
-                <td>{row.period}</td>
-                <td>{row.amount}</td>
+            {loading ? (
+              <tr>
+                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>Loading auto-calculated gratuity data...</td>
               </tr>
-            ))}
+            ) : filteredList.length === 0 ? (
+              <tr>
+                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>No employees found.</td>
+              </tr>
+            ) : (
+              filteredList.map((emp) => (
+                <tr key={emp.employeeId}>
+                  <td>
+                    <div style={{ fontWeight: '600', color: '#111827' }}>{emp.employeeName}</div>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>{emp.employeeCode}</div>
+                  </td>
+                  <td>
+                    {emp.joinedDate ? new Date(emp.joinedDate).toLocaleDateString() : 'N/A'}
+                  </td>
+                  <td>
+                    <div>{emp.exactYearsOfService} Yrs</div>
+                  </td>
+                  <td>₹ {emp.basicSalary.toLocaleString()}</td>
+                  <td style={{ fontWeight: 'bold', color: '#3b82f6' }}>
+                    ₹ {parseFloat(emp.gratuityAmount).toLocaleString()}
+                  </td>
+                  <td>
+                    <span style={{ 
+                      padding: '2px 8px', 
+                      borderRadius: '12px', 
+                      fontSize: '12px', 
+                      background: emp.isEligible ? '#dcfce7' : '#fee2e2', 
+                      color: emp.isEligible ? '#166534' : '#991b1b' 
+                    }}>
+                      {emp.isEligible ? 'Eligible' : 'Not Eligible'}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ 
+                      padding: '4px 8px', 
+                      borderRadius: '4px', 
+                      fontSize: '12px', 
+                      fontWeight: 'bold',
+                      background: emp.status === 'Pending Settlement' ? '#fef3c7' : '#f3f4f6', 
+                      color: emp.status === 'Pending Settlement' ? '#92400e' : '#4b5563' 
+                    }}>
+                      {emp.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

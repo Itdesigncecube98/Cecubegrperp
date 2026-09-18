@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, RotateCcw, Copy, FileDown, Save, FileText, Upload } from 'lucide-react';
+import MultiSelect from '@/components/MultiSelect';
 
 
 
@@ -48,50 +49,55 @@ const DECLARATION_ITEMS = [
 
 export default function Declaration() {
   const [data, setData] = useState(DECLARATION_ITEMS);
-  const [selectedDept, setSelectedDept] = useState('ALL');
-  const [selectedEmp, setSelectedEmp] = useState('ALL');
   const [fy, setFy] = useState('2026-2027');
 
-  const [dbDepartments, setDbDepartments] = useState([]);
-  const [dbEmployees, setDbEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [branches, setBranches] = useState([]);
+  
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [selectedEmployees, setSelectedEmployees] = useState([]);
+  const [selectedBranches, setSelectedBranches] = useState([]);
 
   useEffect(() => {
-    const fetchMeta = async () => {
-      try {
-        const res = await fetch('/api/declarations/meta');
-        if (res.ok) {
-          const meta = await res.json();
-          setDbDepartments(meta.departments || []);
-          setDbEmployees(meta.employees || []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch meta", err);
+    fetch('/api/synchronization?type=siteoffices').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) {
+        const names = d.map(x => x.name || x.siteOfficeName || x).filter(Boolean);
+        setBranches(names);
+        setSelectedBranches(names);
       }
-    };
-    fetchMeta();
+    }).catch(console.error);
+
+    fetch('/api/synchronization?type=departments').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) {
+        const names = d.map(x => x.name || x.departmentName || x).filter(Boolean);
+        setDepartments(names);
+        setSelectedDepartments(names);
+      }
+    }).catch(console.error);
+
+    fetch('/api/employees').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) {
+        setEmployees(d);
+        setSelectedEmployees(d.map(e => `${e.name} (${e.empId})`));
+      }
+    }).catch(console.error);
   }, []);
 
-  const activeEmployee = dbEmployees.find(e => e.id === selectedEmp);
-  const displayedPan = activeEmployee?.pan || '';
-
-  const handleDeptChange = (e) => {
-    setSelectedDept(e.target.value);
-    setSelectedEmp('ALL');
-    setData(DECLARATION_ITEMS);
-  };
-
-  const handleEmpChange = (e) => {
-    setSelectedEmp(e.target.value);
-    setData(DECLARATION_ITEMS);
-  };
+  const activeEmployee = selectedEmployees.length === 1 
+    ? employees.find(e => `${e.name} (${e.empId})` === selectedEmployees[0]) 
+    : null;
+    
+  const displayedPan = activeEmployee?.pan || (selectedEmployees.length > 1 ? 'Multiple Selected' : '');
 
   const handleSearch = async () => {
-    if (selectedEmp === 'ALL') {
-      alert("Please select an individual employee to search their declarations.");
+    if (selectedEmployees.length !== 1) {
+      alert("Please select exactly one individual employee to search their declarations.");
       return;
     }
+    const empId = activeEmployee.id;
     try {
-      const res = await fetch(`/api/declarations?employeeId=${selectedEmp}&financialYear=${fy}`);
+      const res = await fetch(`/api/declarations?employeeId=${empId}&financialYear=${fy}`);
       if (res.ok) {
         const result = await res.json();
         if (result.items && result.items.length > 0) {
@@ -119,28 +125,30 @@ export default function Declaration() {
   };
 
   const handleSave = async () => {
-    if (selectedEmp === 'ALL') {
-      alert("Please select an individual employee to save declarations.");
+    if (selectedEmployees.length === 0) {
+      alert("Please select at least one employee to save declarations.");
       return;
     }
     try {
-      const res = await fetch('/api/declarations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employeeId: selectedEmp,
-          financialYear: fy,
-          department: selectedDept,
-          panNumber: displayedPan,
-          items: data
-        })
-      });
-      if (res.ok) {
-        alert("Declarations saved successfully!");
-      } else {
-        const err = await res.json();
-        alert("Error saving: " + err.error);
+      let successCount = 0;
+      for (const empLabel of selectedEmployees) {
+        const emp = employees.find(e => `${e.name} (${e.empId})` === empLabel);
+        if (!emp) continue;
+
+        const res = await fetch('/api/declarations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employeeId: emp.id,
+            financialYear: fy,
+            department: emp.department || '',
+            panNumber: emp.pan || '',
+            items: data
+          })
+        });
+        if (res.ok) successCount++;
       }
+      alert(`Declarations saved successfully for ${successCount} employees!`);
     } catch (err) {
       console.error("Error saving declarations:", err);
     }
@@ -152,9 +160,14 @@ export default function Declaration() {
     setData(newData);
   };
 
-  const filteredEmployees = dbEmployees.filter(e =>
-    selectedDept === 'ALL' || e.department === selectedDept
-  );
+  const filteredEmployees = employees.filter(e => {
+    const isAllDepts = selectedDepartments.length === departments.length || departments.length === 0;
+    const isAllBranches = selectedBranches.length === branches.length || branches.length === 0;
+    
+    const deptMatch = isAllDepts || (e.department && selectedDepartments.includes(e.department));
+    const branchMatch = isAllBranches || (e.siteOffice && selectedBranches.includes(e.siteOffice));
+    return deptMatch && branchMatch;
+  });
 
   return (
     <div>
@@ -173,22 +186,16 @@ export default function Declaration() {
           </select>
         </div>
         <div className="filter-group">
+          <label style={{ color: '#0ea5e9', fontWeight: 600 }}>Organization / Branch</label>
+          <MultiSelect options={branches} selected={selectedBranches} onChange={setSelectedBranches} placeholder="Select Branch" />
+        </div>
+        <div className="filter-group">
           <label style={{ color: '#0ea5e9', fontWeight: 600 }}>Department</label>
-          <select value={selectedDept} onChange={handleDeptChange} style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '6px' }}>
-            <option value="ALL"> all selected!</option>
-            {dbDepartments.map(d => (
-              <option key={d.id} value={d.name}>{d.name}</option>
-            ))}
-          </select>
+          <MultiSelect options={departments} selected={selectedDepartments} onChange={setSelectedDepartments} placeholder="Select Department" />
         </div>
         <div className="filter-group">
           <label style={{ color: '#0ea5e9', fontWeight: 600 }}>Employee <span style={{ color: 'red' }}>*</span></label>
-          <select value={selectedEmp} onChange={handleEmpChange} style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '6px' }}>
-            <option value="ALL">All Employees</option>
-            {filteredEmployees.map(e => (
-              <option key={e.id} value={e.id}>{e.name} {e.empId ? `- ${e.empId}` : ''}</option>
-            ))}
-          </select>
+          <MultiSelect options={filteredEmployees.map(e => `${e.name} (${e.empId})`)} selected={selectedEmployees} onChange={setSelectedEmployees} placeholder="Select Employee" />
         </div>
         <div className="filter-group">
           <label style={{ color: '#0ea5e9', fontWeight: 600 }}>PAN/PAYE No.</label>
@@ -197,7 +204,7 @@ export default function Declaration() {
             value={displayedPan}
             readOnly
             style={{ backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '6px' }}
-            placeholder={selectedEmp === 'ALL' ? 'Select individual employee' : ''}
+            placeholder={selectedEmployees.length !== 1 ? 'Select exactly one individual employee' : ''}
           />
         </div>
 

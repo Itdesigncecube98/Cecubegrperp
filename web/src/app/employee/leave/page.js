@@ -21,14 +21,15 @@ export default function EmployeeLeavePage() {
     endDate: '',
     reason: '',
     attachment: '',
-    isHalfDay: false
+    isHalfDay: false,
+    routeTo: 'SENIOR'
   });
   const [activeTab, setActiveTab] = useState('balances');
 
   const router = useRouter();
 
   useEffect(() => {
-    const empData = sessionStorage.getItem('employeeData');
+    const empData = localStorage.getItem('employeeData');
     if (!empData) {
       router.push('/login');
       return;
@@ -91,16 +92,21 @@ export default function EmployeeLeavePage() {
     }
 
     try {
-      await createLeaveRequest({
+      const result = await createLeaveRequest({
         employeeId: employeeId,
         ...newRequest
       });
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
       setNewRequest({ leaveType: '', startDate: '', endDate: '', reason: '', attachment: '', isHalfDay: false });
       fetchData(employeeId);
       alert('Leave request submitted successfully!');
     } catch (error) {
       console.error("Error submitting leave", error);
-      alert('Failed to submit leave request');
+      alert(`Failed to submit leave request: ${error.message}`);
     }
   };
 
@@ -197,7 +203,10 @@ export default function EmployeeLeavePage() {
           <select 
             className="formInput"
             value={newRequest.leaveType}
-            onChange={(e) => setNewRequest({...newRequest, leaveType: e.target.value})}
+            onChange={(e) => {
+              const val = e.target.value;
+              setNewRequest({...newRequest, leaveType: val, isHalfDay: (val === 'Paid leave' || val === 'Earned Leave') ? false : newRequest.isHalfDay});
+            }}
             required
           >
             <option value="">-- Select Category --</option>
@@ -230,18 +239,31 @@ export default function EmployeeLeavePage() {
               required
             />
           </div>
+          <div style={{ flex: 1 }}>
+            <label className="filterLabel">Route To <span style={{ color: 'red' }}>*</span></label>
+            <select 
+              className="formInput" 
+              value={newRequest.routeTo}
+              onChange={(e) => setNewRequest({...newRequest, routeTo: e.target.value})}
+              required
+            >
+              <option value="SENIOR">Immediate Senior</option>
+              <option value="NEXT_SENIOR">Next Senior</option>
+            </select>
+          </div>
         </div>
 
         <div className="formGroup">
           <label className="formLabel">Are there any Half Days? <Info size={16} style={{ color: '#f59e0b' }} /></label>
           <div className="radioGroup">
-            <label className="radioLabel">
+            <label className="radioLabel" style={{ opacity: (newRequest.leaveType === 'Paid leave' || newRequest.leaveType === 'Earned Leave') ? 0.5 : 1 }}>
               <input 
                 type="radio" 
                 name="halfday" 
                 value="yes" 
                 checked={newRequest.isHalfDay} 
                 onChange={() => setNewRequest({...newRequest, isHalfDay: true})} 
+                disabled={newRequest.leaveType === 'Paid leave' || newRequest.leaveType === 'Earned Leave'}
               /> Yes
             </label>
             <label className="radioLabel">
@@ -254,6 +276,9 @@ export default function EmployeeLeavePage() {
               /> No
             </label>
           </div>
+          {(newRequest.leaveType === 'Paid leave' || newRequest.leaveType === 'Earned Leave') && (
+            <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>* Half day is not allowed for Earned Leave</div>
+          )}
         </div>
 
         <div className="formGroup">

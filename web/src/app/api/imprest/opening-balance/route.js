@@ -1,5 +1,7 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { amount, getLedger, postJournal } from '@/lib/accounting';
 
 // Ensure table exists
 async function ensureTable() {
@@ -86,6 +88,22 @@ export async function POST(req) {
       DO UPDATE SET "openingBalance" = ${bal}, "asOfDate" = ${date}, "remarks" = ${rem}, "updatedAt" = NOW()
       RETURNING id, "employeeId", "openingBalance"::float, "asOfDate", remarks, "createdAt"
     `;
+
+    const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { name: true } });
+    if (employee && bal > 0) {
+      await prisma.$transaction(async (tx) => {
+        await getLedger(tx, 'Opening Balance Equity', 'Capital');
+        await postJournal(tx, {
+          voucherNo: `IMPREST-OPENING-${employeeId}`,
+          type: 'JV',
+          narration: `Imprest opening balance for ${employee.name}`,
+          entries: [
+            { ledger: `Imprest Opening Balance - ${employee.name}`, ledgerType: 'Asset', type: 'Dr', amount: amount(bal) },
+            { ledger: 'Opening Balance Equity', ledgerType: 'Capital', type: 'Cr', amount: amount(bal) }
+          ]
+        });
+      }, { timeout: 30000 });
+    }
 
     return NextResponse.json({ ...result[0], openingBalance: Number(result[0].openingBalance) }, { status: 201 });
   } catch (error) {

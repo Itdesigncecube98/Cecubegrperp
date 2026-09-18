@@ -8,7 +8,16 @@
 .admin-content {
   flex: 1;
   margin-left: 260px; /* match sidebar width */
-  padding: 2rem 1.5rem;
+  padding: 0;
   height: 100vh;
   overflow-y: auto;
+  transition: margin-left 0.3s ease;
+}
+
+.admin-content.collapsed {
+  margin-left: 68px;
+}
+
+.content-inner {
+  padding: 2rem 1.5rem;
 }
