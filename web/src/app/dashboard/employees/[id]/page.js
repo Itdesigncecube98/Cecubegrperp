@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect, useMemo, useCallback, use } from 'react';
+import { useState, useEffect, useMemo, useCallback, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, User, Eye, EyeOff, CalendarCheck, Plus, Edit2, Trash2, X, PanelLeft, PanelLeftClose, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { createWorker } from 'tesseract.js';
 
 const TABS = [
   { key: 'basic', label: 'Basic Details' },
@@ -19,6 +20,31 @@ const TABS = [
   { key: 'salary', label: 'Salary Info' }
 ];
 
+const calculateRevisionCtc = (revision) => {
+  if (!revision?.components?.length) return null;
+
+  const earningTotal = revision.components.reduce((total, component) => {
+    const headType = component.salaryHead?.headType?.name?.toLowerCase() || '';
+    return headType === 'earning' ? total + (Number(component.amount) || 0) : total;
+  }, 0);
+  const employerPf = revision.components.reduce((total, component) => {
+    const headName = component.salaryHead?.description?.toLowerCase() || '';
+    return headName === 'employer pf' ? total + (Number(component.amount) || 0) : total;
+  }, 0);
+  const monthlyCtc = earningTotal + employerPf;
+
+  return monthlyCtc > 0
+    ? { monthlyCtc: monthlyCtc.toFixed(2), annualCtc: (monthlyCtc * 12).toFixed(2), earningTotal, employerPf }
+    : null;
+};
+
+const getOrganizationCode = (organization) => {
+  const name = String(organization || '').trim().toLowerCase();
+  if (name.includes('green energy')) return { prefix: 'CGEPL', width: 2 };
+  if (name.includes('cecube') && name.includes('engineering')) return { prefix: 'CEIPL', width: 3 };
+  return null;
+};
+
 export default function EmployeeProfilePage({ params }) {
   const router = useRouter();
   const { id } = use(params);
@@ -33,6 +59,7 @@ export default function EmployeeProfilePage({ params }) {
   const [toast, setToast] = useState(null);
   const [form, setForm] = useState({});
   const [uploading, setUploading] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState('');
   const [departments, setDepartments] = useState([]);
   const [branches, setBranches] = useState([]);
   const [siteOffices, setSiteOffices] = useState([]);
@@ -52,9 +79,12 @@ export default function EmployeeProfilePage({ params }) {
   const [relationships, setRelationships] = useState([]);
   const [documentTypes, setDocumentTypes] = useState([]);
   const [docUploadDates, setDocUploadDates] = useState({});
+  const [docUploadDetails, setDocUploadDetails] = useState({});
   const [showTerminateModal, setShowTerminateModal] = useState(false);
   const [terminateForm, setTerminateForm] = useState({ date: '', reasonId: '' });
   const [weekoffTypes, setWeekoffTypes] = useState([]);
+  const ctcSaveTimerRef = useRef(null);
+  const [ctcAutoSaving, setCtcAutoSaving] = useState(false);
 
   const normalizeGender = (value) => {
     const gender = String(value ?? '').trim();
@@ -164,6 +194,7 @@ export default function EmployeeProfilePage({ params }) {
         setEmployee(emp);
         setForm({
           ...emp,
+          monthlyCtc: emp.monthlyCtc || (emp.annualCtc ? (Number(emp.annualCtc) / 12).toFixed(2) : ''),
           dependents: emp.dependents || [],
           bankDetails: emp.bankDetails || [],
           workExperiences: emp.workExperiences || [],
@@ -179,6 +210,14 @@ export default function EmployeeProfilePage({ params }) {
             const revsData = await revsRes.json();
             if (Array.isArray(revsData)) {
               setSalaryRevisions(revsData);
+              const calculatedCtc = calculateRevisionCtc(revsData[0]);
+              if (calculatedCtc) {
+                setForm(prev => ({
+                  ...prev,
+                  monthlyCtc: calculatedCtc.monthlyCtc,
+                  annualCtc: calculatedCtc.annualCtc
+                }));
+              }
             }
           }
         } catch (e) {
@@ -215,6 +254,58 @@ export default function EmployeeProfilePage({ params }) {
       reader.readAsDataURL(file);
     });
 
+  const extractOcrText = async (file) => {
+    const worker = await createWorker('eng');
+    try {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      if (!isPdf) {
+        const result = await worker.recognize(file);
+        return result.data.text.trim();
+      }
+
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer(), disableWorker: true }).promise;
+      const pageTexts = [];
+
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const result = await worker.recognize(canvas);
+        pageTexts.push(result.data.text.trim());
+      }
+
+      return pageTexts.filter(Boolean).join('\n\n');
+    } finally {
+      await worker.terminate();
+    }
+  };
+
+  const extractDocumentNumber = (ocrText, documentName) => {
+    const normalizedName = String(documentName || '').toLowerCase();
+    const compactText = String(ocrText || '').replace(/\s+/g, ' ');
+
+    if (normalizedName.includes('aadhaar') || normalizedName.includes('aadhar')) {
+      const aadhaar = compactText.match(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/);
+      return aadhaar ? aadhaar[0].replace(/[\s-]/g, '') : '';
+    }
+
+    if (normalizedName.includes('pan')) {
+      const pan = compactText.match(/\b[A-Z]{5}\s?\d{4}\s?[A-Z]\b/i);
+      return pan ? pan[0].replace(/\s/g, '').toUpperCase() : '';
+    }
+
+    if (normalizedName.includes('passport')) {
+      const passport = compactText.match(/\b[A-Z][0-9]{7}\b/i);
+      return passport ? passport[0].toUpperCase() : '';
+    }
+
+    return '';
+  };
+
   const handleDocUpload = async (docType, e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || !employee?.id) return;
@@ -227,12 +318,35 @@ export default function EmployeeProfilePage({ params }) {
     }
 
     const effDate = docUploadDates[docType.id] || '';
+    const docDetails = docUploadDetails[docType.id] || {};
 
     try {
       let uploadSuccessCount = 0;
+      setUploading(true);
 
       for (const file of files) {
+        setOcrStatus(`Reading ${file.name}...`);
         const fileData = await readFileAsDataUrl(file);
+        let ocrText = '';
+        try {
+          ocrText = await extractOcrText(file);
+        } catch (ocrError) {
+          console.warn(`OCR failed for ${file.name}`, ocrError);
+        }
+        const documentNumber = extractDocumentNumber(ocrText, docType.type);
+        const normalizedDocumentName = String(docType.type || '').toLowerCase();
+        if (documentNumber) {
+          setDocUploadDetails(prev => ({
+            ...prev,
+            [docType.id]: { ...prev[docType.id], documentNumber }
+          }));
+        }
+        if (documentNumber && (normalizedDocumentName.includes('aadhaar') || normalizedDocumentName.includes('aadhar'))) {
+          set('aadharNo', documentNumber);
+        }
+        if (documentNumber && normalizedDocumentName.includes('pan')) {
+          set('pan', documentNumber);
+        }
         const payload = {
           employeeId: employee.id,
           documentType: docType.category || 'Employee',
@@ -241,6 +355,9 @@ export default function EmployeeProfilePage({ params }) {
           fileData,
           fileName: file.name,
           fileType: file.type,
+          ocrText,
+          documentNumber: documentNumber || docDetails.documentNumber || null,
+          expiryDate: docDetails.expiryDate || null,
         };
 
         const res = await fetch('/api/documents', {
@@ -262,8 +379,27 @@ export default function EmployeeProfilePage({ params }) {
       console.error(err);
       showToast(err.message || 'Failed to upload document', 'error');
     } finally {
+      setUploading(false);
+      setOcrStatus('');
       e.target.value = null;
     }
+  };
+
+  const formatDocumentDateTime = (value) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    const datePart = new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(date);
+    const timePart = new Intl.DateTimeFormat('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }).format(date);
+    return `${datePart}, ${timePart}`;
   };
 
   const handleView = (doc) => {
@@ -437,6 +573,35 @@ export default function EmployeeProfilePage({ params }) {
     setSaving(false);
   };
 
+  const queueCtcAutoSave = (nextValues) => {
+    setForm(prev => ({ ...prev, ...nextValues }));
+    if (id === 'new') return;
+
+    if (ctcSaveTimerRef.current) clearTimeout(ctcSaveTimerRef.current);
+    ctcSaveTimerRef.current = setTimeout(async () => {
+      setCtcAutoSaving(true);
+      try {
+        const response = await fetch(`/api/employees/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(nextValues)
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || 'Failed to save CTC');
+        setEmployee(prev => ({ ...prev, ...nextValues }));
+      } catch (error) {
+        console.error('Failed to auto-save CTC', error);
+        showToast('CTC auto-save failed. Please try again.', 'error');
+      } finally {
+        setCtcAutoSaving(false);
+      }
+    }, 700);
+  };
+
+  useEffect(() => () => {
+    if (ctcSaveTimerRef.current) clearTimeout(ctcSaveTimerRef.current);
+  }, []);
+
   const f = (field) => form[field] || '';
   const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
 
@@ -607,7 +772,7 @@ export default function EmployeeProfilePage({ params }) {
 
   const handleSendLoginInstruction = async () => {
     try {
-      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubegroupdashboard.vercel.app';
+      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.70:8080';
       const res = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1015,10 +1180,14 @@ export default function EmployeeProfilePage({ params }) {
                   </div>
                   <div>
                     <label style={labelSm}>Marital Status</label>
-                    <select value={f('maritalStatus')} onChange={e => set('maritalStatus', e.target.value)} style={inputStyle}>
+                    <select 
+                      value={f('maritalStatus') === 'Single' ? 'Unmarried' : f('maritalStatus')} 
+                      onChange={e => set('maritalStatus', e.target.value)} 
+                      style={inputStyle}
+                    >
                       <option value="">Select</option>
-                      <option>Unmarried</option>
-                      <option>Married</option>
+                      <option value="Unmarried">Unmarried</option>
+                      <option value="Married">Married</option>
                     </select>
                   </div>
                   <div>
@@ -1126,7 +1295,9 @@ export default function EmployeeProfilePage({ params }) {
                       set('organisation', organisation);
                       if (id === 'new') {
                         const selectedOrg = organizations.find(org => org.name === organisation);
-                        const prefix = selectedOrg?.code?.trim().toUpperCase();
+                        const configuredCode = getOrganizationCode(organisation);
+                        const prefix = configuredCode?.prefix || selectedOrg?.code?.trim().toUpperCase();
+                        const codeWidth = configuredCode?.width || 3;
                         if (prefix) {
                           const usedNumbers = allEmployees
                             .map(employee => {
@@ -1134,7 +1305,7 @@ export default function EmployeeProfilePage({ params }) {
                               return match ? Number(match[1]) : 0;
                             });
                           const nextNumber = Math.max(0, ...usedNumbers) + 1;
-                          set('empId', `${prefix}${String(nextNumber).padStart(3, '0')}`);
+                          set('empId', `${prefix}${String(nextNumber).padStart(codeWidth, '0')}`);
                         }
                       }
                     }} 
@@ -1815,6 +1986,29 @@ export default function EmployeeProfilePage({ params }) {
                       </div>
 
                       <div style={{ marginBottom: '12px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px', textAlign: 'left' }}>Document Number</label>
+                        <input
+                          type="text"
+                          value={docUploadDetails[docType.id]?.documentNumber || ''}
+                          onChange={e => setDocUploadDetails(prev => ({ ...prev, [docType.id]: { ...prev[docType.id], documentNumber: e.target.value } }))}
+                          placeholder="Auto-filled by OCR"
+                          disabled={uploading}
+                          style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div style={{ marginBottom: '12px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px', textAlign: 'left' }}>Expiry Date</label>
+                        <input
+                          type="date"
+                          value={docUploadDetails[docType.id]?.expiryDate || ''}
+                          onChange={e => setDocUploadDetails(prev => ({ ...prev, [docType.id]: { ...prev[docType.id], expiryDate: e.target.value } }))}
+                          disabled={uploading}
+                          style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+
+                      <div style={{ marginBottom: '12px' }}>
                         <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>Effective Date</label>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <input 
@@ -1835,9 +2029,12 @@ export default function EmployeeProfilePage({ params }) {
                           onChange={(e) => handleDocUpload(docType, e)}
                         />
                         <label htmlFor={`file-upload-${docType.id}`} style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', fontSize: '12px', cursor: 'pointer', display: 'inline-block' }}>
-                          {isSubmitted ? 'Add More' : 'Upload'}
+                          {uploading ? 'Reading...' : (isSubmitted ? 'Add More' : 'Upload')}
                         </label>
                       </div>
+                      {uploading && ocrStatus && (
+                        <div style={{ marginBottom: '12px', fontSize: '11px', color: '#2563eb' }}>{ocrStatus}</div>
+                      )}
 
                       {isSubmitted && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
@@ -1850,8 +2047,14 @@ export default function EmployeeProfilePage({ params }) {
                               <div key={doc.id} style={{ border: '1px solid #dbe4ee', borderRadius: '8px', padding: '12px', background: '#ffffff' }}>
                                 <div style={{ fontSize: '12px', fontWeight: 600, color: '#0f172a', wordBreak: 'break-word' }}>{doc.fileName || doc.documentName}</div>
                                 <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                                  Uploaded: {new Date(doc.createdAt).toLocaleString()}
+                                  Uploaded: {formatDocumentDateTime(doc.createdAt)}
                                 </div>
+                                {doc.ocrText && (
+                                  <details style={{ marginTop: '10px' }}>
+                                    <summary style={{ cursor: 'pointer', fontSize: '11px', fontWeight: 600, color: '#2563eb' }}>View OCR text</summary>
+                                    <pre style={{ margin: '8px 0 0', padding: '8px', maxHeight: '180px', overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: '#f8fafc', borderRadius: '4px', fontSize: '11px', color: '#334155' }}>{doc.ocrText}</pre>
+                                  </details>
+                                )}
                                 <div style={{ marginTop: '10px' }}>
                                   <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>Effective Date</label>
                                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -1964,7 +2167,7 @@ export default function EmployeeProfilePage({ params }) {
                 <button onClick={() => {
                   setForm(prev => ({
                     ...prev,
-                    assignedGpsLocations: [...(prev.assignedGpsLocations || []), { location: '', effectiveDate: '', budgetHead: '' }]
+                    assignedGpsLocations: [...(prev.assignedGpsLocations || []), { location: employee.siteOffice || '', effectiveDate: '', budgetHead: '' }]
                   }));
                 }} style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
                   + Add Location
@@ -1991,13 +2194,18 @@ export default function EmployeeProfilePage({ params }) {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', paddingRight: '40px' }}>
                         <div>
                           <label style={labelSm}>Location</label>
-                          <input value={loc.location} onChange={e => {
+                          <select value={loc.location || ''} onChange={e => {
                             setForm(prev => {
                               const newLocs = [...prev.assignedGpsLocations];
                               newLocs[idx].location = e.target.value;
                               return { ...prev, assignedGpsLocations: newLocs };
                             });
-                          }} style={inputStyle} placeholder="Enter Location" />
+                          }} style={inputStyle}>
+                            <option value="">Select Site Office</option>
+                            {siteOffices.map(site => (
+                              <option key={site.id} value={site.name}>{site.name}</option>
+                            ))}
+                          </select>
                         </div>
                         <div>
                           <label style={labelSm}>Effective Date</label>
@@ -2098,6 +2306,63 @@ export default function EmployeeProfilePage({ params }) {
                     🖨️ Print
                   </button>
                 </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', border: '1px solid #bae6fd', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
+                <label style={{ ...labelSm, color: '#0369a1' }}>Annual CTC</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={f('annualCtc')}
+                  onChange={e => {
+                    const annualCtc = e.target.value;
+                    queueCtcAutoSave({
+                      annualCtc,
+                      monthlyCtc: annualCtc === '' ? '' : (Number(annualCtc) / 12).toFixed(2)
+                    });
+                  }}
+                  style={{ ...inputStyle, maxWidth: '360px', background: '#fff', fontSize: '16px', fontWeight: 600 }}
+                  placeholder="Enter Annual CTC"
+                />
+                <label style={{ ...labelSm, color: '#0369a1', marginTop: '12px' }}>Monthly CTC</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={f('monthlyCtc')}
+                  onChange={e => {
+                    const monthlyCtc = e.target.value;
+                    queueCtcAutoSave({
+                      monthlyCtc,
+                      annualCtc: monthlyCtc === '' ? '' : (Number(monthlyCtc) * 12).toFixed(2)
+                    });
+                  }}
+                  style={{ ...inputStyle, maxWidth: '360px', background: '#fff', fontSize: '16px', fontWeight: 600 }}
+                  placeholder="Enter Monthly CTC"
+                />
+                <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b' }}>
+                  Annual CTC = Monthly CTC × 12. HR placeholders: <code>{'{{annualCtc}}'}</code>, <code>{'{{monthlyCtc}}'}</code>.
+                  {ctcAutoSaving && <span style={{ marginLeft: '8px', color: '#0284c7' }}>Saving automatically...</span>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const calculatedCtc = calculateRevisionCtc(salaryRevisions[0]);
+                    if (!calculatedCtc) {
+                      showToast('Add an earning salary revision with Employer PF before calculating CTC.', 'error');
+                      return;
+                    }
+                    queueCtcAutoSave({
+                      monthlyCtc: calculatedCtc.monthlyCtc,
+                      annualCtc: calculatedCtc.annualCtc
+                    });
+                    showToast(`Monthly CTC = ₹${calculatedCtc.earningTotal.toLocaleString('en-IN')} + ₹${calculatedCtc.employerPf.toLocaleString('en-IN')} Employer PF. Saving automatically.`);
+                  }}
+                  style={{ marginTop: '12px', padding: '8px 14px', background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}
+                >
+                  Calculate: Gross Earnings + Employer PF
+                </button>
               </div>
 
               {/* No revisions state */}
