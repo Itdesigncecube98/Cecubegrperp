@@ -1,0 +1,133 @@
+{
+  "projectId": "cmtr27fz20001l404m3h9xw9n",
+  "projectName": "bhjujyhuy",
+  "lastUpdated": "2026-09-09T06:03:26.612Z",
+  "checklists": [
+    {
+      "id": "QC-CHK-01",
+      "title": "33KV Switchyard Transformer Foundation Pre-Pour Inspection",
+      "category": "Civil & Foundation",
+      "projectId": "cmtr27fz20001l404m3h9xw9n",
+      "taskName": "Substation Foundation Concrete",
+      "inspector": "Rajesh Kulkarni (QA/QC Lead)",
+      "date": "2026-09-04T06:03:26.610Z",
+      "status": "Passed",
+      "items": [
+        {
+          "id": 1,
+          "check": "Soil compaction test density >= 95% MDD",
+          "passed": true,
+          "remarks": "Field dry density test certified"
+        },
+        {
+          "id": 2,
+          "check": "PCC level and thickness verified as per drawing Rev C",
+          "passed": true,
+          "remarks": "Thickness 100mm uniform"
+        },
+        {
+          "id": 3,
+          "check": "Reinforcement bar size, spacing, and cover blocks in place",
+          "passed": true,
+          "remarks": "50mm concrete cover verified"
+        },
+        {
+          "id": 4,
+          "check": "Earthing conductor grid embedded and continuity verified",
+          "passed": true,
+          "remarks": "Resistance < 1.0 Ohm"
+        },
+        {
+          "id": 5,
+          "check": "Holding-down foundation bolts center-to-center aligned",
+          "passed": true,
+          "remarks": "Tolerance within +/- 2mm"
+        }
+      ]
+    },
+    {
+      "id": "QC-CHK-02",
+      "title": "HT Cable Laying & Conduit Integrity Inspection",
+      "category": "Electrical Works",
+      "projectId": "cmtr27fz20001l404m3h9xw9n",
+      "taskName": "Cable laying and Trenching",
+      "inspector": "Amitabh Sen (Electrical QA)",
+      "date": "2026-09-08T06:03:26.610Z",
+      "status": "Action Required",
+      "items": [
+        {
+          "id": 1,
+          "check": "Trench depth minimum 1.0m from finished ground level",
+          "passed": true,
+          "remarks": "1.2m depth verified"
+        },
+        {
+          "id": 2,
+          "check": "Sand cushioning (75mm bottom and top) provided",
+          "passed": true,
+          "remarks": "Sieved sand bed inspected"
+        },
+        {
+          "id": 3,
+          "check": "Protective warning concrete tiles laid above cable",
+          "passed": false,
+          "remarks": "30m stretch tiles pending placement"
+        },
+        {
+          "id": 4,
+          "check": "Cable insulation resistance (Megger test 5KV) recorded",
+          "passed": true,
+          "remarks": "> 1000 Mega Ohms"
+        },
+        {
+          "id": 5,
+          "check": "Route marker posts installed at 15m intervals",
+          "passed": false,
+          "remarks": "Posts to be fixed after backfilling"
+        }
+      ]
+    }
+  ],
+  "inspectionReports": [
+    {
+      "id": "IR-2026-001",
+      "reportNumber": "IR/ELEC/2026/01",
+      "projectId": "cmtr27fz20001l404m3h9xw9n",
+      "title": "Transformer Bay Earthing Grid & Earth Pit Resistance Audit",
+      "checklistId": "QC-CHK-01",
+      "inspector": "Rajesh Kulkarni",
+      "inspectionDate": "2026-09-04T06:03:26.610Z",
+      "result": "Approved with Minor Remarks",
+      "punchPoints": [
+        {
+          "point": "Earthing pit chamber identification tag to be painted",
+          "status": "Open"
+        },
+        {
+          "point": "Bentonite slurry topping completed in Pit #3",
+          "status": "Closed"
+        }
+      ],
+      "clientRepresentative": "Mr. S.P. Khurana (Client QA Head)",
+      "signedOff": true
+    },
+    {
+      "id": "IR-2026-002",
+      "reportNumber": "IR/CIV/2026/04",
+      "projectId": "cmtr27fz20001l404m3h9xw9n",
+      "title": "Control Room Slab Conduiting & Reinforcement Clearance",
+      "checklistId": "QC-CHK-02",
+      "inspector": "Amitabh Sen",
+      "inspectionDate": "2026-09-08T06:03:26.610Z",
+      "result": "Conditional Clearance",
+      "punchPoints": [
+        {
+          "point": "Fix missing warning tiles along north-west trench sector",
+          "status": "Open"
+        }
+      ],
+      "clientRepresentative": "Site Resident Engineer",
+      "signedOff": false
+    }
+  ]
+}

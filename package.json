@@ -1,0 +1,59 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0",
+    "build": "prisma generate && next build",
+    "start": "next start -H 0.0.0.0",
+    "deploy": "node scripts/deploy.js",
+    "lint": "eslint",
+    "test": "jest",
+    "test:print-borders": "jest src/app/employee-card/__tests__/print-borders.test.js",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "date-fns": "^4.4.0",
+    "decimal.js": "^10.6.0",
+    "docx": "^9.7.1",
+    "file-saver": "^2.0.5",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.28.0",
+    "next": "16.3.0",
+    "nodemailer": "^9.0.5",
+    "pdfjs-dist": "^6.3.289",
+    "pg": "^8.23.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-leaflet": "^5.0.0",
+    "react-quill": "^2.0.0",
+    "recharts": "^3.10.1",
+    "tesseract.js": "^7.0.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.22",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "jest": "^30.4.2",
+    "jest-environment-node": "^30.4.1",
+    "playwright": "^1.62.1",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4"
+  },
+  "overrides": {
+    "react-quill": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  }
+}

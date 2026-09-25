@@ -1,0 +1,107 @@
+.engineering-layout {
+  display: flex;
+  min-height: 100vh;
+  background-color: #f8fafc;
+}
+
+.engineering-main {
+  flex: 1;
+  min-width: 0; /* Ensures flex container allows horizontal scroll */
+  margin-left: 260px; /* Sidebar width */
+  display: flex;
+  flex-direction: column;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.engineering-main.collapsed {
+  margin-left: 68px;
+}
+
+/* ==========================================================================
+   Global High-Visibility Horizontal Scrollbars for Planning & Tools
+   ========================================================================== */
+.custom-horizontal-scrollbar,
+.horizontal-scroll-container,
+.wc-table-card > div[style*="overflow"],
+.msp-table-pane,
+.msp-gantt-pane {
+  overflow-x: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: #6366f1 #e2e8f0;
+}
+
+/* Webkit scrollbar styling (Chrome, Edge, Safari) */
+.custom-horizontal-scrollbar::-webkit-scrollbar,
+.horizontal-scroll-container::-webkit-scrollbar,
+.wc-table-card > div[style*="overflow"]::-webkit-scrollbar,
+.msp-table-pane::-webkit-scrollbar,
+.msp-gantt-pane::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.custom-horizontal-scrollbar::-webkit-scrollbar-track,
+.horizontal-scroll-container::-webkit-scrollbar-track,
+.wc-table-card > div[style*="overflow"]::-webkit-scrollbar-track,
+.msp-table-pane::-webkit-scrollbar-track,
+.msp-gantt-pane::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.custom-horizontal-scrollbar::-webkit-scrollbar-thumb,
+.horizontal-scroll-container::-webkit-scrollbar-thumb,
+.wc-table-card > div[style*="overflow"]::-webkit-scrollbar-thumb,
+.msp-table-pane::-webkit-scrollbar-thumb,
+.msp-gantt-pane::-webkit-scrollbar-thumb {
+  background: #6366f1;
+  border-radius: 8px;
+  border: 2px solid #f1f5f9;
+}
+
+.custom-horizontal-scrollbar::-webkit-scrollbar-thumb:hover,
+.horizontal-scroll-container::-webkit-scrollbar-thumb:hover,
+.wc-table-card > div[style*="overflow"]::-webkit-scrollbar-thumb:hover,
+.msp-table-pane::-webkit-scrollbar-thumb:hover,
+.msp-gantt-pane::-webkit-scrollbar-thumb:hover {
+  background: #4f46e5;
+}
+
+.engineering-topbar {
+  height: 60px;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #334155;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

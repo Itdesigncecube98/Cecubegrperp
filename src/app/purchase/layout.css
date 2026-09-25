@@ -1,0 +1,30 @@
+.purchase-layout {
+  display: flex;
+  min-height: 100vh;
+  background-color: #f8fafc;
+}
+
+.purchase-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: 260px;
+  display: flex;
+  flex-direction: column;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.purchase-main.collapsed {
+  margin-left: 68px;
+}
+
+.custom-horizontal-scrollbar,
+.horizontal-scroll-container {
+  overflow-x: auto !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.custom-horizontal-scrollbar::-webkit-scrollbar,
+.horizontal-scroll-container::-webkit-scrollbar {
+  display: none;
+}

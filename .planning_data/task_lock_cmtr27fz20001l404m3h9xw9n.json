@@ -1,0 +1,728 @@
+{
+  "projectId": "cmtr27fz20001l404m3h9xw9n",
+  "projectName": "bhjujyhuy",
+  "projectCode": "",
+  "lastUpdated": "2026-09-08T10:05:04.808Z",
+  "tasks": [
+    {
+      "id": "tl-cmtr5s19d0003i9y8h54gnw6n",
+      "taskLibraryId": "cmtr5s19d0003i9y8h54gnw6n",
+      "wbsCode": "1.1",
+      "group": "Wiring & Conduiting",
+      "subgroup": "Conduit laying with accessories inc...",
+      "subgroup2": "25mm Medium Duty PVC Conduit Pipe",
+      "taskName": "Laying 25mm PVC Conduit in slab - 100 Rmt",
+      "permissions": {
+        "editTaskEstimate": true,
+        "addTask": true,
+        "raiseRequisition": true,
+        "materialIssue": true,
+        "extraIssue": true,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": true
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Baseline frozen for Laying 25mm PVC Conduit in slab",
+      "history": [
+        {
+          "id": "h-1788861904806-0",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Wiring & Conduiting]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshsmm4000ti9koalo0dsp7",
+      "taskLibraryId": "cmtshsmm4000ti9koalo0dsp7",
+      "wbsCode": "1.2",
+      "group": "Wiring & Conduiting",
+      "subgroup": "Concealed copper point wiring for l...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Copper Wire 1.5mm Point Wiring - 250 Mtr",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Wiring & Conduiting)",
+      "history": [
+        {
+          "id": "h-1788861904807-1",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Wiring & Conduiting]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshsp56000vi9koczniiiuu",
+      "taskLibraryId": "cmtshsp56000vi9koczniiiuu",
+      "wbsCode": "1.3",
+      "group": "Wiring & Conduiting",
+      "subgroup": "Circuit wiring for 16A power outlet...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Copper Wire 2.5mm Power Point Wiring - 180 Mtr",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Wiring & Conduiting)",
+      "history": [
+        {
+          "id": "h-1788861904807-2",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Wiring & Conduiting]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshsy5q000xi9ko3y6hz8wc",
+      "taskLibraryId": "cmtshsy5q000xi9ko3y6hz8wc",
+      "wbsCode": "1.4",
+      "group": "Wiring & Conduiting",
+      "subgroup": "Installation of modular grid plates...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Modular Switch & Socket 6A/16A Fixing - 65 Point",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": true,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Wiring & Conduiting)",
+      "history": [
+        {
+          "id": "h-1788861904807-3",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Wiring & Conduiting]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshq6a20003i9kofpm56dgj",
+      "taskLibraryId": "cmtshq6a20003i9kofpm56dgj",
+      "wbsCode": "2.1",
+      "group": "Civil Work",
+      "subgroup": "Deep excavation for monopole tower ...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Excavation for Monopole, OD sized 2500mm 9000mm Dept",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-0",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshq9210005i9kozokbrkog",
+      "taskLibraryId": "cmtshq9210005i9kozokbrkog",
+      "wbsCode": "2.2",
+      "group": "Civil Work",
+      "subgroup": "Reinforced concrete trench for high...",
+      "subgroup2": "Standard Specification",
+      "taskName": "RCC Trench making, Size 1500 x 2600 - 170 RM",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-1",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshqbm70007i9koh8q1eej3",
+      "taskLibraryId": "cmtshqbm70007i9koh8q1eej3",
+      "wbsCode": "2.3",
+      "group": "Civil Work",
+      "subgroup": "Bar bending and binding wire tie fo...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Steel Binding - 5000 Kg",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": true,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-2",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshqlj50009i9koc8520k6a",
+      "taskLibraryId": "cmtshqlj50009i9koc8520k6a",
+      "wbsCode": "2.4",
+      "group": "Civil Work",
+      "subgroup": "Precision template fixing and align...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Templet setting for Monopole - 2 Nos",
+      "permissions": {
+        "editTaskEstimate": true,
+        "addTask": true,
+        "raiseRequisition": true,
+        "materialIssue": true,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": true
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Baseline frozen for Templet setting for Monopole",
+      "history": [
+        {
+          "id": "h-1788861904807-3",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshqvgb000bi9ko6dxprimr",
+      "taskLibraryId": "cmtshqvgb000bi9ko6dxprimr",
+      "wbsCode": "2.5",
+      "group": "Civil Work",
+      "subgroup": "TMT fe500 reinforcement bar placeme...",
+      "subgroup2": "Standard Specification",
+      "taskName": "10mm steel bar - 18360 Kg",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-4",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshr6vk000di9kowczhmpg4",
+      "taskLibraryId": "cmtshr6vk000di9kowczhmpg4",
+      "wbsCode": "2.6",
+      "group": "Civil Work",
+      "subgroup": "TMT fe500 reinforcement bar placeme...",
+      "subgroup2": "Standard Specification",
+      "taskName": "12mm Steel Bar - 38000 Kg",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": true,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-5",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshrlrk000fi9kown1n8shm",
+      "taskLibraryId": "cmtshrlrk000fi9kown1n8shm",
+      "wbsCode": "2.7",
+      "group": "Civil Work",
+      "subgroup": "Stirrups and tie reinforcement bar ...",
+      "subgroup2": "Standard Specification",
+      "taskName": "8mm steel bar - 7940 Kg",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-6",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshrrkf000hi9kov1dwy44f",
+      "taskLibraryId": "cmtshrrkf000hi9kov1dwy44f",
+      "wbsCode": "2.8",
+      "group": "Civil Work",
+      "subgroup": "Heavy structural column rebar place...",
+      "subgroup2": "Standard Specification",
+      "taskName": "20mm steel bar - 2950 Kg",
+      "permissions": {
+        "editTaskEstimate": true,
+        "addTask": true,
+        "raiseRequisition": true,
+        "materialIssue": true,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": true
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Baseline frozen for 20mm steel bar",
+      "history": [
+        {
+          "id": "h-1788861904807-7",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshrv49000ji9kohatw0xnc",
+      "taskLibraryId": "cmtshrv49000ji9kohatw0xnc",
+      "wbsCode": "2.9",
+      "group": "Civil Work",
+      "subgroup": "OPC 53 grade cement for structural ...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Cement - 100 Bag",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": true,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-8",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshs2go000li9kocrkk44bj",
+      "taskLibraryId": "cmtshs2go000li9kocrkk44bj",
+      "wbsCode": "2.10",
+      "group": "Civil Work",
+      "subgroup": "Crushed stone dust for trench beddi...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Stone White Dust - 1000 Cft",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-9",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshs75v000ni9koqqao6ne1",
+      "taskLibraryId": "cmtshs75v000ni9koqqao6ne1",
+      "wbsCode": "2.11",
+      "group": "Civil Work",
+      "subgroup": "GI binding wire for rebar mesh",
+      "subgroup2": "Standard Specification",
+      "taskName": "Binding wire - 500 Kg",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-10",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshs9ku000pi9kor25ulf8n",
+      "taskLibraryId": "cmtshs9ku000pi9kor25ulf8n",
+      "wbsCode": "2.12",
+      "group": "Civil Work",
+      "subgroup": "Coarse aggregate for concrete mix",
+      "subgroup2": "Standard Specification",
+      "taskName": "20mm Aggregate - 1000 Cft",
+      "permissions": {
+        "editTaskEstimate": true,
+        "addTask": true,
+        "raiseRequisition": true,
+        "materialIssue": true,
+        "extraIssue": true,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": true
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Baseline frozen for 20mm Aggregate",
+      "history": [
+        {
+          "id": "h-1788861904807-11",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshsfo2000ri9koh7ahx3ky",
+      "taskLibraryId": "cmtshsfo2000ri9koh7ahx3ky",
+      "wbsCode": "2.13",
+      "group": "Civil Work",
+      "subgroup": "Ready mix concrete M-25 grade pouri...",
+      "subgroup2": "Standard Specification",
+      "taskName": "RMC M-25 - 820 cum",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Civil Work)",
+      "history": [
+        {
+          "id": "h-1788861904807-12",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Civil Work]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtsht40k0011i9kobp55bf3h",
+      "taskLibraryId": "cmtsht40k0011i9kobp55bf3h",
+      "wbsCode": "3.1",
+      "group": "HT & LT Cable Laying",
+      "subgroup": "Laying 11kV 3C 300 sqmm aluminium c...",
+      "subgroup2": "Standard Specification",
+      "taskName": "HT XLPE Cable 11kV Trench Laying - 350 Mtr",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (HT & LT Cable Laying)",
+      "history": [
+        {
+          "id": "h-1788861904807-0",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [HT & LT Cable Laying]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtsht8kt0013i9kof16i489a",
+      "taskLibraryId": "cmtsht8kt0013i9kof16i489a",
+      "wbsCode": "3.2",
+      "group": "HT & LT Cable Laying",
+      "subgroup": "Sub-main feeder cable pulling in ca...",
+      "subgroup2": "Standard Specification",
+      "taskName": "LT Armoured 4 Core 25 sqmm Cable Pulling - 220 Mtr",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": true,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (HT & LT Cable Laying)",
+      "history": [
+        {
+          "id": "h-1788861904807-1",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [HT & LT Cable Laying]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshtbs00015i9kooxc8303z",
+      "taskLibraryId": "cmtshtbs00015i9kooxc8303z",
+      "wbsCode": "3.3",
+      "group": "HT & LT Cable Laying",
+      "subgroup": "Heat shrinkable outdoor termination...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Cable End Termination Kit 11kV Jointing - 6 Set",
+      "permissions": {
+        "editTaskEstimate": true,
+        "addTask": true,
+        "raiseRequisition": true,
+        "materialIssue": true,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": true
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Baseline frozen for Cable End Termination Kit 11kV Jointing",
+      "history": [
+        {
+          "id": "h-1788861904807-2",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [HT & LT Cable Laying]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshtgst0019i9ko8npm27nw",
+      "taskLibraryId": "cmtshtgst0019i9ko8npm27nw",
+      "wbsCode": "4.1",
+      "group": "Substation & Panel Installation",
+      "subgroup": "Indoor VCB panel erection, busbar c...",
+      "subgroup2": "Standard Specification",
+      "taskName": "HT Vacuum Circuit Breaker 11kV Installation - 2 Nos",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": true,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Substation & Panel Installation)",
+      "history": [
+        {
+          "id": "h-1788861904807-0",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Substation & Panel Installation]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshtn2j001bi9ko4b71widj",
+      "taskLibraryId": "cmtshtn2j001bi9ko4b71widj",
+      "wbsCode": "4.2",
+      "group": "Substation & Panel Installation",
+      "subgroup": "Plinth mounting and radiator assemb...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Distribution Transformer 500kVA Erection - 1 Nos",
+      "permissions": {
+        "editTaskEstimate": true,
+        "addTask": true,
+        "raiseRequisition": true,
+        "materialIssue": true,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": true
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Baseline frozen for Distribution Transformer 500kVA Erection",
+      "history": [
+        {
+          "id": "h-1788861904807-1",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Substation & Panel Installation]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshtppe001di9kor4op8bcm",
+      "taskLibraryId": "cmtshtppe001di9kor4op8bcm",
+      "wbsCode": "4.3",
+      "group": "Substation & Panel Installation",
+      "subgroup": "Main power distribution panel testi...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Main LT Panel 800A Busbar Commissioning - 1 Nos",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": false,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Substation & Panel Installation)",
+      "history": [
+        {
+          "id": "h-1788861904807-2",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Substation & Panel Installation]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    },
+    {
+      "id": "tl-cmtshttst001fi9ko309n0ef2",
+      "taskLibraryId": "cmtshttst001fi9ko309n0ef2",
+      "wbsCode": "4.4",
+      "group": "Substation & Panel Installation",
+      "subgroup": "Chemical earthing pit excavation an...",
+      "subgroup2": "Standard Specification",
+      "taskName": "Earthing Pit with Copper Plate Electrode - 8 Nos",
+      "permissions": {
+        "editTaskEstimate": false,
+        "addTask": false,
+        "raiseRequisition": false,
+        "materialIssue": false,
+        "extraIssue": true,
+        "nonEstimatedIssue": true,
+        "workCompletionEntry": false,
+        "workOrderGeneration": false
+      },
+      "lockDate": "2026-09-08",
+      "lockedBy": "Aditya Yadav",
+      "lockRemarks": "Standard budget control active (Substation & Panel Installation)",
+      "history": [
+        {
+          "id": "h-1788861904807-3",
+          "date": "2026-09-08",
+          "action": "Initialized from Task Library [Substation & Panel Installation]",
+          "user": "Aditya Yadav"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,676 @@
+/* ==========================================================================
+   Engineering Planning Module - MSP Interface & Work Completion CSS
+   ========================================================================== */
+
+.planning-wrapper {
+  padding: 1.5rem 2rem;
+  background-color: #f8fafc;
+  min-height: calc(100vh - 60px);
+  color: #0f172a;
+  font-family: inherit;
+  overflow-x: auto;
+  min-width: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #6366f1 #e2e8f0;
+}
+
+/* Page Header */
+.planning-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.planning-title-area h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 0.25rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.planning-title-area p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.planning-project-select-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.planning-select {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1e293b;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  min-width: 240px;
+  transition: all 0.2s ease;
+}
+
+.planning-select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+/* KPI Cards Strip */
+.planning-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.planning-kpi-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.planning-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.08);
+}
+
+.kpi-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kpi-content .kpi-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.2rem;
+}
+
+.kpi-content .kpi-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+/* MS Project Ribbon Toolbar */
+.msp-ribbon {
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  border-radius: 12px 12px 0 0;
+  padding: 0.75rem 1.25rem;
+  color: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  border: 1px solid #334155;
+  border-bottom: none;
+}
+
+.msp-ribbon-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.msp-ribbon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f1f5f9;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.msp-ribbon-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.msp-ribbon-btn.primary {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-color: #60a5fa;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+}
+
+.msp-ribbon-btn.primary:hover {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+}
+
+.msp-ribbon-btn.active {
+  background: #6366f1;
+  border-color: #818cf8;
+  color: #ffffff;
+}
+
+/* Split Pane Workspace */
+.msp-workspace-card {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0 0 12px 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+}
+
+.msp-split-container {
+  display: flex;
+  width: 100%;
+  min-height: 540px;
+  max-height: 680px;
+  overflow: hidden;
+}
+
+/* Left Table Pane */
+.msp-table-pane {
+  flex: 0 0 58%;
+  overflow-x: auto;
+  overflow-y: auto;
+  border-right: 2px solid #cbd5e1;
+  background: #ffffff;
+}
+
+.msp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  text-align: left;
+}
+
+.msp-table th {
+  position: sticky;
+  top: 0;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 700;
+  padding: 0.6rem 0.5rem;
+  border-bottom: 2px solid #cbd5e1;
+  border-right: 1px solid #e2e8f0;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  z-index: 10;
+}
+
+.msp-table td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #f1f5f9;
+  white-space: nowrap;
+  color: #1e293b;
+}
+
+.msp-table tr:hover {
+  background: #f8fafc;
+}
+
+.msp-table tr.summary-row {
+  background: #f1f5f9;
+  font-weight: 700;
+}
+
+.msp-table tr.critical-row {
+  background: #fff1f2;
+}
+
+.msp-table input,
+.msp-table select {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 0.8125rem;
+  color: inherit;
+  font-weight: inherit;
+  padding: 2px 4px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.msp-table input:focus,
+.msp-table select:focus {
+  border-color: #6366f1;
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+/* Right Gantt Chart Pane */
+.msp-gantt-pane {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  background: #fafafa;
+  position: relative;
+}
+
+.gantt-timeline-header {
+  position: sticky;
+  top: 0;
+  background: #f1f5f9;
+  border-bottom: 2px solid #cbd5e1;
+  z-index: 9;
+}
+
+.gantt-month-row {
+  display: flex;
+  height: 24px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.725rem;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+}
+
+.gantt-days-row {
+  display: flex;
+  height: 24px;
+  font-size: 0.675rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.gantt-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.gantt-chart-body {
+  position: relative;
+}
+
+.gantt-row {
+  height: 33px;
+  border-bottom: 1px solid #eef2f6;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.gantt-grid-col {
+  height: 100%;
+  border-right: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+
+.gantt-grid-col.weekend {
+  background: rgba(241, 245, 249, 0.6);
+}
+
+/* Gantt Task Bars */
+.gantt-bar {
+  position: absolute;
+  height: 18px;
+  border-radius: 4px;
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 0.685rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  z-index: 2;
+  transition: transform 0.15s ease, filter 0.15s ease;
+  overflow: hidden;
+}
+
+.gantt-bar:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.gantt-bar.critical {
+  background: #ef4444;
+}
+
+.gantt-bar.completed {
+  background: #10b981;
+}
+
+.gantt-bar.summary {
+  height: 10px;
+  background: #1e293b;
+  border-radius: 2px;
+  top: 11px;
+}
+
+.gantt-bar-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.22);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.gantt-milestone-diamond {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #8b5cf6;
+  transform: rotate(45deg);
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  z-index: 3;
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-badge.approved {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.status-badge.incharge {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.status-badge.pending {
+  background: #fef9c3;
+  color: #a16207;
+  border: 1px solid #fef08a;
+}
+
+.status-badge.rework {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+/* Work Completion Cards & Table */
+.wc-table-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.wc-table-toolbar {
+  padding: 1rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fafafa;
+}
+
+.wc-search-input {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  outline: none;
+  min-width: 260px;
+}
+
+.wc-search-input:focus {
+  border-color: #6366f1;
+}
+
+.wc-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.wc-data-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid #e2e8f0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.wc-data-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  vertical-align: middle;
+}
+
+.wc-data-table tr:hover {
+  background: #f8fafc;
+}
+
+.progress-bar-container {
+  width: 100%;
+  min-width: 80px;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+/* Modal Windows */
+.planning-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.planning-modal-content {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 650px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.planning-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.planning-modal-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.planning-modal-body {
+  padding: 1.5rem;
+}
+
+.planning-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.planning-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.planning-form-field.full {
+  grid-column: 1 / -1;
+}
+
+.planning-form-field label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.planning-form-field input,
+.planning-form-field select,
+.planning-form-field textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  font-family: inherit;
+}
+
+.planning-form-field input:focus,
+.planning-form-field select:focus,
+.planning-form-field textarea:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.planning-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background: #f8fafc;
+  border-radius: 0 0 16px 16px;
+}
+
+/* Printable Certificate (WCC) */
+.wcc-certificate-sheet {
+  background: #ffffff;
+  border: 2px solid #0f172a;
+  padding: 2.5rem;
+  border-radius: 4px;
+  max-width: 780px;
+  margin: 0 auto;
+  color: #0f172a;
+  font-family: 'Times New Roman', serif;
+}
+
+.wcc-header-logo {
+  text-align: center;
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.wcc-cert-title {
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1.5rem;
+  color: #1e1b4b;
+}
+
+.wcc-details-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2rem;
+}
+
+.wcc-details-table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  font-size: 0.95rem;
+}
+
+.wcc-details-table td.label-cell {
+  background: #f8fafc;
+  font-weight: 700;
+  width: 32%;
+}
+
+.wcc-signatures {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3rem;
+  padding-top: 1rem;
+}
+
+.wcc-sig-box {
+  text-align: center;
+  width: 200px;
+  border-top: 1px solid #0f172a;
+  padding-top: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}

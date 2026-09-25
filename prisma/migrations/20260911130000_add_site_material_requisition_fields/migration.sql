@@ -1,0 +1,13 @@
+ALTER TABLE "SiteMaterialRequisition"
+  ADD COLUMN IF NOT EXISTS "serialNo" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "taskName" TEXT,
+  ADD COLUMN IF NOT EXISTS "materialName" TEXT,
+  ADD COLUMN IF NOT EXISTS "reqDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS "poRate" DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+UPDATE "SiteMaterialRequisition"
+SET "materialName" = COALESCE(NULLIF("itemDescription", ''), 'Unnamed Material')
+WHERE "materialName" IS NULL;
+
+ALTER TABLE "SiteMaterialRequisition"
+  ALTER COLUMN "materialName" SET NOT NULL;

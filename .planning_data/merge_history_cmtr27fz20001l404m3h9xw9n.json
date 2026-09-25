@@ -1,0 +1,13 @@
+[
+  {
+    "id": "mrg-1788929375689",
+    "timestamp": "2026-09-09T04:49:35.689Z",
+    "category": "UNIT",
+    "source": "Bag",
+    "target": "Nos",
+    "conversionFactor": 1,
+    "itemsAffected": 20,
+    "performedBy": "Engineer",
+    "summary": "Merged unit \"Bag\" into \"Nos\" (conversion x1). 20 task/item records updated."
+  }
+]

@@ -1,0 +1,147 @@
+.eng-sidebar {
+  width: 260px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #334155;
+  border-right: none;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  overflow-y: auto;
+}
+
+.eng-sidebar-header {
+  background-color: #0ea5e9;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+
+.eng-sidebar-header h1 {
+  color: white;
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.eng-sidebar-header h1 span {
+  font-style: italic;
+  font-weight: 300;
+}
+
+.eng-nav {
+  padding: 12px 12px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.eng-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  color: #f1f5f9;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  margin-bottom: 2px;
+  cursor: pointer;
+}
+
+.eng-nav-item svg {
+  color: #94a3b8;
+}
+
+.eng-nav-item:hover {
+  background-color: #475569;
+}
+
+.eng-nav-item.active {
+  background-color: #f8fafc;
+  color: #334155;
+}
+
+.eng-nav-item.active svg {
+  color: #0ea5e9;
+}
+
+.eng-nav-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.eng-sub-menu {
+  display: flex;
+  flex-direction: column;
+  padding-left: 20px;
+  margin-top: 2px;
+  margin-bottom: 8px;
+}
+
+.eng-sub-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.eng-sub-item:hover {
+  color: #f8fafc;
+  background-color: #475569;
+}
+
+.eng-sub-item.active {
+  color: #0ea5e9;
+  background-color: rgba(14, 165, 233, 0.1);
+  font-weight: 600;
+}
+
+.eng-sidebar-footer {
+  padding: 20px 24px;
+  border-top: 1px solid #475569;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.eng-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #f1f5f9;
+  background: transparent;
+  border: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.eng-logout-btn svg {
+  color: #ef4444;
+}
+
+.avatar-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #0f172a;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1rem;
+}
