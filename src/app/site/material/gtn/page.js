@@ -210,6 +210,7 @@ export default function SiteGTNListPage() {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', fontSize: '0.8rem' }}>
                       <div><span style={{ color: '#64748b' }}>Project: </span><span style={{ fontWeight: 600, color: '#334155' }}>{gtn.project?.name || 'N/A'}</span></div>
+                      <div><span style={{ color: '#64748b' }}>PO No: </span><span style={{ fontWeight: 600, color: '#334155' }}>{gtn.purchaseOrderNo || 'N/A'}</span></div>
                       <div><span style={{ color: '#64748b' }}>Supplier: </span><span style={{ fontWeight: 600, color: '#334155' }}>{gtn.supplierName || 'N/A'}</span></div>
                       <div>
                         <span style={{ color: '#64748b' }}>GTN Date: </span>

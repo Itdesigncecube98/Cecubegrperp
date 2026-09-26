@@ -24,11 +24,13 @@ function CreateGTNContent() {
 
   const [projects, setProjects] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
   const [form, setForm] = useState({
     projectId: '',
+    purchaseOrderNo: '',
     supplierId: '',
     supplierName: '',
     gtnDate: new Date().toISOString().slice(0, 10),
@@ -51,6 +53,7 @@ function CreateGTNContent() {
   useEffect(() => {
     fetch('/api/projects').then(r => r.json()).then(d => setProjects(Array.isArray(d) ? d : [])).catch(() => {});
     fetch('/api/vendors').then(r => r.json()).then(d => setSuppliers(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch('/api/purchase/po', { cache: 'no-store' }).then(r => r.json()).then(d => setPurchaseOrders(Array.isArray(d) ? d : [])).catch(() => {});
     if (editId) {
       fetch(`/api/engineering/site/gtn?id=${editId}`)
         .then(r => r.json())
@@ -58,6 +61,7 @@ function CreateGTNContent() {
           if (d && d.id) {
             setForm({
               projectId: d.projectId || '',
+              purchaseOrderNo: d.purchaseOrderNo || '',
               supplierId: d.supplierId || '',
               supplierName: d.supplierName || '',
               gtnDate: d.gtnDate?.slice(0, 10) || new Date().toISOString().slice(0, 10),
@@ -76,9 +80,9 @@ function CreateGTNContent() {
               materialName: i.materialName || '',
               quantity: i.quantity || '',
               unit: i.unit || '',
-              testParameters: i.testParameters || '',
+              testParameters: i.testParameters || i.testName || i.testDescription || '',
               testStatus: i.testStatus || '',
-              remarks: i.remarks || '',
+              remarks: i.remarks || i.testRemark || '',
             })) : [{ materialName: '', quantity: '', unit: '', testParameters: '', testStatus: '', remarks: '' }]);
           }
         }).catch(() => {});
@@ -86,6 +90,65 @@ function CreateGTNContent() {
   }, [editId]);
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const project = projects.find(item => item.id === form.projectId);
+  const projectPurchaseOrders = purchaseOrders.filter(po =>
+    po.projectId === form.projectId || po.projectName?.trim().toLowerCase() === project?.name?.trim().toLowerCase()
+  );
+  const selectPurchaseOrder = async poNumber => {
+    const po = projectPurchaseOrders.find(item => item.poNumber === poNumber);
+    if (!po) {
+      setForm(previous => ({ ...previous, purchaseOrderNo: '', supplierId: '', supplierName: '' }));
+      setItems([{ materialName: '', quantity: '', unit: '', testParameters: '', testStatus: '', remarks: '' }]);
+      return;
+    }
+    const normalizedSupplierName = String(po.supplierName || '').trim().toLowerCase();
+    const supplier = suppliers.find(item => String(item.id) === String(po.supplierId))
+      || suppliers.find(item => String(item.name || '').trim().toLowerCase() === normalizedSupplierName);
+    setMessage('');
+    let previouslyRecordedItems = [];
+    let receivedGrns = [];
+    try {
+      const [gtnResponse, grnResponse] = await Promise.all([
+        fetch(`/api/engineering/site/gtn?purchaseOrderNo=${encodeURIComponent(po.poNumber)}`, { cache: 'no-store' }),
+        fetch(`/api/engineering/site/grn?poNo=${encodeURIComponent(po.poNumber)}`, { cache: 'no-store' }),
+      ]);
+      if (!gtnResponse.ok || !grnResponse.ok) throw new Error('Could not load received materials pending GTN testing.');
+      const [existingGtns, projectGrns] = await Promise.all([gtnResponse.json(), grnResponse.json()]);
+      previouslyRecordedItems = (Array.isArray(existingGtns) ? existingGtns : [])
+        .filter(gtn => gtn.id !== editId)
+        .flatMap(gtn => (gtn.items || []).map(item => ({ ...item, _purchaseOrderNo: gtn.purchaseOrderNo || '' })));
+      receivedGrns = Array.isArray(projectGrns) ? projectGrns : [];
+    } catch (error) {
+      setMessage(error.message || 'Could not check existing GTN items for this PO.');
+      return;
+    }
+    setForm(previous => ({
+      ...previous,
+      purchaseOrderNo: po.poNumber,
+      supplierId: supplier?.id || po.supplierId || `po-supplier-${po.id}`,
+      supplierName: supplier?.name || po.supplierName || '',
+    }));
+    const pendingItems = receivedGrns.flatMap(grn => (grn.items || [])
+      .filter(item => item.testRequired && Number(item.acceptedQty) > 0)
+      .filter(item => !previouslyRecordedItems.some(existing =>
+        String(existing.grnSrNo || '').trim().toLowerCase() === String(grn.grnNo || '').trim().toLowerCase()
+        && String(existing.requisitionId || '') === String(item.requisitionId || '')
+        && String(existing.materialName || '').trim().toLowerCase() === String(item.materialName || '').trim().toLowerCase()
+      ))
+      .map(item => ({
+        grnSrNo: grn.grnNo,
+        requisitionId: item.requisitionId,
+        materialName: item.materialName || '',
+        quantity: Number(item.acceptedQty) || 0,
+        unit: item.unit || '',
+        testParameters: '',
+        testStatus: 'Pending',
+        remarks: item.remarks || '',
+      })));
+    setItems(pendingItems);
+    if (pendingItems.length === 0) setMessage('There are no received GRN materials pending GTN testing for this PO.');
+  };
 
   const updateItem = (idx, key, val) => setItems(prev => prev.map((item, i) => i === idx ? { ...item, [key]: val } : item));
   const addItem = () => setItems(prev => [...prev, { materialName: '', quantity: '', unit: '', testParameters: '', testStatus: '', remarks: '' }]);
@@ -145,9 +208,16 @@ function CreateGTNContent() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
               <div>
                 <label style={labelStyle}>Project *</label>
-                <select value={form.projectId} onChange={e => setField('projectId', e.target.value)} style={inputStyle} required>
+                <select value={form.projectId} onChange={e => setForm(previous => ({ ...previous, projectId: e.target.value, purchaseOrderNo: '', supplierId: '', supplierName: '' }))} style={inputStyle} required>
                   <option value="">Select Project</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Purchase Order</label>
+                <select value={form.purchaseOrderNo} onChange={e => selectPurchaseOrder(e.target.value)} style={inputStyle} disabled={!form.projectId}>
+                  <option value="">{form.projectId ? 'Select PO (optional)' : 'Select a project first'}</option>
+                  {projectPurchaseOrders.map(po => <option key={po.id} value={po.poNumber}>{po.poNumber}</option>)}
                 </select>
               </div>
               <div>
@@ -157,6 +227,7 @@ function CreateGTNContent() {
                   setForm(f => ({ ...f, supplierId: e.target.value, supplierName: s?.name || '' }));
                 }} style={inputStyle}>
                   <option value="">Select Supplier</option>
+                  {form.supplierId && !suppliers.some(s => String(s.id) === String(form.supplierId)) && <option value={form.supplierId}>{form.supplierName || 'PO supplier'}</option>}
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>

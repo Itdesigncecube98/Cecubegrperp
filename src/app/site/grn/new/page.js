@@ -50,7 +50,11 @@ function CreateGRNForm() {
     });
     fetch('/api/engineering/requisitions').then(response => response.json()).then(data => {
       const available = Array.isArray(data) ? data.filter(item => item.status !== 'Issued') : [];
-      setRequisitions(available);
+      setRequisitions(previous => {
+        const merged = new Map(previous.map(item => [String(item.id), item]));
+        available.forEach(item => merged.set(String(item.id), item));
+        return Array.from(merged.values());
+      });
       const requisition = available.find(item => item.id === requisitionId);
       if (requisition) {
         setForm(previous => ({ ...previous, projectId: requisition.projectId || previous.projectId }));
@@ -63,6 +67,14 @@ function CreateGRNForm() {
       .then(data => {
         const grn = Array.isArray(data) ? data[0] : data;
         if (!grn?.id) return;
+        const linkedRequisitions = (grn.items || []).map(item => item.requisition).filter(Boolean);
+        if (linkedRequisitions.length) {
+          setRequisitions(previous => {
+            const merged = new Map(previous.map(item => [String(item.id), item]));
+            linkedRequisitions.forEach(item => merged.set(String(item.id), item));
+            return Array.from(merged.values());
+          });
+        }
         setForm({
           projectId: grn.projectId || '', supplierId: grn.supplierId || '', supplierName: grn.supplierName || '',
           grnDate: grn.grnDate?.slice(0, 10) || '', grnType: grn.grnType || 'WITHOUT_PO', poNo: grn.poNo || '',
@@ -72,7 +84,7 @@ function CreateGRNForm() {
           state: grn.state || '', ewayBillNo: grn.ewayBillNo || '', ewayBillDate: grn.ewayBillDate?.slice(0, 10) || '',
           status: grn.status || 'Draft', remarks: grn.remarks || ''
         });
-        setItems(grn.items?.length ? grn.items.map(item => ({ ...emptyItem(), ...item })) : [emptyItem()]);
+        setItems(grn.items?.length ? grn.items.map(item => ({ ...emptyItem(), ...item, requisitionId: item.requisitionId ? String(item.requisitionId) : '' })) : [emptyItem()]);
       }).catch(() => {});
   }, [editId, requisitionId]);
 

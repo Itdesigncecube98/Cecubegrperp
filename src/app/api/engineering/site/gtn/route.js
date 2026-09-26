@@ -1,15 +1,62 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+async function resolveProjectMaster(projectId) {
+  const projectMaster = await prisma.projectMaster.findUnique({
+    where: { id: projectId },
+    select: { id: true },
+  });
+  if (projectMaster || !projectId) return projectMaster;
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, name: true, company: true, state: true },
+  });
+  if (!project) return null;
+
+  const matchingMaster = await prisma.projectMaster.findFirst({
+    where: { name: project.name },
+    select: { id: true },
+  });
+  if (matchingMaster) return matchingMaster;
+
+  return prisma.projectMaster.create({
+    data: {
+      projectId: `PROJECT-${project.id}`,
+      name: project.name,
+      clientName: project.company || null,
+      location: project.state || null,
+      projectType: 'EPC',
+      status: 'Active',
+    },
+    select: { id: true },
+  });
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
     const projectId = searchParams.get('projectId');
     const status = searchParams.get('status');
+    const purchaseOrderNo = searchParams.get('purchaseOrderNo');
+
+    if (id) {
+      const gtn = await prisma.siteGTN.findUnique({
+        where: { id },
+        include: {
+          project: { select: { id: true, projectId: true, name: true } },
+          items: { include: { requisition: { select: { reqNo: true, materialName: true } } } }
+        }
+      });
+      if (!gtn) return NextResponse.json({ error: 'GTN not found' }, { status: 404 });
+      return NextResponse.json(gtn);
+    }
 
     const where = {};
     if (projectId) where.projectId = projectId;
     if (status) where.status = status;
+    if (purchaseOrderNo) where.purchaseOrderNo = purchaseOrderNo;
 
     const gtns = await prisma.siteGTN.findMany({
       where,
@@ -63,6 +110,11 @@ export async function POST(request) {
       items
     } = body;
 
+    const projectMaster = await resolveProjectMaster(projectId);
+    if (!projectMaster) {
+      return NextResponse.json({ error: 'Selected project could not be found.' }, { status: 400 });
+    }
+
     // Generate GTN Number
     const lastGTN = await prisma.siteGTN.findFirst({
       orderBy: { gtnNo: 'desc' }
@@ -97,7 +149,7 @@ export async function POST(request) {
       data: {
         gtnNo,
         gtnSrNo,
-        projectId,
+        projectId: projectMaster.id,
         supplierId,
         supplierName,
         purchaseOrderNo,
@@ -118,13 +170,13 @@ export async function POST(request) {
             poSrNo: item.poSrNo,
             materialName: item.materialName,
             materialCategory: item.materialCategory,
-            testName: item.testName,
-            testDescription: item.testDescription,
+            testName: item.testName || item.testParameters,
+            testDescription: item.testDescription || item.testParameters,
             goodMin: item.goodMin ? parseFloat(item.goodMin) : null,
             goodMax: item.goodMax ? parseFloat(item.goodMax) : null,
             testResult: item.testResult,
             testStatus: item.testStatus || 'Pending',
-            testRemark: item.testRemark,
+            testRemark: item.testRemark || item.remarks,
             testQty: item.testQty ? parseFloat(item.testQty) : null,
             reqQty: item.reqQty ? parseFloat(item.reqQty) : null,
             quantity: parseFloat(item.quantity),

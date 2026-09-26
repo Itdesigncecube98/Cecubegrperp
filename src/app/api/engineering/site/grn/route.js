@@ -8,12 +8,14 @@ export async function GET(request) {
     const status = searchParams.get('status');
     const gtnId = searchParams.get('gtnId');
     const id = searchParams.get('id');
+    const poNo = searchParams.get('poNo');
 
     const where = {};
     if (id) where.id = id;
     if (projectId) where.projectId = projectId;
     if (status) where.status = status;
     if (gtnId) where.gtnId = gtnId;
+    if (poNo) where.poNo = { equals: poNo.trim(), mode: 'insensitive' };
 
     const grns = await prisma.siteGRN.findMany({
       where,

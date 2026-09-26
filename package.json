@@ -6,7 +6,6 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "prisma generate && next build",
     "start": "next start -H 0.0.0.0",
-    "deploy": "node scripts/deploy.js",
     "lint": "eslint",
     "test": "jest",
     "test:print-borders": "jest src/app/employee-card/__tests__/print-borders.test.js",

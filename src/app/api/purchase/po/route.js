@@ -295,6 +295,7 @@ export async function PUT(req) {
             roundOff: parseFloat(body.roundOff) || 0, totalAmountWords: body.totalAmountWords || null,
             items: { create: items.map((item, index) => ({
               sNo: item.sNo || index + 1, description: item.description || item.item || '',
+              hsnCode: item.hsnCode || null,
               quantity: parseFloat(item.quantity) || 0, unit: item.unit || 'Nos', rate: parseFloat(item.rate) || 0,
               discountPercent: parseFloat(item.discountPercent || item.itemDiscount) || 0,
               taxableAmount: (parseFloat(item.quantity) || 0) * (parseFloat(item.rate) || 0),
