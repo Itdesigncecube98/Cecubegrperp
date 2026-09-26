@@ -1,0 +1,5 @@
+ALTER TABLE "SiteGRN"
+  ADD COLUMN "grnType" TEXT NOT NULL DEFAULT 'WITHOUT_PO',
+  ADD COLUMN "supplierId" TEXT,
+  ADD COLUMN "supplierName" TEXT,
+  ADD COLUMN "poNo" TEXT;

@@ -56,6 +56,13 @@ export async function GET(req) {
     }
 
     const materials = rfq.indent?.items || [];
+    const libraryItems = await prisma.materialLibraryItem.findMany({
+      where: { resourceType: 'Material' },
+      select: { name: true, rate: true }
+    });
+    const libraryRates = new Map(
+      libraryItems.map((item) => [normalize(item.name), Number(item.rate) || 0])
+    );
 
     const rows = materials.map((material) => {
       const offers = buildOffers(material, rfq.quotations);
@@ -67,6 +74,7 @@ export async function GET(req) {
         specification: material.specification,
         unit: material.unit,
         quantity: material.quantity,
+        libraryRate: libraryRates.get(normalize(material.item)) || 0,
         offers,
         lowestRate: priced.length ? priced[0].rate : null,
         lowestVendorId: priced.length ? priced[0].vendorId : null,
@@ -179,15 +187,21 @@ export async function POST(req) {
     });
 
     updated.forEach((line) => {
-      const name = line.quotation?.vendor?.name || 'Unknown vendor';
-      approvedByVendor.set(name, (approvedByVendor.get(name) || 0) + 1);
+      const vendorId = line.quotation?.vendorId;
+      const vendorName = line.quotation?.vendor?.name || 'Unknown vendor';
+      if (vendorId) {
+        if (!approvedByVendor.has(vendorId)) {
+          approvedByVendor.set(vendorId, { vendorId, vendorName, lineCount: 0 });
+        }
+        approvedByVendor.get(vendorId).lineCount += 1;
+      }
     });
 
     return NextResponse.json({
       success: true,
       approvedLines: quotationItemIds.length,
       approvedAt,
-      byVendor: Array.from(approvedByVendor.entries()).map(([vendorName, lineCount]) => ({ vendorName, lineCount }))
+      byVendor: Array.from(approvedByVendor.values())
     });
   } catch (error) {
     console.error('Error approving quotations:', error);

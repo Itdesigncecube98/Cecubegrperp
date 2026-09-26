@@ -1,0 +1,121 @@
+// New Prisma models needed for contracting portal
+// Add these to schema.prisma before running prisma db push
+
+model WorkOrder {
+  id              String   @id @default(cuid())
+  woNo            String   @unique
+  projectId       String
+  contractorId    String?
+  contractorName  String
+  contractorPhone String?
+  contractorGst   String?
+
+  wbsTask         String?
+  scope           String?  @db.Text
+  startDate       DateTime?
+  endDate         DateTime?
+
+  contractValue   Float    @default(0)
+  advancePercent  Float    @default(0)
+  advanceAmount   Float    @default(0)
+  retentionPercent Float   @default(0)
+
+  paymentTerms    String?
+  status          String   @default("Draft")  // Draft, Active, Closed, Cancelled
+
+  raBills         WorkOrderRABill[]
+
+  project         ProjectMaster @relation(fields: [projectId], references: [id])
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model WorkOrderRABill {
+  id              String   @id @default(cuid())
+  billNo          String   @unique
+  workOrderId     String
+  projectId       String
+  date            DateTime @default(now())
+  periodFrom      DateTime?
+  periodTo        DateTime?
+
+  // Measurement & Quantities
+  measuredValue   Float    @default(0)
+
+  // Previous running bill
+  previousCertified Float  @default(0)
+  currentBill       Float  @default(0)
+  cumulative        Float  @default(0)
+
+  // Deductions
+  retentionPercent  Float  @default(0)
+  retentionAmount   Float  @default(0)
+  advanceRecovery   Float  @default(0)
+  otherDeductions   Float  @default(0)
+
+  // Tax
+  tdsPercent        Float  @default(0)
+  tdsAmount         Float  @default(0)
+
+  netPayable        Float  @default(0)
+
+  remarks           String? @db.Text
+  status            String  @default("Submitted")  // Submitted, Approved, Paid, Rejected
+
+  workOrder   WorkOrder     @relation(fields: [workOrderId], references: [id])
+  project     ProjectMaster @relation(fields: [projectId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workOrderId])
+  @@index([projectId])
+  @@index([status])
+}
+
+model LabourRateMaster {
+  id          String   @id @default(cuid())
+  category    String   // Skilled, Semi-Skilled, Unskilled, Supervisor
+  designation String
+  unit        String   @default("Day")
+  rate        Float    @default(0)
+  otRate      Float    @default(0)  // Overtime rate
+  state       String?
+  effectiveFrom DateTime @default(now())
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+}
+
+model LabourRequisition {
+  id          String   @id @default(cuid())
+  reqNo       String   @unique
+  projectId   String
+  workOrderId String?
+  date        DateTime @default(now())
+  requiredDate DateTime?
+
+  category    String   // Skilled, Semi-Skilled, Unskilled
+  designation String
+  quantity    Int      @default(1)
+  unit        String   @default("Day")
+  duration    Int      @default(1)  // in days
+  purpose     String?  @db.Text
+
+  status      String   @default("Pending") // Pending, Approved, Fulfilled, Cancelled
+
+  project     ProjectMaster @relation(fields: [projectId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+}

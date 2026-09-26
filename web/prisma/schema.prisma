@@ -146,26 +146,26 @@ model Employee {
   marketingOpportunities MarketingOpportunity[] @relation("OpportunityOwner")
   marketingFollowups     MarketingFollowup[]
 
-  tenderOwner           Tender[]               @relation("TenderOwner")
-  tenderDocUploader     TenderDocument[]       @relation("TenderDocUploader")
-  tenderApprover        TenderApproval[]       @relation("TenderApprover")
-  tenderSubmitter       TenderSubmission[]     @relation("TenderSubmitter")
-  tenderAuditor         TenderAuditLog[]       @relation("TenderAuditor")
+  tenderOwner       Tender[]           @relation("TenderOwner")
+  tenderDocUploader TenderDocument[]   @relation("TenderDocUploader")
+  tenderApprover    TenderApproval[]   @relation("TenderApprover")
+  tenderSubmitter   TenderSubmission[] @relation("TenderSubmitter")
+  tenderAuditor     TenderAuditLog[]   @relation("TenderAuditor")
 
   // Purchase Relations
-  purchaseIndents       PurchaseIndent[]
-  approvedIndents       PurchaseApproval[]
-  vendorCreator         VendorMaster[]
+  purchaseIndents PurchaseIndent[]
+  approvedIndents PurchaseApproval[]
+  vendorCreator   VendorMaster[]
 
   // Engineering Relations
-  projectTeamsMember    ProjectTeam[] @relation("ProjectTeamMember")
+  projectTeamsMember    ProjectTeam[]             @relation("ProjectTeamMember")
   materialRequesters    SiteMaterialRequisition[] @relation("MaterialRequester")
-  ncrsRaised            QualityNCR[] @relation("NCRRaiser")
-  safetyLogsLogged      SafetyLog[] @relation("SafetyLogger")
-  projectManaged        ProjectMaster[] @relation("ProjectManager")
-  activitiesResponsible ProjectActivity[] @relation("ActivityResponsible")
-  dprsPrepared          SiteDPR[] @relation("DPRPreparer")
-  mbsCertified          ProjectMB[] @relation("MBCertifier")
+  ncrsRaised            QualityNCR[]              @relation("NCRRaiser")
+  safetyLogsLogged      SafetyLog[]               @relation("SafetyLogger")
+  projectManaged        ProjectMaster[]           @relation("ProjectManager")
+  activitiesResponsible ProjectActivity[]         @relation("ActivityResponsible")
+  dprsPrepared          SiteDPR[]                 @relation("DPRPreparer")
+  mbsCertified          ProjectMB[]               @relation("MBCertifier")
 
   @@index([role])
   @@index([supervisorId])
@@ -173,12 +173,12 @@ model Employee {
 }
 
 model EmergencyContact {
-  id         Int      @id @default(autoincrement())
-  employeeId String
-  name       String?
-  phone      String?
+  id           Int      @id @default(autoincrement())
+  employeeId   String
+  name         String?
+  phone        String?
   relationship String?
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
 }
@@ -796,9 +796,9 @@ model Project {
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
-  companyId String?
-  companyRel Company?  @relation(fields: [companyId], references: [id])
-  policies  InsurancePolicy[]
+  companyId  String?
+  companyRel Company?          @relation(fields: [companyId], references: [id])
+  policies   InsurancePolicy[]
 
   @@index([companyId])
 }
@@ -847,38 +847,38 @@ model ProjectWbsTask {
   updatedAt DateTime @updatedAt
 
   budgetHistories ProjectWbsBudgetHistory[]
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project         Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model ProjectWbsBudgetHistory {
-  id              String   @id @default(cuid())
+  id               String @id @default(cuid())
   projectWbsTaskId String
-  
+
   // Storing changes as a JSON object allows flexible tracking of old/new values
   // e.g. { "approvedAmount": { "old": 0, "new": 5000 } }
-  changes         Json
-  
-  createdAt       DateTime @default(now())
+  changes Json
+
+  createdAt DateTime @default(now())
 
   task ProjectWbsTask @relation(fields: [projectWbsTaskId], references: [id], onDelete: Cascade)
 }
 
 model Company {
-  id          String         @id @default(cuid())
-  name        String         @unique
+  id          String       @id @default(cuid())
+  name        String       @unique
   code        String?
   type        String?
-  status      String?        @default("Active")
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  status      String?      @default("Active")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   tdsSections TDSSection[]
-  tdsChallans TDSChallan[]   @relation("TDSChallans")
+  tdsChallans TDSChallan[] @relation("TDSChallans")
 
-  contractors      Contractor[]
-  projects         Project[]
-  policyTypes      PolicyType[]
+  contractors       Contractor[]
+  projects          Project[]
+  policyTypes       PolicyType[]
   insurancePolicies InsurancePolicy[]
-  labourers        Labour[]
+  labourers         Labour[]
 }
 
 model Library {
@@ -1384,7 +1384,7 @@ model Contractor {
   groups    ContractorGroup[]
 
   companyId String?
-  company   Company?  @relation(fields: [companyId], references: [id])
+  company   Company?          @relation(fields: [companyId], references: [id])
   policies  InsurancePolicy[]
 
   @@index([companyId])
@@ -1427,21 +1427,21 @@ model UnitLibrary {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([libraryId])
   @@unique([libraryId, name])
+  @@index([libraryId])
 }
 
 model WbsGroup {
-  id        String    @id @default(cuid())
-  projectId String
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name      String
-  reraStage String?
+  id           String    @id @default(cuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name         String
+  reraStage    String?
   rate         Float?    @default(0.0)
   budgetAmount Float?    @default(0.0)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  tasks     WbsTask[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  tasks        WbsTask[]
 
   @@index([projectId])
 }
@@ -1462,6 +1462,7 @@ model WbsTask {
   totalAmount       Float?   @default(0.0)
   description       String?  @db.Text
   reraStage         String?
+  materials         Json     @default("[]")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -1483,20 +1484,21 @@ model TaskLibraryGroup {
 }
 
 model TaskLibraryItem {
-  id          String                @id @default(cuid())
+  id          String                 @id @default(cuid())
   groupId     String
-  group       TaskLibraryGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group       TaskLibraryGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   libraryId   String
   projectId   String?
   project     ProjectMaster?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name        String
   unit        String?
-  quantity    Float                 @default(1)
-  description String?               @db.Text
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  quantity    Float                  @default(1)
+  description String?                @db.Text
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
   materials   TaskLibraryMaterial[]
   labours     TaskLibraryLabour[]
+  equipments  TaskLibraryEquipment[]
 
   @@index([groupId])
   @@index([libraryId])
@@ -1510,6 +1512,7 @@ model TaskLibraryMaterial {
   name          String
   unit          String?
   quantity      Float           @default(0)
+  rate          Float           @default(0)
   specification String?         @db.Text
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
@@ -1524,6 +1527,22 @@ model TaskLibraryLabour {
   name          String
   unit          String?         @default("Manday")
   quantity      Float           @default(0)
+  rate          Float           @default(0)
+  specification String?         @db.Text
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([taskId])
+}
+
+model TaskLibraryEquipment {
+  id            String          @id @default(cuid())
+  taskId        String
+  task          TaskLibraryItem @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  name          String
+  unit          String?         @default("Hour")
+  quantity      Float           @default(0)
+  rate          Float           @default(0)
   specification String?         @db.Text
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
@@ -1532,18 +1551,18 @@ model TaskLibraryLabour {
 }
 
 model MaterialLibraryGroup {
-  id          String                 @id @default(cuid())
-  libraryId   String?
-  library     Library?               @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  id           String                 @id @default(cuid())
+  libraryId    String?
+  library      Library?               @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   resourceType String                 @default("Material")
-  parentId    String?
-  parent      MaterialLibraryGroup?  @relation("MaterialSubgroups", fields: [parentId], references: [id], onDelete: Cascade)
-  subgroups   MaterialLibraryGroup[] @relation("MaterialSubgroups")
-  name        String
-  description String?                @db.Text
-  materials   MaterialLibraryItem[]
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
+  parentId     String?
+  parent       MaterialLibraryGroup?  @relation("MaterialSubgroups", fields: [parentId], references: [id], onDelete: Cascade)
+  subgroups    MaterialLibraryGroup[] @relation("MaterialSubgroups")
+  name         String
+  description  String?                @db.Text
+  materials    MaterialLibraryItem[]
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
 
   @@index([libraryId])
   @@index([parentId])
@@ -1556,6 +1575,7 @@ model MaterialLibraryItem {
   resourceType  String               @default("Material")
   name          String
   unit          String?
+  rate          Float                @default(0)
   specification String?              @db.Text
   description   String?              @db.Text
   usedIn        String[]             @default([])
@@ -1920,13 +1940,13 @@ enum LeadStatus {
 }
 
 model MarketingLead {
-  id          String   @id @default(cuid())
-  leadId      String   @unique // Auto-generated
-  leadDate    DateTime @default(now())
+  id          String     @id @default(cuid())
+  leadId      String     @unique // Auto-generated
+  leadDate    DateTime   @default(now())
   leadSource  String
   leadType    String
   leadOwnerId String
-  leadOwner   Employee @relation("LeadOwner", fields: [leadOwnerId], references: [id])
+  leadOwner   Employee   @relation("LeadOwner", fields: [leadOwnerId], references: [id])
   leadStatus  LeadStatus @default(New)
 
   // Client Info
@@ -2077,387 +2097,404 @@ model MarketingTender {
   updatedAt DateTime @updatedAt
 }
 
-
 // ==========================================
 // TENDER MANAGEMENT MODULE
 // ==========================================
 
 model Tender {
-  id                String    @id @default(cuid())
-  tenderNo          String?   @unique
-  referenceNo       String?
-  title             String
-  tenderDate        DateTime?
-  source            String?
-  authority         String?
-  clientName        String?
-  projectName       String?
-  projectLocation   String?
-  tenderType        String?
-  tenderValue       Float?    @default(0)
-  currency          String?   @default("INR")
-  
-  // Dates
-  publishedDate     DateTime?
-  docDownloadStart  DateTime?
-  preBidMeeting     DateTime?
-  querySubLastDate  DateTime?
-  bidSubStart       DateTime?
-  bidSubLastDate    DateTime?
-  techOpeningDate   DateTime?
-  finOpeningDate    DateTime?
-  expectedResultDate DateTime?
-  
-  // Status & Owner
-  status            String    @default("Evaluation")
-  ownerId           String?
-  owner             Employee? @relation("TenderOwner", fields: [ownerId], references: [id])
-  
-  // Relations
-  evaluations       TenderEvaluation[]
-  documents         TenderDocument[]
-  boqItems          TenderBOQItem[]
-  costing           TenderCosting?
-  bids              TenderBid?
-  approvals         TenderApproval[]
-  submission        TenderSubmission?
-  result            TenderOpeningResult?
-  auditLogs         TenderAuditLog[]
+  id              String    @id @default(cuid())
+  tenderNo        String?   @unique
+  referenceNo     String?
+  title           String
+  tenderDate      DateTime?
+  source          String?
+  authority       String?
+  clientName      String?
+  projectName     String?
+  projectLocation String?
+  tenderType      String?
+  tenderValue     Float?    @default(0)
+  currency        String?   @default("INR")
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  // Dates
+  publishedDate      DateTime?
+  docDownloadStart   DateTime?
+  preBidMeeting      DateTime?
+  querySubLastDate   DateTime?
+  bidSubStart        DateTime?
+  bidSubLastDate     DateTime?
+  techOpeningDate    DateTime?
+  finOpeningDate     DateTime?
+  expectedResultDate DateTime?
+
+  // Status & Owner
+  status  String    @default("Evaluation")
+  ownerId String?
+  owner   Employee? @relation("TenderOwner", fields: [ownerId], references: [id])
+
+  // Relations
+  evaluations TenderEvaluation[]
+  documents   TenderDocument[]
+  boqItems    TenderBOQItem[]
+  costing     TenderCosting?
+  bids        TenderBid?
+  approvals   TenderApproval[]
+  submission  TenderSubmission?
+  result      TenderOpeningResult?
+  auditLogs   TenderAuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model TenderEvaluation {
-  id                  String   @id @default(cuid())
-  tenderId            String
-  clientProfileScore  Int      @default(0)
-  projectExpScore     Int      @default(0)
-  techEligibleScore   Int      @default(0)
-  finEligibleScore    Int      @default(0)
-  similarWorkScore    Int      @default(0)
-  locationScore       Int      @default(0)
-  paymentTermsScore   Int      @default(0)
-  projectMarginScore  Int      @default(0)
-  totalScore          Int      @default(0)
-  
-  decision            String?  // GO, NO-GO, Review
-  reason              String?  @db.Text
-  expectedMargin      Float?
-  competition         String?  @db.Text
-  resourceAvail       String?  @db.Text
-  risk                String?  @db.Text
-  remarks             String?  @db.Text
-  
-  tender              Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                 String @id @default(cuid())
+  tenderId           String
+  clientProfileScore Int    @default(0)
+  projectExpScore    Int    @default(0)
+  techEligibleScore  Int    @default(0)
+  finEligibleScore   Int    @default(0)
+  similarWorkScore   Int    @default(0)
+  locationScore      Int    @default(0)
+  paymentTermsScore  Int    @default(0)
+  projectMarginScore Int    @default(0)
+  totalScore         Int    @default(0)
+
+  decision       String? // GO, NO-GO, Review
+  reason         String? @db.Text
+  expectedMargin Float?
+  competition    String? @db.Text
+  resourceAvail  String? @db.Text
+  risk           String? @db.Text
+  remarks        String? @db.Text
+
+  tender    Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model TenderDocument {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   tenderId     String
   name         String
   type         String
-  version      String   @default("V1")
+  version      String    @default("V1")
   url          String
-  remarks      String?  @db.Text
+  remarks      String?   @db.Text
   uploadedById String?
   uploadedBy   Employee? @relation("TenderDocUploader", fields: [uploadedById], references: [id])
-  tender       Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
+  tender       Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
 }
 
 model TenderBOQItem {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   tenderId      String
   serialNo      String?
-  description   String   @db.Text
+  description   String  @db.Text
   unit          String?
-  quantity      Float    @default(0)
-  clientRate    Float    @default(0)
-  estimatedRate Float    @default(0)
-  tender        Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  quantity      Float   @default(0)
+  clientRate    Float   @default(0)
+  estimatedRate Float   @default(0)
+  tender        Tender  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
 }
 
 model TenderCosting {
-  id               String   @id @default(cuid())
-  tenderId         String   @unique
-  materialCost     Float    @default(0)
-  labourCost       Float    @default(0)
-  subcontractCost  Float    @default(0)
-  equipmentCost    Float    @default(0)
-  transportCost    Float    @default(0)
-  accommodation    Float    @default(0)
-  food             Float    @default(0)
-  siteEstabCost    Float    @default(0)
-  overhead         Float    @default(0)
-  insurance        Float    @default(0)
-  taxes            Float    @default(0)
-  contingency      Float    @default(0)
-  financeCost      Float    @default(0)
-  otherCost        Float    @default(0)
-  
-  totalCost        Float    @default(0)
-  quotedValue      Float    @default(0)
-  grossProfit      Float    @default(0)
-  marginPercent    Float    @default(0)
+  id              String @id @default(cuid())
+  tenderId        String @unique
+  materialCost    Float  @default(0)
+  labourCost      Float  @default(0)
+  subcontractCost Float  @default(0)
+  equipmentCost   Float  @default(0)
+  transportCost   Float  @default(0)
+  accommodation   Float  @default(0)
+  food            Float  @default(0)
+  siteEstabCost   Float  @default(0)
+  overhead        Float  @default(0)
+  insurance       Float  @default(0)
+  taxes           Float  @default(0)
+  contingency     Float  @default(0)
+  financeCost     Float  @default(0)
+  otherCost       Float  @default(0)
 
-  tender           Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  totalCost     Float @default(0)
+  quotedValue   Float @default(0)
+  grossProfit   Float @default(0)
+  marginPercent Float @default(0)
+
+  tender Tender @relation(fields: [tenderId], references: [id], onDelete: Cascade)
 }
 
 model TenderBid {
-  id               String   @id @default(cuid())
-  tenderId         String   @unique
-  basicPrice       Float    @default(0)
-  gstAmount        Float    @default(0)
-  discount         Float    @default(0)
-  freight          Float    @default(0)
-  otherCharges     Float    @default(0)
-  finalBidValue    Float    @default(0)
-  
-  paymentTerms     String?  @db.Text
-  retention        String?  @db.Text
-  ld               String?  @db.Text
-  warranty         String?  @db.Text
-  securityDeposit  String?  @db.Text
-  performanceBg    String?  @db.Text
-  emd              String?  @db.Text
-  
-  tender           Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  id            String @id @default(cuid())
+  tenderId      String @unique
+  basicPrice    Float  @default(0)
+  gstAmount     Float  @default(0)
+  discount      Float  @default(0)
+  freight       Float  @default(0)
+  otherCharges  Float  @default(0)
+  finalBidValue Float  @default(0)
+
+  paymentTerms    String? @db.Text
+  retention       String? @db.Text
+  ld              String? @db.Text
+  warranty        String? @db.Text
+  securityDeposit String? @db.Text
+  performanceBg   String? @db.Text
+  emd             String? @db.Text
+
+  tender Tender @relation(fields: [tenderId], references: [id], onDelete: Cascade)
 }
 
 model TenderApproval {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   tenderId     String
-  stage        String   // Technical, Commercial, Management
-  status       String   // Pending, Approved, Rejected
-  remarks      String?  @db.Text
+  stage        String // Technical, Commercial, Management
+  status       String // Pending, Approved, Rejected
+  remarks      String?   @db.Text
   approvedById String?
   approvedBy   Employee? @relation("TenderApprover", fields: [approvedById], references: [id])
   approvedAt   DateTime?
-  tender       Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
+  tender       Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
 }
 
 model TenderSubmission {
-  id                String   @id @default(cuid())
-  tenderId          String   @unique
-  mode              String?
-  submissionDate    DateTime?
-  portalName        String?
-  portalRef         String?
-  techBidFileUrl    String?
-  commBidFileUrl    String?
-  emdDetails        String?  @db.Text
-  tenderFee         Float?   @default(0)
-  acknowledgement   String?  @db.Text
-  remarks           String?  @db.Text
-  submittedById     String?
-  submittedBy       Employee? @relation("TenderSubmitter", fields: [submittedById], references: [id])
-  tender            Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  createdAt         DateTime @default(now())
+  id              String    @id @default(cuid())
+  tenderId        String    @unique
+  mode            String?
+  submissionDate  DateTime?
+  portalName      String?
+  portalRef       String?
+  techBidFileUrl  String?
+  commBidFileUrl  String?
+  emdDetails      String?   @db.Text
+  tenderFee       Float?    @default(0)
+  acknowledgement String?   @db.Text
+  remarks         String?   @db.Text
+  submittedById   String?
+  submittedBy     Employee? @relation("TenderSubmitter", fields: [submittedById], references: [id])
+  tender          Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
 }
 
 model TenderOpeningResult {
-  id                String   @id @default(cuid())
-  tenderId          String   @unique
+  id              String  @id @default(cuid())
+  tenderId        String  @unique
   // Tech Opening
-  techQualified     Boolean  @default(false)
-  techReason        String?  @db.Text
+  techQualified   Boolean @default(false)
+  techReason      String? @db.Text
   // Fin Opening
-  ourBidValue       Float?   @default(0)
-  rank              String?  // L1, L2, L3
-  competitor1Name   String?
-  competitor1Bid    Float?   @default(0)
-  competitor2Name   String?
-  competitor2Bid    Float?   @default(0)
-  competitor3Name   String?
-  competitor3Bid    Float?   @default(0)
+  ourBidValue     Float?  @default(0)
+  rank            String? // L1, L2, L3
+  competitor1Name String?
+  competitor1Bid  Float?  @default(0)
+  competitor2Name String?
+  competitor2Bid  Float?  @default(0)
+  competitor3Name String?
+  competitor3Bid  Float?  @default(0)
   // Final Result
-  finalStatus       String?  // Awarded, Lost, Cancelled
-  lossReason        String?  @db.Text
-  
+  finalStatus     String? // Awarded, Lost, Cancelled
+  lossReason      String? @db.Text
+
   // Award Details
-  loaNo             String?
-  loaDate           DateTime?
-  contractValue     Float?
-  
-  tender            Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  createdAt         DateTime @default(now())
+  loaNo         String?
+  loaDate       DateTime?
+  contractValue Float?
+
+  tender    Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 }
 
 model TenderAuditLog {
-  id           String   @id @default(cuid())
-  tenderId     String
-  action       String   // Created, StageChanged, BOQUpdated, MarginChanged, etc.
-  oldValue     String?  @db.Text
-  newValue     String?  @db.Text
-  remarks      String?  @db.Text
-  userId       String?
-  user         Employee? @relation("TenderAuditor", fields: [userId], references: [id])
-  tender       Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
+  id        String    @id @default(cuid())
+  tenderId  String
+  action    String // Created, StageChanged, BOQUpdated, MarginChanged, etc.
+  oldValue  String?   @db.Text
+  newValue  String?   @db.Text
+  remarks   String?   @db.Text
+  userId    String?
+  user      Employee? @relation("TenderAuditor", fields: [userId], references: [id])
+  tender    Tender    @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
 }
-
 
 // ==========================================
 // PURCHASE MANAGEMENT MODULE
 // ==========================================
 
 model VendorMaster {
-  id              String   @id @default(cuid())
-  vendorCode      String?  @unique
-  name            String
-  type            String?
-  contactPerson   String?
-  mobile          String?
-  email           String?
-  address         String?  @db.Text
-  city            String?
-  state           String?
-  gstin           String?
-  pan             String?
-  msmeStatus      Boolean  @default(false)
-  bankName        String?
-  accountNo       String?
-  ifsc            String?
-  paymentTerms    String?
-  creditDays      Int?     @default(0)
-  category        String?
-  rating          Float?   @default(0)
-  status          String   @default("Active")
-  
-  createdById     String?
-  createdBy       Employee? @relation(fields: [createdById], references: [id])
-  
-  quotations      VendorQuotation[]
-  rfqs            PurchaseRFQVendor[]
+  id            String  @id @default(cuid())
+  vendorCode    String? @unique
+  name          String
+  type          String?
+  contactPerson String?
+  mobile        String?
+  whatsappNo    String?
+  email         String?
+  address       String? @db.Text
+  godownAddress String? @db.Text
+  city          String?
+  state         String?
+  gstin         String?
+  pan           String?
+  msmeStatus    Boolean @default(false)
+  bankName      String?
+  accountNo     String?
+  ifsc          String?
+  accountName   String?
+  paymentTerms  String?
+  creditDays    Int?    @default(0)
+  category      String?
+  fixedGroup    String?
+  documents     String? @db.Text
+  rating        Float?  @default(0)
+  status        String  @default("Active")
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdById String?
+  createdBy   Employee? @relation(fields: [createdById], references: [id])
+
+  quotations VendorQuotation[]
+  rfqs       PurchaseRFQVendor[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PurchaseIndent {
-  id              String   @id @default(cuid())
-  prNo            String   @unique
-  prDate          DateTime @default(now())
-  department      String?
-  project         String?
-  site            String?
-  requiredDate    DateTime?
-  priority        String   @default("Normal")
-  purpose         String?  @db.Text
-  remarks         String?  @db.Text
-  status          String   @default("Pending Approval")
-  
-  requestedById   String?
-  requestedBy     Employee? @relation(fields: [requestedById], references: [id])
-  
-  items           PurchaseIndentItem[]
-  approvals       PurchaseApproval[]
-  rfqs            PurchaseRFQ[]
+  id           String    @id @default(cuid())
+  prNo         String    @unique
+  prDate       DateTime  @default(now())
+  department   String?
+  project      String?
+  site         String?
+  requiredDate DateTime?
+  priority     String    @default("Normal")
+  purpose      String?   @db.Text
+  remarks      String?   @db.Text
+  status       String    @default("Pending Approval")
+
+  requestedById String?
+  requestedBy   Employee? @relation(fields: [requestedById], references: [id])
+
+  items                    PurchaseIndentItem[]
+  approvals                PurchaseApproval[]
+  rfqs                     PurchaseRFQ[]
   siteMaterialRequisitions SiteMaterialRequisition[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PurchaseIndentItem {
-  id              String   @id @default(cuid())
-  indentId        String
-  item            String
-  specification   String?  @db.Text
-  unit            String
-  quantity        Float
-  requiredDate    DateTime?
-  
-  indent          PurchaseIndent @relation(fields: [indentId], references: [id], onDelete: Cascade)
-  quotationItems  VendorQuotationItem[]
+  id            String    @id @default(cuid())
+  indentId      String
+  item          String
+  specification String?   @db.Text
+  unit          String
+  quantity      Float
+  requiredDate  DateTime?
+
+  indent         PurchaseIndent        @relation(fields: [indentId], references: [id], onDelete: Cascade)
+  quotationItems VendorQuotationItem[]
 }
 
 model PurchaseApproval {
-  id              String   @id @default(cuid())
-  indentId        String?
-  poId            String?
-  stage           String
-  status          String   @default("Pending")
-  remarks         String?  @db.Text
-  approvedAt      DateTime?
-  
-  approvedById    String?
-  approvedBy      Employee? @relation(fields: [approvedById], references: [id])
-  
-  indent          PurchaseIndent? @relation(fields: [indentId], references: [id], onDelete: Cascade)
+  id         String    @id @default(cuid())
+  indentId   String?
+  poId       String?
+  stage      String
+  status     String    @default("Pending")
+  remarks    String?   @db.Text
+  approvedAt DateTime?
+
+  approvedById String?
+  approvedBy   Employee? @relation(fields: [approvedById], references: [id])
+
+  indent PurchaseIndent? @relation(fields: [indentId], references: [id], onDelete: Cascade)
 }
 
 model PurchaseRFQ {
-  id              String   @id @default(cuid())
-  rfqNo           String   @unique
-  rfqDate         DateTime @default(now())
-  indentId        String
-  project         String?
-  requiredDate    DateTime?
-  dueDate         DateTime?
-  expiryDate      DateTime?
-  paymentTerms    String?  @db.Text
-  deliveryTerms   String?  @db.Text
-  warranty        String?  @db.Text
-  specialCond     String?  @db.Text
-  status          String   @default("Open")
-  
-  indent          PurchaseIndent @relation(fields: [indentId], references: [id])
-  vendors         PurchaseRFQVendor[]
-  quotations      VendorQuotation[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(cuid())
+  rfqNo         String    @unique
+  rfqDate       DateTime  @default(now())
+  indentId      String
+  project       String?
+  requiredDate  DateTime?
+  dueDate       DateTime?
+  expiryDate    DateTime?
+  paymentTerms  String?   @db.Text
+  deliveryTerms String?   @db.Text
+  warranty      String?   @db.Text
+  specialCond   String?   @db.Text
+  status        String    @default("Open")
+
+  indent     PurchaseIndent      @relation(fields: [indentId], references: [id])
+  vendors    PurchaseRFQVendor[]
+  quotations VendorQuotation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model PurchaseRFQVendor {
-  id              String   @id @default(cuid())
-  rfqId           String
-  vendorId        String
-  status          String   @default("Sent")
-  
-  rfq             PurchaseRFQ @relation(fields: [rfqId], references: [id], onDelete: Cascade)
-  vendor          VendorMaster @relation(fields: [vendorId], references: [id])
+  id       String @id @default(cuid())
+  rfqId    String
+  vendorId String
+  status   String @default("Sent")
+
+  rfq    PurchaseRFQ  @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  vendor VendorMaster @relation(fields: [vendorId], references: [id])
 }
 
 model VendorQuotation {
-  id              String   @id @default(cuid())
-  rfqId           String?
-  vendorId        String
-  date            DateTime @default(now())
-  basicAmount     Float    @default(0)
-  discount        Float    @default(0)
-  gst             Float    @default(0)
-  finalAmount     Float    @default(0)
-  docsUrl         String?
-  
-  vendor          VendorMaster @relation(fields: [vendorId], references: [id])
-  rfq             PurchaseRFQ? @relation(fields: [rfqId], references: [id], onDelete: Cascade)
-  items           VendorQuotationItem[]
-  
-  createdAt       DateTime @default(now())
+  id          String   @id @default(cuid())
+  rfqId       String?
+  vendorId    String
+  date        DateTime @default(now())
+  basicAmount Float    @default(0)
+  discount    Float    @default(0)
+  gst         Float    @default(0)
+  finalAmount Float    @default(0)
+  docsUrl     String?
+
+  // Terms & Conditions
+  deliveryTerms      String? @db.Text
+  paymentTerms       String? @db.Text
+  materialInspection String? @db.Text
+  warranty           String? @db.Text
+  transactionMode    String?
+  insurance          String? @db.Text
+  taxAndDuties       String? @db.Text
+  freightCharges     String? @db.Text
+  otherConditions    String? @db.Text
+
+  // Documents stored as JSON array
+  documents String? @db.Text
+
+  vendor VendorMaster          @relation(fields: [vendorId], references: [id])
+  rfq    PurchaseRFQ?          @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  items  VendorQuotationItem[]
+
+  createdAt DateTime @default(now())
 }
 
 model VendorQuotationItem {
-  id              String   @id @default(cuid())
-  quotationId     String
-  indentItemId    String?
-  item            String
-  brand           String?
-  quantity        Float
-  rate            Float
-  isSelected      Boolean  @default(false)
-  approvedAt      DateTime?
-  discount        Float    @default(0)
-  gst             Float    @default(0)
-  amount          Float
-  
-  quotation       VendorQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  indentItem      PurchaseIndentItem? @relation(fields: [indentItemId], references: [id], onDelete: SetNull)
+  id           String    @id @default(cuid())
+  quotationId  String
+  indentItemId String?
+  item         String
+  brand        String?
+  quantity     Float
+  rate         Float
+  isSelected   Boolean   @default(false)
+  approvedAt   DateTime?
+  discount     Float     @default(0)
+  gst          Float     @default(0)
+  amount       Float
+
+  quotation  VendorQuotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  indentItem PurchaseIndentItem? @relation(fields: [indentItemId], references: [id], onDelete: SetNull)
 
   @@index([quotationId])
   @@index([indentItemId])
@@ -2468,115 +2505,115 @@ model VendorQuotationItem {
 // ==========================================
 
 model AccountsAccountGroup {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  type            String   // Asset, Liability, Income, Expense, Capital
-  description     String?  @db.Text
-  
-  ledgers         AccountsLedgerMaster[]
+  id          String  @id @default(cuid())
+  name        String  @unique
+  type        String // Asset, Liability, Income, Expense, Capital
+  description String? @db.Text
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  ledgers AccountsLedgerMaster[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AccountsLedgerMaster {
-  id              String   @id @default(cuid())
-  ledgerCode      String?  @unique
-  name            String
-  groupId         String
-  group           AccountsAccountGroup @relation(fields: [groupId], references: [id])
-  
-  company         String?
-  branch          String?
-  gstApplicable   Boolean  @default(false)
-  gstin           String?
-  pan             String?
-  tdsApplicable   Boolean  @default(false)
-  tdsSection      String?
-  
-  openingBalance  Float    @default(0)
-  balanceType     String   @default("Dr") // Dr or Cr
-  status          String   @default("Active")
+  id         String               @id @default(cuid())
+  ledgerCode String?              @unique
+  name       String
+  groupId    String
+  group      AccountsAccountGroup @relation(fields: [groupId], references: [id])
 
-  journalEntries  AccountsJournalDetail[]
-  tdsAdjustments  TdsAdjustment[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  company       String?
+  branch        String?
+  gstApplicable Boolean @default(false)
+  gstin         String?
+  pan           String?
+  tdsApplicable Boolean @default(false)
+  tdsSection    String?
+
+  openingBalance Float  @default(0)
+  balanceType    String @default("Dr") // Dr or Cr
+  status         String @default("Active")
+
+  journalEntries AccountsJournalDetail[]
+  tdsAdjustments TdsAdjustment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AccountsJournal {
-  id              String   @id @default(cuid())
-  voucherNo       String   @unique
-  voucherDate     DateTime @default(now())
-  type            String   // JV, Payment, Receipt, Contra, Purchase, Sales
-  company         String?
-  branch          String?
-  project         String?
-  costCentre      String?
-  narration       String?  @db.Text
-  billNo          String?
-  billDate        DateTime?
-  dueDate         DateTime?
-  
-  totalAmount     Float    @default(0)
-  status          String   @default("Posted") // Draft, Pending Approval, Posted, Cancelled
-  
-  details         AccountsJournalDetail[]
-  tdsDeductions   TdsDeduction[]
-  tdsChallans     TdsChallan[]
+  id          String    @id @default(cuid())
+  voucherNo   String    @unique
+  voucherDate DateTime  @default(now())
+  type        String // JV, Payment, Receipt, Contra, Purchase, Sales
+  company     String?
+  branch      String?
+  project     String?
+  costCentre  String?
+  narration   String?   @db.Text
+  billNo      String?
+  billDate    DateTime?
+  dueDate     DateTime?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  totalAmount Float  @default(0)
+  status      String @default("Posted") // Draft, Pending Approval, Posted, Cancelled
+
+  details       AccountsJournalDetail[]
+  tdsDeductions TdsDeduction[]
+  tdsChallans   TdsChallan[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AccountsJournalDetail {
-  id              String   @id @default(cuid())
-  journalId       String
-  ledgerId        String
-  
-  type            String   // Dr or Cr
-  amount          Float
-  narration       String?  @db.Text
-  
-  journal         AccountsJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
-  ledger          AccountsLedgerMaster @relation(fields: [ledgerId], references: [id])
+  id        String @id @default(cuid())
+  journalId String
+  ledgerId  String
+
+  type      String // Dr or Cr
+  amount    Float
+  narration String? @db.Text
+
+  journal AccountsJournal      @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  ledger  AccountsLedgerMaster @relation(fields: [ledgerId], references: [id])
 }
 
 model AccountsBankMaster {
-  id              String   @id @default(cuid())
-  bankName        String
-  accountNumber   String   @unique
-  ifsc            String?
-  branch          String?
-  accountType     String?
-  company         String?
-  openingBalance  Float    @default(0)
-  currentBalance  Float    @default(0)
-  status          String   @default("Active")
-  
-  transactions    AccountsBankTransaction[]
-  tdsChallans     TdsChallan[]
-  tdsAdjustments  TdsAdjustment[]
+  id             String  @id @default(cuid())
+  bankName       String
+  accountNumber  String  @unique
+  ifsc           String?
+  branch         String?
+  accountType    String?
+  company        String?
+  openingBalance Float   @default(0)
+  currentBalance Float   @default(0)
+  status         String  @default("Active")
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  transactions   AccountsBankTransaction[]
+  tdsChallans    TdsChallan[]
+  tdsAdjustments TdsAdjustment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AccountsBankTransaction {
-  id              String   @id @default(cuid())
-  bankId          String
-  date            DateTime @default(now())
-  type            String   // Deposit, Withdrawal
-  amount          Float
-  referenceNo     String?
-  party           String?
-  narration       String?  @db.Text
-  status          String   @default("Cleared") // Cleared, Unreconciled
-  
-  bank            AccountsBankMaster @relation(fields: [bankId], references: [id])
+  id          String   @id @default(cuid())
+  bankId      String
+  date        DateTime @default(now())
+  type        String // Deposit, Withdrawal
+  amount      Float
+  referenceNo String?
+  party       String?
+  narration   String?  @db.Text
+  status      String   @default("Cleared") // Cleared, Unreconciled
 
-  createdAt       DateTime @default(now())
+  bank AccountsBankMaster @relation(fields: [bankId], references: [id])
+
+  createdAt DateTime @default(now())
 }
 
 model AccountsChequeBook {
@@ -2595,422 +2632,641 @@ model AccountsChequeBook {
 }
 
 model TdsSection {
-  id          Int         @id @default(autoincrement())
-  code        String      @unique
+  id          Int          @id @default(autoincrement())
+  code        String       @unique
   description String?
-  taxType     String      @default("TDS")
+  taxType     String       @default("TDS")
   accounts    TdsAccount[]
 }
 
 model TdsAccount {
-  id           Int          @id @default(autoincrement())
+  id           Int            @id @default(autoincrement())
   name         String
-  taxType      String       @default("TDS")
+  taxType      String         @default("TDS")
   sectionId    Int?
-  section      TdsSection?  @relation(fields: [sectionId], references: [id])
-  tdsLimit     Float        @default(0)
-  tdsPercent   Float        @default(0)
-  tdsSurcharge Float        @default(0)
-  tdsCess      Float        @default(0)
-  tdsNet       Float        @default(0)
+  section      TdsSection?    @relation(fields: [sectionId], references: [id])
+  tdsLimit     Float          @default(0)
+  tdsPercent   Float          @default(0)
+  tdsSurcharge Float          @default(0)
+  tdsCess      Float          @default(0)
+  tdsNet       Float          @default(0)
   deductions   TdsDeduction[]
   challans     TdsChallan[]
 }
 
 model TdsDeduction {
-  id              Int       @id @default(autoincrement())
+  id              Int                   @id @default(autoincrement())
   journalId       String
-  journal         AccountsJournal @relation(fields: [journalId], references: [id])
+  journal         AccountsJournal       @relation(fields: [journalId], references: [id])
   pan             String?
   accountName     String
   billAmount      Float
   tdsAmount       Float
-  interest        Float     @default(0)
+  interest        Float                 @default(0)
   deductionRemark String?
   tdsAccountId    Int
-  tdsAccount      TdsAccount @relation(fields: [tdsAccountId], references: [id])
+  tdsAccount      TdsAccount            @relation(fields: [tdsAccountId], references: [id])
   costCentre      String?
-  deductionType   String    @default("26Q")
+  deductionType   String                @default("26Q")
   quarter         String
   financialYear   String
-  paidAmount      Float     @default(0)
-  status          String    @default("Pending")
+  paidAmount      Float                 @default(0)
+  status          String                @default("Pending")
   challanLinks    TdsChallanDeduction[]
-  createdAt       DateTime  @default(now())
+  createdAt       DateTime              @default(now())
 }
 
 model TdsChallan {
-  id            Int       @id @default(autoincrement())
+  id            Int                   @id @default(autoincrement())
   journalId     String
-  journal       AccountsJournal @relation(fields: [journalId], references: [id])
+  journal       AccountsJournal       @relation(fields: [journalId], references: [id])
   tdsAccountId  Int
-  tdsAccount    TdsAccount @relation(fields: [tdsAccountId], references: [id])
+  tdsAccount    TdsAccount            @relation(fields: [tdsAccountId], references: [id])
   bankId        String?
-  bank          AccountsBankMaster? @relation(fields: [bankId], references: [id])
+  bank          AccountsBankMaster?   @relation(fields: [bankId], references: [id])
   chequeNo      String?
   chequeDate    DateTime?
   costCentre    String?
   challanAmount Float
   financialYear String
   quarter       String
-  deductions   TdsChallanDeduction[]
-  createdAt     DateTime  @default(now())
+  deductions    TdsChallanDeduction[]
+  createdAt     DateTime              @default(now())
 }
 
 model TdsChallanDeduction {
-  id           Int         @id @default(autoincrement())
-  challanId    Int
-  challan      TdsChallan  @relation(fields: [challanId], references: [id], onDelete: Cascade)
-  deductionId  Int
-  deduction    TdsDeduction @relation(fields: [deductionId], references: [id])
+  id            Int          @id @default(autoincrement())
+  challanId     Int
+  challan       TdsChallan   @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  deductionId   Int
+  deduction     TdsDeduction @relation(fields: [deductionId], references: [id])
   amountApplied Float
+
   @@index([challanId])
   @@index([deductionId])
 }
 
 model TdsAdjustment {
-  id          Int       @id @default(autoincrement())
+  id          Int                  @id @default(autoincrement())
   accountId   String
   account     AccountsLedgerMaster @relation(fields: [accountId], references: [id])
   bankId      String?
-  bank        AccountsBankMaster? @relation(fields: [bankId], references: [id])
-  taxType     String    @default("TDS")
+  bank        AccountsBankMaster?  @relation(fields: [bankId], references: [id])
+  taxType     String               @default("TDS")
   costCentre  String?
-  totalAmount Float     @default(0)
+  totalAmount Float                @default(0)
   lines       TdsAdjustmentLine[]
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime             @default(now())
 }
 
 model TdsAdjustmentLine {
-  id           Int          @id @default(autoincrement())
-  adjustmentId Int
-  adjustment   TdsAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
-  side         String
-  refType      String
-  refId        Int
-  amount       Float
-  pendingAmount Float       @default(0)
-  adjAmount    Float        @default(0)
+  id            Int           @id @default(autoincrement())
+  adjustmentId  Int
+  adjustment    TdsAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  side          String
+  refType       String
+  refId         Int
+  amount        Float
+  pendingAmount Float         @default(0)
+  adjAmount     Float         @default(0)
 }
-
 
 // ==========================================
 // ENGINEERING / PROJECT EXECUTION SUITE
 // ==========================================
 
 model ProjectMaster {
-  id              String   @id @default(cuid())
-  projectId       String   @unique
-  name            String
-  clientId        String?
-  clientName      String?
-  woLoaNo         String?
-  contractValue   Float    @default(0)
-  projectType     String   // Solar, Electrical, Civil, EPC
-  location        String?
-  startDate       DateTime?
-  completionDate  DateTime?
-  status          String   @default("Active") // Active, Hold, Completed
-  
-  managerId       String?
-  projectManager  Employee? @relation("ProjectManager", fields: [managerId], references: [id])
-  
-  wbss            ProjectWBS[]
-  activities      ProjectActivity[]
-  dprs            SiteDPR[]
-  measurementBooks ProjectMB[]
-  raBills         ProjectRABill[]
+  id             String    @id @default(cuid())
+  projectId      String    @unique
+  name           String
+  clientId       String?
+  clientName     String?
+  woLoaNo        String?
+  contractValue  Float     @default(0)
+  projectType    String // Solar, Electrical, Civil, EPC
+  location       String?
+  startDate      DateTime?
+  completionDate DateTime?
+  status         String    @default("Active") // Active, Hold, Completed
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  managerId      String?
+  projectManager Employee? @relation("ProjectManager", fields: [managerId], references: [id])
+
+  wbss             ProjectWBS[]
+  activities       ProjectActivity[]
+  dprs             SiteDPR[]
+  measurementBooks ProjectMB[]
+  raBills          ProjectRABill[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
   // Phase 2 Fields
-  scopeNotes      String?  @db.Text
-  inclusions      String?  @db.Text
-  exclusions      String?  @db.Text
-  boqLocked       Boolean  @default(false)
-  
-  teamMembers     ProjectTeam[]
-  resourcePlans   ResourcePlan[]
-  materialReqs    SiteMaterialRequisition[]
-  qualityNCRs     QualityNCR[]
-  safetyLogs      SafetyLog[]
-  extraItems      ExtraItem[]
+  scopeNotes String?  @db.Text
+  inclusions String?  @db.Text
+  exclusions String?  @db.Text
+  boqLocked  Boolean  @default(false)
+
+  teamMembers      ProjectTeam[]
+  siteTaskGroups   SiteTaskGroup[]
+  resourcePlans    ResourcePlan[]
+  materialReqs     SiteMaterialRequisition[]
+  qualityNCRs      QualityNCR[]
+  safetyLogs       SafetyLog[]
+  extraItems       ExtraItem[]
   taskLibraryItems TaskLibraryItem[]
 
   // Contracting relations
   workOrders      WorkOrder[]
   woRaBills       WorkOrderRABill[]
   labourReqs      LabourRequisition[]
+  siteGTNs        SiteGTN[]
+  siteGRNs        SiteGRN[]
+  siteStoreStocks SiteStoreStock[]
+}
 
+model SiteTaskGroup {
+  id        String             @id @default(cuid())
+  projectId String
+  project   ProjectMaster      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  subgroups SiteTaskSubgroup[]
+  tasks     SiteTask[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([projectId])
+}
+
+model SiteTaskSubgroup {
+  id        String             @id @default(cuid())
+  groupId   String
+  group     SiteTaskGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    SiteTaskSubgroup?  @relation("SiteTaskSubgroupTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  SiteTaskSubgroup[] @relation("SiteTaskSubgroupTree")
+  name      String
+  tasks     SiteTask[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([groupId])
+  @@index([parentId])
+}
+
+model SiteTask {
+  id         String            @id @default(cuid())
+  groupId    String?
+  group      SiteTaskGroup?    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  subgroupId String?
+  subgroup   SiteTaskSubgroup? @relation(fields: [subgroupId], references: [id], onDelete: Cascade)
+  name       String
+  status     String            @default("Tentative")
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([groupId])
+  @@index([subgroupId])
+  @@index([status])
 }
 
 model ProjectWBS {
-  id              String   @id @default(cuid())
-  projectId       String
-  name            String
-  sequence        Int      @default(0)
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  activities      ProjectActivity[]
+  id        String @id @default(cuid())
+  projectId String
+  name      String
+  sequence  Int    @default(0)
+
+  project    ProjectMaster     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activities ProjectActivity[]
 }
 
 model ProjectActivity {
-  id              String   @id @default(cuid())
-  projectId       String
-  wbsId           String?
-  name            String
-  boqItemRef      String?
-  quantity        Float    @default(0)
-  unit            String?
-  
-  plannedStart    DateTime?
-  plannedFinish   DateTime?
-  durationDays    Int      @default(0)
-  weightage       Float    @default(0) // Percentage
-  
-  responsibleId   String?
-  responsible     Employee? @relation("ActivityResponsible", fields: [responsibleId], references: [id])
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  wbs             ProjectWBS? @relation(fields: [wbsId], references: [id])
-  dprItems        SiteDPRItem[]
-  resourcePlans   ResourcePlan[]
-  materialReqs    SiteMaterialRequisition[]
-  qualityNCRs     QualityNCR[]
-  extraItems      ExtraItem[]
+  id         String  @id @default(cuid())
+  projectId  String
+  wbsId      String?
+  name       String
+  boqItemRef String?
+  quantity   Float   @default(0)
+  unit       String?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  plannedStart  DateTime?
+  plannedFinish DateTime?
+  durationDays  Int       @default(0)
+  weightage     Float     @default(0) // Percentage
+
+  responsibleId String?
+  responsible   Employee? @relation("ActivityResponsible", fields: [responsibleId], references: [id])
+
+  project       ProjectMaster             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wbs           ProjectWBS?               @relation(fields: [wbsId], references: [id])
+  dprItems      SiteDPRItem[]
+  resourcePlans ResourcePlan[]
+  materialReqs  SiteMaterialRequisition[]
+  qualityNCRs   QualityNCR[]
+  extraItems    ExtraItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SiteDPR {
-  id              String   @id @default(cuid())
-  projectId       String
-  date            DateTime @default(now())
-  weather         String?
-  
-  manpowerPresent Int      @default(0)
-  remarks         String?  @db.Text
-  status          String   @default("Submitted")
-  
-  preparedById    String?
-  preparedBy      Employee? @relation("DPRPreparer", fields: [preparedById], references: [id])
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id])
-  items           SiteDPRItem[]
+  id                 String   @id @default(cuid())
+  projectId          String
+  date               DateTime @default(now())
+  shift              String   @default("Day")
+  weather            String?
+  workDescription    String?  @db.Text
+  activitiesExecuted String?  @db.Text
+  skilledLabour      Int      @default(0)
+  unskilledLabour    Int      @default(0)
+  totalLabour        Int      @default(0)
+  equipmentUsed      String?  @db.Text
+  materialConsumed   String?  @db.Text
+  safetyIncidents    String?  @db.Text
+  attachments        Json     @default("[]")
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  manpowerPresent Int     @default(0)
+  remarks         String? @db.Text
+  status          String  @default("Submitted")
+
+  preparedById   String?
+  preparedByName String?
+  preparedBy     Employee? @relation("DPRPreparer", fields: [preparedById], references: [id])
+
+  project ProjectMaster @relation(fields: [projectId], references: [id])
+  items   SiteDPRItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SiteDPRItem {
-  id              String   @id @default(cuid())
-  dprId           String
-  activityId      String
-  
-  plannedQty      Float    @default(0)
-  actualQty       Float    @default(0)
-  unit            String?
-  remarks         String?  @db.Text
-  
-  dpr             SiteDPR @relation(fields: [dprId], references: [id], onDelete: Cascade)
-  activity        ProjectActivity @relation(fields: [activityId], references: [id])
+  id         String @id @default(cuid())
+  dprId      String
+  activityId String
+
+  plannedQty Float   @default(0)
+  actualQty  Float   @default(0)
+  unit       String?
+  remarks    String? @db.Text
+
+  dpr      SiteDPR         @relation(fields: [dprId], references: [id], onDelete: Cascade)
+  activity ProjectActivity @relation(fields: [activityId], references: [id])
 }
 
 model ProjectMB {
-  id              String   @id @default(cuid())
-  mbNo            String   @unique
-  projectId       String
-  date            DateTime @default(now())
-  periodFrom      DateTime?
-  periodTo        DateTime?
-  
-  status          String   @default("Draft") // Draft, Certified
-  certifiedById   String?
-  certifiedBy     Employee? @relation("MBCertifier", fields: [certifiedById], references: [id])
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id])
-  items           ProjectMBItem[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id         String    @id @default(cuid())
+  mbNo       String    @unique
+  projectId  String
+  date       DateTime  @default(now())
+  periodFrom DateTime?
+  periodTo   DateTime?
+
+  status        String    @default("Draft") // Draft, Certified
+  certifiedById String?
+  certifiedBy   Employee? @relation("MBCertifier", fields: [certifiedById], references: [id])
+
+  project ProjectMaster   @relation(fields: [projectId], references: [id])
+  items   ProjectMBItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ProjectMBItem {
-  id              String   @id @default(cuid())
-  mbId            String
-  description     String
-  unit            String?
-  quantity        Float    @default(0)
-  contractRate    Float    @default(0)
-  amount          Float    @default(0)
-  
-  mb              ProjectMB @relation(fields: [mbId], references: [id], onDelete: Cascade)
+  id           String  @id @default(cuid())
+  mbId         String
+  description  String
+  unit         String?
+  quantity     Float   @default(0)
+  contractRate Float   @default(0)
+  amount       Float   @default(0)
+
+  mb ProjectMB @relation(fields: [mbId], references: [id], onDelete: Cascade)
 }
 
 model ProjectRABill {
-  id              String   @id @default(cuid())
-  billNo          String   @unique
-  projectId       String
-  date            DateTime @default(now())
-  
-  previousCertified Float  @default(0)
-  currentBill       Float  @default(0)
-  cumulative        Float  @default(0)
-  
-  retentionPercent  Float  @default(0)
-  retentionAmount   Float  @default(0)
-  advanceRecovery   Float  @default(0)
-  otherDeductions   Float  @default(0)
-  
-  netPayable        Float  @default(0)
-  
-  status            String @default("Submitted") // Submitted, Approved, Paid
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id])
+  id        String   @id @default(cuid())
+  billNo    String   @unique
+  projectId String
+  date      DateTime @default(now())
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  previousCertified Float @default(0)
+  currentBill       Float @default(0)
+  cumulative        Float @default(0)
+
+  retentionPercent Float @default(0)
+  retentionAmount  Float @default(0)
+  advanceRecovery  Float @default(0)
+  otherDeductions  Float @default(0)
+
+  netPayable Float @default(0)
+
+  status String @default("Submitted") // Submitted, Approved, Paid
+
+  project ProjectMaster @relation(fields: [projectId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
-
 
 // ==========================================
 // ENGINEERING - PHASE 2 MODELS
 // ==========================================
 
 model ProjectTeam {
-  id              String   @id @default(cuid())
-  projectId       String
-  employeeId      String
-  role            String   // Project Manager, Site Engineer, Billing Engineer, QA/QC, Safety
-  permission      String   // Edit, View
-  startDate       DateTime?
-  endDate         DateTime?
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  employee        Employee      @relation("ProjectTeamMember", fields: [employeeId], references: [id])
+  id         String    @id @default(cuid())
+  projectId  String
+  employeeId String
+  role       String // Project Manager, Site Engineer, Billing Engineer, QA/QC, Safety
+  permission String // Edit, View
+  startDate  DateTime?
+  endDate    DateTime?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  project  ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee      @relation("ProjectTeamMember", fields: [employeeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ResourcePlan {
-  id              String   @id @default(cuid())
-  projectId       String
-  activityId      String?
-  type            String   // Manpower, Material, Equipment
-  
-  itemName        String
-  category        String?
-  quantity        Float    @default(0)
-  unit            String?
-  requiredDate    DateTime?
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  activity        ProjectActivity? @relation(fields: [activityId], references: [id])
+  id         String  @id @default(cuid())
+  projectId  String
+  activityId String?
+  type       String // Manpower, Material, Equipment
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  itemName     String
+  category     String?
+  quantity     Float     @default(0)
+  unit         String?
+  requiredDate DateTime?
+
+  project  ProjectMaster    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activity ProjectActivity? @relation(fields: [activityId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SiteGTN {
+  id        String        @id @default(cuid())
+  gtnNo     String        @unique
+  gtnSrNo   String?       @unique // Auto-generated GTN Serial Number (optional for existing data)
+  projectId String
+  project   ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  supplierId   String?
+  supplierName String? // From suppliers/vendors
+
+  purchaseOrderNo String? // PO reference
+  challanNo       String? // Challan number
+  challanDate     DateTime? // Challan date
+
+  gtnDate  DateTime  @default(now())
+  fromDate DateTime? // Testing from date
+  toDate   DateTime? // Testing to date
+
+  materialCategory String? // From material category master
+
+  fromLocation String?
+  toLocation   String?
+  vehicleNo    String?
+
+  status  String  @default("Draft") // Draft, Submitted, Testing, Completed, Rejected
+  remarks String? @db.Text
+
+  items SiteGTNItem[]
+  grns  SiteGRN[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([supplierId])
+  @@index([gtnDate])
+}
+
+model SiteGTNItem {
+  id    String  @id @default(cuid())
+  gtnId String
+  gtn   SiteGTN @relation(fields: [gtnId], references: [id], onDelete: Cascade)
+
+  requisitionId String?
+  requisition   SiteMaterialRequisition? @relation(fields: [requisitionId], references: [id])
+
+  poSrNo           String? // PO Serial Number
+  materialName     String
+  materialCategory String?
+
+  // Test Information
+  testName        String?
+  testDescription String? @db.Text
+  goodMin         Float? // Good range minimum
+  goodMax         Float? // Good range maximum
+
+  testResult String? // Actual test result value
+  testStatus String? // Pass/Fail/Pending
+  testRemark String? @db.Text
+
+  testQty Float? // Test quantity
+  reqQty  Float? // Required quantity
+
+  quantity Float   @default(0)
+  unit     String?
+
+  grnSrNo String? // GRN Serial Number reference
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([gtnId])
+}
+
+model SiteGRN {
+  id                    String        @id @default(cuid())
+  grnNo                 String        @unique
+  projectId             String
+  project               ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  gtnId                 String?
+  gtn                   SiteGTN?      @relation(fields: [gtnId], references: [id], onDelete: SetNull)
+  grnDate               DateTime      @default(now())
+  grnType               String        @default("WITHOUT_PO")
+  supplierId            String?
+  supplierName          String?
+  poNo                  String?
+  vehicleNo             String?
+  challanNo             String?
+  challanDate           DateTime?
+  gateRegistrationDate  DateTime?
+  gateRegistrationIn    DateTime?
+  gateRegistrationOut   DateTime?
+  gateRegistrationRefNo String?
+  state                 String?
+  ewayBillNo            String?
+  ewayBillDate          DateTime?
+  status                String        @default("Draft")
+  remarks               String?       @db.Text
+  items                 SiteGRNItem[]
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([projectId])
+  @@index([gtnId])
+}
+
+model SiteGRNItem {
+  id            String                  @id @default(cuid())
+  grnId         String
+  grn           SiteGRN                 @relation(fields: [grnId], references: [id], onDelete: Cascade)
+  requisitionId String
+  requisition   SiteMaterialRequisition @relation(fields: [requisitionId], references: [id])
+  materialName  String
+  quantity      Float                   @default(0)
+  unit          String?
+  acceptedQty   Float                   @default(0)
+  retainedQty   Float                   @default(0)
+  rejectedQty   Float                   @default(0)
+  challanQty    Float                   @default(0)
+  budgetHead    String?
+  storeName     String?
+  brand         String?
+  remarks       String?
+  testRequired  Boolean                 @default(false)
+  gtnSrNo       String?
+  document      String?
 }
 
 model SiteMaterialRequisition {
-  id              String   @id @default(cuid())
-  reqNo           String   @unique
-  serialNo        Int      @default(0)
-  projectId       String
+  id               String   @id @default(cuid())
+  reqNo            String   @unique
+  serialNo         Int      @default(0)
+  projectId        String
   purchaseIndentId String?
-  activityId      String?
-  taskName        String?
-  materialName    String
-  reqDate         DateTime @default(now())
-  
-  itemDescription String
-  quantityReq     Float    @default(0)
-  unit            String?
-  poRate          Float    @default(0)
-  requiredByDate  DateTime?
-  
-  status          String   @default("Pending") // Pending, Approved, Issued, Partially Issued
-  
-  requestedById   String?
-  requestedBy     Employee? @relation("MaterialRequester", fields: [requestedById], references: [id])
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id])
-  purchaseIndent   PurchaseIndent? @relation(fields: [purchaseIndentId], references: [id], onDelete: SetNull)
-  activity        ProjectActivity? @relation(fields: [activityId], references: [id])
+  activityId       String?
+  taskName         String?
+  materialName     String
+  reqDate          DateTime @default(now())
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  itemDescription String
+  quantityReq     Float     @default(0)
+  unit            String?
+  poRate          Float     @default(0)
+  requiredByDate  DateTime?
+
+  // GTN Flag - Does this material need testing?
+  requiresTesting Boolean @default(false) // If true, material goes to GTN before GRN
+  testingRequired String? @default("No") // Yes/No for UI
+  testingRemarks  String? @db.Text // Remarks about testing requirements
+
+  status String @default("Pending") // Pending, Approved, Issued, Partially Issued
+
+  requestedById String?
+  requestedBy   Employee? @relation("MaterialRequester", fields: [requestedById], references: [id])
+
+  project        ProjectMaster    @relation(fields: [projectId], references: [id])
+  purchaseIndent PurchaseIndent?  @relation(fields: [purchaseIndentId], references: [id], onDelete: SetNull)
+  activity       ProjectActivity? @relation(fields: [activityId], references: [id])
+  gtnItems       SiteGTNItem[]
+  grnItems       SiteGRNItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SiteStoreStock {
+  id             String        @id @default(cuid())
+  projectId      String
+  project        ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requisitionId  String?
+  grnId          String?
+  grnItemId      String        @unique
+  gtnId          String?
+  materialName   String
+  unit           String?
+  quantity       Float         @default(0)
+  storeName      String?
+  brand          String?
+  poNo           String?
+  purchaseBillNo String?
+  sourceType     String        @default("GRN")
+  status         String        @default("AVAILABLE")
+  receivedAt     DateTime      @default(now())
+  remarks        String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([projectId, materialName])
+  @@index([status])
+  @@index([poNo])
 }
 
 model QualityNCR {
-  id              String   @id @default(cuid())
-  ncrNo           String   @unique
-  projectId       String
-  activityId      String?
-  date            DateTime @default(now())
-  
-  description     String   @db.Text
-  rootCause       String?  @db.Text
-  correctiveAction String? @db.Text
-  targetClosure   DateTime?
-  
-  status          String   @default("Open") // Open, Closed
-  
-  raisedById      String?
-  raisedBy        Employee? @relation("NCRRaiser", fields: [raisedById], references: [id])
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id])
-  activity        ProjectActivity? @relation(fields: [activityId], references: [id])
+  id         String   @id @default(cuid())
+  ncrNo      String   @unique
+  projectId  String
+  activityId String?
+  date       DateTime @default(now())
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  description      String    @db.Text
+  rootCause        String?   @db.Text
+  correctiveAction String?   @db.Text
+  targetClosure    DateTime?
+
+  status String @default("Open") // Open, Closed
+
+  raisedById String?
+  raisedBy   Employee? @relation("NCRRaiser", fields: [raisedById], references: [id])
+
+  project  ProjectMaster    @relation(fields: [projectId], references: [id])
+  activity ProjectActivity? @relation(fields: [activityId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SafetyLog {
-  id              String   @id @default(cuid())
-  projectId       String
-  date            DateTime @default(now())
-  type            String   // Toolbox Talk, Observation, Incident, Near-Miss
-  
-  description     String   @db.Text
-  severity        String?  // Low, Medium, High, Critical
-  actionTaken     String?  @db.Text
-  
-  loggedById      String?
-  loggedBy        Employee? @relation("SafetyLogger", fields: [loggedById], references: [id])
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id])
+  id        String   @id @default(cuid())
+  projectId String
+  date      DateTime @default(now())
+  type      String // Toolbox Talk, Observation, Incident, Near-Miss
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  description String  @db.Text
+  severity    String? // Low, Medium, High, Critical
+  actionTaken String? @db.Text
+
+  loggedById String?
+  loggedBy   Employee? @relation("SafetyLogger", fields: [loggedById], references: [id])
+
+  project ProjectMaster @relation(fields: [projectId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ExtraItem {
-  id              String   @id @default(cuid())
-  variationNo     String   @unique
-  projectId       String
-  refActivityId   String?  // Original BOQ reference if any
-  
-  description     String
-  unit            String?
-  quantity        Float    @default(0)
-  proposedRate    Float    @default(0)
-  amount          Float    @default(0)
-  
-  justification   String   @db.Text
-  rateAnalysisDoc String?  // File URL
-  
-  status          String   @default("Pending Approval") // Pending Approval, Approved, Rejected
+  id            String  @id @default(cuid())
+  variationNo   String  @unique
+  projectId     String
+  refActivityId String? // Original BOQ reference if any
+
+  description  String
+  unit         String?
+  quantity     Float   @default(0)
+  proposedRate Float   @default(0)
+  amount       Float   @default(0)
+
+  justification   String  @db.Text
+  rateAnalysisDoc String? // File URL
+
+  status             String    @default("Pending Approval") // Pending Approval, Approved, Rejected
   clientApprovalDate DateTime?
-  
-  project         ProjectMaster @relation(fields: [projectId], references: [id])
-  activity        ProjectActivity? @relation(fields: [refActivityId], references: [id])
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  project  ProjectMaster    @relation(fields: [projectId], references: [id])
+  activity ProjectActivity? @relation(fields: [refActivityId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
-
 
 // ==========================================
 // GST MODULE
@@ -3054,11 +3310,11 @@ enum ReturnType {
 }
 
 model GstCompany {
-  id                 String             @id @default(cuid())
+  id                 String            @id @default(cuid())
   name               String
   financialYearStart DateTime
   financialYearEnd   DateTime
-  createdAt          DateTime           @default(now())
+  createdAt          DateTime          @default(now())
   gstins             StateGstin[]
   categories         GstCategory[]
   vouchers           GstVoucher[]
@@ -3066,95 +3322,95 @@ model GstCompany {
 }
 
 model StateGstin {
-  id        String              @id @default(cuid())
+  id        String            @id @default(cuid())
   state     String
-  gstin     String              @unique
-  isISD     Boolean             @default(false)
+  gstin     String            @unique
+  isISD     Boolean           @default(false)
   companyId String
-  company   GstCompany          @relation(fields: [companyId], references: [id])
+  company   GstCompany        @relation(fields: [companyId], references: [id])
   vouchers  GstVoucher[]
   filings   GstReturnFiling[]
 }
 
 model GstCategory {
-  id            String         @id @default(cuid())
+  id            String        @id @default(cuid())
   categoryName  String
   gstRate       Float
   gstMasterCode GstMasterCode
   supplyType    SupplyType
-  active        Boolean        @default(true)
+  active        Boolean       @default(true)
   companyId     String
-  company       GstCompany     @relation(fields: [companyId], references: [id])
+  company       GstCompany    @relation(fields: [companyId], references: [id])
   vouchers      GstVoucher[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@index([companyId])
 }
 
 model GstVoucher {
-  id              String               @id @default(cuid())
-  vDate           DateTime
-  vNo             String
-  vStatus         VoucherStatus        @default(PENDING)
-  billNo          String?
-  billDate        DateTime?
-  partyName       String
-  partyGstin      String?
-  partyState      String?
-  partyPan        String?
-  direction       TransactionDirection
-  itemType        String?
-  chargeType      String?
-  transDetails    String?
-  costCentre      String?
-  assessableValue Float                @default(0)
-  cgstAmt         Float                @default(0)
-  sgstAmt         Float                @default(0)
-  igstAmt         Float                @default(0)
-  cessAmt         Float                @default(0)
-  totalTax        Float                @default(0)
-  invoiceAmt      Float                @default(0)
-  isZeroRated     Boolean              @default(false)
-  isNilRated      Boolean              @default(false)
-  isExempted      Boolean              @default(false)
-  isNonGst        Boolean              @default(false)
-  isReverseCharge Boolean              @default(false)
-  isUnregisteredParty Boolean          @default(false)
-  isCompositionParty  Boolean          @default(false)
-  isUinHolder         Boolean          @default(false)
-  categoryId      String?
-  category        GstCategory?         @relation(fields: [categoryId], references: [id])
-  stateGstinId    String
-  stateGstin      StateGstin           @relation(fields: [stateGstinId], references: [id])
-  companyId       String
-  company         GstCompany           @relation(fields: [companyId], references: [id])
-  gstr2aRecoStatus String?
-  gstr2bRecoStatus String?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  id                  String               @id @default(cuid())
+  vDate               DateTime
+  vNo                 String
+  vStatus             VoucherStatus        @default(PENDING)
+  billNo              String?
+  billDate            DateTime?
+  partyName           String
+  partyGstin          String?
+  partyState          String?
+  partyPan            String?
+  direction           TransactionDirection
+  itemType            String?
+  chargeType          String?
+  transDetails        String?
+  costCentre          String?
+  assessableValue     Float                @default(0)
+  cgstAmt             Float                @default(0)
+  sgstAmt             Float                @default(0)
+  igstAmt             Float                @default(0)
+  cessAmt             Float                @default(0)
+  totalTax            Float                @default(0)
+  invoiceAmt          Float                @default(0)
+  isZeroRated         Boolean              @default(false)
+  isNilRated          Boolean              @default(false)
+  isExempted          Boolean              @default(false)
+  isNonGst            Boolean              @default(false)
+  isReverseCharge     Boolean              @default(false)
+  isUnregisteredParty Boolean              @default(false)
+  isCompositionParty  Boolean              @default(false)
+  isUinHolder         Boolean              @default(false)
+  categoryId          String?
+  category            GstCategory?         @relation(fields: [categoryId], references: [id])
+  stateGstinId        String
+  stateGstin          StateGstin           @relation(fields: [stateGstinId], references: [id])
+  companyId           String
+  company             GstCompany           @relation(fields: [companyId], references: [id])
+  gstr2aRecoStatus    String?
+  gstr2bRecoStatus    String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([companyId, direction, vDate])
   @@index([stateGstinId])
 }
 
 model GstReturnFiling {
-  id           String      @id @default(cuid())
+  id           String     @id @default(cuid())
   returnType   ReturnType
   taxMonth     Int
   taxYear      Int
-  gspStatus    GspStatus   @default(PENDING)
-  isHeld       Boolean     @default(false)
+  gspStatus    GspStatus  @default(PENDING)
+  isHeld       Boolean    @default(false)
   submittedAt  DateTime?
   filedAt      DateTime?
   referenceNo  String?
   summaryJson  Json?
   stateGstinId String
-  stateGstin   StateGstin  @relation(fields: [stateGstinId], references: [id])
+  stateGstin   StateGstin @relation(fields: [stateGstinId], references: [id])
   companyId    String
-  company      GstCompany  @relation(fields: [companyId], references: [id])
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  company      GstCompany @relation(fields: [companyId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   @@unique([stateGstinId, returnType, taxMonth, taxYear])
 }
@@ -3252,41 +3508,41 @@ model Group {
 }
 
 model Ledger {
-  id               String           @id @default(cuid())
-  name             String           @unique
+  id               String   @id @default(cuid())
+  name             String   @unique
   groupName        String
-  openingBalanceDr Float            @default(0)
-  openingBalanceCr Float            @default(0)
-  isCashOrBank     Boolean          @default(false)
-  isStockInHand    Boolean          @default(false)
+  openingBalanceDr Float    @default(0)
+  openingBalanceCr Float    @default(0)
+  isCashOrBank     Boolean  @default(false)
+  isStockInHand    Boolean  @default(false)
   companyId        String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  group            Group            @relation(fields: [groupName], references: [name])
+  group            Group          @relation(fields: [groupName], references: [name])
   entries          VoucherEntry[]
-  tdsSections      TDSSection[]     @relation("TDSAccountRelation")
-  tdsPaymentsParty TDSPayment[]     @relation("TDSPartyLedger")
-  tdsPaymentsTDS   TDSPayment[]     @relation("TDSPaymentLedger")
+  tdsSections      TDSSection[]   @relation("TDSAccountRelation")
+  tdsPaymentsParty TDSPayment[]   @relation("TDSPartyLedger")
+  tdsPaymentsTDS   TDSPayment[]   @relation("TDSPaymentLedger")
 
   @@index([groupName])
   @@index([companyId])
 }
 
 model Voucher {
-  id            String         @id @default(cuid())
-  voucherNo     String         @unique
+  id            String      @id @default(cuid())
+  voucherNo     String      @unique
   voucherDate   DateTime
   voucherType   VoucherType
-  narration     String?        @db.Text
-  postingStatus String         @default("Approved")
+  narration     String?     @db.Text
+  postingStatus String      @default("Approved")
   companyId     String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  entries       VoucherEntry[]
-  tdsPayments   TDSPayment[]
-  vendorBills   VendorBill[]
+  entries     VoucherEntry[]
+  tdsPayments TDSPayment[]
+  vendorBills VendorBill[]
 
   @@index([voucherDate])
   @@index([voucherType])
@@ -3294,11 +3550,11 @@ model Voucher {
 }
 
 model VoucherEntry {
-  id               String           @id @default(cuid())
-  voucherId        String
-  ledgerName       String
-  debit            Float            @default(0)
-  credit           Float            @default(0)
+  id         String @id @default(cuid())
+  voucherId  String
+  ledgerName String
+  debit      Float  @default(0)
+  credit     Float  @default(0)
 
   voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
   ledger  Ledger  @relation(fields: [ledgerName], references: [name])
@@ -3317,24 +3573,24 @@ enum DeductionType {
 }
 
 model TDSSection {
-  id         String        @id @default(cuid())
-  companyId  String
-  company    Company       @relation(fields: [companyId], references: [id])
-  type       DeductionType @default(TDS)
+  id        String        @id @default(cuid())
+  companyId String
+  company   Company       @relation(fields: [companyId], references: [id])
+  type      DeductionType @default(TDS)
 
   tdsAccountId String
-  tdsAccount   Ledger        @relation("TDSAccountRelation", fields: [tdsAccountId], references: [id])
+  tdsAccount   Ledger @relation("TDSAccountRelation", fields: [tdsAccountId], references: [id])
 
-  section    String
-  limit      Decimal       @default(0)
-  percent    Decimal       @default(0)
-  surcharge  Decimal       @default(0)
-  cess       Decimal       @default(0)
+  section   String
+  limit     Decimal @default(0)
+  percent   Decimal @default(0)
+  surcharge Decimal @default(0)
+  cess      Decimal @default(0)
 
-  payments   TDSPayment[]
+  payments TDSPayment[]
 
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([companyId, type, section])
   @@index([companyId])
@@ -3342,73 +3598,73 @@ model TDSSection {
 
 // TDS Challan tracking
 model TDSChallan {
-  id            String   @id @default(cuid())
-  companyId     String
-  company       Company  @relation("TDSChallans", fields: [companyId], references: [id])
-  
-  challanNo     String
-  challanDate   DateTime
-  bsrCode       String?
-  taxType       DeductionType @default(TDS)
-  section       String
-  amount        Decimal
-  
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation("TDSChallans", fields: [companyId], references: [id])
+
+  challanNo   String
+  challanDate DateTime
+  bsrCode     String?
+  taxType     DeductionType @default(TDS)
+  section     String
+  amount      Decimal
+
   assessmentYear String
-  periodFrom    DateTime
-  periodTo      DateTime
-  
-  bankName      String?
-  remarks       String?
-  
-  adjustments   TDSAdjustment[]
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
+  periodFrom     DateTime
+  periodTo       DateTime
+
+  bankName String?
+  remarks  String?
+
+  adjustments TDSAdjustment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([companyId])
   @@index([challanDate])
 }
 
 // TDS Payment tracking in vouchers
 model TDSPayment {
-  id            String   @id @default(cuid())
-  voucherId     String
-  voucher       Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
-  
+  id        String  @id @default(cuid())
+  voucherId String
+  voucher   Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
   partyLedgerId String
-  partyLedger   Ledger   @relation("TDSPartyLedger", fields: [partyLedgerId], references: [id])
-  
-  tdsLedgerId   String
-  tdsLedger     Ledger   @relation("TDSPaymentLedger", fields: [tdsLedgerId], references: [id])
-  
-  sectionId     String
-  section       TDSSection @relation(fields: [sectionId], references: [id])
-  
-  grossAmount   Decimal
-  tdsAmount     Decimal
-  netAmount     Decimal
-  
-  pan           String?
-  
-  adjustments   TDSAdjustment[]
-  
-  createdAt     DateTime @default(now())
-  
+  partyLedger   Ledger @relation("TDSPartyLedger", fields: [partyLedgerId], references: [id])
+
+  tdsLedgerId String
+  tdsLedger   Ledger @relation("TDSPaymentLedger", fields: [tdsLedgerId], references: [id])
+
+  sectionId String
+  section   TDSSection @relation(fields: [sectionId], references: [id])
+
+  grossAmount Decimal
+  tdsAmount   Decimal
+  netAmount   Decimal
+
+  pan String?
+
+  adjustments TDSAdjustment[]
+
+  createdAt DateTime @default(now())
+
   @@index([voucherId])
 }
 
 // TDS Adjustment (challan to payment mapping)
 model TDSAdjustment {
-  id          String      @id @default(cuid())
-  challanId   String
-  challan     TDSChallan  @relation(fields: [challanId], references: [id])
-  
-  paymentId   String
-  payment     TDSPayment  @relation(fields: [paymentId], references: [id])
-  
-  amount      Decimal
-  adjustedAt  DateTime    @default(now())
-  
+  id        String     @id @default(cuid())
+  challanId String
+  challan   TDSChallan @relation(fields: [challanId], references: [id])
+
+  paymentId String
+  payment   TDSPayment @relation(fields: [paymentId], references: [id])
+
+  amount     Decimal
+  adjustedAt DateTime @default(now())
+
   @@index([challanId])
   @@index([paymentId])
 }
@@ -3418,35 +3674,34 @@ model TDSAdjustment {
 // ==========================================
 
 model VendorBill {
-  id              String         @id @default(cuid())
-  billNo          String         @unique
-  billDate        DateTime
-  poNo            String?        // Reference to PO number
-  
-  vendorId        String         // Reference to VendorMaster
-  
-  companyId       String
-  
-  grossAmount     Decimal
-  tdsAmount       Decimal        @default(0)
-  netAmount       Decimal
-  
-  status          String         @default("UNPAID") // UNPAID, PARTIAL, PAID
-  paidAmount      Decimal        @default(0)
-  
-  voucherId       String?        // Link to payment voucher
-  voucher         Voucher?       @relation(fields: [voucherId], references: [id])
-  
-  remarks         String?
-  
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  
+  id       String   @id @default(cuid())
+  billNo   String   @unique
+  billDate DateTime
+  poNo     String? // Reference to PO number
+
+  vendorId String // Reference to VendorMaster
+
+  companyId String
+
+  grossAmount Decimal
+  tdsAmount   Decimal @default(0)
+  netAmount   Decimal
+
+  status     String  @default("UNPAID") // UNPAID, PARTIAL, PAID
+  paidAmount Decimal @default(0)
+
+  voucherId String? // Link to payment voucher
+  voucher   Voucher? @relation(fields: [voucherId], references: [id])
+
+  remarks String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([companyId])
   @@index([vendorId])
   @@index([status])
 }
-
 
 // Purchase Order System Models
 enum POStatus {
@@ -3468,49 +3723,49 @@ enum GRNStatus {
 }
 
 model PurchaseOrder {
-  id                String              @id @default(cuid())
-  poNumber          String              @unique
-  poDate            DateTime            @default(now())
-  deliveryDate      DateTime?
-  status            POStatus            @default(DRAFT)
-  
+  id           String    @id @default(cuid())
+  poNumber     String    @unique
+  poDate       DateTime  @default(now())
+  deliveryDate DateTime?
+  status       POStatus  @default(DRAFT)
+
   // Company Information (From Header)
-  companyName       String              @default("CeCube Engineering India Private Limited")
-  companyAddress    String              @default("A-121/122, Shed No 9, New Pune Vidya, Navi, Dr Salike Kalel, Gurgaon")
-  companyPhone      String              @default("+91-981-7833257")
-  companyEmail      String              @default("operations@cecubeeng.com")
-  companyPan        String?             @default("AAKCS-3340E")
-  companyGstin      String?             @default("06AAKCS3340E1ZT")
-  
+  companyName    String  @default("CeCube Engineering India Private Limited")
+  companyAddress String  @default("A-121/122, Shed No 9, New Pune Vidya, Navi, Dr Salike Kalel, Gurgaon")
+  companyPhone   String  @default("+91-981-7833257")
+  companyEmail   String  @default("operations@cecubeeng.com")
+  companyPan     String? @default("AAKCS-3340E")
+  companyGstin   String? @default("06AAKCS3340E1ZT")
+
   // Supplier Information (Consignee Billing Address)
-  supplierId        String?
-  supplierName      String
-  supplierAddress   String
-  supplierContact   String?
-  supplierPhone     String?
-  supplierEmail     String?
-  supplierGstin     String?
-  supplierPan       String?
-  
+  supplierId      String?
+  supplierName    String
+  supplierAddress String
+  supplierContact String?
+  supplierPhone   String?
+  supplierEmail   String?
+  supplierGstin   String?
+  supplierPan     String?
+
   // Delivery Address
-  deliveryAddress   String
-  deliveryContact   String?
-  deliveryPhone     String?
-  deliveryGstin     String?
-  
+  deliveryAddress String
+  deliveryContact String?
+  deliveryPhone   String?
+  deliveryGstin   String?
+
   // Financial Details
-  subTotal          Float               @default(0)
-  cgstPercent       Float               @default(0)
-  cgstAmount        Float               @default(0)
-  sgstPercent       Float               @default(0)
-  sgstAmount        Float               @default(0)
-  igstPercent       Float               @default(0)
-  igstAmount        Float               @default(0)
-  totalTaxAmount    Float               @default(0)
-  roundOff          Float               @default(0)
-  totalAmount       Float               @default(0)
-  totalAmountWords  String?
-  
+  subTotal         Float   @default(0)
+  cgstPercent      Float   @default(0)
+  cgstAmount       Float   @default(0)
+  sgstPercent      Float   @default(0)
+  sgstAmount       Float   @default(0)
+  igstPercent      Float   @default(0)
+  igstAmount       Float   @default(0)
+  totalTaxAmount   Float   @default(0)
+  roundOff         Float   @default(0)
+  totalAmount      Float   @default(0)
+  totalAmountWords String?
+
   // Terms & Conditions (Detailed as per PDF)
   scopeOfWork       String?
   measurementTerms  String?
@@ -3522,114 +3777,114 @@ model PurchaseOrder {
   liquidatedDamages String?
   jurisdiction      String?
   otherTerms        String?
-  
+
   // Workflow
-  preparedBy        String?
-  preparedByName    String              @default("Purchase Manager")
-  approvedBy        String?
-  approvedByName    String              @default("Director")
-  approvedAt        DateTime?
-  
+  preparedBy     String?
+  preparedByName String    @default("Purchase Manager")
+  approvedBy     String?
+  approvedByName String    @default("Director")
+  approvedAt     DateTime?
+
   // Metadata
-  companyId         String
-  projectId         String?
-  projectName       String?
-  remarks           String?
-  
-  items             PurchaseOrderItem[]
-  grns              GoodsReceiptNote[]
-  
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  
+  companyId   String
+  projectId   String?
+  projectName String?
+  remarks     String?
+
+  items PurchaseOrderItem[]
+  grns  GoodsReceiptNote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([companyId, status])
   @@index([supplierId])
   @@index([poDate])
 }
 
 model PurchaseOrderItem {
-  id                String          @id @default(cuid())
-  poId              String
-  purchaseOrder     PurchaseOrder   @relation(fields: [poId], references: [id], onDelete: Cascade)
-  
-  sNo               Int
-  description       String
-  hsnCode           String?
-  quantity          Float
-  unit              String
-  rate              Float
-  discountPercent   Float           @default(0)
-  taxableAmount     Float
-  gstPercent        Float
-  gstAmount         Float
-  totalAmount       Float
-  
+  id            String        @id @default(cuid())
+  poId          String
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+
+  sNo             Int
+  description     String
+  hsnCode         String?
+  quantity        Float
+  unit            String
+  rate            Float
+  discountPercent Float   @default(0)
+  taxableAmount   Float
+  gstPercent      Float
+  gstAmount       Float
+  totalAmount     Float
+
   // Tracking
-  receivedQty       Float           @default(0)
-  pendingQty        Float
-  
-  specifications    String?
-  remarks           String?
-  
-  grnItems          GRNItem[]
-  
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  
+  receivedQty Float @default(0)
+  pendingQty  Float
+
+  specifications String?
+  remarks        String?
+
+  grnItems GRNItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([poId])
 }
 
 model GoodsReceiptNote {
-  id                String          @id @default(cuid())
-  grnNumber         String          @unique
-  grnDate           DateTime        @default(now())
-  poId              String
-  purchaseOrder     PurchaseOrder   @relation(fields: [poId], references: [id])
-  
-  status            GRNStatus       @default(PENDING)
-  
+  id            String        @id @default(cuid())
+  grnNumber     String        @unique
+  grnDate       DateTime      @default(now())
+  poId          String
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id])
+
+  status GRNStatus @default(PENDING)
+
   // Delivery Details
-  invoiceNumber     String?
-  invoiceDate       DateTime?
-  vehicleNumber     String?
-  lrNumber          String?
-  receivedBy        String?
-  receivedByName    String?
-  
+  invoiceNumber  String?
+  invoiceDate    DateTime?
+  vehicleNumber  String?
+  lrNumber       String?
+  receivedBy     String?
+  receivedByName String?
+
   // Quality Check
-  qualityCheckBy    String?
-  qualityCheckDate  DateTime?
-  qualityRemarks    String?
-  
-  items             GRNItem[]
-  
-  companyId         String
-  remarks           String?
-  
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  
+  qualityCheckBy   String?
+  qualityCheckDate DateTime?
+  qualityRemarks   String?
+
+  items GRNItem[]
+
+  companyId String
+  remarks   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([poId])
   @@index([grnDate])
 }
 
 model GRNItem {
-  id                String              @id @default(cuid())
-  grnId             String
-  grn               GoodsReceiptNote    @relation(fields: [grnId], references: [id], onDelete: Cascade)
-  
-  poItemId          String
-  poItem            PurchaseOrderItem   @relation(fields: [poItemId], references: [id])
-  
-  receivedQty       Float
-  acceptedQty       Float
-  rejectedQty       Float               @default(0)
-  
-  remarks           String?
-  
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  
+  id    String           @id @default(cuid())
+  grnId String
+  grn   GoodsReceiptNote @relation(fields: [grnId], references: [id], onDelete: Cascade)
+
+  poItemId String
+  poItem   PurchaseOrderItem @relation(fields: [poItemId], references: [id])
+
+  receivedQty Float
+  acceptedQty Float
+  rejectedQty Float @default(0)
+
+  remarks String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([grnId])
   @@index([poItemId])
 }
@@ -3639,69 +3894,69 @@ model GRNItem {
 // ==========================================
 
 model WorkOrder {
-  id               String    @id @default(cuid())
-  woNo             String    @unique
-  projectId        String
-  contractorId     String?
-  contractorName   String
-  contractorPhone  String?
-  contractorGst    String?
-  contractorPan    String?
+  id              String  @id @default(cuid())
+  woNo            String  @unique
+  projectId       String
+  contractorId    String?
+  contractorName  String
+  contractorPhone String?
+  contractorGst   String?
+  contractorPan   String?
 
-  wbsTask          String?
-  scope            String?   @db.Text
-  startDate        DateTime?
-  endDate          DateTime?
+  wbsTask   String?
+  scope     String?   @db.Text
+  startDate DateTime?
+  endDate   DateTime?
 
-  contractValue    Float     @default(0)
-  advancePercent   Float     @default(0)
-  advanceAmount    Float     @default(0)
-  retentionPercent Float     @default(0)
+  contractValue    Float   @default(0)
+  advancePercent   Float   @default(0)
+  advanceAmount    Float   @default(0)
+  retentionPercent Float   @default(0)
   paymentTerms     String?
 
-  status           String    @default("Draft") // Draft, Active, Closed, Cancelled
+  status String @default("Draft") // Draft, Active, Closed, Cancelled
 
-  raBills          WorkOrderRABill[]
+  raBills WorkOrderRABill[]
 
-  project          ProjectMaster @relation(fields: [projectId], references: [id])
+  project ProjectMaster @relation(fields: [projectId], references: [id])
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([projectId])
   @@index([status])
 }
 
 model WorkOrderRABill {
-  id                String    @id @default(cuid())
-  billNo            String    @unique
-  workOrderId       String
-  projectId         String
-  date              DateTime  @default(now())
-  periodFrom        DateTime?
-  periodTo          DateTime?
+  id          String    @id @default(cuid())
+  billNo      String    @unique
+  workOrderId String
+  projectId   String
+  date        DateTime  @default(now())
+  periodFrom  DateTime?
+  periodTo    DateTime?
 
-  measuredValue     Float     @default(0)
-  previousCertified Float     @default(0)
-  currentBill       Float     @default(0)
-  cumulative        Float     @default(0)
+  measuredValue     Float @default(0)
+  previousCertified Float @default(0)
+  currentBill       Float @default(0)
+  cumulative        Float @default(0)
 
-  retentionPercent  Float     @default(0)
-  retentionAmount   Float     @default(0)
-  advanceRecovery   Float     @default(0)
-  otherDeductions   Float     @default(0)
-  tdsPercent        Float     @default(0)
-  tdsAmount         Float     @default(0)
-  netPayable        Float     @default(0)
+  retentionPercent Float @default(0)
+  retentionAmount  Float @default(0)
+  advanceRecovery  Float @default(0)
+  otherDeductions  Float @default(0)
+  tdsPercent       Float @default(0)
+  tdsAmount        Float @default(0)
+  netPayable       Float @default(0)
 
-  remarks           String?   @db.Text
-  status            String    @default("Submitted") // Submitted, Approved, Paid, Rejected
+  remarks String? @db.Text
+  status  String  @default("Submitted") // Submitted, Approved, Paid, Rejected
 
-  workOrder         WorkOrder     @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  project           ProjectMaster @relation(fields: [projectId], references: [id])
+  workOrder WorkOrder     @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  project   ProjectMaster @relation(fields: [projectId], references: [id])
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([workOrderId])
   @@index([projectId])
@@ -3709,18 +3964,18 @@ model WorkOrderRABill {
 }
 
 model LabourRateMaster {
-  id            String    @id @default(cuid())
-  category      String    // Skilled, Semi-Skilled, Unskilled, Supervisor
+  id            String   @id @default(cuid())
+  category      String // Skilled, Semi-Skilled, Unskilled, Supervisor
   designation   String
-  unit          String    @default("Day")
-  rate          Float     @default(0)
-  otRate        Float     @default(0)
+  unit          String   @default("Day")
+  rate          Float    @default(0)
+  otRate        Float    @default(0)
   state         String?
-  effectiveFrom DateTime  @default(now())
-  isActive      Boolean   @default(true)
+  effectiveFrom DateTime @default(now())
+  isActive      Boolean  @default(true)
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([category])
   @@index([isActive])
@@ -3734,25 +3989,25 @@ model LabourRequisition {
   date         DateTime  @default(now())
   requiredDate DateTime?
 
-  category     String    // Skilled, Semi-Skilled, Unskilled, Supervisor
-  designation  String
-  quantity     Int       @default(1)
-  unit         String    @default("Day")
-  duration     Int       @default(1)
-  purpose      String?   @db.Text
-  remarks      String?   @db.Text
+  category    String // Skilled, Semi-Skilled, Unskilled, Supervisor
+  designation String
+  quantity    Int     @default(1)
+  unit        String  @default("Day")
+  rate        Float   @default(0)
+  duration    Int     @default(1)
+  purpose     String? @db.Text
+  remarks     String? @db.Text
 
-  status       String    @default("Pending") // Pending, Approved, Fulfilled, Cancelled
+  status String @default("Pending") // Pending, Approved, Fulfilled, Cancelled
 
-  project      ProjectMaster @relation(fields: [projectId], references: [id])
+  project ProjectMaster @relation(fields: [projectId], references: [id])
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([projectId])
   @@index([status])
 }
-
 
 enum Gender {
   MALE
@@ -3784,24 +4039,24 @@ enum LabourStatus {
 }
 
 model PolicyType {
-  id        String   @id @default(cuid())
+  id        String            @id @default(cuid())
   name      String
   companyId String
-  company   Company  @relation(fields: [companyId], references: [id])
+  company   Company           @relation(fields: [companyId], references: [id])
   policies  InsurancePolicy[]
 
   @@index([companyId])
 }
 
 model InsurancePolicy {
-  id                     String   @id @default(cuid())
-  policyNo               String
-  startDate              DateTime
-  endDate                DateTime
-  noOfPersonsInsured     Int      @default(0)
-  contractorWorkingStatus String  @default("Working")
-  location               String?
-  remark                 String?
+  id                      String   @id @default(cuid())
+  policyNo                String
+  startDate               DateTime
+  endDate                 DateTime
+  noOfPersonsInsured      Int      @default(0)
+  contractorWorkingStatus String   @default("Working")
+  location                String?
+  remark                  String?
 
   contractorId String
   contractor   Contractor @relation(fields: [contractorId], references: [id])
@@ -3824,9 +4079,9 @@ model InsurancePolicy {
 }
 
 model PolicyDocument {
-  id        String   @id @default(cuid())
-  fileName  String
-  fileUrl   String
+  id         String   @id @default(cuid())
+  fileName   String
+  fileUrl    String
   uploadedAt DateTime @default(now())
 
   policyId String
@@ -3836,7 +4091,7 @@ model PolicyDocument {
 model Labour {
   id             String       @id @default(cuid())
   employeeCode   String       @unique
-  title          String       
+  title          String
   firstName      String
   middleName     String?
   lastName       String?
@@ -3844,37 +4099,37 @@ model Labour {
   joiningDate    DateTime?
   leavingDate    DateTime?
   leavingReason  String?
-  employmentType String?      
+  employmentType String?
   biometricRefNo String?
   dailyWages     Float?
 
-  fatherName        String?
-  motherName        String?
-  gender            Gender?
-  dateOfBirth       DateTime?
-  bloodGroup        BloodGroup?
-  maritalStatus     MaritalStatus?
-  spouseName        String?
+  fatherName          String?
+  motherName          String?
+  gender              Gender?
+  dateOfBirth         DateTime?
+  bloodGroup          BloodGroup?
+  maritalStatus       MaritalStatus?
+  spouseName          String?
   identificationMarks String?
 
-  panNo    String?
-  aadharNo String?
-  uan      String?
-  pfNo     String?
+  panNo       String?
+  aadharNo    String?
+  uan         String?
+  pfNo        String?
   pfStartDate DateTime?
-  esiNo    String?
+  esiNo       String?
 
   passportNumber   String?
   passportIssuedBy String?
 
-  permanentAddress String?
-  temporaryAddress String?
-  mobile1          String?
-  mobile2          String?
-  email1           String?
-  email2           String?
-  telephoneOffice1 String?
-  telephoneOffice2 String?
+  permanentAddress   String?
+  temporaryAddress   String?
+  mobile1            String?
+  mobile2            String?
+  email1             String?
+  email2             String?
+  telephoneOffice1   String?
+  telephoneOffice2   String?
   telephoneResidence String?
 
   companyId String
@@ -3885,3 +4140,111 @@ model Labour {
 
   @@index([companyId, status])
 }
+
+// ==========================================
+// CONTRACTING: Enquiry → Quotation → Work Order
+// ==========================================
+
+model ContractingEnquiry {
+  id            String    @id @default(cuid())
+  enquiryNo     String    @unique
+  projectId     String
+  projectName   String?
+  enquiryDate   DateTime  @default(now())
+  dueDate       DateTime?
+  expiryDate    DateTime?
+  paymentTerms  String?
+  deliveryTerms String?
+  specialCond   String?   @db.Text
+  status        String    @default("Open") // Open, Closed, Cancelled
+
+  tasks       ContractingEnquiryTask[]
+  contractors ContractingEnquiryContractor[]
+  quotations  ContractingQuotation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model ContractingEnquiryTask {
+  id          String             @id @default(cuid())
+  enquiryId   String
+  enquiry     ContractingEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  taskName    String
+  unit        String?
+  qty         Float              @default(1)
+  description String?            @db.Text
+
+  @@index([enquiryId])
+}
+
+model ContractingEnquiryContractor {
+  id             String             @id @default(cuid())
+  enquiryId      String
+  enquiry        ContractingEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  contractorId   String
+  contractorName String
+
+  @@index([enquiryId])
+}
+
+model ContractingQuotation {
+  id             String             @id @default(cuid())
+  quotationNo    String             @unique
+  enquiryId      String
+  enquiry        ContractingEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  contractorId   String
+  contractorName String
+  quotationDate  DateTime           @default(now())
+  validTill      DateTime?
+  status         String             @default("Submitted") // Submitted, Shortlisted, Selected, Rejected
+
+  // Terms & Conditions
+  deliveryTerms      String? @db.Text
+  paymentTerms       String? @db.Text
+  materialInspection String? @db.Text
+  warranty           String? @db.Text
+  transactionMode    String?
+  insurance          String? @db.Text
+  taxAndDuties       String? @db.Text
+  freightCharges     String? @db.Text
+  otherConditions    String? @db.Text
+
+  // Documents stored as JSON array
+  documents String? @db.Text
+
+  items ContractingQuotationItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enquiryId])
+  @@index([contractorId])
+}
+
+model ContractingQuotationItem {
+  id          String               @id @default(cuid())
+  quotationId String
+  quotation   ContractingQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  taskName    String
+  unit        String?
+  qty         Float                @default(1)
+  rate        Float                @default(0)
+  amount      Float                @default(0)
+  gstPercent  Float                @default(18)
+  gstAmount   Float                @default(0)
+  totalAmount Float                @default(0)
+
+  @@index([quotationId])
+}
+
+// ---------------------------------------------------------------------------
+// NOTE: If `WorkOrder` and `Project` already exist elsewhere in your schema,
+// do NOT paste those two models again — just make sure they have the fields
+// and back-relations referenced here (retentionPercent on WorkOrder, and the
+// `raBills WorkOrderRABill[]` back-relations). Only `WorkOrderRABill` plus the
+// `RABillStatus` enum are strictly new for this feature.
+// ---------------------------------------------------------------------------

@@ -4,8 +4,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 1.5rem;
   background-color: var(--bg-primary);
+  overflow-y: auto;
 }
 
 .login-logo {
@@ -19,7 +20,7 @@
 .login-card {
   width: 100%;
   max-width: 440px;
-  padding: 2.5rem;
+  padding: 2rem;
   border-radius: 20px;
   background: var(--bg-secondary);
   box-shadow: 0 10px 40px -10px rgba(15, 23, 42, 0.08);
@@ -82,7 +83,7 @@
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
 }
 
 .input-group label {
@@ -136,4 +137,53 @@
 
 .toggle-password:hover {
   color: var(--text-primary, #0f172a);
+}
+
+@media (max-height: 850px) {
+  .login-container {
+    justify-content: flex-start;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .login-card {
+    margin: 0;
+    padding: 1.25rem;
+  }
+
+  .login-logo {
+    margin-bottom: 0.75rem !important;
+  }
+
+  .login-toggle {
+    margin-bottom: 0.9rem !important;
+  }
+
+  .login-header {
+    margin-bottom: 0.9rem;
+  }
+
+  .login-header h2 {
+    margin-top: 0;
+    margin-bottom: 0.35rem;
+  }
+
+  .login-form {
+    gap: 0.75rem;
+  }
+
+  .login-btn {
+    margin-top: 0.25rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .login-container {
+    padding: 1rem;
+  }
+
+  .login-card {
+    padding: 1.5rem;
+    border-radius: 14px;
+  }
 }

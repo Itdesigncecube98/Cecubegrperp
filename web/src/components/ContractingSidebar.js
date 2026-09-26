@@ -27,6 +27,7 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
     workOrder: pathname.includes('/work-order'),
     raBills: pathname.includes('/ra-bills'),
     enquiry: pathname.includes('/enquiry'),
+    quotation: pathname.includes('/quotation'),
   });
 
   const toggleSection = (menu) => {
@@ -58,7 +59,6 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
       items: [
         { name: 'Requisition Generation', path: '/contracting/labour/requisition' },
         { name: 'Requisition Browse', path: '/contracting/labour/requisition-browse' },
-        { name: 'Rate Master', path: '/contracting/labour/rate-master' },
       ]
     },
     {
@@ -68,6 +68,7 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
       items: [
         { name: 'Raise Work Order', path: '/contracting/work-order/raise' },
         { name: 'Browse Work Order', path: '/contracting/work-order/browse' },
+        { name: 'Labour Rate Master', path: '/contracting/labour/rate-master' },
       ]
     },
     {
@@ -76,8 +77,6 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
       icon: FileSearch,
       items: [
         { name: 'RA Bill Generation', path: '/contracting/ra-bills/generation' },
-        { name: 'RA Bill Browse', path: '/contracting/ra-bills/browse' },
-        { name: 'RA Bill Approve', path: '/contracting/ra-bills/approve' },
       ]
     },
     {
@@ -85,9 +84,21 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
       label: 'Enquiry',
       icon: HelpCircle,
       items: [
-        { name: 'Enquiry Generation', path: '/contracting/enquiry/enquiry-generation' }
+        { name: 'Enquiry Generation', path: '/contracting/enquiry/enquiry-generation' },
+        { name: 'Enquiry Browse', path: '/contracting/enquiry/browse' },
       ]
-    }
+    },
+    {
+      id: 'quotation',
+      label: 'Quotation',
+      icon: FileSignature,
+      items: [
+        { name: 'Quotation Entry', path: '/contracting/quotation/entry' },
+        { name: 'Quotation Browse', path: '/contracting/quotation/browse' },
+        { name: 'Quotation Compare', path: '/contracting/quotation/compare' },
+      ]
+    },
+  
   ];
 
   const allItems = useMemo(() => {
@@ -187,7 +198,7 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {filteredItems.length === 0 ? (
               <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: '12px', color: '#64748b' }}>
-                No results for "{searchQuery}"
+                No results for &quot;{searchQuery}&quot;
               </div>
             ) : (
               filteredItems.map(item => {

@@ -5,6 +5,9 @@ import android.os.Bundle;
 import android.webkit.GeolocationPermissions;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
+import android.webkit.JavascriptInterface;
+import android.content.Intent;
+import android.os.Build;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
@@ -20,7 +23,9 @@ public class MainActivity extends BridgeActivity {
 	public void onCreate(@Nullable Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		configureWebViewLocation();
+		getBridge().getWebView().addJavascriptInterface(new TripTrackingBridge(), "AndroidTripTracking");
 		requestLocationPermission();
+		requestNotificationPermission();
 	}
 
 	private void configureWebViewLocation() {
@@ -50,6 +55,31 @@ public class MainActivity extends BridgeActivity {
 					},
 					LOCATION_PERMISSION_REQUEST
 			);
+		}
+	}
+
+	private void requestNotificationPermission() {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+				ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+			ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1002);
+		}
+	}
+
+	private class TripTrackingBridge {
+		@JavascriptInterface
+		public void startTrip(String pingUrl) {
+			Intent intent = new Intent(MainActivity.this, TripTrackingService.class);
+			intent.setAction(TripTrackingService.ACTION_START);
+			intent.putExtra("pingUrl", pingUrl);
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+			else startService(intent);
+		}
+
+		@JavascriptInterface
+		public void stopTrip() {
+			Intent intent = new Intent(MainActivity.this, TripTrackingService.class);
+			intent.setAction(TripTrackingService.ACTION_STOP);
+			startService(intent);
 		}
 	}
 

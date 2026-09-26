@@ -1,0 +1,255 @@
+{
+  "groups": [
+    {
+      "id": "group-1789813618837",
+      "name": "jhjbn",
+      "subgroups": [
+        {
+          "id": "subgroup-1789814778371",
+          "name": "hkk",
+          "tasks": [
+            {
+              "id": "task-1789815213750",
+              "name": "rejsacm",
+              "unit": "Nos",
+              "quantity": 1,
+              "materials": [],
+              "labours": [],
+              "status": "Started",
+              "updatedAt": "2026-09-22T12:28:00.694Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-09-19T12:06:26.037Z"
+                },
+                {
+                  "status": "Started",
+                  "changedAt": "2026-09-19T12:13:40.308Z"
+                },
+                {
+                  "status": "Hold",
+                  "changedAt": "2026-09-19T12:14:04.838Z"
+                },
+                {
+                  "status": "Started",
+                  "changedAt": "2026-09-19T12:13:40.308Z",
+                  "description": "ghjqr"
+                }
+              ],
+              "description": "ghjqr",
+              "statusDates": {
+                "Started": "2026-09-19T12:13:40.308Z",
+                "Hold": "2026-09-19T12:14:04.838Z"
+              },
+              "tentativeDate": "",
+              "startedDate": "2026-09-19T12:13:40.308Z",
+              "holdDate": "2026-09-19T12:14:04.838Z",
+              "completedDate": "",
+              "closedDate": "",
+              "wbsCode": "1.1",
+              "taskName": "rejsacm",
+              "groupName": "jhjbn",
+              "subgroupName": "hkk",
+              "materialName": "rejsacm",
+              "specification": "ghjqr",
+              "plannedQty": 1,
+              "previousQty": 0,
+              "completedQty": 1,
+              "balanceQty": 0,
+              "percentComplete": 100,
+              "targetDate": "",
+              "actualDate": "2026-09-22T12:27",
+              "verificationStatus": "Ready for Inspection",
+              "mbRef": "",
+              "siteRemarks": "ghjqr",
+              "logs": [
+                {
+                  "id": "log-1790080080523",
+                  "date": "2026-09-22T12:27",
+                  "shift": "Day",
+                  "qty": 1,
+                  "engineer": "Aditya Yadav",
+                  "remark": "Site progress recorded"
+                }
+              ]
+            }
+          ],
+          "subgroups": [
+            {
+              "id": "subgroup-1789817754196",
+              "name": "hiehwi",
+              "tasks": [],
+              "subgroups": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "group-1790079798019-x0e51",
+      "name": "Civil & Structural Works",
+      "subgroups": [
+        {
+          "id": "subgroup-1790079798020-34d5h",
+          "name": "Structure / RCC Slab",
+          "tasks": [
+            {
+              "id": "task-1790079798024-kjdxo",
+              "name": "fgh",
+              "description": "ghjn",
+              "source": "WBS",
+              "quantity": 23,
+              "plannedQty": 23,
+              "completedQty": 0,
+              "unit": "Job",
+              "status": "Tentative",
+              "updatedAt": "2026-09-22T12:23:18.020Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-09-22T12:23:18.020Z",
+                  "description": "ghjn"
+                }
+              ]
+            },
+            {
+              "id": "task-1790079798032-q1h4k",
+              "name": "Laying 25mm PVC Conduit in slab",
+              "description": "Conduit laying with accessories including bend, junction box, fan box",
+              "source": "WBS",
+              "quantity": 11,
+              "plannedQty": 11,
+              "completedQty": 0,
+              "unit": "Job",
+              "status": "Tentative",
+              "updatedAt": "2026-09-22T12:23:18.032Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-09-22T12:23:18.032Z",
+                  "description": "Conduit laying with accessories including bend, junction box, fan box"
+                }
+              ]
+            }
+          ],
+          "subgroups": []
+        }
+      ],
+      "tasks": []
+    },
+    {
+      "id": "group-1790079798127-zmttb",
+      "name": "Work Order 26-27/397",
+      "subgroups": [
+        {
+          "id": "subgroup-1790079798127-ubuk3",
+          "name": "fwklk",
+          "tasks": [
+            {
+              "id": "task-1790079798127-q0ar4",
+              "name": "Electrician (Skilled)",
+              "description": "Work order 26-27/397",
+              "source": "Work Order",
+              "quantity": 1,
+              "plannedQty": 1,
+              "completedQty": 1,
+              "unit": "Day",
+              "status": "Tentative",
+              "updatedAt": "2026-09-22T12:51:02.667Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-09-22T12:23:18.127Z",
+                  "description": "Work order 26-27/397"
+                }
+              ],
+              "workOrderId": "26-27/397",
+              "contractorName": "fwklk",
+              "cumulativeQty": 1,
+              "remainingQty": 0,
+              "workPercent": 100,
+              "rate": 890,
+              "wbsCode": "1.1",
+              "taskName": "Electrician (Skilled)",
+              "groupName": "Work Order 26-27/397",
+              "subgroupName": "fwklk",
+              "materialName": "Electrician (Skilled)",
+              "specification": "Work order 26-27/397",
+              "previousQty": 0,
+              "balanceQty": 0,
+              "percentComplete": 100,
+              "targetDate": "",
+              "actualDate": "2026-09-22T12:50",
+              "verificationStatus": "Ready for Inspection",
+              "mbRef": "",
+              "siteRemarks": "Work order 26-27/397",
+              "logs": [
+                {
+                  "id": "log-1790081462587",
+                  "date": "2026-09-22T12:50",
+                  "shift": "Day",
+                  "qty": 1,
+                  "engineer": "Aditya Yadav",
+                  "remark": "Site progress recorded"
+                }
+              ]
+            },
+            {
+              "id": "task-1790079798132-eleqm",
+              "name": "Transformer",
+              "description": "Work order 26-27/397",
+              "source": "Work Order",
+              "quantity": 1,
+              "plannedQty": 1,
+              "completedQty": 1,
+              "unit": "Day",
+              "status": "Tentative",
+              "updatedAt": "2026-09-22T12:51:48.435Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-09-22T12:23:18.132Z",
+                  "description": "Work order 26-27/397"
+                }
+              ],
+              "workOrderId": "26-27/397",
+              "contractorName": "fwklk",
+              "cumulativeQty": 1,
+              "remainingQty": 0,
+              "workPercent": 100,
+              "rate": 5663,
+              "wbsCode": "1.2",
+              "taskName": "Transformer",
+              "groupName": "Work Order 26-27/397",
+              "subgroupName": "fwklk",
+              "materialName": "Transformer",
+              "specification": "Work order 26-27/397",
+              "previousQty": 0,
+              "balanceQty": 0,
+              "percentComplete": 100,
+              "targetDate": "",
+              "actualDate": "2026-09-22T12:51",
+              "verificationStatus": "Ready for Inspection",
+              "mbRef": "",
+              "siteRemarks": "Work order 26-27/397",
+              "logs": [
+                {
+                  "id": "log-1790081508352",
+                  "date": "2026-09-22T12:51",
+                  "shift": "Day",
+                  "qty": 1,
+                  "engineer": "Aditya Yadav",
+                  "remark": "Site progress recorded"
+                }
+              ],
+              "cumulativeAmount": 5663,
+              "balanceAmount": 0
+            }
+          ],
+          "subgroups": []
+        }
+      ],
+      "tasks": []
+    }
+  ]
+}

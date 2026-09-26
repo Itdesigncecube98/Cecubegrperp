@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { sendEmail } from '@/lib/mailer';
 
 const toDate = (value) => {
   if (!value) return null;
@@ -100,7 +101,34 @@ export async function POST(req) {
       }
     });
 
-    return NextResponse.json(rfq, { status: 201 });
+    const emailResults = await Promise.all(rfq.vendors.map(async (entry) => {
+      const recipient = String(entry.vendor?.email || '').trim();
+      if (!recipient) return { vendorId: entry.vendorId, sent: false, error: 'Vendor email is missing' };
+
+      const materialRows = rfq.indent.items.map(item => `
+        <tr>
+          <td>${item.item || ''}</td>
+          <td>${item.specification || '-'}</td>
+          <td>${item.unit || '-'}</td>
+          <td>${item.quantity || 0}</td>
+        </tr>`).join('');
+
+      const result = await sendEmail({
+        to: recipient,
+        subject: `Enquiry ${rfq.rfqNo} - ${rfq.project || 'Material Requirement'}`,
+        html: `<p>Dear ${entry.vendor?.name || 'Vendor'},</p>
+          <p>Please submit your quotation for enquiry <strong>${rfq.rfqNo}</strong>.</p>
+          <table border="1" cellpadding="6" cellspacing="0">
+            <thead><tr><th>Material</th><th>Specification</th><th>Unit</th><th>Quantity</th></tr></thead>
+            <tbody>${materialRows}</tbody>
+          </table>
+          <p>Due date: ${rfq.dueDate ? new Date(rfq.dueDate).toLocaleDateString('en-IN') : 'As discussed'}</p>
+          <p>Regards,<br/>Purchase Department</p>`
+      });
+      return { vendorId: entry.vendorId, sent: result.success, error: result.error || null };
+    }));
+
+    return NextResponse.json({ ...rfq, emailResults }, { status: 201 });
   } catch (error) {
     console.error('Error creating enquiry:', error);
     return NextResponse.json({ error: error.message || 'Failed to create enquiry.' }, { status: 500 });

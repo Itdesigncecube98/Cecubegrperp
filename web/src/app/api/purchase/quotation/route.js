@@ -137,6 +137,18 @@ export async function POST(req) {
             gst: round2(totals.gst),
             finalAmount: round2(totals.finalAmount),
             docsUrl: body.docsUrl || null,
+            // Terms
+            deliveryTerms:      body.terms?.deliveryTerms      || null,
+            paymentTerms:       body.terms?.paymentTerms       || null,
+            materialInspection: body.terms?.materialInspection || null,
+            warranty:           body.terms?.warranty           || null,
+            transactionMode:    body.terms?.transactionMode    || null,
+            insurance:          body.terms?.insurance          || null,
+            taxAndDuties:       body.terms?.taxAndDuties       || null,
+            freightCharges:     body.terms?.freightCharges     || null,
+            otherConditions:    body.terms?.otherConditions    || null,
+            // Documents stored as JSON
+            documents: body.documents ? JSON.stringify(body.documents) : null,
             items: { create: data }
           },
           include: { vendor: true, items: true }
@@ -153,6 +165,18 @@ export async function POST(req) {
           gst: round2(totals.gst),
           finalAmount: round2(totals.finalAmount),
           docsUrl: body.docsUrl || null,
+          // Terms
+          deliveryTerms:      body.terms?.deliveryTerms      || null,
+          paymentTerms:       body.terms?.paymentTerms       || null,
+          materialInspection: body.terms?.materialInspection || null,
+          warranty:           body.terms?.warranty           || null,
+          transactionMode:    body.terms?.transactionMode    || null,
+          insurance:          body.terms?.insurance          || null,
+          taxAndDuties:       body.terms?.taxAndDuties       || null,
+          freightCharges:     body.terms?.freightCharges     || null,
+          otherConditions:    body.terms?.otherConditions    || null,
+          // Documents stored as JSON
+          documents: body.documents ? JSON.stringify(body.documents) : null,
           items: { create: data }
         },
         include: { vendor: true, items: true }

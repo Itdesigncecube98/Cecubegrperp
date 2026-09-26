@@ -29,9 +29,9 @@ export default function PORegister() {
 
   const filteredPos = pos.filter(po => {
     const matchesSearch = 
-      po.poNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      po.vendor?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      po.project?.toLowerCase().includes(searchTerm.toLowerCase());
+      po.poNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      po.supplierName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      po.projectName?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'All' || po.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -76,11 +76,14 @@ export default function PORegister() {
             >
               <option value="All">All Statuses</option>
               <option value="Draft">Draft</option>
-              <option value="Approved">Approved</option>
-              <option value="Dispatched">Dispatched</option>
-              <option value="Delivered">Delivered</option>
-              <option value="Paid">Paid</option>
-              <option value="Closed">Closed</option>
+              <option value="DRAFT">Draft</option>
+              <option value="PENDING_APPROVAL">Pending Approval</option>
+              <option value="APPROVED">Approved</option>
+              <option value="SENT">Sent to Accounts</option>
+              <option value="PARTIALLY_RECEIVED">Partially Received</option>
+              <option value="FULLY_RECEIVED">Fully Received</option>
+              <option value="CLOSED">Closed</option>
+              <option value="CANCELLED">Cancelled</option>
             </select>
           </div>
         </div>
@@ -105,32 +108,37 @@ export default function PORegister() {
                 {filteredPos.map(po => (
                   <tr key={po.id}>
                     <td>
-                      <div className="pur-font-semibold">{po.poNo}</div>
+                      <div className="pur-font-semibold">{po.poNumber}</div>
                       <div className="pur-text-xs pur-text-muted">{new Date(po.poDate).toLocaleDateString()}</div>
                     </td>
                     <td>
-                      <div className="pur-font-medium">{po.vendor?.name}</div>
-                      <div className="pur-text-xs pur-text-muted">{po.vendor?.vendorCode}</div>
+                      <div className="pur-font-medium">{po.supplierName || '—'}</div>
+                      <div className="pur-text-xs pur-text-muted">{po.supplierGstin || po.supplierId || '—'}</div>
                     </td>
                     <td>
-                      <div>{po.project || '-'}</div>
-                      <div className="pur-text-xs pur-text-muted">PR: {po.indent?.prNo || 'Direct'}</div>
+                      <div>{po.projectName || '—'}</div>
+                      <div className="pur-text-xs pur-text-muted">Status: {po.status}</div>
                     </td>
-                    <td className="pur-font-semibold">{formatCurrency(po.totalValue)}</td>
-                    <td>{po.expectedDate ? new Date(po.expectedDate).toLocaleDateString() : '-'}</td>
+                    <td className="pur-font-semibold">{formatCurrency(po.totalAmount)}</td>
+                    <td>{po.deliveryDate ? new Date(po.deliveryDate).toLocaleDateString() : '—'}</td>
                     <td>
-                      <span className={`pur-badge ${po.status === 'Approved' ? 'pur-badge-emerald' : po.status === 'Draft' ? 'pur-badge-slate' : 'pur-badge-amber'}`}>
-                        {po.status}
+                      <span className={`pur-badge ${
+                        po.status === 'APPROVED' ? 'pur-badge-emerald' :
+                        po.status === 'DRAFT' ? 'pur-badge-slate' :
+                        po.status === 'SENT' ? 'pur-badge-blue' :
+                        po.status === 'CANCELLED' ? 'pur-badge-red' :
+                        po.status === 'FULLY_RECEIVED' ? 'pur-badge-indigo' :
+                        'pur-badge-amber'
+                      }`}>
+                        {po.status?.replace(/_/g, ' ')}
                       </span>
                     </td>
                     <td className="pur-text-right pur-flex" style={{ justifyContent: 'flex-end', gap: '8px' }}>
-                      {po.status === 'Draft' && <button className="pur-btn pur-btn-outline" onClick={() => approvePO(po.id)}>Approve</button>}
-                      <button className="pur-icon-btn pur-text-indigo-600" title="Download PDF">
+                      {po.status === 'DRAFT' && <button className="pur-btn pur-btn-outline" onClick={() => approvePO(po.id)}>Approve</button>}
+                      <Link href={`/purchase/po/print?id=${po.id}`} target="_blank" className="pur-icon-btn pur-text-indigo-600" title="Download PDF">
                         <Download size={16} />
-                      </button>
-                      <button className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
-                        View
-                      </button>
+                      </Link>
+                      <Link href={`/purchase/po/create?id=${po.id}`} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>Edit</Link>
                     </td>
                   </tr>
                 ))}

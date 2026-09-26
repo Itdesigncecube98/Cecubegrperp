@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   CheckCircle, Clock, AlertCircle, FileText, Printer, Plus,
   Layers, Filter, Search, Download, Award, ChevronRight,
@@ -8,8 +9,18 @@ import {
 import '../planning.css';
 
 export default function WorkCompletionTask() {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (pathname.startsWith('/engineering/')) {
+      router.replace('/contracting/work-completion');
+    }
+  }, [pathname, router]);
+
   // Projects
   const [projects, setProjects] = useState([]);
+  const [workOrders, setWorkOrders] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [loadingProjects, setLoadingProjects] = useState(true);
 
@@ -24,7 +35,7 @@ export default function WorkCompletionTask() {
   const [showLogModal, setShowLogModal] = useState(false);
   const [selectedTaskForLog, setSelectedTaskForLog] = useState(null);
   const [logForm, setLogForm] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toISOString().slice(0, 16),
     shift: 'Day',
     addQty: '',
     engineer: 'Aditya Yadav',
@@ -32,6 +43,7 @@ export default function WorkCompletionTask() {
     remark: '',
     newStatus: ''
   });
+  const [logDocuments, setLogDocuments] = useState([]);
 
   // Certificate Modal state
   const [showCertModal, setShowCertModal] = useState(false);
@@ -68,6 +80,13 @@ export default function WorkCompletionTask() {
     fetchProjects();
   }, []);
 
+  useEffect(() => {
+    fetch('/api/contracting/work-orders')
+      .then(res => res.json())
+      .then(data => setWorkOrders(Array.isArray(data) ? data : []))
+      .catch(() => setWorkOrders([]));
+  }, []);
+
   // 2. Fetch Work Completion Tasks when Project changes
   useEffect(() => {
     if (!selectedProjectId) return;
@@ -92,6 +111,11 @@ export default function WorkCompletionTask() {
   const currentProject = useMemo(() => {
     return projects.find(p => p.id === selectedProjectId) || null;
   }, [projects, selectedProjectId]);
+
+  const currentContractor = useMemo(() => {
+    const projectName = currentProject?.name;
+    return workOrders.find(order => order.project?.name === projectName)?.contractorName || '';
+  }, [currentProject, workOrders]);
 
   // Distinct groups for filter dropdown
   const groupOptions = useMemo(() => {
@@ -142,7 +166,7 @@ export default function WorkCompletionTask() {
   const handleOpenLogModal = (task) => {
     setSelectedTaskForLog(task);
     setLogForm({
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().slice(0, 16),
       shift: 'Day',
       addQty: '',
       engineer: 'Aditya Yadav',
@@ -150,6 +174,7 @@ export default function WorkCompletionTask() {
       remark: '',
       newStatus: task.verificationStatus
     });
+    setLogDocuments([]);
     setShowLogModal(true);
   };
 
@@ -183,6 +208,11 @@ export default function WorkCompletionTask() {
       ...selectedTaskForLog,
       previousQty: selectedTaskForLog.completedQty,
       completedQty: newCompleted,
+      cumulativeQty: newCompleted,
+      workPercent: newPercent,
+      remainingQty: newBalance,
+      cumulativeAmount: newCompleted * Number(selectedTaskForLog.rate || 0),
+      balanceAmount: newBalance * Number(selectedTaskForLog.rate || 0),
       balanceQty: newBalance,
       percentComplete: newPercent,
       mbRef: logForm.mbRef || selectedTaskForLog.mbRef,
@@ -192,6 +222,16 @@ export default function WorkCompletionTask() {
     };
 
     try {
+      const uploadedDocuments = await Promise.all(logDocuments.map(async file => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const uploadResponse = await fetch('/api/upload', { method: 'POST', body: formData });
+        const uploadData = await uploadResponse.json();
+        if (!uploadResponse.ok) throw new Error(uploadData.error || `Failed to upload ${file.name}`);
+        return { name: file.name, type: file.type, size: file.size, url: uploadData.url };
+      }));
+      newLogEntry.documents = uploadedDocuments;
+
       const res = await fetch('/api/engineering/planning/work-completion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -461,6 +501,9 @@ export default function WorkCompletionTask() {
                   <th style={{ textAlign: 'right' }}>Completed</th>
                   <th style={{ textAlign: 'right' }}>Balance</th>
                   <th style={{ width: '130px' }}>% Physical Done</th>
+                  <th style={{ textAlign: 'right' }}>Rate</th>
+                  <th style={{ textAlign: 'right' }}>Cumulative Amount</th>
+                  <th style={{ textAlign: 'right' }}>Balance Amount</th>
                   <th>MB Reference</th>
                   <th>Verification Status</th>
                   <th style={{ textAlign: 'center', width: '170px' }}>Actions</th>
@@ -517,6 +560,15 @@ export default function WorkCompletionTask() {
                             {task.percentComplete}%
                           </span>
                         </div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                        ₹{Number(task.rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#059669' }}>
+                        ₹{Number(task.cumulativeAmount || (task.completedQty || 0) * (task.rate || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#b45309' }}>
+                        ₹{Number(task.balanceAmount || (task.balanceQty || 0) * (task.rate || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
                       <td>
                         <span style={{ fontFamilty: 'monospace', fontSize: '12px', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, color: '#334155' }}>
@@ -596,6 +648,21 @@ export default function WorkCompletionTask() {
 
             <form onSubmit={handleSaveProgress}>
               <div className="planning-modal-body">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '1.25rem' }}>
+                  <div className="planning-form-field">
+                    <label>Project</label>
+                    <input type="text" value={currentProject?.name || 'Project not selected'} readOnly />
+                  </div>
+                  <div className="planning-form-field">
+                    <label>Contractor</label>
+                    <input type="text" value={currentContractor || 'No contractor assigned'} readOnly />
+                  </div>
+                  <div className="planning-form-field">
+                    <label>Task</label>
+                    <input type="text" value={selectedTaskForLog.taskName || selectedTaskForLog.materialName || ''} readOnly />
+                  </div>
+                </div>
+
                 {/* Current Quantity Summary */}
                 <div style={{
                   display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px',
@@ -622,11 +689,26 @@ export default function WorkCompletionTask() {
                   </div>
                 </div>
 
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '1.25rem', textAlign: 'center' }}>
+                  <div style={{ padding: '10px', background: '#ecfdf5', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#047857', fontWeight: 600 }}>Completed Amount</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: '#059669' }}>₹{Number(selectedTaskForLog.cumulativeAmount || ((selectedTaskForLog.completedQty || 0) * (selectedTaskForLog.rate || 0))).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                  <div style={{ padding: '10px', background: '#fff7ed', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#c2410c', fontWeight: 600 }}>Balance Amount</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: '#b45309' }}>₹{Number(selectedTaskForLog.balanceAmount || ((selectedTaskForLog.balanceQty || 0) * (selectedTaskForLog.rate || 0))).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                  <div style={{ padding: '10px', background: '#eff6ff', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '11px', color: '#1d4ed8', fontWeight: 600 }}>Rate</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: '#2563eb' }}>₹{Number(selectedTaskForLog.rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                </div>
+
                 <div className="planning-form-grid">
                   <div className="planning-form-field">
-                    <label>Date of Work</label>
+                    <label>Date &amp; Time of Work</label>
                     <input 
-                      type="date" 
+                      type="datetime-local" 
                       value={logForm.date}
                       onChange={(e) => setLogForm({ ...logForm, date: e.target.value })}
                       required
@@ -697,6 +779,26 @@ export default function WorkCompletionTask() {
                       value={logForm.remark}
                       onChange={(e) => setLogForm({ ...logForm, remark: e.target.value })}
                     />
+                  </div>
+
+                  <div className="planning-form-field full">
+                    <label>Supporting Documents</label>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                      onChange={event => setLogDocuments(previous => [...previous, ...Array.from(event.target.files || [])])}
+                    />
+                    {logDocuments.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                        {logDocuments.map((file, index) => (
+                          <div key={`${file.name}-${index}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}>
+                            <span>{file.name}</span>
+                            <button type="button" onClick={() => setLogDocuments(previous => previous.filter((_, fileIndex) => fileIndex !== index))} style={{ border: 0, background: 'transparent', color: '#dc2626', cursor: 'pointer' }}>Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

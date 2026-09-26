@@ -1,0 +1,1 @@
+ALTER TABLE "EmployeeDocument" ADD COLUMN "ocrText" TEXT;

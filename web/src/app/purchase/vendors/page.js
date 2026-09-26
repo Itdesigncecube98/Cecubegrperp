@@ -14,13 +14,10 @@ export default function VendorMaster() {
 
   const [formData, setFormData] = useState({
     name: '', type: 'Supplier', contactPerson: '', mobile: '', email: '',
-    address: '', city: '', state: '', gstin: '', pan: '', msmeStatus: false,
-    bankName: '', accountNo: '', ifsc: '', paymentTerms: '', creditDays: 0, category: ''
+    whatsappNo: '', address: '', godownAddress: '', city: '', state: '', gstin: '', pan: '', msmeStatus: false,
+    bankName: '', accountName: '', accountNo: '', ifsc: '', paymentTerms: '', creditDays: 0, category: '', fixedGroup: '', documents: []
   });
-
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const [documentFiles, setDocumentFiles] = useState([]);
 
   const fetchData = async () => {
     try {
@@ -33,6 +30,11 @@ export default function VendorMaster() {
     }
   };
 
+  useEffect(() => {
+    const timer = setTimeout(fetchData, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
@@ -41,9 +43,10 @@ export default function VendorMaster() {
   const resetForm = () => {
     setFormData({
       name: '', type: 'Supplier', contactPerson: '', mobile: '', email: '',
-      address: '', city: '', state: '', gstin: '', pan: '', msmeStatus: false,
-      bankName: '', accountNo: '', ifsc: '', paymentTerms: '', creditDays: 0, category: ''
+      whatsappNo: '', address: '', godownAddress: '', city: '', state: '', gstin: '', pan: '', msmeStatus: false,
+      bankName: '', accountName: '', accountNo: '', ifsc: '', paymentTerms: '', creditDays: 0, category: '', fixedGroup: '', documents: []
     });
+    setDocumentFiles([]);
   };
 
   const openCreateModal = () => {
@@ -57,11 +60,12 @@ export default function VendorMaster() {
     setFormData({
       name: vendor.name || '', type: vendor.type || 'Supplier', contactPerson: vendor.contactPerson || '',
       mobile: vendor.mobile || '', email: vendor.email || '', address: vendor.address || '',
-      city: vendor.city || '', state: vendor.state || '', gstin: vendor.gstin || '', pan: vendor.pan || '',
+      whatsappNo: vendor.whatsappNo || '', godownAddress: vendor.godownAddress || '', city: vendor.city || '', state: vendor.state || '', gstin: vendor.gstin || '', pan: vendor.pan || '',
       msmeStatus: Boolean(vendor.msmeStatus), bankName: vendor.bankName || '', accountNo: vendor.accountNo || '',
-      ifsc: vendor.ifsc || '', paymentTerms: vendor.paymentTerms || '', creditDays: vendor.creditDays || 0,
-      category: vendor.category || ''
+      accountName: vendor.accountName || '', ifsc: vendor.ifsc || '', paymentTerms: vendor.paymentTerms || '', creditDays: vendor.creditDays || 0,
+      category: vendor.category || '', fixedGroup: vendor.fixedGroup || '', documents: Array.isArray(vendor.documents) ? vendor.documents : []
     });
+    setDocumentFiles([]);
     setShowAddModal(true);
   };
 
@@ -69,10 +73,19 @@ export default function VendorMaster() {
     e.preventDefault();
     setSubmitting(true);
     try {
+      const uploadedDocuments = await Promise.all(documentFiles.map(async file => {
+        const uploadData = new FormData();
+        uploadData.append('file', file);
+        const uploadResponse = await fetch('/api/upload', { method: 'POST', body: uploadData });
+        const result = await uploadResponse.json();
+        if (!uploadResponse.ok) throw new Error(result.error || `Failed to upload ${file.name}`);
+        return { name: file.name, type: file.type, url: result.url };
+      }));
+      const documents = [...(formData.documents || []), ...uploadedDocuments];
       const res = await fetch('/api/purchase/vendors', {
         method: editingVendor ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingVendor ? { ...formData, id: editingVendor.id } : formData)
+        body: JSON.stringify(editingVendor ? { ...formData, documents, id: editingVendor.id } : { ...formData, documents })
       });
       if (res.ok) {
         setShowAddModal(false);
@@ -251,8 +264,23 @@ export default function VendorMaster() {
                   <input type="text" name="mobile" required value={formData.mobile} onChange={handleChange} className="pur-input" />
                 </div>
                 <div className="pur-form-group">
+                  <label className="pur-label">WhatsApp No.</label>
+                  <input type="text" name="whatsappNo" value={formData.whatsappNo} onChange={handleChange} className="pur-input" />
+                </div>
+                <div className="pur-form-group">
                   <label className="pur-label">Email Address</label>
                   <input type="email" name="email" value={formData.email} onChange={handleChange} className="pur-input" />
+                </div>
+              </div>
+
+              <div className="pur-grid-2">
+                <div className="pur-form-group">
+                  <label className="pur-label">Registered Address</label>
+                  <textarea name="address" value={formData.address} onChange={handleChange} className="pur-input" rows={3} />
+                </div>
+                <div className="pur-form-group">
+                  <label className="pur-label">Godown Address</label>
+                  <textarea name="godownAddress" value={formData.godownAddress} onChange={handleChange} className="pur-input" rows={3} />
                 </div>
               </div>
 
@@ -274,12 +302,28 @@ export default function VendorMaster() {
 
               <div className="pur-grid-2">
                 <div className="pur-form-group">
+                  <label className="pur-label">Account Name</label>
+                  <input type="text" name="accountName" value={formData.accountName} onChange={handleChange} className="pur-input" />
+                </div>
+                <div className="pur-form-group">
                   <label className="pur-label">Standard Payment Terms</label>
                   <input type="text" name="paymentTerms" value={formData.paymentTerms} onChange={handleChange} className="pur-input" placeholder="E.g. 30 Days after GRN" />
                 </div>
                 <div className="pur-form-group">
                   <label className="pur-label">Credit Days</label>
                   <input type="number" name="creditDays" value={formData.creditDays} onChange={handleChange} className="pur-input" />
+                </div>
+              </div>
+
+              <div className="pur-grid-2">
+                <div className="pur-form-group">
+                  <label className="pur-label">Fixed Group</label>
+                  <input type="text" name="fixedGroup" value={formData.fixedGroup} onChange={handleChange} className="pur-input" placeholder="e.g. Electrical Vendors" />
+                </div>
+                <div className="pur-form-group">
+                  <label className="pur-label">Documents</label>
+                  <input type="file" multiple onChange={e => setDocumentFiles(Array.from(e.target.files || []))} className="pur-input" />
+                  {formData.documents?.length > 0 && <div className="pur-text-xs pur-text-muted">{formData.documents.length} document(s) already uploaded</div>}
                 </div>
               </div>
 

@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, X } from 'lucide-react';
+import { Search, Filter, Plus, X, Save, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function PRRegister() {
@@ -21,6 +21,57 @@ export default function PRRegister() {
     } else {
       alert('Failed to update PR status');
     }
+  };
+
+  const updateSelectedPr = (field, value) => {
+    setSelectedPr(previous => ({ ...previous, [field]: value }));
+  };
+
+  const updateSelectedItem = (index, field, value) => {
+    setSelectedPr(previous => ({
+      ...previous,
+      items: (previous.items || []).map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item)
+    }));
+  };
+
+  const addSelectedItem = () => {
+    setSelectedPr(previous => ({
+      ...previous,
+      items: [...(previous.items || []), { item: '', specification: '', unit: 'Nos', quantity: 1 }]
+    }));
+  };
+
+  const removeSelectedItem = (index) => {
+    setSelectedPr(previous => ({
+      ...previous,
+      items: (previous.items || []).filter((_, itemIndex) => itemIndex !== index)
+    }));
+  };
+
+  const saveSelectedPr = async () => {
+    if (!selectedPr || selectedPr.status === 'Approved') return;
+    const response = await fetch('/api/purchase/pr', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: selectedPr.id,
+        project: selectedPr.project,
+        site: selectedPr.site,
+        requiredDate: selectedPr.requiredDate,
+        priority: selectedPr.priority,
+        purpose: selectedPr.purpose,
+        remarks: selectedPr.remarks,
+        requestedById: selectedPr.requestedById,
+        items: selectedPr.items
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      alert(result.error || 'Failed to save purchase indent');
+      return;
+    }
+    setPrs(previous => previous.map(pr => pr.id === result.id ? result : pr));
+    setSelectedPr(result);
   };
 
   useEffect(() => {
@@ -131,6 +182,11 @@ export default function PRRegister() {
                       </select>
                     </td>
                     <td className="pur-text-right">
+                      {pr.status === 'Approved' && (
+                        <Link href={`/purchase/enquiry/generation?indentId=${pr.id}`} className="pur-btn pur-btn-primary" style={{ padding: '4px 8px', fontSize: '0.75rem', marginRight: '8px', backgroundColor: '#10b981', color: 'white' }}>
+                          Generate Enquiry
+                        </Link>
+                      )}
                       <button type="button" onClick={() => setSelectedPr(pr)} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
                         View
                       </button>
@@ -151,8 +207,8 @@ export default function PRRegister() {
       </div>
 
       {selectedPr && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15, 23, 42, 0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ width: '100%', maxWidth: '760px', maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: '16px', boxShadow: '0 24px 60px rgba(15, 23, 42, 0.25)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#fff', display: 'flex', alignItems: 'stretch', justifyContent: 'stretch' }}>
+          <div style={{ width: '100vw', height: '100vh', overflowY: 'auto', background: '#fff' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fbfdff' }}>
               <div>
                 <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.2rem' }}>{selectedPr.prNo}</h2>
@@ -162,23 +218,27 @@ export default function PRRegister() {
             </div>
             <div style={{ padding: '24px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-                <div><div className="pur-text-xs pur-text-muted">Project</div><strong>{selectedPr.project || '-'}</strong></div>
+                <div><div className="pur-text-xs pur-text-muted">Project</div>{selectedPr.status === 'Approved' ? <strong>{selectedPr.project || '-'}</strong> : <input className="pur-input" value={selectedPr.project || ''} onChange={e => updateSelectedPr('project', e.target.value)} />}</div>
                 <div><div className="pur-text-xs pur-text-muted">PR Date</div><strong>{selectedPr.prDate ? new Date(selectedPr.prDate).toLocaleDateString() : '-'}</strong></div>
                 <div><div className="pur-text-xs pur-text-muted">Status</div><strong>{selectedPr.status}</strong></div>
-                <div><div className="pur-text-xs pur-text-muted">Priority</div><strong>{selectedPr.priority || 'Normal'}</strong></div>
-                <div><div className="pur-text-xs pur-text-muted">Required Date</div><strong>{selectedPr.requiredDate ? new Date(selectedPr.requiredDate).toLocaleDateString() : '-'}</strong></div>
-                <div><div className="pur-text-xs pur-text-muted">Purpose</div><strong>{selectedPr.purpose || '-'}</strong></div>
+                <div><div className="pur-text-xs pur-text-muted">Priority</div>{selectedPr.status === 'Approved' ? <strong>{selectedPr.priority || 'Normal'}</strong> : <select className="pur-select" value={selectedPr.priority || 'Normal'} onChange={e => updateSelectedPr('priority', e.target.value)}><option>Normal</option><option>Urgent</option><option>Critical</option></select>}</div>
+                <div><div className="pur-text-xs pur-text-muted">Required Date</div>{selectedPr.status === 'Approved' ? <strong>{selectedPr.requiredDate ? new Date(selectedPr.requiredDate).toLocaleDateString() : '-'}</strong> : <input type="date" className="pur-input" value={selectedPr.requiredDate ? String(selectedPr.requiredDate).slice(0, 10) : ''} onChange={e => updateSelectedPr('requiredDate', e.target.value)} />}</div>
+                <div><div className="pur-text-xs pur-text-muted">Purpose</div>{selectedPr.status === 'Approved' ? <strong>{selectedPr.purpose || '-'}</strong> : <textarea className="pur-textarea" rows="2" value={selectedPr.purpose || ''} onChange={e => updateSelectedPr('purpose', e.target.value)} />}</div>
               </div>
-              <h3 style={{ margin: '0 0 12px', fontSize: '0.95rem', color: '#1e293b' }}>Requested Materials</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', color: '#1e293b' }}>Requested Materials</h3>
+                {selectedPr.status !== 'Approved' && <button type="button" className="pur-btn pur-btn-outline" onClick={addSelectedItem}><Plus size={14} /> Add Item</button>}
+              </div>
               <div className="pur-table-wrapper">
                 <table className="pur-table">
-                  <thead><tr><th>#</th><th>Material</th><th>Specification</th><th>Unit</th><th>Quantity</th></tr></thead>
+                  <thead><tr><th>#</th><th>Material</th><th>Specification</th><th>Unit</th><th>Quantity</th>{selectedPr.status !== 'Approved' && <th></th>}</tr></thead>
                   <tbody>
-                    {(selectedPr.items || []).map((item, index) => <tr key={item.id || index}><td>{index + 1}</td><td className="pur-font-medium">{item.item}</td><td>{item.specification || '-'}</td><td>{item.unit}</td><td>{item.quantity}</td></tr>)}
-                    {(!selectedPr.items || selectedPr.items.length === 0) && <tr><td colSpan="5" className="pur-text-center pur-text-muted">No material items found.</td></tr>}
+                    {(selectedPr.items || []).map((item, index) => <tr key={item.id || index}><td>{index + 1}</td><td className="pur-font-medium">{selectedPr.status === 'Approved' ? item.item : <input className="pur-input" value={item.item || ''} onChange={e => updateSelectedItem(index, 'item', e.target.value)} />}</td><td>{selectedPr.status === 'Approved' ? (item.specification || '-') : <input className="pur-input" value={item.specification || ''} onChange={e => updateSelectedItem(index, 'specification', e.target.value)} />}</td><td>{selectedPr.status === 'Approved' ? item.unit : <input className="pur-input" value={item.unit || ''} onChange={e => updateSelectedItem(index, 'unit', e.target.value)} />}</td><td>{selectedPr.status === 'Approved' ? item.quantity : <input type="number" className="pur-input" value={item.quantity || ''} onChange={e => updateSelectedItem(index, 'quantity', e.target.value)} />}</td>{selectedPr.status !== 'Approved' && <td><button type="button" className="pur-icon-btn pur-text-danger" onClick={() => removeSelectedItem(index)}><Trash2 size={15} /></button></td>}</tr>)}
+                    {(!selectedPr.items || selectedPr.items.length === 0) && <tr><td colSpan={selectedPr.status === 'Approved' ? 5 : 6} className="pur-text-center pur-text-muted">No material items found.</td></tr>}
                   </tbody>
                 </table>
               </div>
+              {selectedPr.status !== 'Approved' && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}><button type="button" className="pur-btn pur-btn-primary" onClick={saveSelectedPr}><Save size={16} /> Save Changes</button></div>}
             </div>
           </div>
         </div>

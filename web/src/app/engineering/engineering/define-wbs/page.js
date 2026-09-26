@@ -82,6 +82,12 @@ export default function DefineWBS() {
     return selectedLibraryTask.labours.find(l => l.id === selectedLabourId) || null;
   }, [selectedLibraryTask, selectedLabourId]);
 
+  const getLibraryLabourRate = (labour) => {
+    if (!labour) return null;
+    const rate = labour.rate ?? labour.labourRate;
+    return rate === undefined || rate === null || rate === '' ? null : rate;
+  };
+
   // Feedback notifications
   const [notification, setNotification] = useState(null);
 
@@ -297,7 +303,9 @@ export default function DefineWBS() {
     // Find matching library task if name matches
     const matched = libraryTasks.find(lt => lt.name?.toLowerCase().trim() === task.name?.toLowerCase().trim());
     setSelectedLibraryTaskId(matched ? matched.id : '');
-    setSelectedMaterialId('');
+    const savedMaterial = task.materials?.[0];
+    const matchedMaterial = matched?.materials?.find(material => material.name === savedMaterial?.name);
+    setSelectedMaterialId(matchedMaterial?.id || '');
     setSelectedLabourId('');
     setTaskForm({
       name: task.name,
@@ -323,17 +331,26 @@ export default function DefineWBS() {
     if (!libTask) return;
 
     let newMaterialVol = taskForm.volOfWorkMaterial;
+    let newMaterialRate = taskForm.materialRate;
     let newMaterialId = '';
     if (libTask.materials && libTask.materials.length > 0) {
       newMaterialId = libTask.materials[0].id;
       newMaterialVol = libTask.materials[0].quantity;
+      if (libTask.materials[0].rate !== undefined && libTask.materials[0].rate !== null) {
+        newMaterialRate = libTask.materials[0].rate;
+      }
     }
 
     let newLabourVol = taskForm.volOfWorkLabour;
+    let newLabourRate = taskForm.labourRate;
     let newLabourId = '';
     if (libTask.labours && libTask.labours.length > 0) {
       newLabourId = libTask.labours[0].id;
       newLabourVol = libTask.labours[0].quantity;
+      const libraryLabourRate = getLibraryLabourRate(libTask.labours[0]);
+      if (libraryLabourRate !== null) {
+        newLabourRate = libraryLabourRate;
+      }
     }
 
     setSelectedMaterialId(newMaterialId);
@@ -343,7 +360,9 @@ export default function DefineWBS() {
       ...prev,
       name: libTask.name,
       volOfWorkMaterial: newMaterialVol !== '' && newMaterialVol !== null ? newMaterialVol : prev.volOfWorkMaterial,
+      materialRate: newMaterialRate !== '' && newMaterialRate !== null ? newMaterialRate : prev.materialRate,
       volOfWorkLabour: newLabourVol !== '' && newLabourVol !== null ? newLabourVol : prev.volOfWorkLabour,
+      labourRate: newLabourRate !== '' && newLabourRate !== null ? newLabourRate : prev.labourRate,
       description: libTask.description ? libTask.description : prev.description
     }));
   };
@@ -351,20 +370,31 @@ export default function DefineWBS() {
   const handleSelectMaterialVol = (matId) => {
     setSelectedMaterialId(matId);
     if (!matId) return;
+    if (editingTaskId) return;
     const currentLibTask = libraryTasks.find(t => t.id === selectedLibraryTaskId);
     const mat = currentLibTask?.materials?.find(m => m.id === matId);
-    if (mat && mat.quantity !== undefined && mat.quantity !== null) {
-      setTaskForm(prev => ({ ...prev, volOfWorkMaterial: mat.quantity }));
+    if (mat) {
+      setTaskForm(prev => ({ 
+        ...prev, 
+        volOfWorkMaterial: mat.quantity !== undefined && mat.quantity !== null ? mat.quantity : prev.volOfWorkMaterial,
+        materialRate: mat.rate !== undefined && mat.rate !== null ? mat.rate : prev.materialRate
+      }));
     }
   };
 
   const handleSelectLabourVol = (labId) => {
     setSelectedLabourId(labId);
     if (!labId) return;
+    if (editingTaskId) return;
     const currentLibTask = libraryTasks.find(t => t.id === selectedLibraryTaskId);
     const lab = currentLibTask?.labours?.find(l => l.id === labId);
-    if (lab && lab.quantity !== undefined && lab.quantity !== null) {
-      setTaskForm(prev => ({ ...prev, volOfWorkLabour: lab.quantity }));
+    if (lab) {
+      const libraryLabourRate = getLibraryLabourRate(lab);
+      setTaskForm(prev => ({ 
+        ...prev, 
+        volOfWorkLabour: lab.quantity !== undefined && lab.quantity !== null ? lab.quantity : prev.volOfWorkLabour,
+        labourRate: libraryLabourRate !== null ? libraryLabourRate : prev.labourRate
+      }));
     }
   };
 
@@ -393,7 +423,8 @@ export default function DefineWBS() {
             volOfWorkLabour: parseFloat(taskForm.volOfWorkLabour) || 0,
             labourRate: parseFloat(taskForm.labourRate) || 0,
             description: taskForm.description ? taskForm.description.trim() : null,
-            reraStage: taskForm.reraStage || null
+            reraStage: taskForm.reraStage || null,
+            materials: selectedLibraryTask?.materials || []
           }
         : {
             type: 'task',
@@ -405,7 +436,8 @@ export default function DefineWBS() {
             volOfWorkLabour: parseFloat(taskForm.volOfWorkLabour) || 0,
             labourRate: parseFloat(taskForm.labourRate) || 0,
             description: taskForm.description ? taskForm.description.trim() : null,
-            reraStage: taskForm.reraStage || null
+            reraStage: taskForm.reraStage || null,
+            materials: selectedLibraryTask?.materials || []
           };
 
       const res = await fetch('/api/engineering/wbs', {
@@ -1291,7 +1323,7 @@ export default function DefineWBS() {
                           <option value="">Select Labour Vol...</option>
                           {selectedLibraryTask.labours.map(l => (
                             <option key={l.id} value={l.id}>
-                              {l.name} (Qty: {l.quantity} {l.unit})
+                              {l.name} (Qty: {l.quantity} {l.unit} | Rate: ₹{Number(getLibraryLabourRate(l) || 0).toLocaleString('en-IN')})
                             </option>
                           ))}
                         </select>

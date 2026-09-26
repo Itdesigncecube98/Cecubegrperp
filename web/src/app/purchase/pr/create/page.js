@@ -8,6 +8,8 @@ export default function CreatePR() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
+  const [materials, setMaterials] = useState([]);
+  const [projects, setProjects] = useState([]);
 
   const [formData, setFormData] = useState({
     department: '',
@@ -21,26 +23,55 @@ export default function CreatePR() {
   });
 
   const [items, setItems] = useState([
-    { item: '', specification: '', unit: 'Nos', quantity: '', requiredDate: '' }
+    { id: 1, selectedMaterialId: '', item: '', specification: '', unit: 'Nos', quantity: '' }
   ]);
 
   useEffect(() => {
-    async function loadEmployees() {
+    async function loadData() {
       try {
-        const res = await fetch('/api/employees');
-        if (res.ok) {
-          const data = await res.json();
+        const [empRes, materialRes, projRes] = await Promise.all([
+          fetch('/api/employees'),
+          fetch('/api/engineering/material-library?resourceType=Material'),
+          fetch('/api/engineering/projects')
+        ]);
+        if (empRes.ok) {
+          const data = await empRes.json();
           setEmployees(Array.isArray(data) ? data : data.employees || []);
         }
+        if (materialRes.ok) {
+          const groups = await materialRes.json();
+          const allMaterials = [];
+          const flatten = nodes => (nodes || []).forEach(node => {
+            (node.materials || []).forEach(material => allMaterials.push(material));
+            flatten(node.subgroups);
+          });
+          flatten(Array.isArray(groups) ? groups : []);
+          setMaterials(allMaterials);
+        }
+        if (projRes.ok) {
+          const projs = await projRes.json();
+          if (Array.isArray(projs)) {
+            setProjects(projs);
+          }
+        }
       } catch (err) {
-        console.error('Failed to load employees', err);
+        console.error('Failed to load data', err);
       }
     }
-    loadEmployees();
+    loadData();
   }, []);
 
   const handleHeaderChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'project') {
+      const selectedProject = projects.find(project => project.name === value);
+      setFormData(prev => ({
+        ...prev,
+        project: value,
+        site: selectedProject?.location || selectedProject?.address || selectedProject?.state || ''
+      }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -52,13 +83,25 @@ export default function CreatePR() {
   };
 
   const addItem = () => {
-    setItems([...items, { item: '', specification: '', unit: 'Nos', quantity: '', requiredDate: '' }]);
+    setItems([...items, { id: items.length + 1, selectedMaterialId: '', item: '', specification: '', unit: 'Nos', quantity: '' }]);
   };
 
   const removeItem = (index) => {
     if (items.length > 1) {
       setItems(items.filter((_, i) => i !== index));
     }
+  };
+
+  const fillFromLibrary = (index, materialId) => {
+    const material = materials.find(entry => entry.id === materialId);
+    setItems(prev => prev.map((it, i) => i === index ? {
+      ...it,
+      selectedMaterialId: materialId,
+      item: material?.name || '',
+      specification: material?.specification || '',
+      unit: material?.unit || 'Nos',
+      quantity: material?.quantity || 1
+    } : it));
   };
 
   const handleSubmit = async (e) => {
@@ -105,7 +148,12 @@ export default function CreatePR() {
             <div className="pur-grid-3">
               <div className="pur-form-group">
                 <label className="pur-label">Project Name *</label>
-                <input type="text" name="project" required value={formData.project} onChange={handleHeaderChange} className="pur-input" />
+                <select name="project" required value={formData.project} onChange={handleHeaderChange} className="pur-select">
+                  <option value="">Select Project</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
               </div>
               <div className="pur-form-group">
                 <label className="pur-label">Site / Location</label>
@@ -172,19 +220,36 @@ export default function CreatePR() {
               <table className="pur-table" style={{ border: '1px solid #e2e8f0' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f8fafc' }}>
+                    <th style={{ width: '200px' }}>From Material Library</th>
                     <th>Item Name *</th>
                     <th>Specification</th>
                     <th style={{ width: '100px' }}>Unit</th>
                     <th style={{ width: '100px' }}>Qty *</th>
-                    <th style={{ width: '150px' }}>Required Date</th>
                     <th style={{ width: '50px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item, index) => (
-                    <tr key={index}>
+                  {items.map((item, index) => {
+                    const selectedMaterial = item.selectedMaterialId ? materials.find(material => material.id === item.selectedMaterialId) : null;
+                    
+                    return (
+                    <tr key={item.id || index}>
                       <td style={{ padding: '8px' }}>
-                        <input type="text" name="item" required value={item.item} onChange={(e) => handleItemChange(index, e)} className="pur-input" placeholder="E.g. Transformer" />
+                        <select
+                          className="pur-select"
+                          onChange={e => fillFromLibrary(index, e.target.value)}
+                          value={item.selectedMaterialId || ''}
+                        >
+                          <option value="">Pick material from library...</option>
+                          {materials.map(material => <option key={material.id} value={material.id}>{material.name}</option>)}
+                        </select>
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        {selectedMaterial ? (
+                          <input type="text" name="item" required value={item.item} readOnly className="pur-input" />
+                        ) : (
+                          <input type="text" name="item" required value={item.item} onChange={(e) => handleItemChange(index, e)} className="pur-input" placeholder="E.g. Transformer" />
+                        )}
                       </td>
                       <td style={{ padding: '8px' }}>
                         <input type="text" name="specification" value={item.specification} onChange={(e) => handleItemChange(index, e)} className="pur-input" placeholder="E.g. 500kVA, 11kV/433V" />
@@ -195,18 +260,13 @@ export default function CreatePR() {
                       <td style={{ padding: '8px' }}>
                         <input type="number" step="any" name="quantity" required value={item.quantity} onChange={(e) => handleItemChange(index, e)} className="pur-input" />
                       </td>
-                      <td style={{ padding: '8px' }}>
-                        <input type="date" name="requiredDate" value={item.requiredDate} onChange={(e) => handleItemChange(index, e)} className="pur-input" />
-                      </td>
                       <td style={{ padding: '8px', textAlign: 'center' }}>
-                        {items.length > 1 && (
-                          <button type="button" onClick={() => removeItem(index)} className="pur-icon-btn pur-text-danger">
-                            <Trash2 size={16} />
-                          </button>
-                        )}
+                        <button type="button" onClick={() => removeItem(index)} className="pur-icon-btn pur-text-danger">
+                          <Trash2 size={16} />
+                        </button>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>

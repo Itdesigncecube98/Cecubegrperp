@@ -38,7 +38,7 @@ export async function POST(req) {
 
     // 1. Create Task
     if (type === 'task' || body.groupId) {
-      const { projectId, groupId, name, volOfWorkMaterial, volOfWorkLabour, description, reraStage, materialRate, labourRate } = body;
+      const { projectId, groupId, name, volOfWorkMaterial, volOfWorkLabour, description, reraStage, materialRate, labourRate, materials } = body;
 
       if (!name || !name.trim()) {
         return NextResponse.json({ error: 'Task name is required' }, { status: 400 });
@@ -70,7 +70,8 @@ export async function POST(req) {
           labourAmount: (parseFloat(volOfWorkLabour) || 0) * (parseFloat(labourRate) || 0),
           totalAmount: ((parseFloat(volOfWorkMaterial) || 0) * (parseFloat(materialRate) || 0)) + ((parseFloat(volOfWorkLabour) || 0) * (parseFloat(labourRate) || 0)),
           description: description ? description.trim() : null,
-          reraStage: reraStage ? reraStage.trim() : null
+          reraStage: reraStage ? reraStage.trim() : null,
+          materials: Array.isArray(materials) ? materials : []
         }
       });
 
@@ -117,7 +118,7 @@ export async function PUT(req) {
     }
 
     if (type === 'task') {
-      const { name, volOfWorkMaterial, volOfWorkLabour, description, reraStage, groupId, materialRate, labourRate } = body;
+      const { name, volOfWorkMaterial, volOfWorkLabour, description, reraStage, groupId, materialRate, labourRate, materials } = body;
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       
@@ -133,7 +134,8 @@ export async function PUT(req) {
       
       if (description !== undefined) updateData.description = description ? description.trim() : null;
       if (reraStage !== undefined) updateData.reraStage = reraStage ? reraStage.trim() : null;
-      if (groupId !== undefined) updateData.groupId = groupId;
+      if (groupId !== undefined) updateData.group = { connect: { id: groupId } };
+      if (materials !== undefined) updateData.materials = Array.isArray(materials) ? materials : [];
 
       // Ensure amounts are calculated correctly on update
       if (vMat !== undefined || rMat !== undefined || vLab !== undefined || rLab !== undefined) {

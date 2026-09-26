@@ -17,6 +17,46 @@ export default function TaskLibrary() {
 
   // State for Unit Library suggestions
   const [availableUnits, setAvailableUnits] = useState([]);
+  // State for Master Library Resources (Materials, Equipments, Labours)
+  const [masterResources, setMasterResources] = useState({ material: [], equipment: [], labour: [] });
+
+  // Fetch Master Resources to populate dropdowns
+  const fetchMasterResources = async (libId) => {
+    if (!libId) return;
+    try {
+      const fetchType = async (type) => {
+        const res = await fetch('/api/engineering/material-library?libraryId=' + libId + '&resourceType=' + type);
+        if (res.ok) {
+          const groups = await res.json();
+          // Flatten items from groups and subgroups
+          const items = [];
+          const extractItems = (groupList) => {
+            for (const g of groupList) {
+              if (g.materials) items.push(...g.materials);
+              if (g.subgroups) extractItems(g.subgroups);
+            }
+          };
+          extractItems(groups);
+          return items;
+        }
+        return [];
+      };
+
+      const [materials, equipments, labours] = await Promise.all([
+        fetchType('Material'),
+        fetchType('Equipment'),
+        fetchType('Labour')
+      ]);
+
+      setMasterResources({
+        material: materials,
+        equipment: equipments,
+        labour: labours
+      });
+    } catch (err) {
+      console.error('Error fetching master resources:', err);
+    }
+  };
 
   // State for Groups and Hierarchy
   const [groups, setGroups] = useState([]);
@@ -40,6 +80,7 @@ export default function TaskLibrary() {
   const [taskModal, setTaskModal] = useState({ open: false, mode: 'create', groupId: '', data: null });
   const [materialModal, setMaterialModal] = useState({ open: false, mode: 'create', taskId: '', data: null });
   const [labourModal, setLabourModal] = useState({ open: false, mode: 'create', taskId: '', data: null });
+  const [equipmentModal, setEquipmentModal] = useState({ open: false, mode: 'create', taskId: '', data: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, type: '', id: '', title: '', message: '' });
 
   // Saving indicator
@@ -55,17 +96,19 @@ export default function TaskLibrary() {
   useEffect(() => {
     fetchLibraries();
     fetchUnits();
-    fetch('/api/engineering/projects').then(res => res.ok ? res.json() : []).then(data => setProjects(Array.isArray(data) ? data : [])).catch(() => setProjects([]));
+    fetch('/api/projects').then(res => res.ok ? res.json() : []).then(data => setProjects(Array.isArray(data) ? data : [])).catch(() => setProjects([]));
   }, []);
 
   // 2. Fetch groups whenever selectedLibraryId changes
   useEffect(() => {
     if (selectedLibraryId) {
       fetchGroups(selectedLibraryId);
+      fetchMasterResources(selectedLibraryId);
     } else {
       setGroups([]);
       setSelectedGroupId(null);
       setSelectedTaskId(null);
+      setMasterResources({ material: [], equipment: [], labour: [] });
     }
   }, [selectedLibraryId, selectedProjectId]);
 
@@ -430,6 +473,7 @@ export default function TaskLibrary() {
     const name = formData.get('name')?.toString().trim();
     const unit = formData.get('unit')?.toString().trim() || 'Manday';
     const quantity = parseFloat(formData.get('quantity')) || 0;
+    const rate = parseFloat(formData.get('rate')) || 0;
     const specification = formData.get('specification')?.toString().trim() || null;
 
     if (!name) {
@@ -449,6 +493,7 @@ export default function TaskLibrary() {
             name,
             unit,
             quantity,
+            rate,
             specification
           })
         });
@@ -471,6 +516,7 @@ export default function TaskLibrary() {
             name,
             unit,
             quantity,
+            rate,
             specification
           })
         });
@@ -486,6 +532,72 @@ export default function TaskLibrary() {
     } catch (err) {
       console.error(err);
       showToast('Network error while saving labour', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const handleSaveEquipment = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const name = formData.get('name')?.toString().trim();
+    const unit = formData.get('unit')?.toString().trim() || 'Hour';
+    const quantity = parseFloat(formData.get('quantity')) || 0;
+    const specification = formData.get('specification')?.toString().trim() || null;
+
+    if (!name) {
+      showToast('Equipment name is required', 'error');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      if (equipmentModal.mode === 'create') {
+        const res = await fetch('/api/engineering/task-library', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'equipment',
+            taskId: equipmentModal.taskId,
+            name,
+            unit,
+            quantity,
+            specification
+          })
+        });
+        if (res.ok) {
+          showToast(`Equipment "${name}" attached successfully`);
+          setEquipmentModal({ open: false, mode: 'create', taskId: '', data: null });
+          await fetchGroups(selectedLibraryId);
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Failed to add equipment', 'error');
+        }
+      } else {
+        // Edit Equipment
+        const res = await fetch('/api/engineering/task-library', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: equipmentModal.data.id,
+            type: 'equipment',
+            name,
+            unit,
+            quantity,
+            specification
+          })
+        });
+        if (res.ok) {
+          showToast('Equipment updated successfully');
+          setEquipmentModal({ open: false, mode: 'create', taskId: '', data: null });
+          await fetchGroups(selectedLibraryId);
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Failed to update equipment', 'error');
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error while saving equipment', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -1188,6 +1300,37 @@ export default function TaskLibrary() {
                       {selectedTask.labours?.length || 0}
                     </span>
                   </button>
+
+                  <button 
+                    onClick={() => setActiveTab('equipments')}
+                    style={{
+                      padding: '14px 20px',
+                      background: 'none',
+                      border: 'none',
+                      borderBottom: activeTab === 'equipments' ? '3px solid #0ea5e9' : '3px solid transparent',
+                      color: activeTab === 'equipments' ? '#0ea5e9' : '#64748b',
+                      fontWeight: activeTab === 'equipments' ? 700 : 500,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <Layers size={16} />
+                    <span>Equipment</span>
+                    <span style={{ 
+                      fontSize: '0.72rem', 
+                      background: activeTab === 'equipments' ? '#0ea5e9' : '#e2e8f0', 
+                      color: activeTab === 'equipments' ? '#ffffff' : '#64748b',
+                      padding: '2px 7px', 
+                      borderRadius: '10px',
+                      fontWeight: 700 
+                    }}>
+                      {selectedTask.equipments?.length || 0}
+                    </span>
+                  </button>
                 </div>
 
                 {/* Tab Content 1: Materials */}
@@ -1348,6 +1491,8 @@ export default function TaskLibrary() {
                               <th style={{ padding: '10px 14px' }}>Role / Labour Designation</th>
                               <th style={{ padding: '10px 14px', width: '110px' }}>Unit</th>
                               <th style={{ padding: '10px 14px', width: '120px' }}>Quantity</th>
+                              <th style={{ padding: '10px 14px', width: '120px' }}>Rate</th>
+                              <th style={{ padding: '10px 14px', width: '130px' }}>Total</th>
                               <th style={{ padding: '10px 14px' }}>Skill Requirement / Specification</th>
                               <th style={{ padding: '10px 14px', width: '100px', textAlign: 'center' }}>Actions</th>
                             </tr>
@@ -1369,6 +1514,12 @@ export default function TaskLibrary() {
                                 </td>
                                 <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>
                                   {lab.quantity}
+                                </td>
+                                <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>
+                                  ₹{Number(lab.rate || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                </td>
+                                <td style={{ padding: '10px 14px', fontWeight: 700, color: '#b45309' }}>
+                                  ₹{(Number(lab.quantity || 0) * Number(lab.rate || 0)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                 </td>
                                 <td style={{ padding: '10px 14px', color: '#64748b' }}>
                                   {lab.specification || <span style={{ fontStyle: 'italic', color: '#cbd5e1' }}>None</span>}
@@ -1396,6 +1547,112 @@ export default function TaskLibrary() {
                                       style={{
                                         background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px'
                                       }}
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Tab Content 3: Equipments */}
+                {activeTab === 'equipments' && (
+                  <div style={{ padding: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                          Attached Equipment
+                        </h3>
+                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>
+                          Equipment &amp; machinery required per unit of "{selectedTask.name}"
+                        </p>
+                      </div>
+                      <button 
+                        className="btn-primary"
+                        onClick={() => setEquipmentModal({ open: true, mode: 'create', taskId: selectedTask.id, data: null })}
+                        style={{ padding: '7px 14px', fontSize: '0.8rem' }}
+                      >
+                        <Plus size={14} /> Add Equipment
+                      </button>
+                    </div>
+
+                    {(!selectedTask.equipments || selectedTask.equipments.length === 0) ? (
+                      <div style={{ 
+                        border: '2px dashed #e2e8f0', borderRadius: '10px', 
+                        padding: '40px 20px', textAlign: 'center', color: '#94a3b8' 
+                      }}>
+                        <Layers size={40} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
+                        <h4 style={{ margin: '0 0 6px', color: '#475569', fontSize: '0.95rem' }}>No equipment attached yet</h4>
+                        <p style={{ margin: '0 0 16px', fontSize: '0.78rem' }}>
+                          Add machines, tools, or plant items required for this task.
+                        </p>
+                        <button 
+                          className="btn-primary"
+                          onClick={() => setEquipmentModal({ open: true, mode: 'create', taskId: selectedTask.id, data: null })}
+                          style={{ padding: '7px 14px', fontSize: '0.78rem' }}
+                        >
+                          <Plus size={14} /> Add First Equipment
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
+                              <th style={{ padding: '10px 14px', width: '50px' }}>#</th>
+                              <th style={{ padding: '10px 14px' }}>Equipment Name</th>
+                              <th style={{ padding: '10px 14px', width: '110px' }}>Unit</th>
+                              <th style={{ padding: '10px 14px', width: '120px' }}>Quantity</th>
+                              <th style={{ padding: '10px 14px' }}>Specification / Capacity</th>
+                              <th style={{ padding: '10px 14px', width: '100px', textAlign: 'center' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedTask.equipments.map((eq, idx) => (
+                              <tr key={eq.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '10px 14px', color: '#94a3b8', fontWeight: 600 }}>{idx + 1}</td>
+                                <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>
+                                  {eq.name}
+                                </td>
+                                <td style={{ padding: '10px 14px' }}>
+                                  <span style={{ 
+                                    background: '#f0fdf4', color: '#166534', 
+                                    padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 
+                                  }}>
+                                    {eq.unit || 'Hour'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>
+                                  {eq.quantity}
+                                </td>
+                                <td style={{ padding: '10px 14px', color: '#64748b' }}>
+                                  {eq.specification || <span style={{ fontStyle: 'italic', color: '#cbd5e1' }}>None</span>}
+                                </td>
+                                <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                    <button 
+                                      title="Edit Equipment"
+                                      onClick={() => setEquipmentModal({ open: true, mode: 'edit', taskId: selectedTask.id, data: eq })}
+                                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+                                    >
+                                      <Edit3 size={14} />
+                                    </button>
+                                    <button 
+                                      title="Delete Equipment"
+                                      onClick={() => setDeleteConfirm({
+                                        open: true,
+                                        type: 'equipment',
+                                        id: eq.id,
+                                        title: `Equipment: ${eq.name}`,
+                                        message: 'Are you sure you want to remove this equipment from the task?'
+                                      })}
+                                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
                                     >
                                       <Trash2 size={14} />
                                     </button>
@@ -1947,18 +2204,32 @@ export default function TaskLibrary() {
             <form onSubmit={handleSaveMaterial} style={{ padding: '20px' }}>
               <div style={{ marginBottom: '14px' }}>
                 <label className="modern-label">Material Name *</label>
-                <input 
-                  type="text" 
+                <select 
                   name="name" 
-                  className="modern-input" 
-                  placeholder="e.g. 25mm Medium Duty PVC Conduit Pipe" 
+                  className="modern-input modern-select" 
                   defaultValue={materialModal.data?.name || ''} 
                   required 
                   autoFocus
-                />
+                  onChange={(e) => {
+                    const item = masterResources.material.find(m => m.name === e.target.value);
+                    if (item && e.target.form) {
+                      if (e.target.form.unit) e.target.form.unit.value = item.unit || 'Nos';
+                      if (e.target.form.rate) e.target.form.rate.value = item.rate || 0;
+                      if (e.target.form.specification) e.target.form.specification.value = item.specification || '';
+                    }
+                  }}
+                >
+                  <option value="" disabled>-- Select Material from Library --</option>
+                  {masterResources.material.map((m, i) => (
+                    <option key={i} value={m.name}>{m.name}</option>
+                  ))}
+                  {materialModal.mode === 'edit' && materialModal.data?.name && !masterResources.material.some(m => m.name === materialModal.data.name) && (
+                    <option value={materialModal.data.name}>{materialModal.data.name}</option>
+                  )}
+                </select>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '14px' }}>
                 <div>
                   <label className="modern-label">Unit *</label>
                   <input 
@@ -1966,7 +2237,7 @@ export default function TaskLibrary() {
                     name="unit" 
                     list="mat-units-list"
                     className="modern-input" 
-                    placeholder="e.g. Mtr, Nos, Kg" 
+                    placeholder="e.g. Mtr" 
                     defaultValue={materialModal.data?.unit || 'Mtr'} 
                     required
                   />
@@ -1978,7 +2249,7 @@ export default function TaskLibrary() {
                 </div>
 
                 <div>
-                  <label className="modern-label">Quantity (Per Task Unit) *</label>
+                  <label className="modern-label">Quantity *</label>
                   <input 
                     type="number" 
                     step="any"
@@ -1987,6 +2258,18 @@ export default function TaskLibrary() {
                     placeholder="1.00" 
                     defaultValue={materialModal.data?.quantity ?? 1} 
                     required
+                  />
+                </div>
+                
+                <div>
+                  <label className="modern-label">Rate</label>
+                  <input 
+                    type="number" 
+                    step="any"
+                    name="rate" 
+                    className="modern-input" 
+                    placeholder="0.00" 
+                    defaultValue={materialModal.data?.rate ?? 0} 
                   />
                 </div>
               </div>
@@ -2063,35 +2346,53 @@ export default function TaskLibrary() {
             <form onSubmit={handleSaveLabour} style={{ padding: '20px' }}>
               <div style={{ marginBottom: '14px' }}>
                 <label className="modern-label">Labour Role / Designation *</label>
-                <input 
-                  type="text" 
+                <select 
                   name="name" 
-                  className="modern-input" 
-                  placeholder="e.g. Electrician (Skilled), Helper, Wireman" 
+                  className="modern-input modern-select" 
                   defaultValue={labourModal.data?.name || ''} 
                   required 
                   autoFocus
-                />
+                  onChange={(e) => {
+                    const item = masterResources.labour.find(m => m.name === e.target.value);
+                    const form = e.currentTarget.form;
+                    if (item && form) {
+                      const unitInput = form.elements.namedItem('unit');
+                      const rateInput = form.elements.namedItem('rate');
+                      const specificationInput = form.elements.namedItem('specification');
+                      if (unitInput) unitInput.value = item.unit || 'Manday';
+                      if (rateInput) rateInput.value = item.rate ?? item.labourRate ?? item.price ?? 0;
+                      if (specificationInput) specificationInput.value = item.specification || '';
+                    }
+                  }}
+                >
+                  <option value="" disabled>-- Select Labour from Library --</option>
+                  {masterResources.labour.map((m, i) => (
+                    <option key={i} value={m.name}>{m.name}</option>
+                  ))}
+                  {labourModal.mode === 'edit' && labourModal.data?.name && !masterResources.labour.some(m => m.name === labourModal.data.name) && (
+                    <option value={labourModal.data.name}>{labourModal.data.name}</option>
+                  )}
+                </select>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '14px' }}>
                 <div>
                   <label className="modern-label">Unit *</label>
                   <select 
                     name="unit" 
                     className="modern-input modern-select"
-                    defaultValue={labourModal.data?.unit || 'Manday'}
+                    defaultValue={labourModal.data?.unit || ''}
                     required
                   >
-                    <option value="Manday">Manday</option>
-                    <option value="Hour">Hour</option>
-                    <option value="Day">Day</option>
-                    <option value="Shift">Shift</option>
+                    <option value="" disabled>-- Select Unit --</option>
+                    {availableUnits.map((u, i) => (
+                      <option key={i} value={u}>{u}</option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="modern-label">Quantity (Effort per Task Unit) *</label>
+                  <label className="modern-label">Quantity *</label>
                   <input 
                     type="number" 
                     step="any"
@@ -2100,6 +2401,18 @@ export default function TaskLibrary() {
                     placeholder="0.05" 
                     defaultValue={labourModal.data?.quantity ?? 0.05} 
                     required
+                  />
+                </div>
+                
+                <div>
+                  <label className="modern-label">Rate</label>
+                  <input 
+                    type="number" 
+                    step="any"
+                    name="rate" 
+                    className="modern-input" 
+                    placeholder="0.00" 
+                    defaultValue={labourModal.data?.rate ?? 0} 
                   />
                 </div>
               </div>
@@ -2143,6 +2456,144 @@ export default function TaskLibrary() {
         </div>
       )}
 
+      {/* ==================== MODAL: ADD / EDIT EQUIPMENT ==================== */}
+      {equipmentModal.open && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999
+        }}>
+          <div style={{
+            background: 'white', borderRadius: '14px', width: '100%', maxWidth: '500px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              padding: '16px 20px', borderBottom: '1px solid #e2e8f0',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Layers size={18} color="#166534" />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
+                  {equipmentModal.mode === 'create' ? 'Add Equipment to Task' : 'Edit Equipment'}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setEquipmentModal({ open: false, mode: 'create', taskId: '', data: null })}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEquipment} style={{ padding: '20px' }}>
+              <div style={{ marginBottom: '14px' }}>
+                <label className="modern-label">Equipment Name *</label>
+                <select 
+                  name="name" 
+                  className="modern-input modern-select" 
+                  defaultValue={equipmentModal.data?.name || ''} 
+                  required 
+                  autoFocus
+                  onChange={(e) => {
+                    const item = masterResources.equipment.find(m => m.name === e.target.value);
+                    if (item && e.target.form) {
+                      if (e.target.form.unit) e.target.form.unit.value = item.unit || 'Hour';
+                      if (e.target.form.rate) e.target.form.rate.value = item.rate || 0;
+                      if (e.target.form.specification) e.target.form.specification.value = item.specification || '';
+                    }
+                  }}
+                >
+                  <option value="" disabled>-- Select Equipment from Library --</option>
+                  {masterResources.equipment.map((m, i) => (
+                    <option key={i} value={m.name}>{m.name}</option>
+                  ))}
+                  {equipmentModal.mode === 'edit' && equipmentModal.data?.name && !masterResources.equipment.some(m => m.name === equipmentModal.data.name) && (
+                    <option value={equipmentModal.data.name}>{equipmentModal.data.name}</option>
+                  )}
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                <div>
+                  <label className="modern-label">Unit *</label>
+                  <select 
+                    name="unit" 
+                    className="modern-input modern-select"
+                    defaultValue={equipmentModal.data?.unit || 'Hour'}
+                    required
+                  >
+                    <option value="Hour">Hour</option>
+                    <option value="Day">Day</option>
+                    <option value="Month">Month</option>
+                    <option value="Km">Km</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="modern-label">Quantity *</label>
+                  <input 
+                    type="number" 
+                    step="any"
+                    name="quantity" 
+                    className="modern-input" 
+                    placeholder="1" 
+                    defaultValue={equipmentModal.data?.quantity ?? 1} 
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="modern-label">Rate</label>
+                  <input 
+                    type="number" 
+                    step="any"
+                    name="rate" 
+                    className="modern-input" 
+                    placeholder="0.00" 
+                    defaultValue={equipmentModal.data?.rate ?? 0} 
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label className="modern-label">Specification / Capacity</label>
+                <textarea 
+                  name="specification" 
+                  className="modern-input" 
+                  placeholder="e.g. 10 Tonnes capacity, 50 KVA generator"
+                  rows={3} 
+                  defaultValue={equipmentModal.data?.specification || ''}
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setEquipmentModal({ open: false, mode: 'create', taskId: '', data: null })}
+                  disabled={submitting}
+                  style={{
+                    padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                    background: '#ffffff', color: '#475569', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn-primary" 
+                  disabled={submitting}
+                  style={{ padding: '8px 20px', fontSize: '0.85rem', background: 'linear-gradient(135deg, #166534 0%, #22c55e 100%)' }}
+                >
+                  {submitting && <Loader2 size={14} className="animate-spin" />}
+                  {equipmentModal.mode === 'create' ? 'Add Equipment' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {/* ==================== MODAL: DELETE CONFIRMATION ==================== */}
       {deleteConfirm.open && (
         <div style={{

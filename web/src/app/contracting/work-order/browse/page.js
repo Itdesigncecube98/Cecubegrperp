@@ -1,137 +1,74 @@
 'use client';
-import React, { useState } from 'react';
-import { Home, ChevronRight, Search, RefreshCw, FileText, Printer } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Home, ChevronRight, FileText, Pencil, FileDown, RefreshCw, AlertCircle } from 'lucide-react';
 import '../../contracting.css';
 
-const FormGroup = ({ label, required, children }) => (
-  <div style={{ marginBottom: '16px' }}>
-    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#17a2b8', marginBottom: '8px' }}>
-      {label} {required && <span style={{ color: '#ef4444' }}>*</span>}
-    </label>
-    {children}
-  </div>
-);
+const formatDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : '-';
+const formatMoney = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
 export default function WorkOrderBrowse() {
-  const [showError, setShowError] = useState(false);
+  const [workOrders, setWorkOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const handleSearch = () => {
-    // Simulate error from screenshot
-    setShowError(true);
-    setTimeout(() => setShowError(false), 3000);
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/contracting/work-orders?_t=${Date.now()}`, { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to load work orders.');
+      setWorkOrders(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err.message || 'Failed to load work orders.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return (
-    <div className="contracting-container" style={{ position: 'relative' }}>
-      
-      {/* Mock Error Toast from screenshot */}
-      {showError && (
-        <div style={{
-          position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
-          background: '#ef4444', color: 'white', padding: '12px 24px', borderRadius: '4px',
-          display: 'flex', flexDirection: 'column', gap: '4px', zIndex: 1000, boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-        }}>
-          <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Error</div>
-          <div style={{ fontSize: '0.8rem' }}>Please Select Project</div>
-        </div>
-      )}
+  useEffect(() => {
+    const timer = setTimeout(load, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
+  return (
+    <div className="contracting-container">
       <div className="contracting-header">
-        <div className="contracting-header-title">
-          <FileText size={18} />
-          WO Browse
-        </div>
+        <div className="contracting-header-title"><FileText size={18} /> WO Browse</div>
         <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', color: '#666', gap: '4px' }}>
           <Home size={14} /> Home <ChevronRight size={14} /> WO Browse
         </div>
       </div>
-
       <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
-        
-        {/* Filter Section */}
-        <div style={{ marginBottom: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
-          <div style={{ background: '#f1f5f9', padding: '10px 16px', fontWeight: 600, fontSize: '0.85rem', color: '#334155', borderBottom: '1px solid #e2e8f0' }}>
-            - Filter
-          </div>
-          <div style={{ padding: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-              
-              <FormGroup label="Library" required>
-                <select className="contracting-input" style={{ width: '100%' }}><option>Amazon Library</option></select>
-              </FormGroup>
-              <FormGroup label="Project" required>
-                <select className="contracting-input" style={{ width: '100%' }}><option>Select Here</option></select>
-              </FormGroup>
-              <FormGroup label="WBS Filter">
-                <div style={{ position: 'relative' }}>
-                  <input type="text" className="contracting-input" placeholder="Select WBS Task" style={{ width: '100%', paddingRight: '30px' }} />
-                  <Search size={16} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                </div>
-              </FormGroup>
-              <FormGroup label="Labour">
-                <input type="text" className="contracting-input" placeholder="Search Labour" style={{ width: '100%' }} />
-              </FormGroup>
-
-              <FormGroup label="Contractor">
-                <select className="contracting-input" style={{ width: '100%' }}><option>-Select-</option></select>
-              </FormGroup>
-              <FormGroup label="WO No">
-                <input type="text" className="contracting-input" style={{ width: '100%' }} />
-              </FormGroup>
-              <FormGroup label="WO Revision">
-                <select className="contracting-input" style={{ width: '100%' }}><option>-Select-</option></select>
-              </FormGroup>
-              <FormGroup label="From Date (WO Detail)">
-                <input type="date" className="contracting-input" defaultValue="2026-07-25" style={{ width: '100%' }} />
-              </FormGroup>
-
-              <FormGroup label="To Date (WO Detail)">
-                <input type="date" className="contracting-input" defaultValue="2026-08-25" style={{ width: '100%' }} />
-              </FormGroup>
-              <FormGroup label="Work Order Type">
-                <select className="contracting-input" style={{ width: '100%' }}><option>-Select-</option></select>
-              </FormGroup>
-              <FormGroup label="Work Order Type2">
-                <select className="contracting-input" style={{ width: '100%' }}><option>-Select-</option></select>
-              </FormGroup>
-              <FormGroup label="Status">
-                <select className="contracting-input" style={{ width: '100%' }}><option>-Select-</option></select>
-              </FormGroup>
-              
-              <FormGroup label="Created By">
-                <input type="text" className="contracting-input" style={{ width: '100%' }} />
-              </FormGroup>
-
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
-              <button className="btn-cyan"><Printer size={14} /> Annexure Printing</button>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn-cyan"><RefreshCw size={14} /> Reset</button>
-                <button className="btn-cyan" onClick={handleSearch}><Search size={14} /> Search</button>
-              </div>
-            </div>
+        {error && <div style={{ color: '#991b1b', background: '#fef2f2', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}><AlertCircle size={16} /> {error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '16px' }}>
+          <button type="button" className="btn-cyan" onClick={load} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><RefreshCw size={14} /> Refresh</button>
+          <Link href="/contracting/work-order/raise" className="btn-cyan" style={{ textDecoration: 'none' }}>New Work Order</Link>
+        </div>
+        <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead style={{ background: '#f1f5f9' }}>
+                <tr>{['WO No.', 'Project', 'Contractor', 'WO Date', 'Contract Amount', 'Status', 'Edit', 'PDF'].map(header => <th key={header} style={{ padding: '12px', textAlign: header === 'Contract Amount' ? 'right' : 'left', borderBottom: '1px solid #e2e8f0', color: '#334155' }}>{header}</th>)}</tr>
+              </thead>
+              <tbody>
+                {loading ? <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>Loading work orders...</td></tr> : workOrders.length === 0 ? <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>No saved work orders found.</td></tr> : workOrders.map((order, index) => (
+                  <tr key={order.id} style={{ background: index % 2 ? '#fafafa' : 'white' }}>
+                    <td style={{ padding: '11px 12px', fontWeight: 600, color: '#0f766e' }}>{order.woNo}</td>
+                    <td style={{ padding: '11px 12px' }}>{order.project?.name || '-'}</td>
+                    <td style={{ padding: '11px 12px' }}>{order.contractorName}</td>
+                    <td style={{ padding: '11px 12px' }}>{formatDate(order.startDate)}</td>
+                    <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 600 }}>{formatMoney(order.contractValue)}</td>
+                    <td style={{ padding: '11px 12px' }}>{order.status}</td>
+                    <td style={{ padding: '11px 12px' }}><Link href={`/contracting/work-order/raise?id=${order.id}`} title="Edit work order" style={{ color: '#0369a1' }}><Pencil size={16} /></Link></td>
+                    <td style={{ padding: '11px 12px' }}><Link href={`/contracting/work-order/raise?id=${order.id}&print=1`} target="_blank" title="Create PDF / print work order" style={{ color: '#b45309' }}><FileDown size={16} /></Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-
-        {/* Search Result Section */}
-        <div style={{ marginBottom: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
-          <div style={{ background: '#f1f5f9', padding: '10px 16px', fontWeight: 600, fontSize: '0.85rem', color: '#334155', borderBottom: '1px solid #e2e8f0' }}>
-            + Search Result
-          </div>
-        </div>
-
-        {/* WO Summary Section */}
-        <div style={{ marginBottom: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
-          <div style={{ background: '#f1f5f9', padding: '10px 16px', fontWeight: 600, fontSize: '0.85rem', color: '#334155', borderBottom: '1px solid #e2e8f0' }}>
-            - WO Summary (Total Count : 0 Work Order)
-          </div>
-          <div style={{ padding: '20px', minHeight: '200px' }}>
-            {/* Empty table area matching screenshot */}
-            <div style={{ background: '#f8fafc', height: '40px', borderBottom: '1px solid #e2e8f0' }}></div>
-          </div>
-        </div>
-
       </div>
     </div>
   );

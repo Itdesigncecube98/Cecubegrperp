@@ -6,8 +6,8 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const libraryId = searchParams.get('libraryId');
-    const projectId = searchParams.get('projectId');
     const search = searchParams.get('search');
+    const projectId = searchParams.get('projectId');
 
     let where = {};
     if (libraryId) {
@@ -30,17 +30,38 @@ export async function GET(req) {
       ];
     }
 
+    let projectTaskFilter;
+    if (projectId) {
+      const project = await prisma.projectMaster.findUnique({ where: { id: projectId } });
+      if (project) {
+        const legacyProject = await prisma.project.findFirst({
+          where: { name: project.name },
+          select: { id: true }
+        });
+        const projectIds = [project.id, project.projectId, legacyProject?.id].filter(Boolean);
+        projectTaskFilter = {
+          OR: [
+            { projectId: { in: projectIds } },
+            { projectId: null }
+          ]
+        };
+      }
+    }
+
     const groups = await prisma.taskLibraryGroup.findMany({
       where,
       include: {
         library: true,
         tasks: {
-          ...(projectId ? { where: { projectId } } : {}),
+          where: projectTaskFilter,
           include: {
             materials: {
               orderBy: { createdAt: 'asc' }
             },
             labours: {
+              orderBy: { createdAt: 'asc' }
+            },
+            equipments: {
               orderBy: { createdAt: 'asc' }
             }
           },
@@ -66,7 +87,7 @@ export async function POST(req) {
 
     // 1. Add Material to Task
     if (type === 'material') {
-      const { taskId, name, unit, quantity, specification } = body;
+      const { taskId, name, unit, quantity, rate, specification } = body;
       if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
       if (!name || !name.trim()) return NextResponse.json({ error: 'Material name is required' }, { status: 400 });
 
@@ -76,6 +97,7 @@ export async function POST(req) {
           name: name.trim(),
           unit: unit ? unit.trim() : null,
           quantity: parseFloat(quantity) || 0,
+          rate: parseFloat(rate) || 0,
           specification: specification ? specification.trim() : null
         }
       });
@@ -84,7 +106,7 @@ export async function POST(req) {
 
     // 2. Add Labour to Task
     if (type === 'labour') {
-      const { taskId, name, unit, quantity, specification } = body;
+      const { taskId, name, unit, quantity, rate, specification } = body;
       if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
       if (!name || !name.trim()) return NextResponse.json({ error: 'Labour role/name is required' }, { status: 400 });
 
@@ -94,13 +116,31 @@ export async function POST(req) {
           name: name.trim(),
           unit: unit ? unit.trim() : 'Manday',
           quantity: parseFloat(quantity) || 0,
+          rate: parseFloat(rate) || 0,
           specification: specification ? specification.trim() : null
         }
       });
       return NextResponse.json(labour, { status: 201 });
     }
 
-    // 3. Add Task under Group
+    // 3. Add Equipment to Task
+    if (type === 'equipment') {
+      const { taskId, name, unit, quantity, rate, specification } = body;
+      if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
+      if (!name || !name.trim()) return NextResponse.json({ error: 'Equipment name is required' }, { status: 400 });
+
+      const equipment = await prisma.taskLibraryEquipment.create({
+        data: {
+          taskId,
+          name: name.trim(),
+          unit: unit ? unit.trim() : 'Hour',
+          quantity: parseFloat(quantity) || 0,
+          rate: parseFloat(rate) || 0,
+          specification: specification ? specification.trim() : null
+        }
+      });
+      return NextResponse.json(equipment, { status: 201 });
+    }
     if (type === 'task') {
       const { libraryId, groupId, projectId, name, unit, quantity, description } = body;
       if (!groupId) return NextResponse.json({ error: 'Group ID is required for task' }, { status: 400 });
@@ -117,7 +157,6 @@ export async function POST(req) {
         data: {
           groupId,
           libraryId: finalLibraryId,
-          projectId: projectId || null,
           name: name.trim(),
           unit: unit ? unit.trim() : null,
           quantity: parseFloat(quantity) || 1,
@@ -125,7 +164,8 @@ export async function POST(req) {
         },
         include: {
           materials: true,
-          labours: true
+          labours: true,
+          equipments: true
         }
       });
       return NextResponse.json(task, { status: 201 });
@@ -163,11 +203,12 @@ export async function PUT(req) {
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
 
     if (type === 'material') {
-      const { name, unit, quantity, specification } = body;
+      const { name, unit, quantity, rate, specification } = body;
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (unit !== undefined) updateData.unit = unit ? unit.trim() : null;
       if (quantity !== undefined) updateData.quantity = parseFloat(quantity) || 0;
+      if (rate !== undefined) updateData.rate = parseFloat(rate) || 0;
       if (specification !== undefined) updateData.specification = specification ? specification.trim() : null;
 
       const item = await prisma.taskLibraryMaterial.update({
@@ -178,14 +219,31 @@ export async function PUT(req) {
     }
 
     if (type === 'labour') {
-      const { name, unit, quantity, specification } = body;
+      const { name, unit, quantity, rate, specification } = body;
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (unit !== undefined) updateData.unit = unit ? unit.trim() : 'Manday';
       if (quantity !== undefined) updateData.quantity = parseFloat(quantity) || 0;
+      if (rate !== undefined) updateData.rate = parseFloat(rate) || 0;
       if (specification !== undefined) updateData.specification = specification ? specification.trim() : null;
 
       const item = await prisma.taskLibraryLabour.update({
+        where: { id },
+        data: updateData
+      });
+      return NextResponse.json(item);
+    }
+
+    if (type === 'equipment') {
+      const { name, unit, quantity, rate, specification } = body;
+      const updateData = {};
+      if (name !== undefined) updateData.name = name.trim();
+      if (unit !== undefined) updateData.unit = unit ? unit.trim() : 'Hour';
+      if (quantity !== undefined) updateData.quantity = parseFloat(quantity) || 0;
+      if (rate !== undefined) updateData.rate = parseFloat(rate) || 0;
+      if (specification !== undefined) updateData.specification = specification ? specification.trim() : null;
+
+      const item = await prisma.taskLibraryEquipment.update({
         where: { id },
         data: updateData
       });
@@ -223,7 +281,7 @@ export async function PUT(req) {
       data: updateData,
       include: {
         tasks: {
-          include: { materials: true, labours: true }
+          include: { materials: true, labours: true, equipments: true }
         }
       }
     });
@@ -262,6 +320,11 @@ export async function DELETE(req) {
     if (type === 'labour') {
       await prisma.taskLibraryLabour.delete({ where: { id } });
       return NextResponse.json({ success: true, message: 'Labour deleted successfully' });
+    }
+
+    if (type === 'equipment') {
+      await prisma.taskLibraryEquipment.delete({ where: { id } });
+      return NextResponse.json({ success: true, message: 'Equipment deleted successfully' });
     }
 
     if (type === 'task') {

@@ -7,7 +7,12 @@ export async function GET(req) {
     const vendors = await prisma.vendorMaster.findMany({
       orderBy: { name: 'asc' }
     });
-    return NextResponse.json(vendors);
+    return NextResponse.json(vendors.map(vendor => ({
+      ...vendor,
+      documents: (() => {
+        try { return vendor.documents ? JSON.parse(vendor.documents) : []; } catch { return []; }
+      })()
+    })));
   } catch (error) {
     console.error('Error fetching vendors:', error);
     return NextResponse.json({ error: 'Failed to fetch vendors' }, { status: 500 });
@@ -28,8 +33,10 @@ export async function POST(req) {
         type: body.type,
         contactPerson: body.contactPerson,
         mobile: body.mobile,
+        whatsappNo: body.whatsappNo,
         email: body.email,
         address: body.address,
+        godownAddress: body.godownAddress,
         city: body.city,
         state: body.state,
         gstin: body.gstin,
@@ -38,9 +45,12 @@ export async function POST(req) {
         bankName: body.bankName,
         accountNo: body.accountNo,
         ifsc: body.ifsc,
+        accountName: body.accountName,
         paymentTerms: body.paymentTerms,
         creditDays: parseInt(body.creditDays) || 0,
         category: body.category,
+        fixedGroup: body.fixedGroup,
+        documents: JSON.stringify(Array.isArray(body.documents) ? body.documents : []),
         createdById: body.createdById
       }
     });
@@ -66,8 +76,10 @@ export async function PUT(req) {
         type: body.type,
         contactPerson: body.contactPerson,
         mobile: body.mobile,
+        whatsappNo: body.whatsappNo,
         email: body.email,
         address: body.address,
+        godownAddress: body.godownAddress,
         city: body.city,
         state: body.state,
         gstin: body.gstin,
@@ -76,9 +88,12 @@ export async function PUT(req) {
         bankName: body.bankName,
         accountNo: body.accountNo,
         ifsc: body.ifsc,
+        accountName: body.accountName,
         paymentTerms: body.paymentTerms,
         creditDays: parseInt(body.creditDays, 10) || 0,
         category: body.category,
+        fixedGroup: body.fixedGroup,
+        documents: JSON.stringify(Array.isArray(body.documents) ? body.documents : []),
         status: body.status || 'Active'
       }
     });

@@ -10,10 +10,9 @@ export async function GET(req) {
     startOfToday.setHours(0, 0, 0, 0);
     const startOfTomorrow = new Date(startOfToday);
     startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-    const [projectCount, activeProjects, projectAgg, delayedActivities, dprsToday, manpowerAgg, upcomingMilestones, totalActivities] = await Promise.all([
-      prisma.projectMaster.count(),
-      prisma.projectMaster.count({ where: { status: 'Active' } }),
-      prisma.projectMaster.aggregate({ _sum: { contractValue: true } }),
+    const [projectCount, activeProjects, delayedActivities, dprsToday, manpowerAgg, upcomingMilestones, totalActivities] = await Promise.all([
+      prisma.project.count(),
+      prisma.project.count({ where: { status: 'Active' } }),
       prisma.projectActivity.count({ where: { plannedFinish: { lt: now } } }),
       prisma.siteDPR.count({ where: { date: { gte: startOfToday, lt: startOfTomorrow } } }),
       prisma.siteDPR.aggregate({
@@ -36,7 +35,7 @@ export async function GET(req) {
     return NextResponse.json({
       totalProjects: projectCount,
       activeProjects: activeProjects,
-      totalContractValue: projectAgg._sum.contractValue || 0,
+      totalContractValue: 0, // Fallback since Project doesn't have contractValue float
       executedValue: 0,
       billedValue: 0,
       certifiedValue: 0,
@@ -56,6 +55,6 @@ export async function GET(req) {
     });
   } catch (error) {
     console.error('Error fetching engineering dashboard:', error);
-    return NextResponse.json({ error: 'Failed to fetch dashboard data' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch dashboard data', message: error.message }, { status: 500 });
   }
 }

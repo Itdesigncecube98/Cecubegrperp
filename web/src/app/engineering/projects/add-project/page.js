@@ -139,7 +139,7 @@ export default function AddProject() {
       });
       if (res.ok) {
         alert(`Project ${isEditing ? 'updated' : 'saved'} successfully!`);
-        router.push('/engineering/projects/project-list');
+        router.push('/engineering/projects');
       } else {
         const errorData = await res.json();
         alert("Error saving project: " + (errorData.error || "Unknown error"));
@@ -162,7 +162,7 @@ export default function AddProject() {
           <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#334155', margin: 0 }}>Project definition</h2>
         </div>
         
-        <Link href="/engineering/projects/project-list">
+        <Link href="/engineering/projects">
           <button className="btn-primary" style={{ background: '#0ea5e9', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <ArrowLeft size={16} /> Back to Project List
           </button>

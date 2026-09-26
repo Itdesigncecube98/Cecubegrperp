@@ -1,9 +1,9 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
-import { 
-  Search, Plus, ChevronRight, ChevronDown, 
-  Home, Package, Box, Edit, Trash2, MapPin, Folder, 
+import {
+  Search, Plus, ChevronRight, ChevronDown,
+  Home, Package, Box, Edit, Trash2, MapPin, Folder,
   Sparkles, X, Check, AlertCircle, RefreshCw, Loader2
 } from 'lucide-react';
 import '../../../../app/accounts/company/company.css';
@@ -18,7 +18,7 @@ export default function MaterialLibrary() {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Selected node in tree: { type: 'material' | 'group' | 'subgroup', data: object, path: array }
   const [selectedItem, setSelectedItem] = useState(null);
 
@@ -41,6 +41,11 @@ export default function MaterialLibrary() {
   // Modal form fields
   const [formName, setFormName] = useState('');
   const [formUnit, setFormUnit] = useState('Nos');
+  const [formRate, setFormRate] = useState(0);
+  const [formTaxScheme, setFormTaxScheme] = useState('C+SGST 18%');
+  const [formTaxAmount, setFormTaxAmount] = useState(0);
+  const [formPriceIncTax, setFormPriceIncTax] = useState(0);
+  const [formTransportPerUnit, setFormTransportPerUnit] = useState(0);
   const [formSpecification, setFormSpecification] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -59,25 +64,20 @@ export default function MaterialLibrary() {
     fetchUnits();
   }, []);
 
-  // 2. When activeLibId changes, fetch tree
-  useEffect(() => {
-    if (activeLibId) {
-      fetchMaterialTree(activeLibId);
-    }
-  }, [activeLibId]);
-
   const fetchLibraries = async () => {
     try {
       const res = await fetch('/api/libraries?_t=' + Date.now(), { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         const allLibs = Array.isArray(data) ? data : [];
-        const libs = allLibs.filter(library => !library.type || library.type === resourceType || library.type === 'General');
+        const libs = allLibs; // All libraries are accessible in all pages
         setLibraries(libs);
         if (libs.length > 0) {
           // Default to electrical library if present, else first
           const elect = libs.find(l => l.name?.toLowerCase().includes('electrical'));
-          setActiveLibId(elect ? elect.id : libs[0].id);
+          const initialLibraryId = elect ? elect.id : libs[0].id;
+          setActiveLibId(initialLibraryId);
+          fetchMaterialTree(initialLibraryId);
         }
       }
     } catch (err) {
@@ -101,47 +101,28 @@ export default function MaterialLibrary() {
   const fetchMaterialTree = async (libId) => {
     try {
       setLoading(true);
-      const url = libId 
-        ? `/api/engineering/material-library?libraryId=${libId}&resourceType=${resourceType}&_t=${Date.now()}`
+      setGroups([]);
+      setSelectedItem(null);
+      const url = libId
+        ? `/api/engineering/material-library?libraryId=${encodeURIComponent(libId)}&resourceType=${encodeURIComponent(resourceType)}&_t=${Date.now()}`
         : `/api/engineering/material-library?resourceType=${resourceType}&_t=${Date.now()}`;
       const res = await fetch(url, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        const loadedGroups = Array.isArray(data) ? data : [];
-        setGroups(loadedGroups);
+      if (!res.ok) throw new Error(`Library fetch failed with status ${res.status}`);
 
-        // Auto expand root groups
-        const initExp = {};
-        const markExpanded = (nodes) => {
-          if (!nodes) return;
-          nodes.forEach(n => {
-            initExp[n.id] = true;
-            if (n.subgroups) markExpanded(n.subgroups);
-          });
-        };
-        markExpanded(loadedGroups);
-        setExpandedNodes(prev => ({ ...initExp, ...prev }));
+      const data = await res.json();
+      const loadedGroups = Array.isArray(data) ? data : [];
+      setGroups(loadedGroups);
 
-        // Refresh selectedItem reference if exists
-        if (selectedItem?.data?.id) {
-          const findInTree = (nodes) => {
-            for (const n of nodes) {
-              if (n.id === selectedItem.data.id) return { type: selectedItem.type, data: n, path: selectedItem.path };
-              if (n.subgroups) {
-                const found = findInTree(n.subgroups);
-                if (found) return found;
-              }
-              if (n.materials) {
-                const m = n.materials.find(mat => mat.id === selectedItem.data.id);
-                if (m) return { type: 'material', data: m, path: [...selectedItem.path.slice(0, -1), m.name] };
-              }
-            }
-            return null;
-          };
-          const updated = findInTree(loadedGroups);
-          if (updated) setSelectedItem(updated);
-        }
-      }
+      const initExp = {};
+      const markExpanded = (nodes) => {
+        if (!nodes) return;
+        nodes.forEach(node => {
+          initExp[node.id] = true;
+          if (node.subgroups) markExpanded(node.subgroups);
+        });
+      };
+      markExpanded(loadedGroups);
+      setExpandedNodes(prev => ({ ...initExp, ...prev }));
     } catch (err) {
       console.error('Failed to load material tree:', err);
       showToast('Failed to load materials tree', 'error');
@@ -169,6 +150,11 @@ export default function MaterialLibrary() {
     if (e) e.stopPropagation();
     setFormName('');
     setFormUnit('Nos');
+    setFormRate(0);
+    setFormTaxScheme('C+SGST 18%');
+    setFormTaxAmount(0);
+    setFormPriceIncTax(0);
+    setFormTransportPerUnit(0);
     setFormSpecification('');
     setFormDescription('');
     setModal({
@@ -185,6 +171,11 @@ export default function MaterialLibrary() {
     if (e) e.stopPropagation();
     setFormName(item.name || '');
     setFormUnit(item.unit || 'Nos');
+    setFormRate(item.rate || 0);
+    setFormTaxScheme(item.taxScheme || 'C+SGST 18%');
+    setFormTaxAmount(item.taxAmount || 0);
+    setFormPriceIncTax(item.priceIncTax || 0);
+    setFormTransportPerUnit(item.transportPerUnit || 0);
     setFormSpecification(item.specification || '');
     setFormDescription(item.description || '');
     setModal({
@@ -239,20 +230,21 @@ export default function MaterialLibrary() {
       if (modal.mode === 'create') {
         const payload = modal.targetType === 'subgroup'
           ? {
-              type: modal.parentId ? 'subgroup' : 'group',
-              libraryId: activeLibId || null,
-              parentId: modal.parentId || null,
-              name: formName.trim(),
-              description: formDescription.trim() || null
-            }
+            type: modal.parentId ? 'subgroup' : 'group',
+            libraryId: activeLibId || null,
+            parentId: modal.parentId || null,
+            name: formName.trim(),
+            description: formDescription.trim() || null
+          }
           : {
-              type: 'material',
-              groupId: modal.parentId,
-              name: formName.trim(),
-              unit: formUnit.trim() || 'Nos',
-              specification: formSpecification.trim() || null,
-              description: formDescription.trim() || null
-            };
+            type: 'material',
+            groupId: modal.parentId,
+            name: formName.trim(),
+            unit: formUnit.trim() || 'Nos',
+            rate: parseFloat(formRate) || 0,
+            specification: formSpecification.trim() || null,
+            description: formDescription.trim() || null
+          };
 
         const res = await fetch('/api/engineering/material-library', {
           method: 'POST',
@@ -275,19 +267,20 @@ export default function MaterialLibrary() {
         // Edit mode
         const payload = modal.targetType === 'material'
           ? {
-              id: modal.data.id,
-              type: 'material',
-              name: formName.trim(),
-              unit: formUnit.trim() || 'Nos',
-              specification: formSpecification.trim() || null,
-              description: formDescription.trim() || null
-            }
+            id: modal.data.id,
+            type: 'material',
+            name: formName.trim(),
+            unit: formUnit.trim() || 'Nos',
+            rate: parseFloat(formRate) || 0,
+            specification: formSpecification.trim() || null,
+            description: formDescription.trim() || null
+          }
           : {
-              id: modal.data.id,
-              type: 'group',
-              name: formName.trim(),
-              description: formDescription.trim() || null
-            };
+            id: modal.data.id,
+            type: 'group',
+            name: formName.trim(),
+            description: formDescription.trim() || null
+          };
 
         const res = await fetch('/api/engineering/material-library', {
           method: 'PUT',
@@ -330,7 +323,7 @@ export default function MaterialLibrary() {
     const isMaterial = type === 'material';
 
     // Search filter
-    const matchesQuery = !searchQuery.trim() || 
+    const matchesQuery = !searchQuery.trim() ||
       node.name?.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
       (node.specification && node.specification.toLowerCase().includes(searchQuery.toLowerCase().trim())) ||
       (node.description && node.description.toLowerCase().includes(searchQuery.toLowerCase().trim()));
@@ -350,19 +343,19 @@ export default function MaterialLibrary() {
     return (
       <div style={{ marginTop: depth === 0 ? '6px' : '2px' }}>
         {/* Node Row */}
-        <div 
+        <div
           onClick={() => setSelectedItem({ type, data: node, path: currentPath })}
-          style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
+          style={{
+            display: 'flex',
+            alignItems: 'center',
             justifyContent: 'space-between',
-            padding: depth === 0 ? '7px 10px' : '5px 8px', 
-            borderRadius: '6px', 
-            background: isSelected 
-              ? (isMaterial ? '#e0f2fe' : '#f0fdf4') 
+            padding: depth === 0 ? '7px 10px' : '5px 8px',
+            borderRadius: '6px',
+            background: isSelected
+              ? (isMaterial ? '#e0f2fe' : '#f0fdf4')
               : 'transparent',
-            border: isSelected 
-              ? (isMaterial ? '1px solid #7dd3fc' : '1px solid #86efac') 
+            border: isSelected
+              ? (isMaterial ? '1px solid #7dd3fc' : '1px solid #86efac')
               : '1px solid transparent',
             cursor: 'pointer',
             transition: 'all 0.15s ease'
@@ -377,7 +370,7 @@ export default function MaterialLibrary() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, overflow: 'hidden' }}>
             {/* Expand / Collapse Icon */}
             {!isMaterial && hasChildren ? (
-              <div 
+              <div
                 onClick={(e) => toggleExpand(node.id, e)}
                 style={{ padding: '2px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center' }}
               >
@@ -397,11 +390,11 @@ export default function MaterialLibrary() {
             )}
 
             {/* Title */}
-            <span style={{ 
-              fontWeight: depth === 0 ? 600 : isMaterial ? (isSelected ? 600 : 400) : 500, 
-              color: isSelected 
-                ? (isMaterial ? '#0369a1' : '#15803d') 
-                : '#334155', 
+            <span style={{
+              fontWeight: depth === 0 ? 600 : isMaterial ? (isSelected ? 600 : 400) : 500,
+              color: isSelected
+                ? (isMaterial ? '#0369a1' : '#15803d')
+                : '#334155',
               fontSize: depth === 0 ? '0.86rem' : '0.82rem',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -412,11 +405,11 @@ export default function MaterialLibrary() {
 
             {/* Total items badge for folders */}
             {!isMaterial && totalCount > 0 && (
-              <span style={{ 
-                fontSize: '0.68rem', 
-                color: isSelected ? '#15803d' : '#64748b', 
-                background: isSelected ? '#dcfce7' : '#f1f5f9', 
-                padding: '1px 6px', 
+              <span style={{
+                fontSize: '0.68rem',
+                color: isSelected ? '#15803d' : '#64748b',
+                background: isSelected ? '#dcfce7' : '#f1f5f9',
+                padding: '1px 6px',
                 borderRadius: '10px',
                 fontWeight: 600
               }}>
@@ -426,12 +419,12 @@ export default function MaterialLibrary() {
 
             {/* Unit tag if material */}
             {isMaterial && node.unit && (
-              <span style={{ 
-                fontSize: '0.68rem', 
-                color: '#64748b', 
-                background: '#f1f5f9', 
-                padding: '1px 5px', 
-                borderRadius: '4px' 
+              <span style={{
+                fontSize: '0.68rem',
+                color: '#64748b',
+                background: '#f1f5f9',
+                padding: '1px 5px',
+                borderRadius: '4px'
               }}>
                 {node.unit}
               </span>
@@ -443,7 +436,7 @@ export default function MaterialLibrary() {
             {/* ONLY FOLDERS (Groups & Subgroups) HAVE THE + SIGN! */}
             {/* If material is added, then NO + sign */}
             {!isMaterial && (
-              <button 
+              <button
                 title={`Add Subgroup or Material to "${node.name}"`}
                 onClick={(e) => handleOpenAdd(node, 'subgroup', e)}
                 style={{
@@ -473,7 +466,7 @@ export default function MaterialLibrary() {
             )}
 
             {/* Edit Button */}
-            <button 
+            <button
               title={`Edit "${node.name}"`}
               onClick={(e) => handleOpenEdit(node, type, e)}
               style={{
@@ -492,7 +485,7 @@ export default function MaterialLibrary() {
             </button>
 
             {/* Delete Button */}
-            <button 
+            <button
               title={`Delete "${node.name}"`}
               onClick={(e) => handleDelete(node, type, e)}
               style={{
@@ -514,33 +507,33 @@ export default function MaterialLibrary() {
 
         {/* Children (Subgroups & Materials) */}
         {isExpanded && hasChildren && (
-          <div style={{ 
-            borderLeft: '1.5px dashed #cbd5e1', 
-            marginLeft: '14px', 
-            marginTop: '2px', 
+          <div style={{
+            borderLeft: '1.5px dashed #cbd5e1',
+            marginLeft: '14px',
+            marginTop: '2px',
             paddingLeft: '10px',
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '2px' 
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px'
           }}>
             {/* 1. Subgroups (Folders) */}
             {node.subgroups && node.subgroups.map(sub => (
-              <TreeBranch 
-                key={sub.id} 
-                node={sub} 
-                type="subgroup" 
-                depth={depth + 1} 
+              <TreeBranch
+                key={sub.id}
+                node={sub}
+                type="subgroup"
+                depth={depth + 1}
                 path={currentPath}
               />
             ))}
 
             {/* 2. Materials (Leaf Items) */}
             {node.materials && node.materials.map(mat => (
-              <TreeBranch 
-                key={mat.id} 
-                node={mat} 
-                type="material" 
-                depth={depth + 1} 
+              <TreeBranch
+                key={mat.id}
+                node={mat}
+                type="material"
+                depth={depth + 1}
                 path={currentPath}
               />
             ))}
@@ -556,7 +549,7 @@ export default function MaterialLibrary() {
 
   return (
     <div className="company-container" style={{ padding: '0', display: 'flex', height: '100vh', overflow: 'hidden', background: '#f8fafc' }}>
-      
+
       {/* Toast Notification */}
       {toastMessage && (
         <div style={{
@@ -582,11 +575,11 @@ export default function MaterialLibrary() {
       )}
 
       {/* ==================== LEFT PANE: TREE VIEW ==================== */}
-      <div style={{ 
-        width: '420px', 
-        borderRight: '1px solid #e2e8f0', 
-        display: 'flex', 
-        flexDirection: 'column', 
+      <div style={{
+        width: '420px',
+        borderRight: '1px solid #e2e8f0',
+        display: 'flex',
+        flexDirection: 'column',
         background: '#ffffff',
         zIndex: 10,
         boxShadow: '2px 0 8px rgba(0,0,0,0.02)'
@@ -595,10 +588,10 @@ export default function MaterialLibrary() {
         <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ 
-                width: '32px', height: '32px', borderRadius: '8px', 
-                background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)', 
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' 
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '8px',
+                background: 'linear-gradient(135deg, #0284c7 0%, #38bdf8 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white'
               }}>
                 <Package size={18} />
               </div>
@@ -610,7 +603,7 @@ export default function MaterialLibrary() {
               </div>
             </div>
 
-            <button 
+            <button
               onClick={() => activeLibId && fetchMaterialTree(activeLibId)}
               title="Refresh tree from database"
               style={{
@@ -627,19 +620,21 @@ export default function MaterialLibrary() {
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
-          
+
           {/* Library selector */}
           <div style={{ marginBottom: '12px' }}>
             <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#475569', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Library
             </label>
-            <select 
-              className="modern-input modern-select" 
+            <select
+              className="modern-input modern-select"
               style={{ width: '100%', padding: '8px 12px', background: '#f8fafc', fontWeight: 600, color: '#0f172a' }}
               value={activeLibId}
-              onChange={(e) => { 
-                setActiveLibId(e.target.value); 
-                setSelectedItem(null); 
+              onChange={(e) => {
+                const libraryId = e.target.value;
+                setActiveLibId(libraryId);
+                setSelectedItem(null);
+                if (libraryId) fetchMaterialTree(libraryId);
               }}
             >
               {libraries.map(lib => (
@@ -647,21 +642,21 @@ export default function MaterialLibrary() {
               ))}
             </select>
           </div>
-          
+
           {/* Search box */}
           <div className="search-wrapper" style={{ position: 'relative', marginBottom: '14px' }}>
-            <input 
-              type="text" 
-              className="modern-input" 
-              placeholder="Search groups, subgroups or materials..." 
-              style={{ paddingRight: '32px', width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.82rem' }} 
+            <input
+              type="text"
+              className="modern-input"
+              placeholder="Search groups, subgroups or materials..."
+              style={{ paddingRight: '32px', width: '100%', boxSizing: 'border-box', height: '36px', fontSize: '0.82rem' }}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery ? (
-              <X 
-                size={14} 
-                color="#94a3b8" 
+              <X
+                size={14}
+                color="#94a3b8"
                 onClick={() => setSearchQuery('')}
                 style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer' }}
               />
@@ -672,8 +667,8 @@ export default function MaterialLibrary() {
 
           {/* Add Root Group Action */}
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              className="btn-primary" 
+            <button
+              className="btn-primary"
               style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '7px 10px' }}
               onClick={() => handleOpenAdd(null, 'subgroup')}
             >
@@ -698,11 +693,11 @@ export default function MaterialLibrary() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {groups.map(group => (
-                <TreeBranch 
-                  key={group.id} 
-                  node={group} 
-                  type="group" 
-                  depth={0} 
+                <TreeBranch
+                  key={group.id}
+                  node={group}
+                  type="group"
+                  depth={0}
                   path={[activeLibraryObj.name]}
                 />
               ))}
@@ -713,22 +708,22 @@ export default function MaterialLibrary() {
 
       {/* ==================== RIGHT PANE: DETAIL & WORKSPACE ==================== */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#f8fafc', overflow: 'hidden' }}>
-        
+
         {/* Top Breadcrumb Bar */}
-        <div style={{ 
-          padding: '14px 24px', 
-          borderBottom: '1px solid #e2e8f0', 
-          background: 'white', 
-          display: 'flex', 
+        <div style={{
+          padding: '14px 24px',
+          borderBottom: '1px solid #e2e8f0',
+          background: 'white',
+          display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
           <div className="breadcrumb" style={{ margin: 0, fontSize: '0.82rem' }}>
-            <Home size={14} /> 
-            <span>Home</span> 
-            <ChevronRight size={13} color="#94a3b8" /> 
-            <span>Library</span> 
-            <ChevronRight size={13} color="#94a3b8" /> 
+            <Home size={14} />
+            <span>Home</span>
+            <ChevronRight size={13} color="#94a3b8" />
+            <span>Library</span>
+            <ChevronRight size={13} color="#94a3b8" />
             <span style={{ color: '#0ea5e9', fontWeight: 600 }}>{resourceLabel} Library</span>
             {selectedItem?.path && selectedItem.path.map((segment, idx) => (
               <React.Fragment key={idx}>
@@ -740,12 +735,12 @@ export default function MaterialLibrary() {
             ))}
           </div>
 
-          <span style={{ 
-            fontSize: '0.75rem', 
-            background: '#e0f2fe', 
-            color: '#0369a1', 
-            padding: '3px 10px', 
-            borderRadius: '20px', 
+          <span style={{
+            fontSize: '0.75rem',
+            background: '#e0f2fe',
+            color: '#0369a1',
+            padding: '3px 10px',
+            borderRadius: '20px',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
@@ -754,7 +749,7 @@ export default function MaterialLibrary() {
             <Sparkles size={12} /> {activeLibraryObj.name}
           </span>
         </div>
-        
+
         {/* Main Content Area */}
         <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
           {!selectedItem ? (
@@ -767,7 +762,7 @@ export default function MaterialLibrary() {
                 <div>
                   <h3 style={{ margin: '0 0 6px', color: '#334155', fontSize: '1.1rem', fontWeight: 600 }}>Material Tree Explorer</h3>
                   <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b', lineHeight: '1.5' }}>
-                    Select any group, subgroup, or material from the tree on the left to view details, 
+                    Select any group, subgroup, or material from the tree on the left to view details,
                     or click the green <strong style={{ color: '#059669' }}>+</strong> button on any folder to add subgroups and materials!
                   </p>
                 </div>
@@ -777,7 +772,7 @@ export default function MaterialLibrary() {
             /* MATERIAL DETAILS VIEW (Leaf Item: NO + sign on material!) */
             <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)', overflow: 'hidden' }}>
-                
+
                 {/* Detail Header */}
                 <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ display: 'flex', gap: '16px' }}>
@@ -786,15 +781,15 @@ export default function MaterialLibrary() {
                     </div>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span style={{ 
-                          fontSize: '0.72rem', background: '#e0f2fe', color: '#0369a1', 
-                          padding: '2px 8px', borderRadius: '6px', fontWeight: 600 
+                        <span style={{
+                          fontSize: '0.72rem', background: '#e0f2fe', color: '#0369a1',
+                          padding: '2px 8px', borderRadius: '6px', fontWeight: 600
                         }}>
                           Unit: {selectedItem.data.unit || 'Nos'}
                         </span>
-                        <span style={{ 
-                          fontSize: '0.72rem', background: '#f1f5f9', color: '#64748b', 
-                          padding: '2px 8px', borderRadius: '6px' 
+                        <span style={{
+                          fontSize: '0.72rem', background: '#f1f5f9', color: '#64748b',
+                          padding: '2px 8px', borderRadius: '6px'
                         }}>
                           ID: MAT-{selectedItem.data.id.slice(-6).toUpperCase()}
                         </span>
@@ -807,15 +802,15 @@ export default function MaterialLibrary() {
 
                   {/* Actions: ONLY Edit and Delete on Material (No + button) */}
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button 
-                      className="btn-outline" 
+                    <button
+                      className="btn-outline"
                       style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#0ea5e9', borderColor: '#0ea5e9', fontSize: '0.8rem' }}
                       onClick={(e) => handleOpenEdit(selectedItem.data, 'material', e)}
                     >
                       <Edit size={14} /> Edit
                     </button>
-                    <button 
-                      className="btn-outline" 
+                    <button
+                      className="btn-outline"
                       style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', borderColor: '#fca5a5', fontSize: '0.8rem' }}
                       onClick={(e) => handleDelete(selectedItem.data, 'material', e)}
                     >
@@ -826,7 +821,7 @@ export default function MaterialLibrary() {
 
                 {/* Detail Body */}
                 <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  
+
                   {/* Specification Box */}
                   <div>
                     <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>Specification / Grade</h3>
@@ -848,7 +843,7 @@ export default function MaterialLibrary() {
                     <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#334155', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <MapPin size={16} color="#0ea5e9" /> Where is it used? (Project List)
                     </h3>
-                    
+
                     {selectedItem.data.usedIn && selectedItem.data.usedIn.length > 0 ? (
                       <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -887,21 +882,21 @@ export default function MaterialLibrary() {
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)', padding: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                   <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-                    <div style={{ 
-                      width: '44px', height: '44px', borderRadius: '8px', 
-                      background: selectedItem.type === 'group' ? '#fef3c7' : '#dcfce7', 
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                      color: selectedItem.type === 'group' ? '#d97706' : '#059669' 
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '8px',
+                      background: selectedItem.type === 'group' ? '#fef3c7' : '#dcfce7',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: selectedItem.type === 'group' ? '#d97706' : '#059669'
                     }}>
                       {selectedItem.type === 'group' ? <Package size={22} /> : <Folder size={22} fill="#059669" />}
                     </div>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span style={{ 
-                          fontSize: '0.72rem', 
-                          background: selectedItem.type === 'group' ? '#fef3c7' : '#ecfdf5', 
-                          color: selectedItem.type === 'group' ? '#b45309' : '#059669', 
-                          padding: '2px 8px', borderRadius: '6px', fontWeight: 600 
+                        <span style={{
+                          fontSize: '0.72rem',
+                          background: selectedItem.type === 'group' ? '#fef3c7' : '#ecfdf5',
+                          color: selectedItem.type === 'group' ? '#b45309' : '#059669',
+                          padding: '2px 8px', borderRadius: '6px', fontWeight: 600
                         }}>
                           {selectedItem.type === 'group' ? 'Root Group' : 'Subgroup'}
                         </span>
@@ -916,29 +911,29 @@ export default function MaterialLibrary() {
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button 
+                    <button
                       className="btn-primary"
                       onClick={(e) => handleOpenAdd(selectedItem.data, 'subgroup', e)}
                       style={{ padding: '6px 12px', fontSize: '0.78rem', background: '#0ea5e9' }}
                     >
                       <Plus size={14} /> Add Subgroup
                     </button>
-                    <button 
+                    <button
                       className="btn-primary"
                       onClick={(e) => handleOpenAdd(selectedItem.data, 'material', e)}
                       style={{ padding: '6px 12px', fontSize: '0.78rem', background: '#059669' }}
                     >
                       <Plus size={14} /> Add Material
                     </button>
-                    <button 
-                      className="btn-outline" 
+                    <button
+                      className="btn-outline"
                       style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem' }}
                       onClick={(e) => handleOpenEdit(selectedItem.data, selectedItem.type, e)}
                     >
                       <Edit size={14} /> Edit
                     </button>
-                    <button 
-                      className="btn-outline" 
+                    <button
+                      className="btn-outline"
                       style={{ padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#ef4444', borderColor: '#fca5a5', fontSize: '0.78rem' }}
                       onClick={(e) => handleDelete(selectedItem.data, selectedItem.type, e)}
                     >
@@ -948,9 +943,9 @@ export default function MaterialLibrary() {
                 </div>
 
                 {selectedItem.data.description && (
-                  <div style={{ 
-                    background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', 
-                    border: '1px solid #e2e8f0', fontSize: '0.85rem', color: '#475569', marginBottom: '20px' 
+                  <div style={{
+                    background: '#f8fafc', padding: '12px 16px', borderRadius: '8px',
+                    border: '1px solid #e2e8f0', fontSize: '0.85rem', color: '#475569', marginBottom: '20px'
                   }}>
                     {selectedItem.data.description}
                   </div>
@@ -964,7 +959,7 @@ export default function MaterialLibrary() {
                     </h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
                       {selectedItem.data.subgroups.map(sub => (
-                        <div 
+                        <div
                           key={sub.id}
                           onClick={() => setSelectedItem({ type: 'subgroup', data: sub, path: [...selectedItem.path, sub.name] })}
                           style={{
@@ -1000,7 +995,7 @@ export default function MaterialLibrary() {
                     <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Box size={16} color="#0284c7" /> Direct Materials ({(selectedItem.data.materials || []).length})
                     </h3>
-                    <button 
+                    <button
                       className="btn-primary"
                       onClick={(e) => handleOpenAdd(selectedItem.data, 'material', e)}
                       style={{ padding: '5px 10px', fontSize: '0.75rem', background: '#059669' }}
@@ -1027,8 +1022,8 @@ export default function MaterialLibrary() {
                         </thead>
                         <tbody>
                           {selectedItem.data.materials.map((mat, idx) => (
-                            <tr 
-                              key={mat.id} 
+                            <tr
+                              key={mat.id}
                               style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
                               onClick={() => setSelectedItem({ type: 'material', data: mat, path: [...selectedItem.path, mat.name] })}
                               onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
@@ -1051,21 +1046,21 @@ export default function MaterialLibrary() {
                               </td>
                               <td style={{ padding: '10px 14px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                                 <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                                  <button 
+                                  <button
                                     title="View / Details"
                                     onClick={() => setSelectedItem({ type: 'material', data: mat, path: [...selectedItem.path, mat.name] })}
                                     style={{ border: '1px solid #cbd5e1', background: '#fff', color: '#0284c7', padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', cursor: 'pointer' }}
                                   >
                                     Open
                                   </button>
-                                  <button 
+                                  <button
                                     title="Edit Material"
                                     onClick={(e) => handleOpenEdit(mat, 'material', e)}
                                     style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '3px' }}
                                   >
                                     <Edit size={13} />
                                   </button>
-                                  <button 
+                                  <button
                                     title="Delete Material"
                                     onClick={(e) => handleDelete(mat, 'material', e)}
                                     style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '3px' }}
@@ -1090,26 +1085,26 @@ export default function MaterialLibrary() {
 
       {/* ==================== MODAL: ADD / EDIT NODE ==================== */}
       {modal.open && (
-        <div style={{ 
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-          background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', 
-          zIndex: 1000, backdropFilter: 'blur(3px)' 
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, backdropFilter: 'blur(3px)'
         }}>
-          <div style={{ 
+          <div style={{
             background: 'white', borderRadius: '18px', width: '560px', maxWidth: '92%',
-            boxShadow: '0 24px 60px rgba(15, 23, 42, 0.22)', overflow: 'hidden' 
+            boxShadow: '0 24px 60px rgba(15, 23, 42, 0.22)', overflow: 'hidden'
           }}>
             <div style={{ padding: '22px 28px 18px', borderBottom: '1px solid #e2e8f0', background: '#fbfdff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 750, color: '#1e293b' }}>
-                  {modal.mode === 'create' 
+                  {modal.mode === 'create'
                     ? (modal.parentId ? `Add to: ${modal.parentName}` : 'Add New Root Group')
                     : `Edit ${modal.targetType === 'subgroup' ? 'Subgroup' : 'Material'}`}
                 </h3>
                 <span style={{ display: 'block', marginTop: '4px', fontSize: '0.78rem', color: '#64748b' }}>{resourceLabel} library item details</span>
               </div>
-              <button 
-                onClick={() => setModal({ open: false, mode: 'create', parentId: null, parentName: '', targetType: 'subgroup', data: null })} 
+              <button
+                onClick={() => setModal({ open: false, mode: 'create', parentId: null, parentName: '', targetType: 'subgroup', data: null })}
                 style={{ width: '34px', height: '34px', border: '1px solid #dbe4ee', borderRadius: '9px', background: '#fff', cursor: 'pointer', fontSize: '1.25rem', color: '#94a3b8', lineHeight: 1 }}
               >
                 &times;
@@ -1118,7 +1113,7 @@ export default function MaterialLibrary() {
 
             <form onSubmit={handleSaveModal}>
               <div style={{ padding: '26px 28px 24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                
+
                 {/* Type toggle: only when adding under an existing folder */}
                 {modal.mode === 'create' && modal.parentId && (
                   <div>
@@ -1168,47 +1163,129 @@ export default function MaterialLibrary() {
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
                     {modal.targetType === 'subgroup' ? 'Subgroup / Category Name' : 'Material Name'} <span style={{ color: '#ef4444' }}>*</span>
                   </label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     required
                     autoFocus
-                    className="modern-input" 
-                    style={{ width: '100%', boxSizing: 'border-box' }} 
+                    className="modern-input"
+                    style={{ width: '100%', boxSizing: 'border-box' }}
                     value={formName}
                     onChange={e => setFormName(e.target.value)}
                     placeholder={modal.targetType === 'subgroup' ? 'e.g. Wires & Cables, Switchgears, Conduits...' : 'e.g. Copper Wire 1.5mm, Modular Switch...'}
                   />
                 </div>
 
-                {/* Material Specific Fields: Unit & Specification */}
+                {/* Material Specific Fields */}
                 {modal.targetType === 'material' && (
                   <>
+                    {/* Row 1: Unit + Price Per Unit */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Unit *</label>
-                        <input 
-                          type="text" 
-                          list="unit-library-options"
+                        <select
                           required
-                          className="modern-input" 
-                          style={{ width: '100%', boxSizing: 'border-box' }} 
+                          className="modern-input modern-select"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
                           value={formUnit}
                           onChange={e => setFormUnit(e.target.value)}
-                          placeholder="e.g. Coil, Nos, Mtr, Bag"
-                        />
-                        <datalist id="unit-library-options">
-                          {unitList.map((u, i) => (
-                            <option key={i} value={u} />
+                        >
+                          <option value="" disabled>Select unit from Unit Master</option>
+                          {formUnit && !unitList.includes(formUnit) && (
+                            <option value={formUnit}>{formUnit}</option>
+                          )}
+                          {unitList.map(unit => (
+                            <option key={unit} value={unit}>{unit}</option>
                           ))}
-                        </datalist>
+                        </select>
                       </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>{resourceType === 'Labour' ? 'Labour Rate' : 'Price Per Unit'}</label>
+                        <input
+                          type="number" step="any"
+                          className="modern-input"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={formRate}
+                          onChange={e => {
+                            const r = parseFloat(e.target.value) || 0;
+                            setFormRate(r);
+                            const taxPct = formTaxScheme.includes('18') ? 18 : formTaxScheme.includes('12') ? 12 : formTaxScheme.includes('5') ? 5 : 0;
+                            const tax = parseFloat((r * taxPct / 100).toFixed(2));
+                            setFormTaxAmount(tax);
+                            setFormPriceIncTax(parseFloat((r + tax).toFixed(2)));
+                          }}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
 
+                    {/* Row 2: Tax Scheme + Tax Amount + Price incl. Tax */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Tax Scheme</label>
+                        <select
+                          className="modern-input modern-select"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={formTaxScheme}
+                          onChange={e => {
+                            setFormTaxScheme(e.target.value);
+                            const taxPct = e.target.value.includes('18') ? 18 : e.target.value.includes('12') ? 12 : e.target.value.includes('5') ? 5 : 0;
+                            const tax = parseFloat((formRate * taxPct / 100).toFixed(2));
+                            setFormTaxAmount(tax);
+                            setFormPriceIncTax(parseFloat((parseFloat(formRate) + tax).toFixed(2)));
+                          }}
+                        >
+                          <option value="">None</option>
+                          <option value="C+SGST 5%">C+SGST 5%</option>
+                          <option value="C+SGST 12%">C+SGST 12%</option>
+                          <option value="C+SGST 18%">C+SGST 18%</option>
+                          <option value="IGST 5%">IGST 5%</option>
+                          <option value="IGST 12%">IGST 12%</option>
+                          <option value="IGST 18%">IGST 18%</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Tax Amount</label>
+                        <input
+                          type="number" step="any"
+                          className="modern-input"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={formTaxAmount}
+                          onChange={e => setFormTaxAmount(parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Price Per Unit (incl. tax)</label>
+                        <input
+                          type="number" step="any"
+                          className="modern-input"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={formPriceIncTax}
+                          onChange={e => setFormPriceIncTax(parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 3: Transport Per Unit + Grade/Spec */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Transport Per Unit</label>
+                        <input
+                          type="number" step="any"
+                          className="modern-input"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          value={formTransportPerUnit}
+                          onChange={e => setFormTransportPerUnit(parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                        />
+                      </div>
                       <div>
                         <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Grade / Spec</label>
-                        <input 
-                          type="text" 
-                          className="modern-input" 
-                          style={{ width: '100%', boxSizing: 'border-box' }} 
+                        <input
+                          type="text"
+                          className="modern-input"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
                           value={formSpecification}
                           onChange={e => setFormSpecification(e.target.value)}
                           placeholder="e.g. ISI, Grade 53, FR"
@@ -1223,9 +1300,9 @@ export default function MaterialLibrary() {
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
                     Description / Scope
                   </label>
-                  <textarea 
-                    className="modern-input" 
-                    style={{ width: '100%', boxSizing: 'border-box', minHeight: '70px', resize: 'vertical' }} 
+                  <textarea
+                    className="modern-input"
+                    style={{ width: '100%', boxSizing: 'border-box', minHeight: '70px', resize: 'vertical' }}
                     value={formDescription}
                     onChange={e => setFormDescription(e.target.value)}
                     placeholder="Provide technical details, specifications, or usage scope..."
@@ -1235,17 +1312,17 @@ export default function MaterialLibrary() {
               </div>
 
               <div style={{ padding: '18px 28px 22px', borderTop: '1px solid #edf2f7', background: '#fbfdff', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button 
-                  type="button" 
-                  className="btn-outline" 
+                <button
+                  type="button"
+                  className="btn-outline"
                   disabled={submitting}
                   onClick={() => setModal({ open: false, mode: 'create', parentId: null, parentName: '', targetType: 'subgroup', data: null })}
                 >
                   Cancel
                 </button>
-                <button 
-                  type="submit" 
-                  className="btn-primary" 
+                <button
+                  type="submit"
+                  className="btn-primary"
                   disabled={submitting}
                   style={{ background: modal.targetType === 'subgroup' ? '#0ea5e9' : '#059669', display: 'flex', alignItems: 'center', gap: '6px' }}
                 >

@@ -1,7 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { 
-  Home, ChevronRight, Edit, Trash2, Search, Plus, Save, X
+  Edit, Trash2, Plus, Save, X
 } from 'lucide-react';
 import '../../../../app/accounts/company/company.css';
 
@@ -9,7 +9,6 @@ export default function LibraryManager() {
   const [data, setData] = useState([]);
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newType, setNewType] = useState('Material');
   const [editingId, setEditingId] = useState(null);
   
   React.useEffect(() => {
@@ -21,9 +20,7 @@ export default function LibraryManager() {
       const res = await fetch('/api/libraries');
       if (res.ok) {
         const libs = await res.json();
-        // Since original UI had desc string, we can mock it or leave it blank
-        const mapped = libs.map(l => ({ ...l, desc: l.desc || '0 Material(s), 0 Labour(s), 0 Task(s)' }));
-        setData(mapped);
+        setData(libs);
       }
     } catch (err) {
       console.error(err);
@@ -46,7 +43,7 @@ export default function LibraryManager() {
   };
 
   const handleSave = async () => {
-    if (!newName) {
+    if (!newName.trim()) {
       alert("Library name is required!");
       return;
     }
@@ -54,16 +51,15 @@ export default function LibraryManager() {
       const res = await fetch('/api/libraries', {
         method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingId ? { id: editingId, name: newName, type: newType } : { name: newName, type: newType })
+        body: JSON.stringify(editingId ? { id: editingId, name: newName } : { name: newName })
       });
       if (res.ok) {
         fetchLibraries();
         setNewName('');
-        setNewType('Material');
         setIsAdding(false);
         setEditingId(null);
       } else {
-        alert("Failed to add library");
+        alert("Failed to save library");
       }
     } catch (err) {
       console.error(err);
@@ -76,15 +72,6 @@ export default function LibraryManager() {
       {/* Top Header */}
       <div style={{ padding: '16px 24px', background: 'white', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#334155', margin: 0 }}>Library Manager</h2>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem', color: '#64748b' }}>
-            <span>Page:</span>
-            <input type="text" defaultValue="1" style={{ width: '40px', padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px', textAlign: 'center' }} />
-            <span>of 1</span>
-            <button className="btn-primary" style={{ background: '#0ea5e9', padding: '4px 12px', fontSize: '0.8rem', borderRadius: '16px' }}>Go</button>
-          </div>
-        </div>
       </div>
 
       {/* Main Content Table */}
@@ -93,70 +80,59 @@ export default function LibraryManager() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#0ea5e9', color: 'white', textAlign: 'left' }}>
-                <th style={{ padding: '12px 16px', fontWeight: 500, fontSize: '0.9rem', width: '30%' }}>Library Name</th>
-                <th style={{ padding: '12px 16px', fontWeight: 500, fontSize: '0.9rem', width: '55%' }}>Description</th>
-                <th style={{ padding: '12px 16px', fontWeight: 500, fontSize: '0.9rem', width: '15%', textAlign: 'center' }}>Action</th>
+                <th style={{ padding: '12px 16px', fontWeight: 500, fontSize: '0.9rem', width: '80%' }}>Library Name</th>
+                <th style={{ padding: '12px 16px', fontWeight: 500, fontSize: '0.9rem', width: '20%', textAlign: 'center' }}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {data.map((row, index) => (
+              {data.map((row) => (
                 <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '12px 16px', fontSize: '0.875rem', color: '#475569' }}>{row.name}</td>
-                  <td style={{ padding: '12px 16px', fontSize: '0.875rem', color: '#64748b' }}>{row.desc}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                      <Edit size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => { setEditingId(row.id); setNewName(row.name); setNewType(row.type || 'Material'); setIsAdding(true); }} />
+                      <Edit size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => { setEditingId(row.id); setNewName(row.name); setIsAdding(true); }} />
                       <Trash2 size={16} color="#ef4444" style={{ cursor: 'pointer' }} onClick={() => handleDelete(row.id)} />
                     </div>
                   </td>
                 </tr>
               ))}
+
               {/* Add New Row Toggle */}
               {!isAdding && (
                 <tr>
-                  <td colSpan="3" style={{ padding: '12px 16px', textAlign: 'center' }}>
-                      <button className="btn-primary" style={{ background: '#0ea5e9', padding: '6px 16px', fontSize: '0.85rem' }} onClick={() => { setEditingId(null); setNewName(''); setNewType('Material'); setIsAdding(true); }}>
+                  <td colSpan="2" style={{ padding: '12px 16px', textAlign: 'center' }}>
+                    <button className="btn-primary" style={{ background: '#0ea5e9', padding: '6px 16px', fontSize: '0.85rem' }} onClick={() => { setEditingId(null); setNewName(''); setIsAdding(true); }}>
                       <Plus size={16} style={{ display: 'inline', marginRight: '4px' }} /> Add Library
                     </button>
                   </td>
                 </tr>
               )}
-              
-              {/* Add New Row */}
+
+              {/* Add / Edit Row */}
               {isAdding && (
                 <tr>
                   <td style={{ padding: '12px 16px' }}>
-                    <input 
-                      type="text" 
-                      className="modern-input" 
+                    <input
+                      type="text"
+                      className="modern-input"
                       style={{ padding: '6px 12px', width: '100%' }}
                       placeholder="Enter library name"
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                      autoFocus
                     />
-                    <select value={newType} onChange={(e) => setNewType(e.target.value)} style={{ width: '100%', marginTop: '8px', padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
-                      <option value="Material">Material Library</option>
-                      <option value="Equipment">Equipment Library</option>
-                      <option value="Labour">Labour Library</option>
-                    </select>
                   </td>
-                  <td style={{ padding: '12px 16px' }}></td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
                       <Save size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={handleSave} />
-                      <X size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => { setIsAdding(false); setNewName(''); setNewType('Material'); setEditingId(null); }} />
+                      <X size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => { setIsAdding(false); setNewName(''); setEditingId(null); }} />
                     </div>
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
-        
-        {/* Footer Text */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', fontSize: '0.75rem', color: '#94a3b8' }}>
-          <span>Powered by Kanix Infotech Pvt. Ltd.</span>
-          <span style={{ color: '#0ea5e9' }}>India's first Construction ERP Software. Ver: 33.00.00</span>
         </div>
       </div>
     </div>

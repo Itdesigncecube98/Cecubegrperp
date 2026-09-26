@@ -1,0 +1,4 @@
+ALTER TABLE "SiteGRNItem"
+  ADD COLUMN "testRequired" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN "gtnSrNo" TEXT,
+  ADD COLUMN "document" TEXT;

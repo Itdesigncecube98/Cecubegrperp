@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'CeCube Employee Dashboard',
   webDir: 'www',
   server: {
-    url: 'http://192.168.1.70:8080',
+    url: 'http://172.236.185.37/employeedashboard/login',
     cleartext: true
   }
 };

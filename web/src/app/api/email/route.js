@@ -75,7 +75,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'No valid email recipients found' }, { status: 400 });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.70:8080';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.81:8080';
     const loginInstructionMessage = emailType === 'login-instruction' && employees.length === 1
       ? `Hello ${employees[0].name},\n\nYour login instructions for the Cecube HR portal are as follows:\n\nPortal URL: ${appUrl}/employeedashboard/login\nEmployee Code: ${employees[0].empId}\nEmail: ${employees[0].email}\nPassword: ${employees[0].password || 'No password is stored for this employee.'}\n\nPlease keep this information secure.\n\nBest regards,\nHR Department`
       : message;

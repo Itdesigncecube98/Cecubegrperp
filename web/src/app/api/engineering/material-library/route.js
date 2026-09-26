@@ -236,7 +236,7 @@ export async function POST(req) {
 
     // 1. Create Material (Leaf Item)
     if (type === 'material') {
-      const { groupId, name, unit, specification, description, usedIn, resourceType = 'Material' } = body;
+      const { groupId, name, unit, rate, specification, description, usedIn, resourceType = 'Material' } = body;
       if (!groupId) return NextResponse.json({ error: 'Group/Subgroup ID is required' }, { status: 400 });
       if (!name || !name.trim()) return NextResponse.json({ error: 'Material name is required' }, { status: 400 });
 
@@ -246,6 +246,7 @@ export async function POST(req) {
           resourceType,
           name: name.trim(),
           unit: unit ? unit.trim() : 'Nos',
+          rate: parseFloat(rate) || 0,
           specification: specification ? specification.trim() : null,
           description: description ? description.trim() : null,
           usedIn: Array.isArray(usedIn) ? usedIn : []
@@ -292,10 +293,11 @@ export async function PUT(req) {
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
 
     if (type === 'material') {
-      const { name, unit, specification, description, usedIn } = body;
+      const { name, unit, rate, specification, description, usedIn } = body;
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (unit !== undefined) updateData.unit = unit ? unit.trim() : 'Nos';
+      if (rate !== undefined) updateData.rate = parseFloat(rate) || 0;
       if (specification !== undefined) updateData.specification = specification ? specification.trim() : null;
       if (description !== undefined) updateData.description = description ? description.trim() : null;
       if (usedIn !== undefined && Array.isArray(usedIn)) updateData.usedIn = usedIn;

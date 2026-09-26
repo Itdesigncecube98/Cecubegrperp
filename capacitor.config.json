@@ -1,0 +1,9 @@
+{
+  "appId": "com.cecubegroup.myapp",
+  "appName": "Cecube Group",
+  "webDir": "www",
+  "server": {
+    "url": "",
+    "cleartext": true
+  }
+}

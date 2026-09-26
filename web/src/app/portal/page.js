@@ -15,7 +15,7 @@ const ALL_MODULES = [
   { id: 'Engineering', name: 'Engineering', icon: Briefcase, color: '#8b5cf6', route: '/engineering/dashboard' },
   { id: 'Purchase', name: 'Purchase', icon: ShoppingCart, color: '#f59e0b', route: '/purchase/dashboard' },
   { id: 'Contracting', name: 'Contracting', icon: FileSignature, color: '#14b8a6', route: '/contracting' },
-  { id: 'Site', name: 'Site', icon: MapPin, color: '#f43f5e', route: '/coming-soon' },
+  { id: 'Site', name: 'Site', icon: MapPin, color: '#f43f5e', route: '/site/dashboard' },
   { id: 'Marketing', name: 'Marketing', icon: TrendingUp, color: '#ec4899', route: '/marketing/dashboard' },
   { id: 'Accounts', name: 'Accounts', icon: FileText, color: '#6366f1', route: '/accounts/dashboard' },
   { id: 'Tender', name: 'Tender', icon: FileCheck, color: '#84cc16', route: '/tender/dashboard' },
@@ -100,7 +100,8 @@ export default function UnifiedPortal() {
           {ALL_MODULES.map((mod, index) => {
             const Icon = mod.icon;
             // Dashboard is the core app, always unlocked
-            const isLocked = mod.id !== 'Dashboard' && mod.id !== 'AdminDashboard' && !allowedModuleIds.some(m => m === mod.id || m.startsWith(`${mod.id}:`));
+            const isCoreOperationsModule = mod.id === 'Site' || mod.id === 'Contracting';
+            const isLocked = mod.id !== 'Dashboard' && mod.id !== 'AdminDashboard' && !isCoreOperationsModule && !allowedModuleIds.some(m => m === mod.id || m.startsWith(`${mod.id}:`));
             
             if (mod.id === 'AdminDashboard' && user?.role !== 'admin') {
               return null;

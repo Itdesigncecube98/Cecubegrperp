@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 export default function ResourceAllocationRedirect() {
   const router = useRouter();
   useEffect(() => {
-    router.replace('/engineering/planning/work-completion-task');
+    router.replace('/contracting/work-completion');
   }, [router]);
 
   return null;

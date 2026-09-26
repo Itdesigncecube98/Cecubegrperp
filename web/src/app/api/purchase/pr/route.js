@@ -40,7 +40,6 @@ async function syncUnlinkedMaterialRequisitions() {
 
 export async function GET(req) {
   try {
-    await syncUnlinkedMaterialRequisitions();
     const prs = await prisma.purchaseIndent.findMany({
       include: {
         requestedBy: { select: { id: true, name: true } },
@@ -48,7 +47,18 @@ export async function GET(req) {
       },
       orderBy: { createdAt: 'desc' }
     });
-    return NextResponse.json(prs);
+    const libraryMaterials = await prisma.materialLibraryItem.findMany({
+      where: { resourceType: 'Material' },
+      select: { name: true, rate: true }
+    });
+    const rateByName = new Map(libraryMaterials.map(material => [String(material.name).trim().toLowerCase(), material.rate]));
+    return NextResponse.json(prs.map(pr => ({
+      ...pr,
+      items: pr.items.map(item => ({
+        ...item,
+        libraryRate: rateByName.get(String(item.item || '').trim().toLowerCase()) || 0
+      }))
+    })));
   } catch (error) {
     console.error('Error fetching PRs:', error);
     return NextResponse.json({ error: 'Failed to fetch PRs' }, { status: 500 });
@@ -101,9 +111,46 @@ export async function PUT(req) {
   try {
     const body = await req.json();
     if (!body.id) return NextResponse.json({ error: 'PR id is required' }, { status: 400 });
-    const pr = await prisma.purchaseIndent.update({
-      where: { id: body.id },
-      data: { status: body.status }
+
+    const existing = await prisma.purchaseIndent.findUnique({ where: { id: body.id } });
+    if (!existing) return NextResponse.json({ error: 'Purchase indent not found' }, { status: 404 });
+    if (existing.status === 'Approved' && body.status !== existing.status) {
+      return NextResponse.json({ error: 'Approved purchase indents cannot be edited' }, { status: 409 });
+    }
+
+    const isEdit = body.items !== undefined || body.project !== undefined || body.site !== undefined;
+    if (existing.status === 'Approved' && isEdit) {
+      return NextResponse.json({ error: 'Approved purchase indents cannot be edited' }, { status: 409 });
+    }
+
+    const data = {};
+    if (body.status !== undefined) data.status = body.status;
+    if (body.department !== undefined) data.department = body.department;
+    if (body.project !== undefined) data.project = body.project;
+    if (body.site !== undefined) data.site = body.site;
+    if (body.requiredDate !== undefined) data.requiredDate = body.requiredDate ? new Date(body.requiredDate) : null;
+    if (body.priority !== undefined) data.priority = body.priority;
+    if (body.purpose !== undefined) data.purpose = body.purpose;
+    if (body.remarks !== undefined) data.remarks = body.remarks;
+    if (body.requestedById !== undefined) data.requestedById = body.requestedById || null;
+
+    const pr = await prisma.$transaction(async transaction => {
+      if (Array.isArray(body.items)) {
+        await transaction.purchaseIndentItem.deleteMany({ where: { indentId: body.id } });
+        data.items = {
+          create: body.items.filter(item => item.item?.trim()).map(item => ({
+            item: item.item.trim(),
+            specification: item.specification || null,
+            unit: item.unit || 'Nos',
+            quantity: parseFloat(item.quantity) || 0
+          }))
+        };
+      }
+      return transaction.purchaseIndent.update({
+        where: { id: body.id },
+        data,
+        include: { items: true }
+      });
     });
     return NextResponse.json(pr);
   } catch (error) {

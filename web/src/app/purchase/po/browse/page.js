@@ -23,21 +23,25 @@ const getReceivedQuantity = (po, itemId) => (po.grns || []).reduce((total, grn) 
 const getRows = (pos) => pos.flatMap(po => (po.items || []).map(item => {
   const quantity = Number(item.quantity) || 0;
   const rate = Number(item.rate) || 0;
-  const discount = Number(item.discount) || 0;
+  const discount = Number(item.discount ?? item.itemDiscount) || 0;
   const taxableAmount = Math.max((quantity * rate) - discount, 0);
   const taxPercent = Number(item.gstPercent) || 0;
+  const vendorId = po.supplierId || po.vendorId || '';
+  const vendorName = po.supplierName || po.vendor?.name || 'Unknown vendor';
+  const materialName = item.description || item.item || '-';
 
   return {
     id: `${po.id}-${item.id}`,
     poId: po.id,
-    poNo: po.poNo,
+    poNo: po.poNumber || po.poNo || '-',
     poDate: po.poDate,
-    vendorId: po.vendorId,
-    vendorName: po.vendor?.name || 'Unknown vendor',
-    vendorCode: po.vendor?.vendorCode || '',
-    materialCategory: item.materialCategory || '-',
-    materialName: item.item || '-',
-    brand: item.brand || '-',
+    vendorId,
+    vendorName,
+    vendorCode: po.vendor?.vendorCode || po.supplierId || '',
+    materialCategory: item.materialCategory || item.category || '-',
+    materialLibrary: item.materialLibrary?.name || item.materialLibraryName || '-',
+    materialName,
+    brand: item.brand || item.specifications || '-',
     quantity,
     receivedQuantity: getReceivedQuantity(po, item.id),
     rate,
@@ -52,7 +56,7 @@ const getRows = (pos) => pos.flatMap(po => (po.items || []).map(item => {
     tcRate: item.tcRate || '-',
     conversionFactor: item.conversionFactor || '-',
     originalQuantity: item.originalQuantity ?? quantity,
-    specification: item.specification || '-'
+    specification: item.specifications || item.specification || '-'
   };
 }));
 
@@ -85,7 +89,8 @@ export default function POMaterialBrowse() {
   const vendors = useMemo(() => {
     const uniqueVendors = new Map();
     pos.forEach(po => {
-      if (po.vendorId) uniqueVendors.set(po.vendorId, po.vendor?.name || 'Unknown vendor');
+      const vendorId = po.supplierId || po.vendorId || '';
+      if (vendorId) uniqueVendors.set(vendorId, po.supplierName || po.vendor?.name || 'Unknown vendor');
     });
     return [...uniqueVendors.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [pos]);
@@ -150,7 +155,7 @@ export default function POMaterialBrowse() {
                 <tr>
                   <th>Vendor</th>
                   <th>PO No</th>
-                  <th>Material Category</th>
+                  <th>Material Library</th>
                   <th>Material Name</th>
                   <th>Brand</th>
                   <th>Qty</th>
@@ -181,7 +186,7 @@ export default function POMaterialBrowse() {
                       <div className="pur-font-semibold">{row.poNo}</div>
                       <div className="pur-text-xs pur-text-muted">{row.poDate ? new Date(row.poDate).toLocaleDateString() : '-'}</div>
                     </td>
-                    <td>{row.materialCategory}</td>
+                    <td>{row.materialLibrary}</td>
                     <td className="pur-font-medium">{row.materialName}</td>
                     <td>{row.brand}</td>
                     <td>{formatNumber(row.quantity)}</td>

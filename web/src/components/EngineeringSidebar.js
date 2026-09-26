@@ -2,11 +2,11 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  Building2, BookOpen, Layers, Briefcase, FileText, Settings, 
-  ChevronDown, ChevronRight, Calculator, Calendar, 
-  Wrench, ThumbsUp, Database, FileBarChart, LogOut, Search, X, 
-  ChevronLeft, Sparkles, Folder, CalendarClock, MapPin, Receipt, 
+import {
+  Building2, BookOpen, Layers, Briefcase, FileText, Settings,
+  ChevronDown, ChevronRight, Calculator, Calendar,
+  Wrench, ThumbsUp, Database, FileBarChart, LogOut, Search, X,
+  ChevronLeft, Sparkles, Folder, CalendarClock, MapPin, Receipt,
   Activity, Users
 } from 'lucide-react';
 import Dialog from './Dialog';
@@ -22,7 +22,7 @@ export default function EngineeringSidebar({ isCollapsed: propCollapsed, setIsCo
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
   const setIsCollapsed = propSetIsCollapsed || setLocalCollapsed;
-  
+
   const [expanded, setExpanded] = useState({
     projects: true,
     planning: true,
@@ -82,17 +82,7 @@ export default function EngineeringSidebar({ isCollapsed: propCollapsed, setIsCo
         { name: 'Progress Variance', path: '/engineering/planning/variance' },
       ]
     },
-    {
-      id: 'site',
-      label: 'Site Management',
-      icon: MapPin,
-      items: [
-        { name: 'Site Dashboard', path: '/engineering/site/dashboard' },
-        { name: 'Daily Progress (DPR)', path: '/engineering/site/dpr' },
-        { name: 'Material Requisition', path: '/engineering/site/material' },
-        { name: 'Quality & Safety', path: '/engineering/site/quality' },
-      ]
-    },
+
     {
       id: 'billing',
       label: 'Project Billing',
@@ -126,8 +116,8 @@ export default function EngineeringSidebar({ isCollapsed: propCollapsed, setIsCo
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
-      <div 
-        className="sidebar-toggle-btn" 
+      <div
+        className="sidebar-toggle-btn"
         onClick={() => setIsCollapsed(!isCollapsed)}
         title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         aria-label="Toggle sidebar"
@@ -152,8 +142,8 @@ export default function EngineeringSidebar({ isCollapsed: propCollapsed, setIsCo
           )}
         </Link>
         {!isCollapsed && (
-          <button 
-            className="sidebar-header-btn" 
+          <button
+            className="sidebar-header-btn"
             title="Switch Module"
             onClick={() => router.push('/portal')}
           >
@@ -166,7 +156,7 @@ export default function EngineeringSidebar({ isCollapsed: propCollapsed, setIsCo
         <div className="sidebar-search-box">
           <div className="sidebar-search-inner">
             <Search size={14} color="#64748b" />
-            <input 
+            <input
               type="text"
               placeholder="Search execution..."
               value={searchQuery}
@@ -183,9 +173,9 @@ export default function EngineeringSidebar({ isCollapsed: propCollapsed, setIsCo
       )}
 
       <nav className="sidebar-nav">
-        <Link 
-          href="/portal" 
-          className="nav-item" 
+        <Link
+          href="/portal"
+          className="nav-item"
           title="Switch Module"
         >
           <div className="nav-item-left">
@@ -228,7 +218,7 @@ export default function EngineeringSidebar({ isCollapsed: propCollapsed, setIsCo
 
             return (
               <div key={section.id} style={{ marginTop: '2px' }}>
-                <div 
+                <div
                   className={`nav-item ${hasActiveChild ? 'active' : ''}`}
                   onClick={() => toggleSection(section.id)}
                   title={section.label}
@@ -277,8 +267,8 @@ export default function EngineeringSidebar({ isCollapsed: propCollapsed, setIsCo
               <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#7e22ce' }}>
                 <Sparkles size={13} color="#7e22ce" /> Alert
               </span>
-              <button 
-                className="sidebar-widget-close" 
+              <button
+                className="sidebar-widget-close"
                 onClick={() => setShowWidget(false)}
                 title="Dismiss"
               >
@@ -304,8 +294,8 @@ export default function EngineeringSidebar({ isCollapsed: propCollapsed, setIsCo
               <span className="sidebar-user-email">admin@cecube.com</span>
             </div>
           </div>
-          <button 
-            className="sidebar-logout-icon-btn" 
+          <button
+            className="sidebar-logout-icon-btn"
             title="Sign out"
             onClick={() => setShowLogoutDialog(true)}
           >

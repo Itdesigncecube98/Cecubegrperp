@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { FileText, Send, ChevronDown, ChevronUp, AlertCircle, RefreshCw } from 'lucide-react';
+import { FileText, Send, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Eye, Pencil } from 'lucide-react';
 import '../purchase.css';
 
 const STATUS_STYLES = {
@@ -8,6 +8,10 @@ const STATUS_STYLES = {
   PARTIAL: { bg: '#dbeafe', text: '#1d4ed8', label: 'Partially Paid' },
   PAID:    { bg: '#d1fae5', text: '#047857', label: 'Paid' },
 };
+const displayBillNo = (value, billDate) => String(value || '').replace(/^VB-0*(\d+)$/i, (_, number) => {
+  const year = billDate ? new Date(billDate).getFullYear() : new Date().getFullYear();
+  return `PB-${year}-${String(Number(number)).padStart(4, '0')}`;
+});
 
 export default function PurchaseBillsPage() {
   const [approvedPOs, setApprovedPOs] = useState([]);
@@ -17,18 +21,27 @@ export default function PurchaseBillsPage() {
   const [activeTab, setActiveTab]     = useState('create');
   const [expandedPO, setExpandedPO]   = useState(null);
   const [showBillForm, setShowBillForm] = useState(null);
+  const [editingBillId, setEditingBillId] = useState(null);
+  const [billMode, setBillMode] = useState('create');
+  const [billPreviewLoading, setBillPreviewLoading] = useState(false);
   const [form, setForm] = useState({
     billDate: new Date().toISOString().split('T')[0],
-    grossAmount: '',
-    tdsAmount: '0',
     vendorInvoiceNo: '',
+    taxableAmount: '',
+    cgstAmount: '0',
+    sgstAmount: '0',
+    cartageCharges: '0',
+    roundOff: '0',
+    tdsAmount: '0',
+    companyPan: '',
+    companyBankName: '',
+    companyBankAccount: '',
+    companyBankIfsc: '',
     remarks: ''
   });
   const [submitting, setSubmitting]   = useState(false);
   const [successMsg, setSuccessMsg]   = useState('');
   const [errorMsg, setErrorMsg]       = useState('');
-
-  useEffect(() => { fetchApprovedPOs(); fetchBills(); }, []);
 
   const fetchApprovedPOs = async () => {
     try {
@@ -50,46 +63,167 @@ export default function PurchaseBillsPage() {
     finally { setBillsLoading(false); }
   };
 
-  const openBillForm = (po) => {
-    setShowBillForm(po);
-    setForm({
-      billDate: new Date().toISOString().split('T')[0],
-      grossAmount: String(po.totalAmount || ''),
-      tdsAmount: '0',
-      vendorInvoiceNo: '',
-      remarks: `Bill for PO ${po.poNumber} — ${po.supplierName}`
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch('/api/purchase/po?status=APPROVED').then(response => response.json()),
+      fetch('/api/purchase/bills').then(response => response.json()),
+    ]).then(([poData, billData]) => {
+      if (cancelled) return;
+      setApprovedPOs(Array.isArray(poData) ? poData : []);
+      setBills(Array.isArray(billData) ? billData : []);
+    }).catch(() => {
+      if (!cancelled) {
+        setApprovedPOs([]);
+        setBills([]);
+      }
+    }).finally(() => {
+      if (!cancelled) {
+        setLoading(false);
+        setBillsLoading(false);
+      }
     });
+    return () => { cancelled = true; };
+  }, []);
+
+  const openSavedBill = async (bill, mode) => {
+    setBillPreviewLoading(true);
     setErrorMsg('');
+    try {
+      const response = await fetch(`/api/purchase/bills?id=${encodeURIComponent(bill.id)}`, { cache: 'no-store' });
+      const saved = await response.json();
+      if (!response.ok) throw new Error(saved.error || 'Unable to open bill.');
+      const po = saved.po || {};
+      setEditingBillId(saved.id);
+      setBillMode(mode);
+      setShowBillForm({ ...po, id: po.id, billNo: saved.billNo, poNumber: saved.poNo || po.poNumber || '', supplierName: po.supplierName || '', items: saved.items || [], billRecord: saved });
+      setForm({
+        billDate: saved.billDate ? new Date(saved.billDate).toISOString().slice(0, 10) : '',
+        vendorInvoiceNo: saved.vendorInvoiceNo || `INV-${new Date(saved.billDate).getFullYear()}-${String(Number(String(saved.billNo || '').match(/(\d+)$/)?.[1]) || 1).padStart(4, '0')}`,
+        taxableAmount: Number(saved.taxableAmount || 0).toFixed(2),
+        cgstAmount: Number(saved.cgstAmount || 0).toFixed(2),
+        sgstAmount: Number(saved.sgstAmount || 0).toFixed(2),
+        cartageCharges: String(saved.cartageCharges || 0),
+        roundOff: String(saved.roundOff || 0),
+        tdsAmount: String(saved.tdsAmount || 0),
+        companyPan: saved.companyPan || saved.buyerPan || 'AAJCC2203M',
+        companyBankName: saved.companyBankName || '',
+        companyBankAccount: saved.companyBankAccount || '',
+        companyBankIfsc: saved.companyBankIfsc || '',
+        remarks: saved.remarks || '',
+        vendorName: po.supplierName || '',
+        vendorAddress: po.supplierAddress || '',
+        vendorGstin: po.supplierGstin || '',
+        buyerName: 'CECUBE ENGINEERING INDIA PRIVATE LIMITED',
+        buyerAddress: 'A-121&A-122, NEW PALAM VIHAR, Near St. Soldier School\nState : 06Gurugram, Haryana,',
+        buyerGstin: '06AAJCC2203M1ZT',
+        buyerPan: 'AAJCC2203M',
+        shippedTo: po.projectName || po.project?.name || po.deliveryAddress || '',
+      });
+    } catch (error) {
+      setErrorMsg(error.message || 'Unable to open bill.');
+    } finally {
+      setBillPreviewLoading(false);
+    }
+  };
+
+  const openBillForm = async (po) => {
+    setEditingBillId(null);
+    setBillMode('create');
+    setBillPreviewLoading(true);
+    setErrorMsg('');
+    try {
+      const response = await fetch(`/api/purchase/bills?previewPoNumber=${encodeURIComponent(po.poNumber)}`, { cache: 'no-store' });
+      const preview = await response.json();
+      if (!response.ok) throw new Error(preview.error || 'Unable to calculate eligible PO quantities.');
+      if (!preview.items?.length || preview.grossAmount <= 0) {
+        setShowBillForm(null);
+        setErrorMsg('No accepted quantities are available to bill. Rejected and failed-GTN quantities are excluded.');
+        return;
+      }
+
+      setShowBillForm({ ...po, billNo: preview.billNo, items: preview.items, billablePreview: preview });
+      setForm({
+        billDate: new Date().toISOString().split('T')[0],
+        vendorInvoiceNo: preview.invoiceNo,
+        taxableAmount: Number(preview.taxableAmount).toFixed(2),
+        cgstAmount: Number(preview.cgstAmount).toFixed(2),
+        sgstAmount: Number(preview.sgstAmount).toFixed(2),
+        cartageCharges: '0',
+        roundOff: '0',
+        tdsAmount: '0',
+        companyPan: 'AAJCC2203M',
+        companyBankName: '',
+        companyBankAccount: '',
+        companyBankIfsc: '',
+        remarks: `Bill for PO ${po.poNumber} — ${po.supplierName}`,
+        vendorName: po.supplierName || '',
+        vendorAddress: po.supplierAddress || '',
+        vendorGstin: po.supplierGstin || '',
+        buyerName: 'CECUBE ENGINEERING INDIA PRIVATE LIMITED',
+        buyerAddress: 'A-121&A-122, NEW PALAM VIHAR, Near St. Soldier School\nState : 06Gurugram, Haryana,',
+        buyerGstin: '06AAJCC2203M1ZT',
+        buyerPan: 'AAJCC2203M',
+        shippedTo: po.projectName || po.project?.name || po.deliveryAddress || '',
+      });
+    } catch (error) {
+      setErrorMsg(error.message || 'Unable to calculate eligible PO quantities.');
+    } finally {
+      setBillPreviewLoading(false);
+    }
   };
 
   const submitBill = async () => {
-    if (!showBillForm || !form.billDate || !form.grossAmount) {
-      setErrorMsg('Bill Date and Gross Amount are required.');
+    if (!showBillForm || !form.billDate || !form.taxableAmount) {
+      setErrorMsg('Bill Date and Taxable Amount are required.');
       return;
     }
     try {
       setSubmitting(true);
       setErrorMsg('');
+
+      const taxable = parseFloat(form.taxableAmount) || 0;
+      const cgst = parseFloat(form.cgstAmount) || 0;
+      const sgst = parseFloat(form.sgstAmount) || 0;
+      const cartage = parseFloat(form.cartageCharges) || 0;
+      const roundOff = parseFloat(form.roundOff) || 0;
+      const totalAmount = taxable + cgst + sgst + cartage + roundOff;
+      const tds = parseFloat(form.tdsAmount) || 0;
+      const netAmount = totalAmount - tds;
+
       const res = await fetch('/api/purchase/bills', {
-        method: 'POST',
+        method: editingBillId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: editingBillId,
           poNumber:    showBillForm.poNumber,
           supplierId:  showBillForm.supplierId,
           supplierName: showBillForm.supplierName,
           companyId:   showBillForm.companyId,
           billDate:    form.billDate,
-          grossAmount: parseFloat(form.grossAmount),
-          tdsAmount:   parseFloat(form.tdsAmount) || 0,
           vendorInvoiceNo: form.vendorInvoiceNo,
+          taxableAmount: taxable,
+          cgstAmount:  cgst,
+          sgstAmount:  sgst,
+          cartageCharges: cartage,
+          roundOff:    roundOff,
+          grossAmount: totalAmount,
+          tdsAmount:   tds,
+          netAmount:   netAmount,
+          companyPan:  form.companyPan,
+          companyBankName: form.companyBankName,
+          companyBankAccount: form.companyBankAccount,
+          companyBankIfsc: form.companyBankIfsc,
           remarks:     form.remarks
         })
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccessMsg(`Bill ${data.bill.billNo} created and sent to accounts!`);
+        setSuccessMsg(editingBillId ? `Bill ${displayBillNo(data.billNo, data.billDate)} updated.` : `Bill ${displayBillNo(data.bill.billNo, data.bill.billDate)} created and sent to accounts!`);
         setShowBillForm(null);
-        fetchApprovedPOs();
+        setEditingBillId(null);
+        setBillMode('create');
+        if (!editingBillId) fetchApprovedPOs();
         fetchBills();
         setActiveTab('history');
       } else {
@@ -99,10 +233,24 @@ export default function PurchaseBillsPage() {
     finally { setSubmitting(false); }
   };
 
-  const gross = parseFloat(form.grossAmount) || 0;
-  const tds   = parseFloat(form.tdsAmount) || 0;
-  const net   = gross - tds;
-  const fmt   = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const handlePrint = () => {
+    const doc = document.getElementById('invoice-document');
+    if (doc) {
+      doc.querySelectorAll('input').forEach(el => el.setAttribute('value', el.value));
+      doc.querySelectorAll('textarea').forEach(el => { el.textContent = el.value; });
+    }
+    window.print();
+  };
+
+  const taxable = parseFloat(form.taxableAmount) || 0;
+  const cgst = parseFloat(form.cgstAmount) || 0;
+  const sgst = parseFloat(form.sgstAmount) || 0;
+  const cartage = parseFloat(form.cartageCharges) || 0;
+  const roundOff = parseFloat(form.roundOff) || 0;
+  const totalAmount = taxable + cgst + sgst + cartage + roundOff;
+  const tds = parseFloat(form.tdsAmount) || 0;
+  const net = totalAmount - tds;
+  const fmt = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
   return (
     <div className="pur-page-container">
@@ -180,8 +328,13 @@ export default function PurchaseBillsPage() {
       </div>
 
       {/* ─── Generate Bill Tab ─── */}
-      {activeTab === 'create' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+{activeTab === 'create' && (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    {errorMsg && !showBillForm && (
+      <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '12px 16px', borderRadius: '8px', fontSize: '14px', fontWeight: 500 }}>
+        ⚠️ {errorMsg}
+      </div>
+    )}
           {loading ? (
             <div className="pur-loading"><div className="pur-spinner" /></div>
           ) : approvedPOs.length === 0 ? (
@@ -217,9 +370,10 @@ export default function PurchaseBillsPage() {
                       <button
                         className="pur-btn pur-btn-primary"
                         style={{ fontSize: '13px', gap: '6px' }}
+                        disabled={billPreviewLoading}
                         onClick={(e) => { e.stopPropagation(); openBillForm(po); }}
                       >
-                        <FileText size={13} /> Generate Bill
+                        <FileText size={13} /> {billPreviewLoading ? 'Calculating...' : 'Generate Bill'}
                       </button>
                       <button className="pur-icon-btn" style={{ color: '#94a3b8' }}>
                         {isExp ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -248,7 +402,7 @@ export default function PurchaseBillsPage() {
                                 <td>{item.sNo || idx + 1}</td>
                                 <td style={{ fontWeight: 500 }}>{item.description}</td>
                                 <td>{item.hsnCode || '—'}</td>
-                                <td style={{ textAlign: 'right' }}>{item.quantity} {item.unit}</td>
+                                <td style={{ textAlign: 'right' }}>{fmt(item.quantity)} {item.unit}</td>
                                 <td style={{ textAlign: 'right' }}>₹{fmt(item.rate)}</td>
                                 <td style={{ textAlign: 'right' }}>{item.gstPercent}%</td>
                                 <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{fmt(item.totalAmount)}</td>
@@ -299,9 +453,13 @@ export default function PurchaseBillsPage() {
                     <th>PO Reference</th>
                     <th>Remarks</th>
                     <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Gross</th>
+                    <th style={{ textAlign: 'right' }}>Taxable</th>
+                    <th style={{ textAlign: 'right' }}>CGST</th>
+                    <th style={{ textAlign: 'right' }}>SGST</th>
+                    <th style={{ textAlign: 'right' }}>Total</th>
                     <th style={{ textAlign: 'right' }}>TDS</th>
                     <th style={{ textAlign: 'right' }}>Net Payable</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -309,24 +467,33 @@ export default function PurchaseBillsPage() {
                     const st = STATUS_STYLES[bill.status] || STATUS_STYLES.UNPAID;
                     return (
                       <tr key={bill.id}>
-                        <td className="pur-font-semibold">{bill.billNo}</td>
+                        <td className="pur-font-semibold">{displayBillNo(bill.billNo, bill.billDate)}</td>
                         <td>{new Date(bill.billDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                         <td>
                           {bill.poNo
                             ? <span style={{ background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500 }}>PO: {bill.poNo}</span>
                             : <span className="pur-text-muted">—</span>}
                         </td>
-                        <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b', fontSize: '13px' }}>
+                        <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b', fontSize: '13px' }}>
                           {bill.remarks || '—'}
                         </td>
                         <td>
                           <span className="pur-badge" style={{ background: st.bg, color: st.text }}>{st.label}</span>
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: 500 }}>₹{fmt(bill.grossAmount)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 500 }}>₹{fmt(bill.taxableAmount || 0)}</td>
+                        <td style={{ textAlign: 'right', color: '#6366f1' }}>₹{fmt(bill.cgstAmount || 0)}</td>
+                        <td style={{ textAlign: 'right', color: '#6366f1' }}>₹{fmt(bill.sgstAmount || 0)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{fmt(bill.grossAmount)}</td>
                         <td style={{ textAlign: 'right', color: Number(bill.tdsAmount) > 0 ? '#ef4444' : '#94a3b8' }}>
                           {Number(bill.tdsAmount) > 0 ? `−₹${fmt(bill.tdsAmount)}` : '—'}
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#059669' }}>₹{fmt(bill.netAmount)}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button type="button" onClick={() => openSavedBill(bill, 'view')} title="Open bill" aria-label={`Open bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', color: '#334155', cursor: 'pointer' }}><Eye size={14} /> Open</button>
+                            <button type="button" onClick={() => openSavedBill(bill, 'edit')} title="Edit bill" aria-label={`Edit bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #bfdbfe', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}><Pencil size={14} /> Edit</button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -337,107 +504,305 @@ export default function PurchaseBillsPage() {
         </div>
       )}
 
-      {/* ─── Bill Form Modal ─── */}
+      {/* ─── Bill WYSIWYG Form Modal ─── */}
       {showBillForm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowBillForm(null); }}>
-          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '520px', padding: '28px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.8)', display: 'flex', flexDirection: 'column', alignItems: 'center', overflowY: 'auto', zIndex: 9999, padding: '20px 0' }}>
 
-            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1e293b', margin: '0 0 4px' }}>🧾 Generate Purchase Bill</h2>
-            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px' }}>Enter final invoice details and send to accounts</p>
+          <style>{`
+            .inv-doc-input { border: 1px solid transparent; background: transparent; padding: 2px 4px; font-family: inherit; font-size: inherit; width: 100%; transition: all 0.2s; outline: none; }
+            .inv-doc-input:hover { border-color: #cbd5e1; background: #f8fafc; }
+            .inv-doc-input:focus { border-color: #3b82f6; background: #fff; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
 
-            {/* PO Summary */}
-            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            .inv-table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; box-sizing: border-box; }
+            .inv-table th, .inv-table td { border: 1px solid #000; padding: 4px; vertical-align: top; box-sizing: border-box; overflow-wrap: anywhere; }
+            .inv-table th { font-weight: bold; text-align: center; font-size: 11px; }
+            .invoice-footer { display: grid; grid-template-columns: 60% 40%; min-height: 140px; border: 1px solid #000; border-top: 0; box-sizing: border-box; font-size: 10px; }
+            .invoice-footer-left, .invoice-footer-right { min-width: 0; box-sizing: border-box; padding: 6px; }
+            .invoice-footer-left { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; }
+            .invoice-footer-right { display: flex; flex-direction: column; border-left: 1px solid #000; }
+            .invoice-bank-table, .invoice-bank-table tbody, .invoice-bank-table tr, .invoice-bank-table td { background: #fff !important; border: 0 !important; }
+            .invoice-bank-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 10px; }
+            .invoice-bank-table td { padding: 4px 2px; vertical-align: middle; line-height: 1.25; }
+            .invoice-bank-label { width: 72px; white-space: nowrap; }
+            .invoice-footer .inv-doc-input { box-sizing: border-box; min-width: 0; }
+            .invoice-declaration { line-height: 1.25; overflow-wrap: anywhere; }
+            .invoice-signature { display: flex; flex: 1; flex-direction: column; justify-content: flex-end; align-items: flex-end; margin-top: 14px; text-align: center; }
+
+            @media print {
+              @page { size: A4 portrait; margin: 8mm; }
+              html, body { width: 100%; margin: 0 !important; padding: 0 !important; }
+              body * { visibility: hidden; }
+              #invoice-document, #invoice-document * { visibility: visible; }
+              #invoice-document { position: absolute; left: 0; top: 0; box-sizing: border-box !important; box-shadow: none !important; margin: 0 !important; width: 194mm !important; min-height: 281mm !important; padding: 8mm !important; overflow: visible !important; }
+              #invoice-document > table { page-break-inside: avoid; }
+              .no-print { display: none !important; }
+            }
+          `}</style>
+
+          {/* Action Bar */}
+          <div className="no-print" style={{ width: '210mm', display: 'flex', justifyContent: 'space-between', marginBottom: '16px', background: '#fff', padding: '12px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '16px', color: '#1e293b' }}>Generate Purchase Bill</h2>
+              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Enter invoice details and save to accounts.</p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              {errorMsg && <span style={{ color: '#dc2626', fontSize: '12px', fontWeight: 'bold' }}>{errorMsg}</span>}
+              <button onClick={() => setShowBillForm(null)} style={{ padding: '8px 16px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
+              <button onClick={handlePrint} style={{ padding: '8px 16px', background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Print</button>
+              <button onClick={submitBill} disabled={submitting || !form.billDate || !form.taxableAmount} style={{ padding: '8px 16px', background: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {submitting ? 'Saving...' : 'Save Bill'} <Send size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Document Frame */}
+          <div id="invoice-document" style={{ background: '#fff', boxSizing: 'border-box', width: '210mm', minHeight: '297mm', padding: '10mm', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', fontFamily: 'Arial, sans-serif', color: '#000', fontSize: '11px', position: 'relative' }}>
+
+            <div style={{ position: 'relative', textAlign: 'center', padding: '2px 90px 7px', marginBottom: 8, borderBottom: '1px solid #000' }}>
+              <div style={{ fontWeight: 'bold', fontSize: 14 }}>GST INVOICE</div>
+              <div style={{ fontSize: 10, marginTop: 2 }}>Original for Buyer</div>
+              <div style={{ fontSize: 9, marginTop: 2 }}>Purchase Bill No: {displayBillNo(showBillForm.billNo, showBillForm.billRecord?.billDate)}</div>
+              <img src="/logo.png" alt="CeCube Group" style={{ position: 'absolute', right: 0, top: 0, width: 70, maxHeight: 30, objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />
+            </div>
+
+            <div style={{ border: '1px solid #000', display: 'flex' }}>
+
+              {/* Left Column: Vendor & Buyer */}
+              <div style={{ width: '50%', boxSizing: 'border-box', borderRight: '1px solid #000' }}>
+                <div style={{ padding: '8px', borderBottom: '1px solid #000', display: 'flex', minHeight: '90px' }}>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <input type="text" className="inv-doc-input" style={{ fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase', padding: '0 4px', marginLeft: '-4px' }} value={form.vendorName} onChange={e => setForm(f => ({ ...f, vendorName: e.target.value }))} />
+                    <div style={{ display: 'flex' }}>
+                      <span style={{ color: '#4b5563', paddingTop: '2px' }}>Address:</span>
+                      <textarea className="inv-doc-input" rows="2" style={{ flex: 1, padding: '0 4px', resize: 'none' }} value={form.vendorAddress} onChange={e => setForm(f => ({ ...f, vendorAddress: e.target.value }))} />
+                    </div>
+                    <div style={{ display: 'flex', marginTop: '4px', fontWeight: 'bold' }}>
+                      <span style={{ paddingTop: '2px' }}>GSTIN :</span>
+                      <input type="text" className="inv-doc-input" style={{ flex: 1, fontWeight: 'bold', textTransform: 'uppercase', padding: '0 4px' }} value={form.vendorGstin} onChange={e => setForm(f => ({ ...f, vendorGstin: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ padding: '4px', minHeight: '110px' }}>
+                  <div style={{ fontSize: '10px', color: '#4b5563' }}>Buyer</div>
+                  <input type="text" className="inv-doc-input" style={{ fontWeight: 'bold', fontSize: '12px', padding: '0 4px', marginLeft: '-4px', width: 'calc(100% + 4px)' }} value={form.buyerName} onChange={e => setForm(f => ({ ...f, buyerName: e.target.value }))} />
+                  <textarea className="inv-doc-input" rows="2" style={{ padding: '0 4px', marginLeft: '-4px', resize: 'none', width: 'calc(100% + 4px)' }} value={form.buyerAddress} onChange={e => setForm(f => ({ ...f, buyerAddress: e.target.value }))} />
+                  <div style={{ display: 'flex', marginTop: '4px' }}>
+                    <span style={{ paddingTop: '2px' }}>GSTIN / UIN :</span>
+                    <input type="text" className="inv-doc-input" style={{ flex: 1, padding: '0 4px' }} value={form.buyerGstin} onChange={e => setForm(f => ({ ...f, buyerGstin: e.target.value }))} />
+                  </div>
+                  <div style={{ display: 'flex' }}>
+                    <span style={{ paddingTop: '2px' }}>PAN / IT No :</span>
+                    <input type="text" className="inv-doc-input" style={{ flex: 1, padding: '0 4px' }} value={form.buyerPan} onChange={e => setForm(f => ({ ...f, buyerPan: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Invoice Details */}
+              <div style={{ width: '50%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', borderBottom: '1px solid #000' }}>
+                  <div style={{ width: '50%', boxSizing: 'border-box', borderRight: '1px solid #000', padding: '4px' }}>
+                    <div style={{ fontSize: '9px' }}>Invoice No.</div>
+                    <input type="text" className="inv-doc-input" style={{ fontWeight: 'bold' }} value={form.vendorInvoiceNo} readOnly />
+                  </div>
+                  <div style={{ width: '50%', boxSizing: 'border-box', padding: '4px' }}>
+                    <div style={{ fontSize: '9px' }}>Date</div>
+                    <input type="date" className="inv-doc-input" style={{ fontWeight: 'bold' }} value={form.billDate} onChange={e => setForm(f => ({ ...f, billDate: e.target.value }))} />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', borderBottom: '1px solid #000' }}>
+                  <div style={{ width: '50%', boxSizing: 'border-box', borderRight: '1px solid #000', padding: '4px' }}>
+                    <div style={{ fontSize: '9px' }}>Delivery Note</div>
+                    <input type="text" className="inv-doc-input" placeholder="-" />
+                  </div>
+                  <div style={{ width: '50%', boxSizing: 'border-box', padding: '4px' }}>
+                    <div style={{ fontSize: '9px' }}>Terms Of Payment</div>
+                    <input type="text" className="inv-doc-input" placeholder="-" />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', borderBottom: '1px solid #000' }}>
+                  <div style={{ width: '50%', boxSizing: 'border-box', borderRight: '1px solid #000', padding: '4px' }}>
+                    <div style={{ fontSize: '9px' }}>Buyer Order No (PO)</div>
+                    <div style={{ fontWeight: 'bold', padding: '2px 4px' }}>{showBillForm.poNumber}</div>
+                  </div>
+                  <div style={{ width: '50%', boxSizing: 'border-box', padding: '4px' }}>
+                    <div style={{ fontSize: '9px' }}>Dated</div>
+                    <div style={{ padding: '2px 4px' }}>{new Date(showBillForm.poDate).toLocaleDateString('en-GB')}</div>
+                  </div>
+                </div>
+
+                <div style={{ padding: '4px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ fontSize: '10px' }}>Shipped to :</div>
+                  <textarea className="inv-doc-input" style={{ flex: 1, fontWeight: 'bold', resize: 'none', padding: '0 4px', marginLeft: '-4px' }} value={form.shippedTo} onChange={e => setForm(f => ({ ...f, shippedTo: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+
+            {/* Items Table */}
+            <table className="inv-table" style={{ borderTop: 'none', borderBottom: 'none' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: '6%', borderTop: 'none' }}>SR No.</th>
+                  <th style={{ width: '43%', borderTop: 'none' }}>Description of Goods</th>
+                  <th style={{ width: '10%', borderTop: 'none' }}>HSN/SAC</th>
+                  <th style={{ width: '10%', borderTop: 'none' }}>Quantity</th>
+                  <th style={{ width: '10%', borderTop: 'none' }}>Rate</th>
+                  <th style={{ width: '7%', borderTop: 'none' }}>Gst%</th>
+                  <th style={{ width: '14%', borderTop: 'none' }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(showBillForm.items || []).map((item, idx) => (
+                  <tr key={idx}>
+                    <td style={{ textAlign: 'center', borderBottom: 'none', borderTop: 'none' }}>{idx + 1}</td>
+                    <td style={{ borderBottom: 'none', borderTop: 'none', fontWeight: 'bold' }}>{item.description}</td>
+                    <td style={{ textAlign: 'center', borderBottom: 'none', borderTop: 'none' }}>{item.hsnCode || '—'}</td>
+                    <td style={{ textAlign: 'right', borderBottom: 'none', borderTop: 'none' }}>{fmt(item.quantity)} {item.unit}</td>
+                    <td style={{ textAlign: 'right', borderBottom: 'none', borderTop: 'none' }}>{item.rate?.toFixed(2)}</td>
+                    <td style={{ textAlign: 'right', borderBottom: 'none', borderTop: 'none' }}>{item.gstPercent}%</td>
+                    <td style={{ textAlign: 'right', borderBottom: 'none', borderTop: 'none' }}>{item.totalAmount?.toFixed(2)}</td>
+                  </tr>
+                ))}
+                {/* Empty padding rows to stretch the table a bit */}
+                <tr><td style={{ borderTop: 'none', borderBottom: 'none', height: '40px' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td></tr>
+
+                {/* Manual Editable Rows for Freight/Roundoff */}
+                <tr>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none', textAlign: 'right', fontWeight: 'bold', paddingRight: '20px' }}>CARTAGE</td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}><input type="number" className="inv-doc-input" style={{ textAlign: 'right', fontWeight: 'bold' }} value={form.cartageCharges} onChange={e => setForm(f => ({ ...f, cartageCharges: e.target.value }))} /></td>
+                </tr>
+                <tr>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none', textAlign: 'right', fontWeight: 'bold', paddingRight: '20px' }}>Roundoff</td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}></td>
+                  <td style={{ borderTop: 'none', borderBottom: 'none' }}><input type="number" className="inv-doc-input" style={{ textAlign: 'right', fontWeight: 'bold' }} value={form.roundOff} onChange={e => setForm(f => ({ ...f, roundOff: e.target.value }))} /></td>
+                </tr>
+
+                {/* Total Row */}
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12px' }}>Total</td>
+                  <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px' }}>{totalAmount.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Bottom Tax Breakdown Table */}
+            <table className="inv-table" style={{ borderTop: 'none', marginTop: '-1px' }}>
+              <thead>
+                <tr>
+                  <th rowSpan="2" style={{ borderTop: 'none' }}>HSN/SAC</th>
+                  <th rowSpan="2" style={{ borderTop: 'none' }}>Taxable<br/>Value</th>
+                  <th colSpan="2" style={{ borderTop: 'none' }}>CGST Tax</th>
+                  <th colSpan="2" style={{ borderTop: 'none' }}>SGST TAX</th>
+                  <th rowSpan="2" style={{ borderTop: 'none' }}>Total<br/>Tax Amount</th>
+                </tr>
+                <tr>
+                  <th>Rate</th><th>Amount</th><th>Rate</th><th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div style={{ color: '#64748b', fontSize: '10px' }}>(Aggregated)</div>
+                  </td>
+                  <td>
+                    <input type="number" className="inv-doc-input" style={{ textAlign: 'right', fontWeight: 'bold' }} value={form.taxableAmount} onChange={e => setForm(f => ({ ...f, taxableAmount: e.target.value }))} />
+                  </td>
+                  <td style={{ textAlign: 'right' }}>9%</td>
+                  <td>
+                    <input type="number" className="inv-doc-input" style={{ textAlign: 'right' }} value={form.cgstAmount} onChange={e => setForm(f => ({ ...f, cgstAmount: e.target.value }))} />
+                  </td>
+                  <td style={{ textAlign: 'right' }}>9%</td>
+                  <td>
+                    <input type="number" className="inv-doc-input" style={{ textAlign: 'right' }} value={form.sgstAmount} onChange={e => setForm(f => ({ ...f, sgstAmount: e.target.value }))} />
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                    {(parseFloat(form.cgstAmount || 0) + parseFloat(form.sgstAmount || 0)).toFixed(2)}
+                  </td>
+                </tr>
+                {/* TDS Deduction Row */}
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'right', fontWeight: 'bold', color: '#ef4444' }}>TDS Deduction:</td>
+                  <td><input type="number" className="inv-doc-input" style={{ textAlign: 'right', color: '#ef4444', fontWeight: 'bold' }} value={form.tdsAmount} onChange={e => setForm(f => ({ ...f, tdsAmount: e.target.value }))} /></td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Footer Details */}
+            <div className="invoice-footer">
+              <div className="invoice-footer-left">
                 <div>
-                  <div style={{ fontSize: '16px', fontWeight: 700, color: '#059669' }}>{showBillForm.poNumber}</div>
-                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '3px' }}>{showBillForm.supplierName}</div>
-                  {showBillForm.projectName && <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>🏗 {showBillForm.projectName}</div>}
+                  <div style={{ fontSize: '10px', color: '#4b5563' }}>Amount Chargeable (in words)</div>
+                  <div style={{ fontWeight: 'bold', fontStyle: 'italic' }}>
+                    INR {totalAmount > 0 ? (totalAmount).toLocaleString('en-IN') : 'ZERO'} ONLY.
+                  </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em' }}>PO Value</div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>₹{fmt(showBillForm.totalAmount)}</div>
+
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ flex: '0 0 100px' }}>Company&apos;s PAN:</span>
+                    <input type="text" className="inv-doc-input" style={{ flex: '0 0 120px', width: 120, maxWidth: '55%', fontWeight: 'bold', textTransform: 'uppercase' }} value={form.companyPan} onChange={e => setForm(f => ({ ...f, companyPan: e.target.value.toUpperCase() }))} placeholder="PAN No" />
+                  </div>
+                  <div style={{ textDecoration: 'underline', marginTop: '4px' }}>Declaration</div>
+                  <div className="invoice-declaration" style={{ fontSize: '10px', fontStyle: 'italic' }}>
+                    We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {errorMsg && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px 14px', color: '#b91c1c', fontSize: '13px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <AlertCircle size={13} /> {errorMsg}
-              </div>
-            )}
+              <div className="invoice-footer-right">
+                <div style={{ textDecoration: 'underline' }}>Company&apos;s Bank Details</div>
+                <table className="invoice-bank-table" style={{ marginTop: '4px' }}>
+                  <tbody>
+                    <tr>
+                      <td className="invoice-bank-label">Bank Name</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>:</span>
+                          <input type="text" className="inv-doc-input" style={{ flex: 1, minWidth: 0 }} value={form.companyBankName} onChange={e => setForm(f => ({ ...f, companyBankName: e.target.value }))} placeholder="Bank Name" />
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="invoice-bank-label">A/C NO.</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>:</span>
+                          <input type="text" className="inv-doc-input" style={{ flex: 1, minWidth: 0 }} value={form.companyBankAccount} onChange={e => setForm(f => ({ ...f, companyBankAccount: e.target.value }))} placeholder="Account No" />
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="invoice-bank-label">IFS Code</td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>:</span>
+                          <input type="text" className="inv-doc-input" style={{ flex: 1, minWidth: 0, textTransform: 'uppercase' }} value={form.companyBankIfsc} onChange={e => setForm(f => ({ ...f, companyBankIfsc: e.target.value.toUpperCase() }))} placeholder="IFSC Code" />
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
 
-            {/* Form */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              <div className="pur-form-group" style={{ marginBottom: 0 }}>
-                <label className="pur-label">Bill Date <span style={{ color: '#ef4444' }}>*</span></label>
-                <input type="date" className="pur-input" value={form.billDate}
-                  onChange={e => setForm(f => ({ ...f, billDate: e.target.value }))} />
-              </div>
-              <div className="pur-form-group" style={{ marginBottom: 0 }}>
-                <label className="pur-label">Vendor Invoice No.</label>
-                <input type="text" className="pur-input" value={form.vendorInvoiceNo}
-                  placeholder="Supplier's invoice ref"
-                  onChange={e => setForm(f => ({ ...f, vendorInvoiceNo: e.target.value }))} />
-              </div>
-            </div>
-
-            <div className="pur-form-group" style={{ marginTop: '14px' }}>
-              <label className="pur-label">Final Bill Amount (₹) <span style={{ color: '#ef4444' }}>*</span></label>
-              <input type="number" className="pur-input" value={form.grossAmount}
-                placeholder="Enter actual invoice amount"
-                style={{ fontSize: '16px', fontWeight: 600 }}
-                onChange={e => setForm(f => ({ ...f, grossAmount: e.target.value }))} />
-              {showBillForm.totalAmount && form.grossAmount && Math.abs(parseFloat(form.grossAmount) - showBillForm.totalAmount) > 1 && (
-                <div style={{ fontSize: '12px', color: '#d97706', marginTop: '4px' }}>
-                  ⚠ Differs from PO value by ₹{fmt(Math.abs(parseFloat(form.grossAmount) - showBillForm.totalAmount))}
+                <div className="invoice-signature">
+                  <div style={{ fontWeight: 'bold' }}>for {showBillForm.supplierName}</div>
+                  <div style={{ height: '40px' }}></div>
+                  <div>Authorised Signatory</div>
                 </div>
-              )}
-            </div>
-
-            <div className="pur-form-group">
-              <label className="pur-label">TDS Deduction (₹)</label>
-              <input type="number" className="pur-input" value={form.tdsAmount} min="0"
-                placeholder="0.00"
-                onChange={e => setForm(f => ({ ...f, tdsAmount: e.target.value }))} />
-            </div>
-
-            <div className="pur-form-group">
-              <label className="pur-label">Remarks</label>
-              <input type="text" className="pur-input" value={form.remarks}
-                onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
-            </div>
-
-            {/* Amount Summary */}
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px', marginBottom: '20px' }}>
-              {[
-                { label: 'Gross Amount', val: `₹${fmt(gross)}`, color: '#1e293b' },
-                { label: 'TDS Deduction', val: `− ₹${fmt(tds)}`, color: '#ef4444' },
-              ].map(r => (
-                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>
-                  <span>{r.label}</span><span style={{ color: r.color, fontWeight: 500 }}>{r.val}</span>
-                </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '10px', marginTop: '4px' }}>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>Net Payable to Accounts</span>
-                <span style={{ fontSize: '18px', fontWeight: 800, color: '#059669' }}>₹{fmt(net)}</span>
               </div>
+
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button className="pur-btn pur-btn-outline" onClick={() => setShowBillForm(null)} disabled={submitting}>
-                Cancel
-              </button>
-              <button
-                className="pur-btn pur-btn-primary"
-                onClick={submitBill}
-                disabled={submitting || !form.billDate || !form.grossAmount}
-                style={{ gap: '8px', opacity: (submitting || !form.billDate || !form.grossAmount) ? 0.5 : 1 }}
-              >
-                <Send size={13} />
-                {submitting ? 'Sending...' : 'Send Bill to Accounts'}
-              </button>
-            </div>
           </div>
         </div>
       )}

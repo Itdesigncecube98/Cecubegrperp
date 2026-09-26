@@ -4,9 +4,29 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(req) {
   try {
-    const projects = await prisma.projectMaster.findMany({
+    const legacyProjects = await prisma.project.findMany({
+      select: { id: true, name: true, company: true, state: true },
       orderBy: { createdAt: 'desc' }
     });
+
+    for (const legacyProject of legacyProjects) {
+      if (!legacyProject.name) continue;
+      const existing = await prisma.projectMaster.findFirst({ where: { name: legacyProject.name } });
+      if (!existing) {
+        await prisma.projectMaster.create({
+          data: {
+            projectId: `PROJECT-${legacyProject.id}`,
+            name: legacyProject.name,
+            clientName: legacyProject.company || null,
+            location: legacyProject.state || null,
+            projectType: 'EPC',
+            status: 'Active'
+          }
+        });
+      }
+    }
+
+    const projects = await prisma.projectMaster.findMany({ orderBy: { createdAt: 'desc' } });
     return NextResponse.json(projects);
   } catch (error) {
     console.error('Error fetching projects:', error);

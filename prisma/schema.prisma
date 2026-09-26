@@ -42,14 +42,29 @@ model Employee {
   supervisor   Employee?    @relation("SupervisorRelation", fields: [supervisorId], references: [id])
   subordinates Employee[]   @relation("SupervisorRelation")
   createdAt    DateTime     @default(now())
-  attendances  Attendance[]
-  punchRequests PunchRequest[]
-  leaveBalance  LeaveBalance?
-  leaveRequests LeaveRequest[]
+  // Existing relations
+  attendances      Attendance[]
+  punchRequests    PunchRequest[]
+  leaveBalance     LeaveBalance?
+  leaveRequests    LeaveRequest[]
   locationRequests LocationRequest[]
-  documents     EmployeeDocument[]
-  vehicles      Vehicle[]
-  tripLogs      TripLog[]
+  documents        EmployeeDocument[]
+  vehicles         Vehicle[]
+  tripLogs         TripLog[]
+  // Engineering module relations
+  managedProjects  Project[]          @relation("ProjectManager")
+  assignedWorkOrders WorkOrder[]      @relation("WOAssignee")
+  supervisedWorkOrders WorkOrder[]    @relation("WOSupervisor")
+  siteVisits       SiteVisit[]
+  requestedMaterials MaterialRequest[] @relation("MRRequestedBy")
+  approvedMaterials  MaterialRequest[] @relation("MRApprovedBy")
+  uploadedDrawings   DrawingDocument[]
+  assignedEquipment  Equipment[]
+  // Accounts module relations
+  expenses           Expense[]
+  approvedExpenses   Expense[]         @relation("ExpenseApprover")
+  raisedPOs          PurchaseOrder[]   @relation("PORaisedBy")
+  payrolls           Payroll[]
 }
 
 model Attendance {
@@ -217,19 +232,19 @@ model Vehicle {
 }
 
 model TripLog {
-  id           Int      @id @default(autoincrement())
-  employeeId   String
-  vehicleId    Int
-  date         String?
+  id            Int      @id @default(autoincrement())
+  employeeId    String
+  vehicleId     Int
+  date          String?
   startLocation String?
-  endLocation  String?
-  distanceKm   Float?   @default(0.0)
-  amount       Float?   @default(0.0)
-  status       String   @default("REQUESTED") // REQUESTED, ACTIVE, COMPLETED, APPROVED, REJECTED, PAID
-  createdAt    DateTime @default(now())
-  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  vehicle      Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  pings        TripPing[]
+  endLocation   String?
+  distanceKm    Float?   @default(0.0)
+  amount        Float?   @default(0.0)
+  status        String   @default("REQUESTED") // REQUESTED, ACTIVE, COMPLETED, APPROVED, REJECTED, PAID
+  createdAt     DateTime @default(now())
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  pings         TripPing[]
 }
 
 model TripPing {
@@ -254,4 +269,437 @@ model EmailLog {
   errorMessage    String?
   sentBy          String?
   createdAt       DateTime @default(now())
+}
+
+model IssuingAuthority {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  status    String   @default("Active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENGINEERING MODULE
+// ─────────────────────────────────────────────────────────────
+
+model Project {
+  id              Int      @id @default(autoincrement())
+  projectCode     String   @unique
+  name            String
+  description     String?  @db.Text
+  clientName      String?
+  clientContact   String?
+  clientEmail     String?
+  siteAddress     String?
+  status          String   @default("PLANNING") // PLANNING, ACTIVE, ON_HOLD, COMPLETED, CANCELLED
+  priority        String   @default("MEDIUM")   // LOW, MEDIUM, HIGH, CRITICAL
+  startDate       String?  // YYYY-MM-DD
+  endDate         String?  // YYYY-MM-DD (planned)
+  actualEndDate   String?  // YYYY-MM-DD (actual)
+  budgetAmount    Float    @default(0.0)
+  spentAmount     Float    @default(0.0)
+  managerId       String?
+  departmentId    String?
+  tags            String?  // comma-separated
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  manager          Employee?          @relation("ProjectManager", fields: [managerId], references: [id], onDelete: SetNull)
+  workOrders       WorkOrder[]
+  siteVisits       SiteVisit[]
+  materialRequests MaterialRequest[]
+  drawings         DrawingDocument[]
+  budgetItems      BudgetAllocation[]
+  invoices         Invoice[]
+}
+
+model WorkOrder {
+  id             Int      @id @default(autoincrement())
+  woNumber       String   @unique
+  projectId      Int
+  title          String
+  description    String?  @db.Text
+  scope          String?  @db.Text
+  assignedToId   String?
+  supervisorId   String?
+  status         String   @default("OPEN")   // OPEN, IN_PROGRESS, PENDING_APPROVAL, APPROVED, COMPLETED, CANCELLED
+  priority       String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  scheduledDate  String?  // YYYY-MM-DD
+  dueDate        String?  // YYYY-MM-DD
+  completedDate  String?  // YYYY-MM-DD
+  estimatedHours Float    @default(0.0)
+  actualHours    Float    @default(0.0)
+  remarks        String?  @db.Text
+  approvedBy     String?
+  approvedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedTo       Employee? @relation("WOAssignee",    fields: [assignedToId], references: [id], onDelete: SetNull)
+  supervisor       Employee? @relation("WOSupervisor",  fields: [supervisorId], references: [id], onDelete: SetNull)
+  siteVisits       SiteVisit[]
+  materialRequests MaterialRequest[]
+}
+
+model SiteVisit {
+  id             Int      @id @default(autoincrement())
+  projectId      Int
+  workOrderId    Int?
+  employeeId     String
+  visitDate      String   // YYYY-MM-DD
+  checkInTime    String?  // HH:MM
+  checkOutTime   String?  // HH:MM
+  latitude       Float?
+  longitude      Float?
+  address        String?
+  purpose        String?
+  observations   String?  @db.Text
+  nextAction     String?  @db.Text
+  status         String   @default("PLANNED") // PLANNED, IN_PROGRESS, COMPLETED, CANCELLED
+  photoUrls      String?  @db.Text  // JSON array of base64/URLs
+  signatureData  String?  @db.Text  // base64
+  clientSignedBy String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  project    Project    @relation(fields: [projectId],   references: [id], onDelete: Cascade)
+  workOrder  WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  employee   Employee   @relation(fields: [employeeId],  references: [id], onDelete: Cascade)
+}
+
+model MaterialRequest {
+  id              Int      @id @default(autoincrement())
+  mrNumber        String   @unique
+  projectId       Int
+  workOrderId     Int?
+  requestedById   String
+  approvedById    String?
+  status          String   @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, PARTIALLY_ISSUED, ISSUED, REJECTED, CANCELLED
+  urgency         String   @default("NORMAL") // LOW, NORMAL, URGENT, CRITICAL
+  requiredByDate  String?  // YYYY-MM-DD
+  remarks         String?  @db.Text
+  rejectionReason String?  @db.Text
+  approvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  project     Project    @relation(fields: [projectId],   references: [id], onDelete: Cascade)
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  requestedBy Employee   @relation("MRRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  approvedBy  Employee?  @relation("MRApprovedBy",  fields: [approvedById],  references: [id], onDelete: SetNull)
+  items          MaterialItem[]
+  purchaseOrders PurchaseOrder[]
+}
+
+model MaterialItem {
+  id                Int      @id @default(autoincrement())
+  materialRequestId Int
+  itemCode          String?
+  description       String
+  unit              String   @default("Nos") // Nos, Kg, Mtr, Ltr, Set, Box
+  quantityRequired  Float
+  quantityApproved  Float    @default(0.0)
+  quantityIssued    Float    @default(0.0)
+  estimatedRate     Float    @default(0.0)
+  actualRate        Float    @default(0.0)
+  remarks           String?
+  materialRequest   MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+}
+
+model DrawingDocument {
+  id            Int      @id @default(autoincrement())
+  projectId     Int
+  drawingNumber String
+  title         String
+  revision      String   @default("A")
+  discipline    String   @default("Civil") // Civil, Electrical, Mechanical, Piping, Structural, Architecture
+  drawingType   String   @default("Design") // Design, Construction, As-Built, Shop Drawing
+  status        String   @default("DRAFT") // DRAFT, ISSUED_FOR_REVIEW, APPROVED, SUPERSEDED
+  uploadedById  String?
+  fileData      String?  @db.Text  // base64
+  fileName      String?
+  fileType      String?
+  fileSize      Int?
+  remarks       String?
+  issuedDate    String?  // YYYY-MM-DD
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  project    Project   @relation(fields: [projectId],   references: [id], onDelete: Cascade)
+  uploadedBy Employee? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, drawingNumber, revision])
+}
+
+model Equipment {
+  id                  Int      @id @default(autoincrement())
+  assetCode           String   @unique
+  name                String
+  description         String?
+  category            String   @default("General") // Heavy, Tools, Safety, Electrical, General
+  make                String?
+  model               String?
+  serialNumber        String?
+  purchaseDate        String?  // YYYY-MM-DD
+  purchaseValue       Float    @default(0.0)
+  currentValue        Float    @default(0.0)
+  status              String   @default("AVAILABLE") // AVAILABLE, IN_USE, UNDER_MAINTENANCE, RETIRED
+  assignedToId        String?
+  currentLocation     String?
+  nextServiceDate     String?  // YYYY-MM-DD
+  serviceIntervalDays Int      @default(90)
+  notes               String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  assignedTo Employee? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+}
+
+// ─────────────────────────────────────────────────────────────
+// ACCOUNTS PORTAL
+// ─────────────────────────────────────────────────────────────
+
+model PurchaseOrder {
+  id                Int      @id @default(autoincrement())
+  poNumber          String   @unique
+  vendorId          Int
+  materialRequestId Int?
+  raisedById        String?
+  accountsApprovedById String?
+  status            String   @default("DRAFT") // DRAFT, SUBMITTED, PENDING_APPROVAL, APPROVED, REJECTED, PARTIALLY_RECEIVED, RECEIVED, CLOSED, CANCELLED
+  poDate            String   // YYYY-MM-DD
+  expectedDelivery  String?  // YYYY-MM-DD
+  deliveryAddress   String?
+  paymentTerms      String?
+  currency          String   @default("INR")
+  subtotal          Float    @default(0.0)
+  taxAmount         Float    @default(0.0)
+  discountAmount    Float    @default(0.0)
+  totalAmount       Float    @default(0.0)
+  paidAmount        Float    @default(0.0)
+  terms             String?  @db.Text
+  remarks           String?  @db.Text
+  accountsRemarks   String?  @db.Text
+  accountsApprovedAt DateTime?
+  rejectedAt        DateTime?
+  rejectionReason   String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  vendor              Vendor           @relation(fields: [vendorId],          references: [id], onDelete: Restrict)
+  materialRequest     MaterialRequest? @relation(fields: [materialRequestId], references: [id], onDelete: SetNull)
+  raisedBy            Employee?        @relation("PORaisedBy", fields: [raisedById], references: [id], onDelete: SetNull)
+  lineItems           POLineItem[]
+  expenses            Expense[]
+  purchaseBills       PurchaseBill[]
+}
+
+model POLineItem {
+  id              Int      @id @default(autoincrement())
+  purchaseOrderId Int
+  itemCode        String?
+  description     String
+  unit            String   @default("Nos")
+  quantity        Float
+  unitPrice       Float
+  taxRate         Float    @default(0.0)
+  taxAmount       Float    @default(0.0)
+  totalAmount     Float    @default(0.0)
+  receivedQty     Float    @default(0.0)
+  remarks         String?
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id            Int      @id @default(autoincrement())
+  invoiceNumber String   @unique
+  invoiceType   String   @default("SALES")  // SALES, PURCHASE, PROFORMA, CREDIT_NOTE, DEBIT_NOTE
+  projectId     Int?
+  vendorId      Int?
+  clientName    String?
+  clientGstin   String?
+  clientAddress String?
+  invoiceDate   String   // YYYY-MM-DD
+  dueDate       String?  // YYYY-MM-DD
+  currency      String   @default("INR")
+  subtotal      Float    @default(0.0)
+  cgst          Float    @default(0.0)
+  sgst          Float    @default(0.0)
+  igst          Float    @default(0.0)
+  tds           Float    @default(0.0)
+  discountAmount Float   @default(0.0)
+  totalAmount   Float    @default(0.0)
+  paidAmount    Float    @default(0.0)
+  status        String   @default("DRAFT")  // DRAFT, SENT, PARTIALLY_PAID, PAID, OVERDUE, CANCELLED, DISPUTED
+  paymentMode   String?  // Cash, NEFT, RTGS, Cheque, UPI
+  paymentDate   String?  // YYYY-MM-DD
+  paymentRef    String?
+  notes         String?  @db.Text
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  vendor    Vendor?  @relation(fields: [vendorId],  references: [id], onDelete: SetNull)
+  lineItems InvoiceLineItem[]
+}
+
+model InvoiceLineItem {
+  id          Int      @id @default(autoincrement())
+  invoiceId   Int
+  description String
+  unit        String   @default("Nos")
+  quantity    Float    @default(1.0)
+  unitPrice   Float
+  taxRate     Float    @default(0.0)
+  taxAmount   Float    @default(0.0)
+  totalAmount Float    @default(0.0)
+  hsnSac      String?
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id              Int      @id @default(autoincrement())
+  expenseNumber   String   @unique
+  employeeId      String
+  projectId       Int?
+  purchaseOrderId Int?
+  category        String   // Travel, Food, Accommodation, Materials, Tools, Fuel, Misc
+  description     String
+  amount          Float
+  currency        String   @default("INR")
+  expenseDate     String   // YYYY-MM-DD
+  receiptData     String?  @db.Text  // base64
+  receiptFileName String?
+  status          String   @default("DRAFT")  // DRAFT, SUBMITTED, APPROVED, REJECTED, PAID, CANCELLED
+  submittedAt     DateTime?
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  paidAt          DateTime?
+  paymentRef      String?
+  tripLogId       Int?
+  remarks         String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  employee      Employee       @relation(fields: [employeeId],      references: [id], onDelete: Cascade)
+  approvedBy    Employee?      @relation("ExpenseApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+}
+
+model Payroll {
+  id               Int      @id @default(autoincrement())
+  payrollMonth     String   // "YYYY-MM"
+  employeeId       String
+  basicSalary      Float    @default(0.0)
+  hra              Float    @default(0.0)
+  conveyance       Float    @default(0.0)
+  medicalAllowance Float    @default(0.0)
+  otherAllowances  Float    @default(0.0)
+  grossSalary      Float    @default(0.0)
+  pf               Float    @default(0.0)
+  pfEmployer       Float    @default(0.0)
+  esi              Float    @default(0.0)
+  esiEmployer      Float    @default(0.0)
+  tds              Float    @default(0.0)
+  professionalTax  Float    @default(0.0)
+  otherDeductions  Float    @default(0.0)
+  lossOfPayDays    Float    @default(0.0)
+  lossOfPayAmount  Float    @default(0.0)
+  overtimeHours    Float    @default(0.0)
+  overtimeAmount   Float    @default(0.0)
+  bonus            Float    @default(0.0)
+  netSalary        Float    @default(0.0)
+  workingDays      Int      @default(0)
+  presentDays      Float    @default(0.0)
+  status           String   @default("DRAFT") // DRAFT, PROCESSED, APPROVED, PAID, CANCELLED
+  paymentDate      String?  // YYYY-MM-DD
+  paymentMode      String?  // NEFT, Cash, Cheque
+  paymentRef       String?
+  processedById    String?
+  approvedById     String?
+  approvedAt       DateTime?
+  remarks          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([payrollMonth, employeeId])
+}
+
+model BudgetAllocation {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  category    String   // Labour, Material, Equipment, Travel, Misc, Overhead
+  description String?
+  allocated   Float    @default(0.0)
+  spent       Float    @default(0.0)
+  revised     Float?
+  fiscalYear  String?  // e.g. "2026-27"
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────
+// PURCHASE BILL (Amazon-style: PO → Bill → Payment with TDS)
+// ─────────────────────────────────────────────────────────────
+
+model PurchaseBill {
+  id                  Int      @id @default(autoincrement())
+  billNumber          String   @unique
+  purchaseOrderId     Int
+  vendorId            Int
+  billDate            String   // YYYY-MM-DD
+  vendorInvoiceNumber String?
+  vendorInvoiceDate   String?  // YYYY-MM-DD
+  dueDate             String?  // YYYY-MM-DD
+  currency            String   @default("INR")
+  subtotal            Float    @default(0.0)
+  cgst                Float    @default(0.0)
+  sgst                Float    @default(0.0)
+  igst                Float    @default(0.0)
+  tcs                 Float    @default(0.0)
+  discountAmount      Float    @default(0.0)
+  totalAmount         Float    @default(0.0)
+  tdsSection          String?  // 194C, 194J, etc
+  tdsRate             Float    @default(0.0)
+  tdsAmount           Float    @default(0.0)
+  netPayable          Float    @default(0.0) // totalAmount - tdsAmount
+  paidAmount          Float    @default(0.0)
+  status              String   @default("PENDING") // PENDING, PARTIALLY_PAID, PAID, OVERDUE, CANCELLED
+  paymentMode         String?  // NEFT, RTGS, Cheque, Cash, UPI
+  paymentDate         String?  // YYYY-MM-DD
+  paymentRef          String?
+  transactionId       String?
+  remarks             String?  @db.Text
+  attachmentData      String?  @db.Text // Base64 encoded vendor invoice
+  attachmentFileName  String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  vendor        Vendor        @relation(fields: [vendorId],        references: [id], onDelete: Restrict)
+  tdsEntries    TDSPayment[]
+}
+
+model Vendor {
+  id            Int      @id @default(autoincrement())
+  vendorCode    String   @unique
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  address       String?
+  gstin         String?
+  pan           String?
+  bankName      String?
+  bankAccount   String?
+  bankIfsc      String?
+  category      String   @default("Supplier") // Supplier, Contractor, Service, Consultant
+  status        String   @default("ACTIVE")   // ACTIVE, INACTIVE, BLACKLISTED
+  creditDays    Int      @default(30)
+  tdsApplicable Boolean  @default(true)
+  tdsSection    String?  // 194C, 194J, etc
+  tdsRate       Float    @default(0.0)
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  purchaseOrders PurchaseOrder[]
+  invoices       Invoice[]
+  purchaseBills  PurchaseBill[]
 }

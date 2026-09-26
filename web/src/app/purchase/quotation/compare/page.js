@@ -148,7 +148,14 @@ function CompareInner() {
               <CheckCircle2 size={16} /> Approved {approved.approvedLines} material line(s).
             </div>
             <div style={{ fontSize: '0.82rem', marginTop: '6px' }}>
-              {approved.byVendor.map((entry) => `${entry.vendorName}: ${entry.lineCount} line(s)`).join(' • ')}
+              {approved.byVendor.map((entry) => (
+                <div key={entry.vendorId} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
+                  <span>{entry.vendorName}: {entry.lineCount} line(s)</span>
+                  <Link href={`/purchase/po/create?rfqId=${rfqId}&vendorId=${entry.vendorId}`} className="btn-cyan" style={{ padding: '4px 10px', fontSize: '0.75rem', backgroundColor: '#059669' }}>
+                    Create PO
+                  </Link>
+                </div>
+              ))}
             </div>
           </div>
         </div>

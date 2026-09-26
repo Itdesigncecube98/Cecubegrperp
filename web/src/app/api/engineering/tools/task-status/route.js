@@ -13,13 +13,15 @@ function getTaskStatusStoragePath(projectId) {
   return path.join(STORAGE_DIR, `task_status_${projectId}.json`);
 }
 
-async function getDefaultTasksForProject(projectId) {
+async function getDefaultTasksForProject(projectId, libraryId) {
   // Fetch tasks directly from Task Library
   let taskGroups = [];
   try {
     taskGroups = await prisma.taskLibraryGroup.findMany({
+      where: libraryId ? { libraryId } : undefined,
       include: {
         tasks: {
+          where: { OR: [{ projectId }, { projectId: null }] },
           include: {
             materials: true,
             labours: true
@@ -54,6 +56,8 @@ async function getDefaultTasksForProject(projectId) {
           subgroup: taskItem.description ? (taskItem.description.length > 35 ? taskItem.description.slice(0, 35) + '...' : taskItem.description) : 'General Execution',
           subgroup2: taskItem.materials?.[0]?.name ? `${taskItem.materials[0].name}` : 'Standard Specification',
           taskName: `${taskItem.name}${qty ? ` - ${qty} ${unit}` : ''}`,
+          unit,
+          quantity: qty,
           status: currentStatus,
           changeDate: todayStr,
           remarks: `Task linked from Task Library [${grp.name}]`,
@@ -156,6 +160,7 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get('projectId');
+    const libraryId = searchParams.get('libraryId');
 
     if (!projectId) {
       return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
@@ -176,7 +181,7 @@ export async function GET(req) {
     }
 
     const project = await prisma.project.findUnique({ where: { id: projectId } });
-    const tasks = await getDefaultTasksForProject(projectId);
+    const tasks = await getDefaultTasksForProject(projectId, libraryId);
     return NextResponse.json({ tasks, source: 'generated', projectName: project?.name });
   } catch (error) {
     console.error('Error fetching task status:', error);
@@ -187,7 +192,7 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { projectId, action, task, taskUpdate, tasks } = body;
+    const { projectId, libraryId, action, task, taskUpdate, tasks } = body;
 
     if (!projectId) {
       return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
@@ -211,7 +216,7 @@ export async function POST(req) {
     }
 
     if (currentList.length === 0) {
-      currentList = await getDefaultTasksForProject(projectId);
+      currentList = await getDefaultTasksForProject(projectId, libraryId);
     }
 
     // Add new task

@@ -2,6 +2,28 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+async function resolveProjectMaster(projectId) {
+  const existingMaster = await prisma.projectMaster.findUnique({
+    where: { id: projectId }
+  });
+  if (existingMaster) return existingMaster;
+
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  if (!project) return null;
+
+  return prisma.projectMaster.upsert({
+    where: { projectId: project.id },
+    update: { name: project.name },
+    create: {
+      projectId: project.id,
+      name: project.name,
+      projectType: 'EPC',
+      location: project.state || null,
+      status: project.status === 'approved' ? 'Active' : 'Active'
+    }
+  });
+}
+
 // GET /api/contracting/labour/requisitions
 export async function GET(request) {
   try {
@@ -11,7 +33,11 @@ export async function GET(request) {
     const status = searchParams.get('status');
     
     const where = {};
-    if (projectId) where.projectId = projectId;
+    if (projectId) {
+      const project = await resolveProjectMaster(projectId);
+      if (!project) return NextResponse.json([]);
+      where.projectId = project.id;
+    }
     if (workOrderId) where.workOrderId = workOrderId;
     if (status) where.status = status;
 
@@ -30,36 +56,43 @@ export async function GET(request) {
   }
 }
 
-// POST /api/contracting/labour/requisitions
-export async function POST(request) {
-  try {
-    const data = await request.json();
-    const { projectId, workOrderId, category, designation, quantity, unit, duration, purpose, requiredDate } = data;
-
-    if (!projectId || !category || !designation || !quantity) {
-      return NextResponse.json({ error: 'projectId, category, designation, and quantity are required' }, { status: 400 });
-    }
-
-    // Verify project exists
-    const project = await prisma.projectMaster.findUnique({ where: { id: projectId } });
-    if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-
-    // Generate requisition number
-    const count = await prisma.labourRequisition.count({ where: { projectId } });
-    const reqNo = `LREQ-${project.projectId || projectId.substring(0,4).toUpperCase()}-${String(count + 1).padStart(3, '0')}`;
-
-    const newReq = await prisma.labourRequisition.create({
-      data: {
-        reqNo,
-        projectId,
-        workOrderId: workOrderId || null,
-        date: new Date(),
-        requiredDate: requiredDate ? new Date(requiredDate) : null,
-        category,
-        designation,
-        quantity: parseInt(quantity) || 1,
-        unit: unit || 'Day',
-        duration: parseInt(duration) || 1,
+  // POST /api/contracting/labour/requisitions
+  export async function POST(request) {
+    try {
+      const data = await request.json();
+      const { projectId, workOrderId, category, designation, quantity, unit, rate, duration, purpose, requiredDate } = data;
+  
+      if (!projectId || !category || !designation || !quantity) {
+        return NextResponse.json({ error: 'projectId, category, designation, and quantity are required' }, { status: 400 });
+      }
+  
+      // The contracting UI uses the legacy Project model; requisitions use ProjectMaster.
+      const project = await resolveProjectMaster(projectId);
+      if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  
+      // Generate requisition number
+      const count = await prisma.labourRequisition.count({ where: { projectId } });
+      const reqPrefix = `LREQ-${project.projectId || projectId.substring(0,4).toUpperCase()}`;
+      let sequence = count + 1;
+      let reqNo = `${reqPrefix}-${String(sequence).padStart(3, '0')}`;
+      while (await prisma.labourRequisition.findUnique({ where: { reqNo } })) {
+        sequence += 1;
+        reqNo = `${reqPrefix}-${String(sequence).padStart(3, '0')}`;
+      }
+  
+      const newReq = await prisma.labourRequisition.create({
+        data: {
+          reqNo,
+          projectId: project.id,
+          workOrderId: workOrderId || null,
+          date: new Date(),
+          requiredDate: requiredDate ? new Date(requiredDate) : null,
+          category,
+          designation,
+          quantity: parseFloat(quantity) || 1,
+          unit: unit || 'Day',
+          rate: parseFloat(rate) || 0,
+          duration: parseInt(duration) || 1,
         purpose: purpose || null,
         status: 'Pending',
       },

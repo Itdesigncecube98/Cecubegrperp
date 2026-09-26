@@ -50,6 +50,17 @@ export default function EnquiryGeneration() {
     };
   }, []);
 
+  useEffect(() => {
+    // Check if an indentId was passed in the URL (e.g. from the PR register)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('indentId');
+      if (id) {
+        setSelectedIndentId(id);
+      }
+    }
+  }, []);
+
   const selectedIndent = useMemo(
     () => indents.find((indent) => indent.id === selectedIndentId) || null,
     [indents, selectedIndentId]
@@ -246,6 +257,7 @@ export default function EnquiryGeneration() {
                     <th>Unit</th>
                     <th>Specification</th>
                     <th style={{ textAlign: 'right' }}>Reqd Qty</th>
+                    <th style={{ textAlign: 'right' }}>Library Rate</th>
                     <th>Required By</th>
                   </tr>
                 </thead>
@@ -257,12 +269,13 @@ export default function EnquiryGeneration() {
                       <td>{item.unit}</td>
                       <td>{item.specification || '-'}</td>
                       <td style={{ textAlign: 'right' }}>{item.quantity}</td>
+                      <td style={{ textAlign: 'right' }}>{item.libraryRate ? `₹ ${Number(item.libraryRate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-'}</td>
                       <td>{item.requiredDate ? new Date(item.requiredDate).toLocaleDateString('en-IN') : '-'}</td>
                     </tr>
                   ))}
                   {!loading && materials.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ padding: '20px', color: '#64748b', fontSize: '0.85rem' }}>
+                      <td colSpan={7} style={{ padding: '20px', color: '#64748b', fontSize: '0.85rem' }}>
                         {selectedIndentId ? 'This indent has no materials.' : 'Select a purchase indent to list its materials.'}
                       </td>
                     </tr>

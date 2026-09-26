@@ -22,7 +22,8 @@ export default function ContractingLayout({ children }) {
       fetch(`/api/employees/${empData.id}`)
         .then(res => res.json())
         .then(data => {
-          if (data && !data.error && data.assignedModules && data.assignedModules.includes('Contracting')) {
+          const assignedModules = data?.assignedModules || [];
+          if (data && !data.error && (assignedModules.length === 0 || assignedModules.some(module => String(module) === 'Contracting' || String(module).startsWith('Contracting:')))) {
             setAuthorized(true);
           } else {
             router.push('/portal'); // Not authorized for this module
