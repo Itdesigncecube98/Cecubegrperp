@@ -1,7 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { FileText, Send, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Eye, Pencil } from 'lucide-react';
+import { FileText, Send, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Eye, Pencil, Mail } from 'lucide-react';
 import '../purchase.css';
+import { getClientActor } from '@/lib/clientActor';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 const STATUS_STYLES = {
   UNPAID:  { bg: '#fef3c7', text: '#b45309', label: 'Pending Payment' },
@@ -42,6 +45,40 @@ export default function PurchaseBillsPage() {
   const [submitting, setSubmitting]   = useState(false);
   const [successMsg, setSuccessMsg]   = useState('');
   const [errorMsg, setErrorMsg]       = useState('');
+  const [sendingBillId, setSendingBillId] = useState('');
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const canTool = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', name)));
+  const canCreateBill = canTool('Purchase Bills Create');
+  const canEditBills = canTool('Purchase Bills Edit');
+  const canApproveBills = canTool('Purchase Bills Approve');
+  const canViewBills = canTool('Purchase Bills View') || canEditBills || canApproveBills || canTool('Send Purchase Bill by Email');
+  const canEmailBills = canTool('Send Purchase Bill by Email');
+
+  useEffect(() => {
+    if (!canCreateBill && canViewBills) setActiveTab('history');
+    else if (canCreateBill && !canViewBills) setActiveTab('create');
+  }, [canCreateBill, canViewBills]);
+
+  const emailBill = async bill => {
+    setSendingBillId(bill.id);
+    try {
+      const response = await fetch('/api/documents/send-email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentType: 'purchase-bill', id: bill.id, sentBy: getClientActor() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to email purchase bill.');
+      alert(result.mocked ? `Email is configured in demo mode for ${result.recipient}.` : `Purchase bill emailed to ${result.recipient}.`);
+    } catch (error) { alert(error.message); }
+    finally { setSendingBillId(''); }
+  };
+
+  const approveBill = async bill => {
+    const response = await fetch('/api/purchase/bills', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: bill.id, action: 'approve', approvedBy: getClientActor() }) });
+    const result = await response.json();
+    if (!response.ok) { alert(result.error || 'Unable to approve purchase bill.'); return; }
+    setBills(previous => previous.map(item => item.id === bill.id ? { ...item, approvalStatus: 'APPROVED', approvedBy: result.approvedBy } : item));
+  };
 
   const fetchApprovedPOs = async () => {
     try {
@@ -174,6 +211,10 @@ export default function PurchaseBillsPage() {
   };
 
   const submitBill = async () => {
+    if (editingBillId ? !canEditBills : !canCreateBill) {
+      setErrorMsg(`You do not have permission to ${editingBillId ? 'edit' : 'create'} purchase bills for this project.`);
+      return;
+    }
     if (!showBillForm || !form.billDate || !form.taxableAmount) {
       setErrorMsg('Bill Date and Taxable Amount are required.');
       return;
@@ -214,7 +255,8 @@ export default function PurchaseBillsPage() {
           companyBankName: form.companyBankName,
           companyBankAccount: form.companyBankAccount,
           companyBankIfsc: form.companyBankIfsc,
-          remarks:     form.remarks
+          remarks:     form.remarks,
+          editedBy:    getClientActor()
         })
       });
       const data = await res.json();
@@ -307,10 +349,10 @@ export default function PurchaseBillsPage() {
 
       {/* Tabs */}
       <div style={{ borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '0' }}>
-        {[
+        {[ 
           { key: 'create', label: `🧾 Generate Bill (${approvedPOs.length} Approved POs)` },
           { key: 'history', label: `📋 Bill History (${bills.length})` },
-        ].map(tab => (
+        ].filter(tab => tab.key === 'create' ? canCreateBill : canViewBills).map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -451,6 +493,7 @@ export default function PurchaseBillsPage() {
                     <th>Bill No.</th>
                     <th>Date</th>
                     <th>PO Reference</th>
+                    <th>Last edited by</th>
                     <th>Remarks</th>
                     <th>Status</th>
                     <th style={{ textAlign: 'right' }}>Taxable</th>
@@ -474,6 +517,9 @@ export default function PurchaseBillsPage() {
                             ? <span style={{ background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500 }}>PO: {bill.poNo}</span>
                             : <span className="pur-text-muted">—</span>}
                         </td>
+                        <td style={{ color: '#64748b', fontSize: 12 }}>
+                          {bill.editedBy ? <><div>{bill.editedBy}</div><div>{bill.editedAt ? new Date(bill.editedAt).toLocaleString('en-IN') : ''}</div></> : '—'}
+                        </td>
                         <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b', fontSize: '13px' }}>
                           {bill.remarks || '—'}
                         </td>
@@ -490,8 +536,10 @@ export default function PurchaseBillsPage() {
                         <td style={{ textAlign: 'right', fontWeight: 700, color: '#059669' }}>₹{fmt(bill.netAmount)}</td>
                         <td>
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button type="button" onClick={() => openSavedBill(bill, 'view')} title="Open bill" aria-label={`Open bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', color: '#334155', cursor: 'pointer' }}><Eye size={14} /> Open</button>
-                            <button type="button" onClick={() => openSavedBill(bill, 'edit')} title="Edit bill" aria-label={`Edit bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #bfdbfe', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}><Pencil size={14} /> Edit</button>
+                            {(canTool('Purchase Bills View') || canEditBills) && <button type="button" onClick={() => openSavedBill(bill, 'view')} title="Open bill" aria-label={`Open bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', color: '#334155', cursor: 'pointer' }}><Eye size={14} /> Open</button>}
+                            {canEditBills && <button type="button" onClick={() => openSavedBill(bill, 'edit')} title="Edit bill" aria-label={`Edit bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #bfdbfe', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}><Pencil size={14} /> Edit</button>}
+                            {canApproveBills && bill.approvalStatus !== 'APPROVED' && <button type="button" onClick={() => approveBill(bill)} title="Approve purchase bill" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #a7f3d0', borderRadius: 4, background: '#ecfdf5', color: '#047857', cursor: 'pointer' }}>Approve</button>}
+                            {canEmailBills && <button type="button" onClick={() => emailBill(bill)} title="Email bill" aria-label={`Email bill ${displayBillNo(bill.billNo, bill.billDate)}`} disabled={sendingBillId === bill.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #a7f3d0', borderRadius: 4, background: '#ecfdf5', color: '#047857', cursor: 'pointer' }}><Mail size={14} /> Email</button>}
                           </div>
                         </td>
                       </tr>
@@ -542,16 +590,17 @@ export default function PurchaseBillsPage() {
           {/* Action Bar */}
           <div className="no-print" style={{ width: '210mm', display: 'flex', justifyContent: 'space-between', marginBottom: '16px', background: '#fff', padding: '12px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: '16px', color: '#1e293b' }}>Generate Purchase Bill</h2>
+              <h2 style={{ margin: 0, fontSize: '16px', color: '#1e293b' }}>{editingBillId ? 'Edit Purchase Bill' : 'Generate Purchase Bill'}</h2>
+              {showBillForm.billRecord?.editedBy && <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Last edited by {showBillForm.billRecord.editedBy}{showBillForm.billRecord.editedAt ? ` on ${new Date(showBillForm.billRecord.editedAt).toLocaleString('en-IN')}` : ''}</div>}
               <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Enter invoice details and save to accounts.</p>
             </div>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               {errorMsg && <span style={{ color: '#dc2626', fontSize: '12px', fontWeight: 'bold' }}>{errorMsg}</span>}
               <button onClick={() => setShowBillForm(null)} style={{ padding: '8px 16px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
               <button onClick={handlePrint} style={{ padding: '8px 16px', background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Print</button>
-              <button onClick={submitBill} disabled={submitting || !form.billDate || !form.taxableAmount} style={{ padding: '8px 16px', background: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {billMode !== 'view' && <button onClick={submitBill} disabled={submitting || !form.billDate || !form.taxableAmount} style={{ padding: '8px 16px', background: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {submitting ? 'Saving...' : 'Save Bill'} <Send size={14} />
-              </button>
+              </button>}
             </div>
           </div>
 

@@ -3,9 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, ArrowLeft, Plus, Trash2, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 export default function CreatePR() {
   const router = useRouter();
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const canCreate = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', 'Purchase Indent Create')));
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [materials, setMaterials] = useState([]);
@@ -126,6 +130,8 @@ export default function CreatePR() {
       setLoading(false);
     }
   };
+
+  if (!canCreate) return <div className="pur-page-container"><div className="pur-card pur-text-center pur-text-muted pur-py-8">You need Purchase Indent Create access to create an indent.<div style={{ marginTop: 12 }}><Link href="/purchase/pr" className="pur-btn pur-btn-outline">Back to Purchase Indents</Link></div></div></div>;
 
   return (
     <div className="pur-page-container">

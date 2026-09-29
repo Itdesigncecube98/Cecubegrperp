@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Download, Map as MapIcon, XCircle, Navigation } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { cleanTripTrack } from '@/lib/tripGps';
 
 const TripMap = dynamic(() => import('@/components/TripMap'), { ssr: false });
 
@@ -44,6 +45,12 @@ export default function EmployeeTripReport() {
 
   const totalKm = filtered.reduce((s, t) => s + (t.distanceKm || 0), 0);
   const totalAmt = filtered.reduce((s, t) => s + (t.amount || 0), 0);
+  const cleanedGpsDistanceKm = selectedMapTrip
+    ? cleanTripTrack(selectedMapTrip.pings || []).distanceKm
+    : 0;
+  const savedDistanceKm = Number(selectedMapTrip?.distanceKm || 0);
+  const hasGpsDistanceMismatch = selectedMapTrip?.pings?.length > 1
+    && Math.abs(savedDistanceKm - cleanedGpsDistanceKm) > Math.max(1, savedDistanceKm * 0.2);
 
   const statusColor = (s) => {
     if (s === 'PAID') return '#22c55e';
@@ -158,9 +165,15 @@ export default function EmployeeTripReport() {
             </div>
             <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '2rem', fontSize: '0.875rem', color: '#374151' }}>
               <span><strong>Vehicle:</strong> {selectedMapTrip.vehicle?.makeModel}</span>
-              <span><strong>Distance:</strong> {selectedMapTrip.distanceKm} km</span>
+              <span><strong>Recorded distance:</strong> {Number(selectedMapTrip.distanceKm || 0).toFixed(2)} km</span>
+              {selectedMapTrip.pings?.length > 1 && <span><strong>Clean GPS trace:</strong> {cleanedGpsDistanceKm.toFixed(2)} km</span>}
               <span><strong>Amount:</strong> ₹{(selectedMapTrip.amount || 0).toFixed(2)}</span>
             </div>
+            {hasGpsDistanceMismatch && (
+              <div role="status" style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: 8, border: '1px solid #fcd34d', background: '#fffbeb', color: '#92400e', fontSize: '0.85rem' }}>
+                This trip contains GPS jumps, so the recorded mileage and expense may be overstated. The map uses the cleaned GPS trace; contact an administrator to review the saved expense.
+              </div>
+            )}
             <TripMap pings={selectedMapTrip.pings} startLocation={selectedMapTrip.startLocation} endLocation={selectedMapTrip.endLocation} tripId={selectedMapTrip.id} isActive={false} />
           </div>
         </div>

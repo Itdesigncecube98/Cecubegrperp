@@ -94,7 +94,7 @@ export default function Login() {
         sessionStorage.setItem('adminData', JSON.stringify(adminData));
         localStorage.removeItem('employeeData');
         localStorage.removeItem('isMobileApp');
-        router.push('/portal');
+        window.location.assign('/portal');
       } else {
         setError('Invalid admin email or password');
       }
@@ -106,7 +106,7 @@ export default function Login() {
           sessionStorage.removeItem('adminData');
           localStorage.setItem('employeeData', JSON.stringify(empData.employee));
           localStorage.removeItem('isMobileApp');
-          router.push('/employee/dashboard');
+          window.location.assign('/portal');
         } else {
           setError('Invalid employee email or password');
         }

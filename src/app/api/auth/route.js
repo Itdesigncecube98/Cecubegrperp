@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
+import { attachAuthSession } from '@/lib/authSession';
 
 export async function POST(request) {
   try {
@@ -20,7 +21,7 @@ export async function POST(request) {
     );
 
     if (directMatch) {
-      return NextResponse.json({ success: true, email: directMatch.email, name: 'Super Admin' });
+      return attachAuthSession(NextResponse.json({ success: true, email: directMatch.email, name: 'Super Admin' }), { type: 'admin', id: directMatch.email });
     }
 
     const admin = await prisma.admin.findFirst({
@@ -33,13 +34,13 @@ export async function POST(request) {
     });
 
     if (admin && admin.password === normalizedPassword) {
-      return NextResponse.json({
+      return attachAuthSession(NextResponse.json({
         success: true,
         email: admin.email,
         name: admin.name,
         adminId: admin.adminId,
         department: admin.department
-      });
+      }), { type: 'admin', id: admin.id });
     }
 
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });

@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import ContractingSidebar from '../../components/ContractingSidebar';
 import TopHeader from '../../components/TopHeader';
+import ProjectRoutePermissionGate from '../../components/ProjectRoutePermissionGate';
 
 export default function ContractingLayout({ children }) {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function ContractingLayout({ children }) {
         <div style={{ padding: '24px 24px 0 24px' }}>
           <TopHeader title="Contracting Dashboard" />
         </div>
-        {children}
+        <ProjectRoutePermissionGate>{children}</ProjectRoutePermissionGate>
       </div>
     </div>
   );

@@ -13,39 +13,39 @@ function amountToWords(amount) {
   if (amount === 0) return 'ZERO';
   const a = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
   const b = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
-  
+
   const convert = (num) => {
     if (num === 0) return '';
     if (num < 20) return a[num] + ' ';
     if (num < 100) return b[Math.floor(num / 10)] + (num % 10 !== 0 ? '-' + a[num % 10] : '') + ' ';
     return a[Math.floor(num / 100)] + ' HUNDRED ' + convert(num % 100);
   };
-  
+
   let rupees = Math.floor(amount);
   let paise = Math.round((amount - rupees) * 100);
-  
+
   if (rupees === 0) {
-      return paise > 0 ? `PAISE ${convert(paise)}` : 'ZERO';
+    return paise > 0 ? `PAISE ${convert(paise)}` : 'ZERO';
   }
-  
+
   let res = '';
   if (rupees >= 10000000) {
-      res += convert(Math.floor(rupees / 10000000)) + 'CRORE ';
-      rupees %= 10000000;
+    res += convert(Math.floor(rupees / 10000000)) + 'CRORE ';
+    rupees %= 10000000;
   }
   if (rupees >= 100000) {
-      res += convert(Math.floor(rupees / 100000)) + 'LAKH ';
-      rupees %= 100000;
+    res += convert(Math.floor(rupees / 100000)) + 'LAKH ';
+    rupees %= 100000;
   }
   if (rupees >= 1000) {
-      res += convert(Math.floor(rupees / 1000)) + 'THOUSAND ';
-      rupees %= 1000;
+    res += convert(Math.floor(rupees / 1000)) + 'THOUSAND ';
+    rupees %= 1000;
   }
   res += convert(rupees);
-  
+
   let finalStr = 'RUPEES ' + res.trim();
   if (paise > 0) {
-      finalStr += ' AND PAISE ' + convert(paise).trim();
+    finalStr += ' AND PAISE ' + convert(paise).trim();
   }
   return finalStr + ' ONLY';
 }
@@ -94,9 +94,10 @@ export default async function RABillPrintPage({ params }) {
 
   return (
     <div id="print-container" style={{ padding: '40px', fontFamily: '"Times New Roman", Times, serif', fontSize: '12px', color: '#000', maxWidth: '1000px', margin: '0 auto', background: '#fff' }}>
-      
+
       {/* Hide print button and app layout when printing */}
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @media print {
           .no-print { display: none !important; }
           body { background: #fff; margin: 0; padding: 0; }
@@ -133,7 +134,7 @@ export default async function RABillPrintPage({ params }) {
         .row-v { flex: 1; font-weight: normal; }
       `}} />
 
-      <PrintButton />
+      <PrintButton billId={bill.id} />
 
       <div style={{ textAlign: 'center', marginBottom: '20px' }}>
         <h2 style={{ margin: '0 0 5px 0', fontSize: '18px' }}>CeCube Engineering India Private Limited</h2>
@@ -148,7 +149,10 @@ export default async function RABillPrintPage({ params }) {
         <div className="grid-col">
           <div className="row-kv"><div className="row-k">Project</div><div className="row-v">: {bill.project?.name || 'N/A'}</div></div>
           <div className="row-kv"><div className="row-k">Contractor</div><div className="row-v">: {bill.workOrder?.contractorName || 'N/A'}</div></div>
-          <div className="row-kv"><div className="row-k">Address</div><div className="row-v">: </div></div>
+          <div className="row-kv">
+            <div className="row-k">Address</div>
+            <div className="row-v">: {bill.workOrder?.contractorAddress || ''}</div>
+          </div>
           <div className="row-kv"><div className="row-k">Work Group</div><div className="row-v">: </div></div>
           <div className="row-kv"><div className="row-k">Phone</div><div className="row-v">: {bill.workOrder?.contractorPhone || ''}</div></div>
           <div className="row-kv"><div className="row-k">PAN</div><div className="row-v">: {bill.workOrder?.contractorPan || ''}</div></div>
@@ -161,15 +165,15 @@ export default async function RABillPrintPage({ params }) {
           <div className="row-kv"><div className="row-k">Work Order No</div><div className="row-v">: {bill.workOrder?.woNo || 'N/A'}</div></div>
           <div className="row-kv"><div className="row-k">Work Order Date</div><div className="row-v">: {formatDate(bill.workOrder?.createdAt)}</div></div>
           <div className="row-kv"><div className="row-k">Work Order Value</div><div className="row-v">: {inr.format(bill.workOrder?.contractValue || 0)}</div></div>
-          <br/>
+          <br />
           <div className="row-kv"><div className="row-k">Building Name</div><div className="row-v">: </div></div>
-          <br/>
+          <br />
           <div className="row-kv"><div className="row-k">RA Bill No</div><div className="row-v">: {bill.billNo}</div></div>
           <div className="row-kv"><div className="row-k">RA Bill Date</div><div className="row-v">: {formatDate(bill.date)}</div></div>
-          <br/>
+          <br />
           <div className="row-kv"><div className="row-k">Cont. Bill No</div><div className="row-v">: </div></div>
           <div className="row-kv"><div className="row-k">Cont. Bill Date</div><div className="row-v">: </div></div>
-          
+
           <div style={{ marginTop: '15px', fontWeight: 'bold', fontSize: '14px', letterSpacing: '2px', color: bill.status === 'Approved' || bill.status === 'Paid' ? '#15803d' : '#991b1b' }}>
             {bill.status === 'Approved' || bill.status === 'Paid' ? '' : 'UNAPPROVED'}
           </div>
@@ -246,7 +250,7 @@ export default async function RABillPrintPage({ params }) {
         <div style={{ marginBottom: '10px' }}><strong>Remark:</strong> {remarksText}</div>
         <div><strong>Narration :</strong></div>
       </div>
-      
+
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px' }}>
         <div style={{ fontSize: '10px' }}>{formatDate(bill.date)}</div>
         <div style={{ fontSize: '10px' }}>Page 1 of 2</div>
@@ -267,7 +271,10 @@ export default async function RABillPrintPage({ params }) {
           <div className="grid-col">
             <div className="row-kv"><div className="row-k">Project</div><div className="row-v">: {bill.project?.name || 'N/A'}</div></div>
             <div className="row-kv"><div className="row-k">Contractor</div><div className="row-v">: {bill.workOrder?.contractorName || 'N/A'}</div></div>
-            <div className="row-kv"><div className="row-k">Address</div><div className="row-v">: </div></div>
+            <div className="row-kv">
+              <div className="row-k">Address</div>
+              <div className="row-v">: {bill.workOrder?.contractorAddress || ''}</div>
+            </div>
             <div className="row-kv"><div className="row-k">Work Group</div><div className="row-v">: </div></div>
             <div className="row-kv"><div className="row-k">Phone</div><div className="row-v">: {bill.workOrder?.contractorPhone || ''}</div></div>
             <div className="row-kv"><div className="row-k">PAN</div><div className="row-v">: {bill.workOrder?.contractorPan || ''}</div></div>
@@ -280,15 +287,15 @@ export default async function RABillPrintPage({ params }) {
             <div className="row-kv"><div className="row-k">Work Order No</div><div className="row-v">: {bill.workOrder?.woNo || 'N/A'}</div></div>
             <div className="row-kv"><div className="row-k">Work Order Date</div><div className="row-v">: {formatDate(bill.workOrder?.createdAt)}</div></div>
             <div className="row-kv"><div className="row-k">Work Order Value</div><div className="row-v">: {inr.format(bill.workOrder?.contractValue || 0)}</div></div>
-            <br/>
+            <br />
             <div className="row-kv"><div className="row-k">Building Name</div><div className="row-v">: </div></div>
-            <br/>
+            <br />
             <div className="row-kv"><div className="row-k">RA Bill No</div><div className="row-v">: {bill.billNo}</div></div>
             <div className="row-kv"><div className="row-k">RA Bill Date</div><div className="row-v">: {formatDate(bill.date)}</div></div>
-            <br/>
+            <br />
             <div className="row-kv"><div className="row-k">Cont. Bill No</div><div className="row-v">: </div></div>
             <div className="row-kv"><div className="row-k">Cont. Bill Date</div><div className="row-v">: </div></div>
-            
+
             <div style={{ marginTop: '15px', fontWeight: 'bold', fontSize: '14px', letterSpacing: '2px', color: bill.status === 'Approved' || bill.status === 'Paid' ? '#15803d' : '#991b1b' }}>
               {bill.status === 'Approved' || bill.status === 'Paid' ? '' : 'UNAPPROVED'}
             </div>
@@ -377,7 +384,7 @@ export default async function RABillPrintPage({ params }) {
               <td className="text-right">{inr.format(bill.otherDeductions)}</td>
               <td className="text-right">{inr.format(bill.otherDeductions)}</td>
             </tr>
-            
+
             <tr style={{ fontWeight: 'bold', background: '#f0f0f0' }}>
               <td className="text-center">Sub total B</td>
               <td className="text-right">0.00</td>
@@ -403,7 +410,7 @@ export default async function RABillPrintPage({ params }) {
           <div style={{ flex: 1, padding: '4px 6px' }}>Date : </div>
         </div>
         <div style={{ border: '1px solid #000', borderTop: 'none', padding: '4px 6px' }}>
-          Remark : 
+          Remark :
         </div>
 
         <table style={{ borderTop: 'none', marginTop: '0' }}>

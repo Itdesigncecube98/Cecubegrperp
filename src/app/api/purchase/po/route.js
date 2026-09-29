@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
 
 async function getVendorFallback(vendorId) {
   if (!vendorId) return null;
@@ -72,6 +73,7 @@ export async function GET(req) {
       name: item.group?.library?.name || '',
       libraryId: item.group?.libraryId || null
     })).filter(item => item.key && item.name);
+    const editors = await getDocumentEditors(prisma, 'PurchaseOrder', pos.map(po => po.id));
 
     const resolveMaterialLibrary = description => {
       const key = normalizeMaterialName(description);
@@ -102,6 +104,7 @@ export async function GET(req) {
       const poLibrary = resolvedItems.find(item => item.materialLibrary)?.materialLibrary || null;
       return {
         ...po,
+        ...editors[po.id],
         items: resolvedItems.map(item => ({
           ...item,
           materialLibrary: item.materialLibrary || poLibrary
@@ -307,6 +310,9 @@ export async function PUT(req) {
             })) }
           }, include: { items: true }
         });
+      });
+      await recordDocumentEdit(prisma, {
+        entityType: 'PurchaseOrder', entityId: updated.id, module: 'Purchase', editorName: body.editedBy,
       });
       return NextResponse.json(updated);
     }

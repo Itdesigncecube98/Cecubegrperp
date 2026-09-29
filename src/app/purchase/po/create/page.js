@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { Save, Printer, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
+import { getClientActor } from '@/lib/clientActor';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 function numberToWords(num) {
   if (isNaN(num) || num <= 0) return 'Zero Rupees Only';
@@ -38,6 +41,8 @@ function CreatePOContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id') || '';
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const canSavePO = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', editId ? 'Purchase Orders Edit' : 'Purchase Orders Create')));
   const rfqId = searchParams.get('rfqId') || '';
   const vendorIdParam = searchParams.get('vendorId') || '';
   const [loading, setLoading] = useState(false);
@@ -46,6 +51,8 @@ function CreatePOContent() {
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [unitList, setUnitList] = useState([]);
+  const [lastEditedBy, setLastEditedBy] = useState('');
+  const [lastEditedAt, setLastEditedAt] = useState('');
 
   const [formData, setFormData] = useState({
     poNumber: '', vendorId: '', indentId: '', taskId: '', project: '', site: '',
@@ -56,7 +63,7 @@ function CreatePOContent() {
     otherConditions: '', insurance: ''
   });
 
-  const activeProject = projects.find(project => project.name === formData.project) || null;
+  const selectedProject = projects.find(project => project.name === formData.project) || null;
 
   const [items, setItems] = useState([
     { item: '', specification: '', hsnCode: '', quantity: '', unit: '', rate: '', itemDiscount: 0, gstPercent: 18, cgstPercent: 9, sgstPercent: 9 }
@@ -101,6 +108,8 @@ function CreatePOContent() {
           const poData = await poRes.json();
           const po = Array.isArray(poData) ? poData[0] : poData;
           if (po) {
+            setLastEditedBy(po.editedBy || '');
+            setLastEditedAt(po.editedAt || '');
             let extra = {
               discount: 0, freight: 0, otherCharges: 0, subject: '', siteContactPerson: '',
               siteContactDetail: '', materialInspection: '', transactionMode: '', taxAndDuties: '',
@@ -269,6 +278,7 @@ function CreatePOContent() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!canSavePO) return alert(`You do not have permission to ${editId ? 'edit' : 'create'} purchase orders for this project.`);
     setLoading(true);
     try {
       const vendor = vendors.find(item => item.id === formData.vendorId);
@@ -298,13 +308,14 @@ function CreatePOContent() {
         supplierPan: vendor?.pan || vendor?.panNumber || null,
         poDate: formData.poDate || new Date().toISOString().slice(0, 10),
         projectName: formData.project,
-        deliveryAddress: formData.deliveryLoc || activeProject?.location || activeProject?.address || activeProject?.state || '',
+        deliveryAddress: formData.deliveryLoc || selectedProject?.location || selectedProject?.address || selectedProject?.state || '',
         deliveryContact: formData.siteContactPerson || null,
         deliveryPhone: formData.siteContactDetail || null,
         cgstAmount: totalCgst.toFixed(2),
         sgstAmount: totalSgst.toFixed(2),
         items: items.map(item => ({ ...item, transportCharges: 0, otherCharges: 0 })),
         remarks: JSON.stringify(remarksData),
+        editedBy: getClientActor(),
         createdById: JSON.parse(localStorage.getItem('employeeData'))?.id || null
       };
       const res = await fetch('/api/purchase/po', {
@@ -327,6 +338,8 @@ function CreatePOContent() {
   };
 
   const handlePrint = () => window.print();
+
+  if (!canSavePO) return <div style={{ padding: 32, color: '#b91c1c' }}>You do not have permission to {editId ? 'edit' : 'create'} purchase orders for this project.</div>;
 
   return (
       <div className="po-page-root" style={{ backgroundColor: '#f1f5f9', minHeight: '100vh', padding: '24px', fontFamily: 'Arial, sans-serif' }}>
@@ -412,6 +425,7 @@ function CreatePOContent() {
           <div style={{ textAlign: 'center', marginBottom: '8px', position: 'relative' }}>
             <h1 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e3a8a', margin: '0 0 4px 0' }}>CeCube Engineering India Private Limited</h1>
             <h2 style={{ fontSize: '14px', margin: 0, fontWeight: 'normal' }}>Purchase Order</h2>
+            {editId && lastEditedBy && <div style={{ marginTop: 5, color: '#64748b', fontSize: 11 }}>Last edited by {lastEditedBy}{lastEditedAt ? ` on ${new Date(lastEditedAt).toLocaleString('en-IN')}` : ''}</div>}
             <div style={{ position: 'absolute', top: 0, right: 0 }}>
               <img src="/logo.png" alt="CeCube Logo" style={{ width: '60px', objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />
             </div>
@@ -449,7 +463,7 @@ function CreatePOContent() {
                   <tr><td style={{ width: '80px', color: '#4b5563' }}>PAN No</td><td style={{ fontWeight: 'bold' }}>AAJCC2203M</td></tr>
                   <tr><td style={{ color: '#4b5563' }}>GST No</td><td style={{ fontWeight: 'bold' }}>06AAJCC2203M1ZT</td></tr>
                   <tr><td style={{ color: '#4b5563', verticalAlign: 'top', paddingTop: '8px' }}>Shipped To</td><td><input type="text" name="project" value={formData.project} onChange={handleHeaderChange} className="doc-input" placeholder="E.g. Project Name" style={{ fontWeight: 'bold', paddingTop: '8px' }} /><span className="print-value">{formData.project || 'N/A'}</span></td></tr>
-                  <tr><td style={{ color: '#4b5563', verticalAlign: 'top' }}>Shipped To Address</td><td><textarea name="deliveryLoc" value={formData.deliveryLoc || activeProject?.location || activeProject?.address || activeProject?.state || ''} onChange={handleHeaderChange} className="doc-input" rows="3" placeholder="Project address..." /><span className="print-value">{formData.deliveryLoc || activeProject?.location || activeProject?.address || activeProject?.state || 'N/A'}</span></td></tr>
+                  <tr><td style={{ color: '#4b5563', verticalAlign: 'top' }}>Shipped To Address</td><td><textarea name="deliveryLoc" value={formData.deliveryLoc || selectedProject?.location || selectedProject?.address || selectedProject?.state || ''} onChange={handleHeaderChange} className="doc-input" rows="3" placeholder="Project address..." /><span className="print-value">{formData.deliveryLoc || selectedProject?.location || selectedProject?.address || selectedProject?.state || 'N/A'}</span></td></tr>
                 </tbody>
               </table>
             </div>

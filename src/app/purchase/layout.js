@@ -4,6 +4,7 @@ import PurchaseSidebar from '../../components/PurchaseSidebar';
 import TopHeader from '../../components/TopHeader';
 import './layout.css';
 import './purchase.css';
+import ProjectRoutePermissionGate from '../../components/ProjectRoutePermissionGate';
 
 export default function PurchaseLayout({ children }) {
   const [isCollapsed, setIsCollapsed] = React.useState(false);
@@ -16,7 +17,7 @@ export default function PurchaseLayout({ children }) {
           <TopHeader title="Purchase Management" />
         </div>
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', minWidth: 0 }} className="custom-horizontal-scrollbar">
-          {children}
+          <ProjectRoutePermissionGate>{children}</ProjectRoutePermissionGate>
         </div>
       </div>
     </div>

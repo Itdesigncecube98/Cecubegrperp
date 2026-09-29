@@ -14,6 +14,7 @@ const MODULES = [
   { label: 'Store',           color: '#10b981', bg: '#ecfdf5', key: 'Store' },
   { label: 'Planning',        color: '#8b5cf6', bg: '#f5f3ff', key: 'Planning' },
   { label: 'Site',            color: '#ef4444', bg: '#fef2f2', key: 'Site' },
+  { label: 'Contracting',     color: '#0891b2', bg: '#ecfeff', key: 'Contracting' },
   { label: 'Accounts',        color: '#14b8a6', bg: '#f0fdfa', key: 'Accounts' },
   { label: 'Marketing',       color: '#f97316', bg: '#fff7ed', key: 'Marketing' },
   { label: 'Tender',          color: '#06b6d4', bg: '#ecfeff', key: 'Tender' },
@@ -44,6 +45,7 @@ export default function AdminOverviewPage() {
   const [recentLogs, setRecentLogs] = useState([]);
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([
       fetch('/api/admin/users').then(r => r.json()).catch(() => ({ total: 0 })),
       fetch('/api/admin/roles').then(r => r.json()).catch(() => ({ data: [] })),
@@ -51,6 +53,7 @@ export default function AdminOverviewPage() {
       fetch('/api/admin/permissions').then(r => r.json()).catch(() => ({ total: 0 })),
       fetch('/api/admin/audit-log?limit=5').then(r => r.json()).catch(() => ({ data: [], total: 0 })),
     ]).then(([users, roles, companies, perms, audit]) => {
+      if (cancelled) return;
       setStats({
         users:       users.total       || 0,
         roles:       (roles.data       || []).length,
@@ -61,6 +64,7 @@ export default function AdminOverviewPage() {
       setRecentLogs(audit.data || []);
       setLoading(false);
     });
+    return () => { cancelled = true; };
   }, []);
 
   if (loading) return (
@@ -101,11 +105,12 @@ export default function AdminOverviewPage() {
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[
-              { label: 'Add New User',      href: '/admin-dashboard/users',    icon: Users,         color: '#6366f1' },
-              { label: 'Create Role',       href: '/admin-dashboard/roles',    icon: Shield,        color: '#0ea5e9' },
-              { label: 'Add Company',       href: '/admin-dashboard/company',  icon: Building2,     color: '#10b981' },
-              { label: 'View Audit Log',    href: '/admin-dashboard/audit',    icon: ClipboardList, color: '#8b5cf6' },
-              { label: 'Security Settings', href: '/admin-dashboard/security', icon: Lock,          color: '#ef4444' },
+              { label: 'Add New User',          href: '/admin-dashboard/users',          icon: Users,         color: '#6366f1' },
+              { label: 'Tool Permissions (Role)', href: '/admin-dashboard/tools',          icon: Key,           color: '#f59e0b' },
+              { label: 'Employee Project Access', href: '/admin-dashboard/employee-tools', icon: UserCheck,     color: '#0891b2' },
+              { label: 'Access Logs',             href: '/admin-dashboard/access-logs',    icon: ClipboardList, color: '#8b5cf6' },
+              { label: 'Add Company',             href: '/admin-dashboard/company',        icon: Building2,     color: '#10b981' },
+              { label: 'Security Settings',       href: '/admin-dashboard/security',       icon: Lock,          color: '#ef4444' },
             ].map(a => (
               <Link key={a.href} href={a.href} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, border: '1px solid #e2e8f0', textDecoration: 'none', color: '#0f172a', fontSize: 13, fontWeight: 600, background: '#fafafa', transition: 'all 0.15s' }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = a.color; e.currentTarget.style.background = '#f8fafc'; }}
@@ -124,7 +129,7 @@ export default function AdminOverviewPage() {
             <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Activity size={18} color="#6366f1" /> Recent Activity
             </h2>
-            <Link href="/admin-dashboard/audit" style={{ fontSize: 12, color: '#6366f1', textDecoration: 'none', fontWeight: 600 }}>View all →</Link>
+            <Link href="/admin-dashboard/access-logs" style={{ fontSize: 12, color: '#6366f1', textDecoration: 'none', fontWeight: 600 }}>View all logs →</Link>
           </div>
           {recentLogs.length === 0 ? (
             <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: '30px 0' }}>No activity yet. System just initialized.</div>

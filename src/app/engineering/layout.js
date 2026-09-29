@@ -3,6 +3,7 @@ import React from 'react';
 import EngineeringSidebar from '../../components/EngineeringSidebar';
 import { Bell, User, Paintbrush } from 'lucide-react';
 import TopHeader from '../../components/TopHeader';
+import ProjectRoutePermissionGate from '../../components/ProjectRoutePermissionGate';
 import './layout.css';
 
 export default function EngineeringLayout({ children }) {
@@ -16,7 +17,7 @@ export default function EngineeringLayout({ children }) {
           <TopHeader title="Engineering Dashboard" />
         </div>
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', minWidth: 0 }} className="custom-horizontal-scrollbar">
-          {children}
+          <ProjectRoutePermissionGate>{children}</ProjectRoutePermissionGate>
         </div>
       </div>
     </div>

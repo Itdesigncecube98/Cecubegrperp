@@ -19,7 +19,7 @@ const transporter = nodemailer.createTransport({
  * @param {string} options.subject - Email subject
  * @param {string} options.html - HTML body content
  */
-export async function sendEmail({ to, subject, html }) {
+export async function sendEmail({ to, subject, html, attachments = [] }) {
   const user = process.env.SMTP_EMAIL || process.env.SMTP_USER;
   const pass = process.env.SMTP_PASSWORD || process.env.SMTP_PASS;
   
@@ -34,7 +34,7 @@ export async function sendEmail({ to, subject, html }) {
     to,
     subject,
     html,
-    attachments: []
+    attachments: [...attachments]
   };
 
   const logoPath = path.join(process.cwd(), 'public', 'logo.png');

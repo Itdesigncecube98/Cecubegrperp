@@ -40,8 +40,10 @@ export default function AccountsSidebar({ isCollapsed: propCollapsed, setIsColla
     setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const confirmLogout = () => {
-    sessionStorage.removeItem('isAdmin');
+  const confirmLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    sessionStorage.clear();
+    for (const key of ['employeeData', 'activeEmp', 'activeProj']) localStorage.removeItem(key);
     router.push('/login');
   };
 

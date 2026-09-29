@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { addTaskMasterTask } from '@/lib/siteTaskMaster';
+import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
 
 // GET /api/contracting/work-orders
 export async function GET(request) {
@@ -26,8 +27,8 @@ export async function GET(request) {
       },
       orderBy: { createdAt: 'desc' }
     });
-
-    return NextResponse.json(workOrders);
+    const editors = await getDocumentEditors(prisma, 'WorkOrder', workOrders.map(order => order.id));
+    return NextResponse.json(workOrders.map(order => ({ ...order, ...editors[order.id] })));
   } catch (error) {
     console.error('Error fetching work orders:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -147,7 +148,11 @@ export async function PUT(request) {
       include: { project: { select: { id: true, name: true } } }
     });
 
-    return NextResponse.json(updated);
+    await recordDocumentEdit(prisma, {
+      entityType: 'WorkOrder', entityId: updated.id, module: 'Contracting', editorName: fields.editedBy,
+    });
+
+    return NextResponse.json({ ...updated, editedBy: fields.editedBy || null });
   } catch (error) {
     console.error('Error updating work order:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -65,8 +65,12 @@ export default function UnifiedPortal() {
     }
   }, [router]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     sessionStorage.clear();
+    localStorage.removeItem('employeeData');
+    localStorage.removeItem('activeEmp');
+    localStorage.removeItem('activeProj');
     router.push('/login');
   };
 
