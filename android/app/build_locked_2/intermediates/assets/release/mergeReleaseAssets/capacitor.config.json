@@ -1,9 +1,0 @@
-{
-	"appId": "com.cecube.employee.dashboard",
-	"appName": "CeCube Employee Dashboard",
-	"webDir": "www",
-	"server": {
-		"url": "https://cecubegroupdashboard.vercel.app",
-		"cleartext": true
-	}
-}
