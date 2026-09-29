@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Save, Send, Download, Plus, Trash2, Edit2, FileIcon } from 'lucide-react';
+import { FileText, Save, Send, Download, Plus, Trash2, Edit2, FileIcon, ArrowLeft } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ImageRun } from 'docx';
@@ -8,6 +9,7 @@ import { saveAs } from 'file-saver';
 import Dialog from '@/components/Dialog';
 
 export default function EmployeeDocGenerator() {
+  const router = useRouter();
   const [employee, setEmployee] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -540,9 +542,18 @@ export default function EmployeeDocGenerator() {
 
   return (
     <div style={{ padding: '24px', background: '#f8fafc', minHeight: '100vh' }}>
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>My Applications</h1>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Create and track your document requests.</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+        <button 
+          onClick={() => router.push('/employee/dashboard')}
+          style={{ padding: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Back to Dashboard"
+        >
+          <ArrowLeft size={20} color="#475569" />
+        </button>
+        <div>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>My Applications</h1>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Create and track your document requests.</p>
+        </div>
       </div>
 
       {!isEditing ? (

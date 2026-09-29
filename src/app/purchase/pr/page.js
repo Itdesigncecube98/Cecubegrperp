@@ -1,14 +1,32 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, X, Save, Trash2 } from 'lucide-react';
+import { Search, Filter, Plus, X, Save, Trash2, Mail } from 'lucide-react';
 import Link from 'next/link';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
+import { getClientActor } from '@/lib/clientActor';
 
 export default function PRRegister() {
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const can = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', name)));
   const [prs, setPrs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedPr, setSelectedPr] = useState(null);
+  const canEditSelected = !!selectedPr && selectedPr.status !== 'Approved' && can('Purchase Indent Edit');
+  const [sendingId, setSendingId] = useState('');
+
+  const sendPrEmail = async pr => {
+    setSendingId(pr.id);
+    try {
+      const response = await fetch('/api/documents/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentType: 'purchase-indent', id: pr.id, sentBy: getClientActor() }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to email purchase indent.');
+      alert(result.mocked ? `Email is configured in demo mode for ${result.recipient}.` : `Purchase indent emailed to ${result.recipient}.`);
+    } catch (error) { alert(error.message); }
+    finally { setSendingId(''); }
+  };
 
   const updateStatus = async (id, status) => {
     const response = await fetch('/api/purchase/pr', {
@@ -104,9 +122,9 @@ export default function PRRegister() {
           <h1 className="pur-title">Purchase Indent (PR) Register</h1>
           <p className="pur-subtitle">Manage procurement requests</p>
         </div>
-        <Link href="/purchase/pr/create" className="pur-btn pur-btn-primary" style={{ backgroundColor: '#f59e0b', color: '#fff' }}>
+        {can('Purchase Indent Create') && <Link href="/purchase/pr/create" className="pur-btn pur-btn-primary" style={{ backgroundColor: '#f59e0b', color: '#fff' }}>
           <Plus size={16} /> New PR
-        </Link>
+        </Link>}
       </div>
 
       <div className="pur-card">
@@ -172,6 +190,7 @@ export default function PRRegister() {
                       <select
                         className="pur-select"
                         value={pr.status}
+                        disabled={!can('Purchase Indent Approve')}
                         onChange={(event) => updateStatus(pr.id, event.target.value)}
                         style={{ minWidth: '150px', padding: '5px 8px', fontSize: '0.75rem' }}
                       >
@@ -187,9 +206,8 @@ export default function PRRegister() {
                           Generate Enquiry
                         </Link>
                       )}
-                      <button type="button" onClick={() => setSelectedPr(pr)} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
-                        View
-                      </button>
+                      {(can('Purchase Indent View') || can('Purchase Indent Edit')) && <button type="button" onClick={() => setSelectedPr(pr)} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>{can('Purchase Indent Edit') ? 'View / Edit' : 'View'}</button>}
+                      {can('Send Purchase Indent by Email') && <button type="button" className="pur-icon-btn" title="Email purchase indent to requester" disabled={sendingId === pr.id} onClick={() => sendPrEmail(pr)}><Mail size={15} /></button>}
                     </td>
                   </tr>
                 ))}
@@ -218,27 +236,27 @@ export default function PRRegister() {
             </div>
             <div style={{ padding: '24px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-                <div><div className="pur-text-xs pur-text-muted">Project</div>{selectedPr.status === 'Approved' ? <strong>{selectedPr.project || '-'}</strong> : <input className="pur-input" value={selectedPr.project || ''} onChange={e => updateSelectedPr('project', e.target.value)} />}</div>
+                <div><div className="pur-text-xs pur-text-muted">Project</div>{!canEditSelected ? <strong>{selectedPr.project || '-'}</strong> : <input className="pur-input" value={selectedPr.project || ''} onChange={e => updateSelectedPr('project', e.target.value)} />}</div>
                 <div><div className="pur-text-xs pur-text-muted">PR Date</div><strong>{selectedPr.prDate ? new Date(selectedPr.prDate).toLocaleDateString() : '-'}</strong></div>
                 <div><div className="pur-text-xs pur-text-muted">Status</div><strong>{selectedPr.status}</strong></div>
-                <div><div className="pur-text-xs pur-text-muted">Priority</div>{selectedPr.status === 'Approved' ? <strong>{selectedPr.priority || 'Normal'}</strong> : <select className="pur-select" value={selectedPr.priority || 'Normal'} onChange={e => updateSelectedPr('priority', e.target.value)}><option>Normal</option><option>Urgent</option><option>Critical</option></select>}</div>
-                <div><div className="pur-text-xs pur-text-muted">Required Date</div>{selectedPr.status === 'Approved' ? <strong>{selectedPr.requiredDate ? new Date(selectedPr.requiredDate).toLocaleDateString() : '-'}</strong> : <input type="date" className="pur-input" value={selectedPr.requiredDate ? String(selectedPr.requiredDate).slice(0, 10) : ''} onChange={e => updateSelectedPr('requiredDate', e.target.value)} />}</div>
-                <div><div className="pur-text-xs pur-text-muted">Purpose</div>{selectedPr.status === 'Approved' ? <strong>{selectedPr.purpose || '-'}</strong> : <textarea className="pur-textarea" rows="2" value={selectedPr.purpose || ''} onChange={e => updateSelectedPr('purpose', e.target.value)} />}</div>
+                <div><div className="pur-text-xs pur-text-muted">Priority</div>{!canEditSelected ? <strong>{selectedPr.priority || 'Normal'}</strong> : <select className="pur-select" value={selectedPr.priority || 'Normal'} onChange={e => updateSelectedPr('priority', e.target.value)}><option>Normal</option><option>Urgent</option><option>Critical</option></select>}</div>
+                <div><div className="pur-text-xs pur-text-muted">Required Date</div>{!canEditSelected ? <strong>{selectedPr.requiredDate ? new Date(selectedPr.requiredDate).toLocaleDateString() : '-'}</strong> : <input type="date" className="pur-input" value={selectedPr.requiredDate ? String(selectedPr.requiredDate).slice(0, 10) : ''} onChange={e => updateSelectedPr('requiredDate', e.target.value)} />}</div>
+                <div><div className="pur-text-xs pur-text-muted">Purpose</div>{!canEditSelected ? <strong>{selectedPr.purpose || '-'}</strong> : <textarea className="pur-textarea" rows="2" value={selectedPr.purpose || ''} onChange={e => updateSelectedPr('purpose', e.target.value)} />}</div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <h3 style={{ margin: 0, fontSize: '0.95rem', color: '#1e293b' }}>Requested Materials</h3>
-                {selectedPr.status !== 'Approved' && <button type="button" className="pur-btn pur-btn-outline" onClick={addSelectedItem}><Plus size={14} /> Add Item</button>}
+                {canEditSelected && <button type="button" className="pur-btn pur-btn-outline" onClick={addSelectedItem}><Plus size={14} /> Add Item</button>}
               </div>
               <div className="pur-table-wrapper">
                 <table className="pur-table">
-                  <thead><tr><th>#</th><th>Material</th><th>Specification</th><th>Unit</th><th>Quantity</th>{selectedPr.status !== 'Approved' && <th></th>}</tr></thead>
+                  <thead><tr><th>#</th><th>Material</th><th>Specification</th><th>Unit</th><th>Quantity</th>{canEditSelected && <th></th>}</tr></thead>
                   <tbody>
-                    {(selectedPr.items || []).map((item, index) => <tr key={item.id || index}><td>{index + 1}</td><td className="pur-font-medium">{selectedPr.status === 'Approved' ? item.item : <input className="pur-input" value={item.item || ''} onChange={e => updateSelectedItem(index, 'item', e.target.value)} />}</td><td>{selectedPr.status === 'Approved' ? (item.specification || '-') : <input className="pur-input" value={item.specification || ''} onChange={e => updateSelectedItem(index, 'specification', e.target.value)} />}</td><td>{selectedPr.status === 'Approved' ? item.unit : <input className="pur-input" value={item.unit || ''} onChange={e => updateSelectedItem(index, 'unit', e.target.value)} />}</td><td>{selectedPr.status === 'Approved' ? item.quantity : <input type="number" className="pur-input" value={item.quantity || ''} onChange={e => updateSelectedItem(index, 'quantity', e.target.value)} />}</td>{selectedPr.status !== 'Approved' && <td><button type="button" className="pur-icon-btn pur-text-danger" onClick={() => removeSelectedItem(index)}><Trash2 size={15} /></button></td>}</tr>)}
-                    {(!selectedPr.items || selectedPr.items.length === 0) && <tr><td colSpan={selectedPr.status === 'Approved' ? 5 : 6} className="pur-text-center pur-text-muted">No material items found.</td></tr>}
+                    {(selectedPr.items || []).map((item, index) => <tr key={item.id || index}><td>{index + 1}</td><td className="pur-font-medium">{!canEditSelected ? item.item : <input className="pur-input" value={item.item || ''} onChange={e => updateSelectedItem(index, 'item', e.target.value)} />}</td><td>{!canEditSelected ? (item.specification || '-') : <input className="pur-input" value={item.specification || ''} onChange={e => updateSelectedItem(index, 'specification', e.target.value)} />}</td><td>{!canEditSelected ? item.unit : <input className="pur-input" value={item.unit || ''} onChange={e => updateSelectedItem(index, 'unit', e.target.value)} />}</td><td>{!canEditSelected ? item.quantity : <input type="number" className="pur-input" value={item.quantity || ''} onChange={e => updateSelectedItem(index, 'quantity', e.target.value)} />}</td>{canEditSelected && <td><button type="button" className="pur-icon-btn pur-text-danger" onClick={() => removeSelectedItem(index)}><Trash2 size={15} /></button></td>}</tr>)}
+                    {(!selectedPr.items || selectedPr.items.length === 0) && <tr><td colSpan={canEditSelected ? 6 : 5} className="pur-text-center pur-text-muted">No material items found.</td></tr>}
                   </tbody>
                 </table>
               </div>
-              {selectedPr.status !== 'Approved' && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}><button type="button" className="pur-btn pur-btn-primary" onClick={saveSelectedPr}><Save size={16} /> Save Changes</button></div>}
+              {canEditSelected && <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}><button type="button" className="pur-btn pur-btn-primary" onClick={saveSelectedPr}><Save size={16} /> Save Changes</button></div>}
             </div>
           </div>
         </div>

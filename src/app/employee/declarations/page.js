@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, RotateCcw, Copy, FileDown, Save, FileText, Upload } from 'lucide-react';
+import { Search, RotateCcw, Copy, FileDown, Save, FileText, Upload, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 const DECLARATION_ITEMS = [
@@ -133,7 +133,14 @@ export default function EmployeeDeclarationsPage() {
   return (
     <div style={{ fontFamily: 'sans-serif', background: '#f4f6f8', minHeight: '100vh', padding: '24px' }}>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+        <button 
+          onClick={() => router.push('/employee/dashboard')}
+          style={{ padding: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Back to Dashboard"
+        >
+          <ArrowLeft size={20} color="#475569" />
+        </button>
         <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: '#0f172a' }}>My Income & Investment Declarations</h1>
       </div>
 

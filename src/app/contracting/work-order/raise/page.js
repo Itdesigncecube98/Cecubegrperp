@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Home, ChevronRight, Search, RefreshCw, FileText, Printer, Save } from 'lucide-react';
 import '../../contracting.css';
+import { getClientActor } from '@/lib/clientActor';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 const printStyles = `
   @page {
@@ -158,6 +161,9 @@ const PreviewInput = ({ value, onChange, multiline = false, style = {}, classNam
 export default function RaiseWorkOrder() {
   const searchParams = useSearchParams();
   const editId = searchParams.get('id') || '';
+  const printMode = searchParams.get('print') === '1';
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const canSaveWorkOrder = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', printMode ? 'Browse Work Order' : editId ? 'Edit Work Order' : 'Raise Work Order')));
   const [projects, setProjects] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [quotations, setQuotations] = useState([]);
@@ -174,6 +180,7 @@ export default function RaiseWorkOrder() {
   const [showError, setShowError] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [woData, setWoData] = useState(null);
+  const [lastEdited, setLastEdited] = useState(null);
   const [saveMessage, setSaveMessage] = useState('');
 
   const [tasks, setTasks] = useState([]);
@@ -235,6 +242,7 @@ export default function RaiseWorkOrder() {
       .then(records => {
         const record = Array.isArray(records) ? records[0] : records;
         if (!record) return;
+        setLastEdited(record.editedBy ? { name: record.editedBy, at: record.editedAt } : null);
         let stored = {};
         try { stored = record.scope ? JSON.parse(record.scope) : {}; } catch { stored = {}; }
         setItems(stored.items || []);
@@ -430,6 +438,10 @@ export default function RaiseWorkOrder() {
   };
 
   const handleSaveWorkOrder = async () => {
+    if (!canSaveWorkOrder) {
+      setSaveMessage(`You do not have permission to ${editId ? 'edit' : 'create'} work orders for this project.`);
+      return;
+    }
     if (!woData || !filters.projectId && !editId) {
       setSaveMessage('Select a project before saving the work order.');
       return;
@@ -453,6 +465,7 @@ export default function RaiseWorkOrder() {
       preview: woData,
       items,
       quotationTerms: woData.quotationTerms || {},
+      editedBy: getClientActor(),
     };
     setSaveMessage('');
     try {
@@ -499,6 +512,8 @@ export default function RaiseWorkOrder() {
     if (remainder) parts.push(underThousand(remainder));
     return `RUPEES ${parts.join(' ')} ONLY.`;
   };
+
+  if (!canSaveWorkOrder) return <div style={{ padding: 32, color: '#b91c1c' }}>You do not have permission to {editId ? 'edit' : 'create'} work orders for this project.</div>;
 
   return (
     <div className="contracting-container">
@@ -673,6 +688,7 @@ export default function RaiseWorkOrder() {
             <div style={{ textAlign: 'center', borderBottom: '2px solid #334155', paddingBottom: '16px', marginBottom: '20px', position: 'relative' }}>
               <PreviewInput value={woData.companyName} onChange={e => updatePreviewField('companyName', e.target.value)} style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.2rem', color: '#1e293b' }} />
               <h3 style={{ margin: '4px 0 0 0', fontSize: '1rem', color: '#475569' }}>Work Order</h3>
+              {lastEdited && <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Last edited by {lastEdited.name}{lastEdited.at ? ` on ${new Date(lastEdited.at).toLocaleString('en-IN')}` : ''}</div>}
               <div style={{ position: 'absolute', right: 0, top: 0 }}>
                 <img src="/logo.png" alt="CeCube logo" style={{ width: '120px', height: '60px', objectFit: 'contain' }} />
               </div>
@@ -920,9 +936,9 @@ export default function RaiseWorkOrder() {
               <button className="btn-cyan" onClick={() => window.print()} style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1' }}>
                 <Printer size={16} /> Print WO
               </button>
-              <button className="btn-cyan" onClick={handleSaveWorkOrder}>
+              {!printMode && <button className="btn-cyan" onClick={handleSaveWorkOrder}>
                 <Save size={16} /> Save Work Order
-              </button>
+              </button>}
             </div>
             {saveMessage && <div style={{ marginTop: '10px', textAlign: 'right', color: saveMessage.includes('successfully') ? '#166534' : '#b91c1c', fontSize: '0.82rem' }}>{saveMessage}</div>}
 

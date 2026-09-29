@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 const TripMap = dynamic(() => import('@/components/TripMap'), { ssr: false });
 import { exportToCSV } from '../../../../lib/exportUtils';
 import Dialog from '../../../../components/Dialog';
+import { cleanTripTrack } from '@/lib/tripGps';
 
 export default function TripReportsPage() {
   const [trips, setTrips] = useState([]);
@@ -24,6 +25,13 @@ export default function TripReportsPage() {
   const [requestData, setRequestData] = useState({ employeeId: '', vehicleId: '' });
   const [regularizeData, setRegularizeData] = useState({ employeeId: '', vehicleId: '', date: new Date().toISOString().split('T')[0], startLocation: '', endLocation: '', distanceKm: '', reason: '' });
   const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: null });
+
+  const cleanedGpsDistanceKm = selectedMapTrip
+    ? cleanTripTrack(selectedMapTrip.pings || []).distanceKm
+    : 0;
+  const savedDistanceKm = Number(selectedMapTrip?.distanceKm || 0);
+  const hasGpsDistanceMismatch = selectedMapTrip?.pings?.length > 1
+    && Math.abs(savedDistanceKm - cleanedGpsDistanceKm) > Math.max(1, savedDistanceKm * 0.2);
 
   const router = useRouter();
 
@@ -128,6 +136,33 @@ export default function TripReportsPage() {
       if (res.ok) fetchTrips();
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const applyCleanGpsDistance = async () => {
+    if (!selectedMapTrip || ['APPROVED', 'PAID'].includes(selectedMapTrip.status)) return;
+    const distanceKm = Number(cleanedGpsDistanceKm.toFixed(2));
+    if (!Number.isFinite(distanceKm) || distanceKm <= 0) return;
+    const ratePerKm = Number(selectedMapTrip.vehicle?.ratePerKm || 0);
+    const revisedAmount = distanceKm * ratePerKm;
+    const accepted = window.confirm(
+      `Update this trip from ${savedDistanceKm.toFixed(2)} km to ${distanceKm.toFixed(2)} km?\n\nThe expense will be recalculated from the vehicle rate (${revisedAmount.toFixed(2)}).`
+    );
+    if (!accepted) return;
+
+    try {
+      const response = await fetch(`/api/trips/${selectedMapTrip.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: selectedMapTrip.status, distanceKm }),
+      });
+      const updated = await response.json();
+      if (!response.ok) throw new Error(updated.error || 'Could not update this trip.');
+      setTrips(current => current.map(trip => trip.id === updated.id ? { ...trip, ...updated } : trip));
+      setSelectedMapTrip(current => current?.id === updated.id ? { ...current, ...updated } : current);
+      setDialogConfig({ isOpen: true, type: 'alert', title: 'Trip updated', message: `Distance updated to ${Number(updated.distanceKm).toFixed(2)} km and expense recalculated.` });
+    } catch (error) {
+      setDialogConfig({ isOpen: true, type: 'alert', title: 'Update failed', message: error.message || 'Could not update this trip.' });
     }
   };
 
@@ -447,8 +482,22 @@ export default function TripReportsPage() {
             <div style={{ marginBottom: '1rem', display: 'flex', gap: '2rem', fontSize: '0.875rem' }}>
               <div><strong>Employee:</strong> {selectedMapTrip.employee?.name}</div>
               <div><strong>Vehicle:</strong> {selectedMapTrip.vehicle?.makeModel}</div>
-              <div><strong>Distance:</strong> {selectedMapTrip.distanceKm} km</div>
+              <div><strong>Recorded distance:</strong> {Number(selectedMapTrip.distanceKm || 0).toFixed(2)} km</div>
+              {selectedMapTrip.pings?.length > 1 && (
+                <div><strong>Clean GPS trace:</strong> {cleanedGpsDistanceKm.toFixed(2)} km</div>
+              )}
             </div>
+
+            {hasGpsDistanceMismatch && (
+              <div role="status" style={{ marginBottom: '1rem', padding: '0.75rem 1rem', borderRadius: 8, border: '1px solid #fcd34d', background: '#fffbeb', color: '#92400e', fontSize: '0.85rem' }}>
+                This trip contains GPS jumps, so the recorded mileage and expense may be overstated. The map uses the cleaned GPS trace; review this report before approving the expense.
+                {!['APPROVED', 'PAID'].includes(selectedMapTrip.status) && (
+                  <button onClick={applyCleanGpsDistance} style={{ marginLeft: 12, padding: '6px 10px', borderRadius: 6, border: '1px solid #d97706', background: '#fff', color: '#92400e', fontWeight: 700, cursor: 'pointer' }}>
+                    Apply cleaned distance &amp; recalculate expense
+                  </button>
+                )}
+              </div>
+            )}
 
             <TripMap 
               pings={selectedMapTrip.pings} 
