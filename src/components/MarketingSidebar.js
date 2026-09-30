@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Dialog from './Dialog';
 import { useUserPermissions, canSee } from '@/lib/permission';
+import { usePermissions } from '@/context/PermissionsContext';
 import './sidebar.css';
 
 export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsCollapsed: propSetIsCollapsed }) {
@@ -19,6 +20,7 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
   const [searchQuery, setSearchQuery] = useState('');
   const [showWidget, setShowWidget] = useState(true);
   const permissions = useUserPermissions();
+  const { activeEmployee, permissionsLoaded, hasRight } = usePermissions();
 
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
@@ -98,9 +100,9 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
 
   const visibleMenuConfig = useMemo(() => {
     return menuConfig
-      .map(group => ({ ...group, items: group.items.filter(item => canSee(item, permissions)) }))
+      .map(group => ({ ...group, items: group.items.filter(item => activeEmployee ? permissionsLoaded && hasRight(item.permissionCode) : canSee(item, permissions)) }))
       .filter(group => group.items.length > 0);
-  }, [permissions]);
+  }, [permissions, activeEmployee, permissionsLoaded, hasRight]);
 
   const allItems = useMemo(() => {
     const list = [];

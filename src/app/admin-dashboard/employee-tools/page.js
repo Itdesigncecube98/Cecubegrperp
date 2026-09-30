@@ -13,6 +13,7 @@ const MODULE_COLORS = {
   Engineering: { color: '#7c3aed', bg: '#f5f3ff' },
   Purchase: { color: '#f59e0b', bg: '#fffbeb' },
   Site: { color: '#ef4444', bg: '#fef2f2' },
+  Marketing: { color: '#f97316', bg: '#fff7ed' },
 };
 
 const MODULES = Object.keys(PROJECT_TOOL_MODULES);

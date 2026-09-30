@@ -29,6 +29,10 @@ export const PROJECT_TOOL_MODULES = {
     'Site Store', 'Task Status Change', 'Quality Control View', 'Quality Control Add', 'Health & Safety View',
     'Health & Safety Add', 'Raise NCR',
   ],
+  Marketing: [
+    'Marketing Dashboard', 'Analytics', 'Lead Register', 'Customer Master',
+    'Opportunity Pipeline', 'Tender & Proposal', 'Handover to Project',
+  ],
 };
 
 export function employeeToolCode(module, name) {
@@ -128,4 +132,12 @@ export const LEGACY_PERMISSION_ALIASES = {
   SITE_STORE: alias('Site', 'Site Store'),
   SITE_TASK_STATUS: alias('Site', 'Task Status Change'),
   SITE_QUALITY: alias('Site', 'Quality Control View', 'Quality Control Add', 'Health & Safety View', 'Health & Safety Add', 'Raise NCR'),
+
+  MARKETING_DASHBOARD: alias('Marketing', 'Marketing Dashboard'),
+  MARKETING_ANALYTICS: alias('Marketing', 'Analytics'),
+  MARKETING_LEAD_REGISTER: alias('Marketing', 'Lead Register'),
+  MARKETING_CUSTOMER_MASTER: alias('Marketing', 'Customer Master'),
+  MARKETING_OPP_PIPELINE: alias('Marketing', 'Opportunity Pipeline'),
+  MARKETING_TENDER_PROPOSAL: alias('Marketing', 'Tender & Proposal'),
+  MARKETING_HANDOVER: alias('Marketing', 'Handover to Project'),
 };
