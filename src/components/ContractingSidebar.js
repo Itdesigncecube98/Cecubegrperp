@@ -76,7 +76,7 @@ const menuConfig = [
 export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCollapsed: propSetIsCollapsed }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { hasRight, activeEmployee, activeProject } = usePermissions();
+  const { hasRight, activeEmployee } = usePermissions();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showWidget, setShowWidget] = useState(true);
@@ -95,14 +95,13 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
 
   const visibleMenuConfig = useMemo(() => {
     if (!activeEmployee) return menuConfig;
-    if (!activeProject) return [];
     return menuConfig
       .map(group => ({
         ...group,
         items: group.items.filter(item => !item.permissionCode || hasRight(item.permissionCode)),
       }))
       .filter(group => group.items.length > 0);
-  }, [activeEmployee, activeProject, hasRight]);
+  }, [activeEmployee, hasRight]);
 
   const allItems = useMemo(() =>
     visibleMenuConfig.flatMap(g => g.items.map(i => ({ ...i, groupIcon: g.icon }))),

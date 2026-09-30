@@ -2,11 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Search, FileText, PhoneCall, Building2, Trash2, X, Pencil } from 'lucide-react';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
-export default function LeadRegister() {
+export default function LeadRegister({ isEnquiryPage = false }) {
+  const { activeEmployee, hasRight } = usePermissions();
+  const enquiryRight = (tool, projectId) => !isEnquiryPage || !activeEmployee || (!!projectId && hasRight(employeeToolCode('Marketing', tool), projectId));
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [projectOptions, setProjectOptions] = useState([]);
+  const [selectedProjectName, setSelectedProjectName] = useState('');
   
   const [viewLead, setViewLead] = useState(null);
   const [followupLead, setFollowupLead] = useState(null);
@@ -16,11 +22,24 @@ export default function LeadRegister() {
   useEffect(() => {
     fetchLeads();
     fetchEmployees();
+    if (isEnquiryPage) fetchProjectOptions();
   }, []);
+
+  async function fetchProjectOptions() {
+    try {
+      const res = await fetch('/api/marketing/projects');
+      if (res.ok) {
+        const data = await res.json();
+        setProjectOptions(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to load enquiry project options:', err);
+    }
+  }
 
   async function fetchLeads() {
     try {
-      const res = await fetch('/api/marketing/leads');
+      const res = await fetch(isEnquiryPage ? '/api/marketing/enquiries' : '/api/marketing/leads');
       if (res.ok) {
         const data = await res.json();
         setLeads(data);
@@ -46,7 +65,7 @@ export default function LeadRegister() {
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this lead?')) return;
     try {
-      const res = await fetch(`/api/marketing/leads/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/marketing/${isEnquiryPage ? 'enquiries' : 'leads'}/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setLeads(leads.filter(l => l.id !== id));
       } else {
@@ -64,22 +83,17 @@ export default function LeadRegister() {
     const form = e.target;
     
     try {
-      const statusRes = await fetch(`/api/marketing/leads/${followupLead.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadStatus: form.leadStatus.value })
-      });
-      
-      if (!statusRes.ok) throw new Error('Failed to update status');
-
-      const followupRes = await fetch('/api/marketing/followups', {
+      const followupRes = await fetch(isEnquiryPage ? `/api/marketing/enquiries/${followupLead.id}/followups` : '/api/marketing/followups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           leadId: followupLead.id,
+          leadStatus: form.leadStatus.value,
           activityType: form.activityType.value,
           discussion: form.discussion.value,
           commitment: form.commitment.value,
+          statusChangeDate: form.statusChangeDate.value,
+          references: form.references.value,
           nextFollowUpDate: form.nextFollowUpDate.value,
           nextAction: form.nextAction.value,
           createdById: form.createdById.value
@@ -88,27 +102,9 @@ export default function LeadRegister() {
 
       if (!followupRes.ok) throw new Error('Failed to create followup');
 
-      if (form.leadStatus.value === 'Won converted to customer') {
-        const projectRes = await fetch('/api/engineering/projects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: followupLead.projectName || `Project for ${followupLead.companyName}`,
-            clientName: followupLead.companyName,
-            location: followupLead.projectLocation,
-            contractValue: followupLead.estimatedProjectValue,
-            projectType: followupLead.projectType || 'EPC',
-            status: 'Planning'
-          })
-        });
-        if (!projectRes.ok) {
-          console.warn('Failed to handover to project automatically', await projectRes.text());
-        } else {
-          alert('Lead marked as Won and handed over to Projects successfully!');
-        }
-      } else {
-        alert('Follow-up logged successfully');
-      }
+      alert(form.leadStatus.value === 'Won converted to customer'
+        ? 'Enquiry marked successful and kept in Marketing.'
+        : 'Follow-up logged successfully');
 
       setFollowupLead(null);
       fetchLeads();
@@ -122,7 +118,7 @@ export default function LeadRegister() {
 
   const openViewDetails = async (lead) => {
     try {
-      const res = await fetch(`/api/marketing/leads/${lead.id}`);
+      const res = await fetch(`/api/marketing/${isEnquiryPage ? 'enquiries' : 'leads'}/${lead.id}`);
       if (res.ok) {
         const fullLead = await res.json();
         setViewLead(fullLead);
@@ -132,11 +128,13 @@ export default function LeadRegister() {
     }
   };
 
-  const filteredLeads = leads.filter(l => 
-    l.companyName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    l.projectName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.leadId?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredLeads = leads.filter(l => {
+    const matchesSearch = l.companyName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      l.projectName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      l.leadId?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesProject = !selectedProjectName || l.projectName?.trim().toLowerCase() === selectedProjectName.trim().toLowerCase();
+    return matchesSearch && matchesProject;
+  });
 
   const renderDocuments = (documents) => {
     if (!Array.isArray(documents) || documents.length === 0) {
@@ -197,9 +195,9 @@ export default function LeadRegister() {
   return (
     <div className="mkt-page-container">
       <div className="mkt-header">
-        <h1 className="mkt-title">Lead Register</h1>
-        <Link href="/marketing/leads/create" className="mkt-btn mkt-btn-primary">
-          <Plus size={18} /> New Lead
+        <h1 className="mkt-title">{isEnquiryPage ? 'Project Enquiries' : 'Lead Register'}</h1>
+        <Link href={isEnquiryPage ? '/marketing/enquiries/create' : '/marketing/leads/create'} className="mkt-btn mkt-btn-primary">
+          <Plus size={18} /> {isEnquiryPage ? 'New Enquiry' : 'New Lead'}
         </Link>
       </div>
 
@@ -209,14 +207,26 @@ export default function LeadRegister() {
             <Search className="mkt-search-icon" size={16} />
             <input 
               type="text" 
-              placeholder="Search leads..." 
+              placeholder={isEnquiryPage ? 'Search project enquiries...' : 'Search leads...'}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="mkt-search-input"
             />
           </div>
+          {isEnquiryPage && (
+            <select
+              aria-label="Filter enquiries by project"
+              value={selectedProjectName}
+              onChange={e => setSelectedProjectName(e.target.value)}
+              className="mkt-select"
+              style={{ width: 260 }}
+            >
+              <option value="">All Projects</option>
+              {projectOptions.map(project => <option key={project.id} value={project.name}>{project.name}</option>)}
+            </select>
+          )}
           <div className="mkt-text-muted">
-            Total: {filteredLeads.length} leads
+            Total: {filteredLeads.length} {isEnquiryPage ? 'enquiries' : 'leads'}
           </div>
         </div>
 
@@ -227,7 +237,7 @@ export default function LeadRegister() {
             <table className="mkt-table">
               <thead>
                 <tr>
-                  <th>Lead ID / Date</th>
+                  <th>{isEnquiryPage ? 'Enquiry ID / Date' : 'Lead ID / Date'}</th>
                   <th>Company / Client</th>
                   <th>Project</th>
                   <th>Status</th>
@@ -262,18 +272,18 @@ export default function LeadRegister() {
                       {lead.leadOwner?.name || 'Unassigned'}
                     </td>
                     <td className="mkt-text-right">
-                      <button className="mkt-icon-btn" title="Log Follow-up" onClick={() => setFollowupLead(lead)}>
+                      {enquiryRight('Project Enquiry Follow-up', lead.projectId) && <button className="mkt-icon-btn" title="Log Follow-up" onClick={() => setFollowupLead(lead)}>
                         <PhoneCall size={16} />
-                      </button>
+                      </button>}
                       <button className="mkt-icon-btn" title="View Details" onClick={() => openViewDetails(lead)}>
                         <FileText size={16} />
                       </button>
-                      <Link href={`/marketing/leads/${lead.id}/edit`} className="mkt-icon-btn" title="Edit Lead" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {enquiryRight('Project Enquiry Edit', lead.projectId) && <Link href={isEnquiryPage ? `/marketing/enquiries/${lead.id}/edit` : `/marketing/leads/${lead.id}/edit`} className="mkt-icon-btn" title="Edit Lead" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Pencil size={16} />
-                      </Link>
-                      <button className="mkt-icon-btn mkt-text-danger" title="Delete" onClick={() => handleDelete(lead.id)} style={{ color: '#ef4444' }}>
+                      </Link>}
+                      {enquiryRight('Project Enquiry Delete', lead.projectId) && <button className="mkt-icon-btn mkt-text-danger" title="Delete" onClick={() => handleDelete(lead.id)} style={{ color: '#ef4444' }}>
                         <Trash2 size={16} />
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}
@@ -315,6 +325,17 @@ export default function LeadRegister() {
               </div>
 
               <div>
+                <label className="mkt-label">Status Change Date</label>
+                <input
+                  type="date"
+                  name="statusChangeDate"
+                  className="mkt-input"
+                  defaultValue={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}
+                  required
+                />
+              </div>
+
+              <div>
                 <label className="mkt-label">Activity Type</label>
                 <select name="activityType" className="mkt-select" required>
                   <option value="Phone Call">Phone Call</option>
@@ -330,6 +351,11 @@ export default function LeadRegister() {
               <div>
                 <label className="mkt-label">Discussion Notes</label>
                 <textarea name="discussion" className="mkt-textarea" rows="3" required></textarea>
+              </div>
+
+              <div>
+                <label className="mkt-label">References (Optional)</label>
+                <textarea name="references" className="mkt-textarea" rows="2" placeholder="Add reference numbers, links, or document details" />
               </div>
 
               <div>
@@ -353,7 +379,7 @@ export default function LeadRegister() {
                 <select name="createdById" className="mkt-select" required>
                   <option value="">Select Employee</option>
                   {employees.map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                    <option key={emp.id} value={emp.id}>{emp.name || [emp.firstName, emp.lastName].filter(Boolean).join(' ') || emp.empId || emp.email || 'Employee'}</option>
                   ))}
                 </select>
               </div>
@@ -419,9 +445,11 @@ export default function LeadRegister() {
                       <div key={f.id} style={{ backgroundColor: '#f8fafc', padding: '12px', borderRadius: '6px', fontSize: '14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                           <strong>{f.activityType}</strong>
-                          <span className="mkt-text-muted">{new Date(f.createdAt).toLocaleDateString()}</span>
+                          <span className="mkt-text-muted">Logged {new Date(f.createdAt).toLocaleDateString()}</span>
                         </div>
+                        {f.statusChangeDate && <div className="mkt-text-xs mkt-text-muted">Status changed: {new Date(f.statusChangeDate).toLocaleDateString()}</div>}
                         <p style={{ margin: '4px 0' }}>{f.discussion}</p>
+                        {f.references && <div className="mkt-text-xs mkt-text-muted" style={{ marginTop: '4px', whiteSpace: 'pre-wrap' }}>References: {f.references}</div>}
                         {f.nextAction && (
                           <div className="mkt-text-xs mkt-text-muted" style={{ marginTop: '4px' }}>
                             Next: {f.nextAction} {f.nextFollowUpDate && `on ${new Date(f.nextFollowUpDate).toLocaleDateString()}`}

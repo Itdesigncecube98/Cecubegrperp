@@ -43,6 +43,9 @@ export async function POST(req) {
         industry: body.industry,
         address: body.address,
         gstNo: body.gstNo,
+        companyPan: body.companyPan?.trim().toUpperCase() || null,
+        nationality: body.nationality,
+        state: body.state,
         previousBusinessHistory: body.previousBusinessHistory
       }
     });

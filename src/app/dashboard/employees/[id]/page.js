@@ -772,7 +772,7 @@ export default function EmployeeProfilePage({ params }) {
 
   const handleSendLoginInstruction = async () => {
     try {
-      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.81:8080';
+      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubeerp.duckdns.org';
       const res = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

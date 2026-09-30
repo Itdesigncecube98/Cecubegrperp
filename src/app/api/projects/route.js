@@ -16,6 +16,11 @@ export async function GET(req) {
     
     if (id) {
       if (visibleProjectIds && !visibleProjectIds.includes(id)) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+      if (session.type === 'employee') {
+        const canView = await employeeHasProjectTool(prisma, session.id, id, 'Project View');
+        const canEdit = await employeeHasProjectTool(prisma, session.id, id, 'Project Edit');
+        if (!canView && !canEdit) return NextResponse.json({ error: 'You do not have Project View access for this project.' }, { status: 403 });
+      }
       const project = await prisma.project.findUnique({ where: { id } });
       if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
       return NextResponse.json(project);

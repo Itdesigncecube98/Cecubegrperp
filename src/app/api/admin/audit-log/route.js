@@ -1,5 +1,8 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { readAuthSession } from '@/lib/authSession';
+import { writeSessionAudit } from '@/lib/serverAudit';
 
 const prisma = new PrismaClient();
 
@@ -8,6 +11,8 @@ const prisma = new PrismaClient();
 //        status, dateFrom, dateTo, page, limit
 export async function GET(request) {
   try {
+    const session = readAuthSession(request);
+    if (session?.type !== 'admin') return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
     const { searchParams } = new URL(request.url);
 
     const userId     = searchParams.get('userId');
@@ -66,33 +71,39 @@ export async function GET(request) {
 // Internal: create an audit entry programmatically from other routes
 export async function POST(request) {
   try {
+    const session = readAuthSession(request);
+    if (!session) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
     const body = await request.json();
-    const {
-      userId, employeeId, module, subModule,
-      action, entityType, entityId,
-      oldValues, newValues, ipAddress, userAgent,
-      status = 'SUCCESS', remarks,
-    } = body;
-
-    if (!module || !action) {
-      return NextResponse.json(
-        { error: 'module and action are required' },
-        { status: 400 },
-      );
+    const moduleRoutes = [
+      ['/admin-dashboard', 'Admin'], ['/engineering', 'Engineering'], ['/marketing', 'Marketing'],
+      ['/accounts', 'Accounts'], ['/tender', 'Tender'], ['/contracting', 'Contracting'],
+      ['/site', 'Site'], ['/purchase', 'Purchase'], ['/employee', 'HRMS'],
+      ['/employeedashboard', 'HRMS'], ['/hrms', 'HRMS'], ['/dashboard', 'Dashboard'],
+    ];
+    const pagePath = typeof body.pagePath === 'string' ? body.pagePath.slice(0, 200) : '';
+    const inferredModule = moduleRoutes.find(([prefix]) => pagePath === prefix || pagePath.startsWith(`${prefix}/`))?.[1];
+    const action = String(body.action || '');
+    const allowedActions = new Set(['MODULE_OPEN', 'CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT', 'EMAIL_SEND', 'STATUS_CHANGE']);
+    if (action === 'MODULE_OPEN') {
+      if (!inferredModule) return NextResponse.json({ error: 'Invalid module access event.' }, { status: 400 });
+    } else if (!inferredModule || !allowedActions.has(action)) {
+      return NextResponse.json({ error: 'Invalid activity event.' }, { status: 400 });
     }
-
-    const log = await prisma.auditLog.create({
-      data: {
-        userId, employeeId, module, subModule,
-        action, entityType, entityId,
-        oldValues: typeof oldValues === 'object'
-          ? JSON.stringify(oldValues)
-          : oldValues,
-        newValues: typeof newValues === 'object'
-          ? JSON.stringify(newValues)
-          : newValues,
-        ipAddress, userAgent, status, remarks,
-      },
+    const apiPath = typeof body.apiPath === 'string' ? body.apiPath.slice(0, 240) : '';
+    const entityType = typeof body.entityType === 'string' ? body.entityType.slice(0, 80) : null;
+    const entityId = typeof body.entityId === 'string' || typeof body.entityId === 'number' ? String(body.entityId).slice(0, 160) : null;
+    const detailFields = body.details && typeof body.details === 'object'
+      ? Object.fromEntries(Object.entries(body.details).slice(0, 18))
+      : {};
+    const newValues = JSON.stringify({ apiPath, ...detailFields });
+    const log = await writeSessionAudit(prisma, request, session, {
+      module: inferredModule,
+      subModule: pagePath,
+      action,
+      status: body.status === 'FAILURE' ? 'FAILURE' : 'SUCCESS',
+      entityType,
+      entityId,
+      newValues,
     });
 
     return NextResponse.json({ data: log }, { status: 201 });

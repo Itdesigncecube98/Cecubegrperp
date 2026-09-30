@@ -85,6 +85,13 @@ export default function CustomerMaster() {
                       <MapPin size={14} className="mkt-mt-1" style={{ flexShrink: 0 }} />
                       <span>{client.address || 'No address provided'}</span>
                     </div>
+                    {(client.companyPan || client.nationality || client.state) && (
+                      <div style={{ paddingLeft: 22, lineHeight: 1.6 }}>
+                        {client.companyPan && <div>Company PAN: {client.companyPan}</div>}
+                        {client.nationality && <div>Nationality: {client.nationality}</div>}
+                        {client.state && <div>State: {client.state}</div>}
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#64748b' }}>

@@ -35,7 +35,7 @@ export default function SiteSidebar({ isCollapsed: propCollapsed, setIsCollapsed
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showWidget, setShowWidget] = useState(true);
-  const { hasRight, activeEmployee, activeProject } = usePermissions();
+  const { hasRight, activeEmployee } = usePermissions();
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
   const setIsCollapsed = propSetIsCollapsed || setLocalCollapsed;
@@ -43,9 +43,9 @@ export default function SiteSidebar({ isCollapsed: propCollapsed, setIsCollapsed
 
   const visibleMenuConfig = useMemo(() =>
     menuConfig
-      .map(g => ({ ...g, items: g.items.filter(i => !activeEmployee || (activeProject && hasRight(i.permissionCode))) }))
+      .map(g => ({ ...g, items: g.items.filter(i => !activeEmployee || hasRight(i.permissionCode)) }))
       .filter(g => g.items.length > 0),
-  [activeEmployee, activeProject, hasRight]);
+  [activeEmployee, hasRight]);
 
   const allItems = useMemo(() =>
     visibleMenuConfig.flatMap(g => g.items.map(i => ({ ...i, groupIcon: g.icon }))),

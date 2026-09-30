@@ -20,7 +20,9 @@ export function PermissionsProvider({ children }) {
   const [activeEmployee, setActiveEmployee] = useState(null);
   const [activeProject, setActiveProject] = useState(null);
   const [grantedTools, setGrantedTools] = useState([]);
+  const [projectGrantedTools, setProjectGrantedTools] = useState({});
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
+  const [isAdminSession, setIsAdminSession] = useState(false);
   
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -30,11 +32,12 @@ export function PermissionsProvider({ children }) {
   // Load state from localStorage on mount
   useEffect(() => {
     let cancelled = false;
+    const adminSession = sessionStorage.getItem('isAdmin') === 'true';
+    setIsAdminSession(adminSession);
     const savedEmp = localStorage.getItem('activeEmp');
     const savedProj = localStorage.getItem('activeProj');
     const employeeData = localStorage.getItem('employeeData');
     if (employeeData && sessionStorage.getItem('isAdmin') !== 'true') {
-      if (!savedProj) setIsOpen(true);
       try {
         const employee = JSON.parse(employeeData);
         if (employee?.id) {
@@ -46,18 +49,24 @@ export function PermissionsProvider({ children }) {
     if (savedProj) setActiveProject(JSON.parse(savedProj));
 
     // Fetch lists
-    fetch('/api/employees').then(res => res.json()).then(data => {
-      if (!cancelled) setEmployees(Array.isArray(data) ? data : []);
-    }).catch(() => {});
+    if (adminSession) {
+      fetch('/api/employees').then(res => res.json()).then(data => {
+        if (!cancelled) setEmployees(Array.isArray(data) ? data : []);
+      }).catch(() => {});
+    }
     fetch('/api/projects').then(res => res.json()).then(data => {
       if (cancelled || !Array.isArray(data)) return;
       setProjects(data);
       const cachedProject = savedProj ? JSON.parse(savedProj) : null;
       if (cachedProject?.id && !data.some(project => project.id === cachedProject.id)) {
-        localStorage.removeItem('activeProj');
-        setActiveProject(null);
-        if (employeeData && sessionStorage.getItem('isAdmin') !== 'true') setIsOpen(true);
-      } else if (!cachedProject && data.length === 1 && employeeData && sessionStorage.getItem('isAdmin') !== 'true') {
+        if (employeeData && !adminSession && data.length > 0) {
+          setActiveProject(data[0]);
+          localStorage.setItem('activeProj', JSON.stringify(data[0]));
+        } else {
+          localStorage.removeItem('activeProj');
+          setActiveProject(null);
+        }
+      } else if (!cachedProject && employeeData && !adminSession && data.length > 0) {
         setActiveProject(data[0]);
         localStorage.setItem('activeProj', JSON.stringify(data[0]));
       }
@@ -65,27 +74,32 @@ export function PermissionsProvider({ children }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Fetch granted tools when emp/project changes
+  // Load permissions across every project assigned to the active employee.
   useEffect(() => {
     let cancelled = false;
-    if (activeEmployee?.id && activeProject?.id) {
+    if (activeEmployee?.id) {
       setPermissionsLoaded(false);
-      fetch(`/api/admin/employee-tools?employeeId=${activeEmployee.id}&projectId=${activeProject.id}`)
+      fetch(`/api/admin/employee-tools?employeeId=${encodeURIComponent(activeEmployee.id)}&allProjects=true`)
         .then(res => res.json())
         .then(data => {
-          if (!cancelled && Array.isArray(data)) {
-            const codes = data.filter(t => t.isGranted).map(t => t.code);
-            setGrantedTools(codes);
+          if (cancelled || !Array.isArray(data)) return;
+          const byProject = {};
+          for (const grant of data) {
+            if (!grant.projectId || !grant.code) continue;
+            (byProject[grant.projectId] ||= []).push(grant.code);
           }
+          setProjectGrantedTools(byProject);
+          setGrantedTools([...new Set(Object.values(byProject).flat())]);
         })
         .catch(error => { if (!cancelled) console.error(error); })
         .finally(() => { if (!cancelled) setPermissionsLoaded(true); });
     } else {
       setGrantedTools([]);
+      setProjectGrantedTools({});
       setPermissionsLoaded(false);
     }
     return () => { cancelled = true; };
-  }, [activeEmployee, activeProject]);
+  }, [activeEmployee]);
 
   const handleSetEmp = (emp) => {
     setActiveEmployee(emp);
@@ -99,19 +113,22 @@ export function PermissionsProvider({ children }) {
 
   const openProjectSelector = useCallback(() => setIsOpen(true), []);
 
-  const hasRight = (toolCode) => {
-    if (!activeEmployee || !activeProject) return false;
-    if (Array.isArray(toolCode)) return toolCode.some(code => hasRight(code));
+  const hasRight = (toolCode, projectId = null) => {
+    if (!activeEmployee) return false;
+    const codes = projectId
+      ? (projectGrantedTools[projectId] || [])
+      : (isAdminSession && activeProject?.id ? projectGrantedTools[activeProject.id] || [] : grantedTools);
+    if (Array.isArray(toolCode)) return toolCode.some(code => hasRight(code, projectId));
     const aliases = LEGACY_PERMISSION_ALIASES[toolCode];
-    return aliases ? aliases.some(code => grantedTools.includes(code)) : grantedTools.includes(toolCode);
+    return aliases ? aliases.some(code => codes.includes(code)) : codes.includes(toolCode);
   };
 
   return (
-    <PermissionsContext.Provider value={{ activeEmployee, activeProject, grantedTools, permissionsLoaded, hasRight, openProjectSelector, setActiveEmployee: handleSetEmp, setActiveProject: handleSetProj }}>
+    <PermissionsContext.Provider value={{ activeEmployee, activeProject, grantedTools, projectGrantedTools, permissionsLoaded, hasRight, openProjectSelector, setActiveEmployee: handleSetEmp, setActiveProject: handleSetProj }}>
       {children}
 
       {/* Floating Active Context Widget */}
-      <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999, fontFamily: 'var(--font-inter)' }}>
+      <div style={{ display: 'none', position: 'fixed', bottom: 20, right: 20, zIndex: 9999, fontFamily: 'var(--font-inter)' }}>
         {!isOpen && (
           <button 
             onClick={() => setIsOpen(true)}
@@ -127,7 +144,7 @@ export function PermissionsProvider({ children }) {
           <div style={{ width: 320, background: '#fff', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', background: '#0f172a', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13 }}>
-                <Shield size={14} color="#6366f1" /> Session Simulator
+                <Shield size={14} color="#6366f1" /> {isAdminSession ? 'Session Simulator' : 'Employee Workspace'}
               </div>
               <button onClick={() => setIsOpen(false)} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
                 <X size={14} />
@@ -136,10 +153,10 @@ export function PermissionsProvider({ children }) {
             
             <div style={{ padding: 16 }}>
               <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.4 }}>
-                Select the employee and active project to load project-wise tool permissions.
+                {isAdminSession ? 'Select an employee and project to simulate project-wise permissions.' : 'Your assigned projects and permissions load automatically.'}
               </p>
 
-              <div style={{ marginBottom: 12 }}>
+              {isAdminSession && <div style={{ marginBottom: 12 }}>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 4 }}>ACT AS EMPLOYEE</label>
                 <select 
                   value={activeEmployee?.id || ''} 
@@ -149,9 +166,9 @@ export function PermissionsProvider({ children }) {
                   <option value="">-- Select Employee --</option>
                   {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.firstName}</option>)}
                 </select>
-              </div>
+              </div>}
 
-              <div style={{ marginBottom: 12 }}>
+              {isAdminSession ? <div style={{ marginBottom: 12 }}>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 4 }}>ACTIVE PROJECT</label>
                 <select 
                   value={activeProject?.id || ''} 
@@ -161,7 +178,9 @@ export function PermissionsProvider({ children }) {
                   <option value="">-- Select Project --</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
-              </div>
+              </div> : <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 6, fontSize: 12, color: '#475569' }}>
+                {projects.length} assigned project{projects.length === 1 ? '' : 's'} · access is checked separately for each project
+              </div>}
               
               <div style={{ marginTop: 16, padding: '10px 12px', background: (activeEmployee && activeProject) ? '#ecfdf5' : '#f1f5f9', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                 {(activeEmployee && activeProject) ? (

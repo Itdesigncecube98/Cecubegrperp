@@ -44,13 +44,17 @@ export async function getEmployeeGrantedLegacyProjectIds(prisma, employeeId) {
 }
 
 export async function employeeHasProjectTool(prisma, employeeId, projectId, toolName) {
+  return employeeHasProjectModuleTool(prisma, employeeId, projectId, 'Engineering', toolName);
+}
+
+export async function employeeHasProjectModuleTool(prisma, employeeId, projectId, module, toolName) {
   if (!employeeId || !projectId) return false;
   const grant = await prisma.employeeProjectToolAccess.findFirst({
     where: {
       employeeId: String(employeeId),
       projectId: String(projectId),
       granted: true,
-      tool: { is: { module: 'Engineering', name: toolName } },
+      tool: { is: { module, name: toolName } },
     },
     select: { id: true },
   });

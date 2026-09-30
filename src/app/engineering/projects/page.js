@@ -19,7 +19,7 @@ export default function ProjectMaster() {
   const router = useRouter();
   const { activeEmployee, activeProject, hasRight } = usePermissions();
   const can = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Engineering', name)));
-  const canOnProject = (name, projectId) => !activeEmployee || (!!activeProject && activeProject.id === projectId && hasRight(employeeToolCode('Engineering', name)));
+  const canOnProject = (name, projectId) => !activeEmployee || hasRight(employeeToolCode('Engineering', name), projectId);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -51,18 +51,26 @@ export default function ProjectMaster() {
       if (!Array.isArray(data)) throw new Error('The projects API returned an invalid response.');
       setProjects(data);
     } catch (err) {
-      console.error(err);
-      setLoadError({ message: err.message || 'Unable to fetch projects.', status: err.status || 0 });
+      const status = err.status || 0;
+      if (status !== 401) console.error(err);
+      setLoadError({
+        message: status === 401
+          ? 'Your sign-in session has expired. Sign in again to load your assigned projects.'
+          : err.message || 'Unable to fetch projects.',
+        status,
+      });
     } finally {
       setLoading(false);
     }
   }
 
-  const filteredProjects = projects.filter(p =>
-    p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.status?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProjects = projects.filter(p => {
+    const canSeeProject = !activeEmployee || ['Project View', 'Project Edit'].some(name => canOnProject(name, p.id));
+    if (!canSeeProject) return false;
+    return p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.status?.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   const handleDelete = async () => {
     if (!deleteTarget) return;

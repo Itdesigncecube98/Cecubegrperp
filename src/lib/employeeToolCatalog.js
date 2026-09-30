@@ -29,6 +29,10 @@ export const PROJECT_TOOL_MODULES = {
     'Site Store', 'Task Status Change', 'Quality Control View', 'Quality Control Add', 'Health & Safety View',
     'Health & Safety Add', 'Raise NCR',
   ],
+  Marketing: [
+    'Project Enquiry View', 'Project Enquiry Create', 'Project Enquiry Edit',
+    'Project Enquiry Delete', 'Project Enquiry Follow-up',
+  ],
 };
 
 export function employeeToolCode(module, name) {
@@ -128,4 +132,9 @@ export const LEGACY_PERMISSION_ALIASES = {
   SITE_STORE: alias('Site', 'Site Store'),
   SITE_TASK_STATUS: alias('Site', 'Task Status Change'),
   SITE_QUALITY: alias('Site', 'Quality Control View', 'Quality Control Add', 'Health & Safety View', 'Health & Safety Add', 'Raise NCR'),
+  MARKETING_PROJECT_ENQUIRIES: alias('Marketing', 'Project Enquiry View'),
+  MARKETING_PROJECT_ENQUIRY_CREATE: alias('Marketing', 'Project Enquiry Create'),
+  MARKETING_PROJECT_ENQUIRY_EDIT: alias('Marketing', 'Project Enquiry Edit'),
+  MARKETING_PROJECT_ENQUIRY_DELETE: alias('Marketing', 'Project Enquiry Delete'),
+  MARKETING_PROJECT_ENQUIRY_FOLLOWUP: alias('Marketing', 'Project Enquiry Follow-up'),
 };

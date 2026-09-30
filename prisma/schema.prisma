@@ -1822,6 +1822,7 @@ model MarketingLead {
   industry              String
   gstNo                 String?
   projectName           String
+  projectId             String?
   projectLocation       String
   projectType           String
   requirement           String?
@@ -1849,6 +1850,9 @@ model MarketingClient {
   industry                String?
   address                 String?
   gstNo                   String?
+  companyPan              String?
+  nationality             String?
+  state                   String?
   previousBusinessHistory String?
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
@@ -1863,6 +1867,8 @@ model MarketingFollowup {
   activityType     String
   discussion       String
   commitment       String?
+  statusChangeDate DateTime?
+  references       String?
   nextFollowUpDate DateTime?
   nextAction       String?
   createdById      String

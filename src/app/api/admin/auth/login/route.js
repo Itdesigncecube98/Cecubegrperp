@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { attachAuthSession } from '@/lib/authSession';
 
 const prisma = new PrismaClient();
 
@@ -132,7 +133,7 @@ export async function POST(request) {
 
     const { passwordHash, ...safeUser } = user;
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       data: {
         user: safeUser,
         token: session.token,
@@ -141,6 +142,7 @@ export async function POST(request) {
         permissionsMap,
       },
     });
+    return attachAuthSession(response, { type: 'admin', id: user.id });
   } catch (err) {
     console.error('[POST /api/admin/auth/login]', err);
     await logFailedAttempt(null, 'Admin', 'Login', 'SystemUser', usernameOrEmail || 'unknown', ipAddress, err.message);

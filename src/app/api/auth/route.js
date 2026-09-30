@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { attachAuthSession } from '@/lib/authSession';
+import { writeSessionAudit } from '@/lib/serverAudit';
 
 export async function POST(request) {
   try {
@@ -21,6 +22,7 @@ export async function POST(request) {
     );
 
     if (directMatch) {
+      await writeSessionAudit(prisma, request, { type: 'admin', id: directMatch.email }, { module: 'AUTH', subModule: 'Admin Portal', action: 'LOGIN' });
       return attachAuthSession(NextResponse.json({ success: true, email: directMatch.email, name: 'Super Admin' }), { type: 'admin', id: directMatch.email });
     }
 
@@ -34,6 +36,7 @@ export async function POST(request) {
     });
 
     if (admin && admin.password === normalizedPassword) {
+      await writeSessionAudit(prisma, request, { type: 'admin', id: admin.id }, { module: 'AUTH', subModule: 'Admin Portal', action: 'LOGIN' });
       return attachAuthSession(NextResponse.json({
         success: true,
         email: admin.email,

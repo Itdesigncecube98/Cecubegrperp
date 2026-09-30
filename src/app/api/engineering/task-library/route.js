@@ -2,12 +2,56 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+async function syncWorkOrderTasksIntoLibrary(libraryId) {
+  if (!libraryId) return;
+  const library = await prisma.library.findUnique({ where: { id: libraryId }, select: { name: true } });
+  if (!library?.name) return;
+  const legacyProjects = await prisma.project.findMany({ where: { library: library.name }, select: { name: true } });
+  if (!legacyProjects.length) return;
+  const projectNames = [...new Set(legacyProjects.map(project => project.name).filter(Boolean))];
+  const projectMasters = await prisma.projectMaster.findMany({ where: { name: { in: projectNames } }, select: { id: true, name: true } });
+  if (!projectMasters.length) return;
+  const orders = await prisma.workOrder.findMany({ where: { projectId: { in: projectMasters.map(project => project.id) } }, select: { projectId: true, scope: true } });
+  const group = await prisma.taskLibraryGroup.findFirst({ where: { libraryId, name: { equals: 'work', mode: 'insensitive' } }, select: { id: true } });
+  if (!group) return;
+
+  const imported = [];
+  const scheduled = new Set();
+  for (const order of orders) {
+    let scope = {};
+    try { scope = order.scope ? JSON.parse(order.scope) : {}; } catch { continue; }
+    for (const item of Array.isArray(scope.items) ? scope.items : []) {
+      const name = String(item.description || '').trim();
+      if (!name) continue;
+      const key = `${order.projectId}:${name.toLowerCase()}`;
+      if (scheduled.has(key)) continue;
+      scheduled.add(key);
+      const exists = await prisma.taskLibraryItem.findFirst({ where: {
+        groupId: group.id,
+        name: { equals: name, mode: 'insensitive' },
+        OR: [{ projectId: order.projectId }, { projectId: null }],
+      }, select: { id: true } });
+      if (exists) continue;
+      imported.push({
+        groupId: group.id, libraryId, projectId: order.projectId, name,
+        unit: item.unit || 'Job', quantity: Number(item.qty) || 1,
+        description: 'Imported from generated work order',
+      });
+    }
+  }
+  if (imported.length) await prisma.taskLibraryItem.createMany({ data: imported, skipDuplicates: true });
+}
+
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const libraryId = searchParams.get('libraryId');
     const search = searchParams.get('search');
     const projectId = searchParams.get('projectId');
+
+    // Work-order scopes are also kept in their project's Task Library group.
+    // This repairs older work orders that were previously copied only to Site Task Tree.
+    if (libraryId) await syncWorkOrderTasksIntoLibrary(libraryId);
 
     let where = {};
     if (libraryId) {
