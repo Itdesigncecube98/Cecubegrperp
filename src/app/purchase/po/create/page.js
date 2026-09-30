@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { Save, Printer, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
+import { getClientActor } from '@/lib/clientActor';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 function numberToWords(num) {
   if (isNaN(num) || num <= 0) return 'Zero Rupees Only';
@@ -38,6 +41,8 @@ function CreatePOContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id') || '';
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const canSavePO = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', editId ? 'Purchase Orders Edit' : 'Purchase Orders Create')));
   const rfqId = searchParams.get('rfqId') || '';
   const vendorIdParam = searchParams.get('vendorId') || '';
   const [loading, setLoading] = useState(false);
@@ -46,6 +51,8 @@ function CreatePOContent() {
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [unitList, setUnitList] = useState([]);
+  const [lastEditedBy, setLastEditedBy] = useState('');
+  const [lastEditedAt, setLastEditedAt] = useState('');
 
   const [formData, setFormData] = useState({
     poNumber: '', vendorId: '', indentId: '', taskId: '', project: '', site: '',
@@ -101,6 +108,8 @@ function CreatePOContent() {
           const poData = await poRes.json();
           const po = Array.isArray(poData) ? poData[0] : poData;
           if (po) {
+            setLastEditedBy(po.editedBy || '');
+            setLastEditedAt(po.editedAt || '');
             let extra = {
               discount: 0, freight: 0, otherCharges: 0, subject: '', siteContactPerson: '',
               siteContactDetail: '', materialInspection: '', transactionMode: '', taxAndDuties: '',
@@ -269,6 +278,7 @@ function CreatePOContent() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!canSavePO) return alert(`You do not have permission to ${editId ? 'edit' : 'create'} purchase orders for this project.`);
     setLoading(true);
     try {
       const vendor = vendors.find(item => item.id === formData.vendorId);
@@ -305,6 +315,7 @@ function CreatePOContent() {
         sgstAmount: totalSgst.toFixed(2),
         items: items.map(item => ({ ...item, transportCharges: 0, otherCharges: 0 })),
         remarks: JSON.stringify(remarksData),
+        editedBy: getClientActor(),
         createdById: JSON.parse(localStorage.getItem('employeeData'))?.id || null
       };
       const res = await fetch('/api/purchase/po', {
@@ -327,6 +338,8 @@ function CreatePOContent() {
   };
 
   const handlePrint = () => window.print();
+
+  if (!canSavePO) return <div style={{ padding: 32, color: '#b91c1c' }}>You do not have permission to {editId ? 'edit' : 'create'} purchase orders for this project.</div>;
 
   return (
       <div className="po-page-root" style={{ backgroundColor: '#f1f5f9', minHeight: '100vh', padding: '24px', fontFamily: 'Arial, sans-serif' }}>
@@ -412,6 +425,7 @@ function CreatePOContent() {
           <div style={{ textAlign: 'center', marginBottom: '8px', position: 'relative' }}>
             <h1 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e3a8a', margin: '0 0 4px 0' }}>CeCube Engineering India Private Limited</h1>
             <h2 style={{ fontSize: '14px', margin: 0, fontWeight: 'normal' }}>Purchase Order</h2>
+            {editId && lastEditedBy && <div style={{ marginTop: 5, color: '#64748b', fontSize: 11 }}>Last edited by {lastEditedBy}{lastEditedAt ? ` on ${new Date(lastEditedAt).toLocaleString('en-IN')}` : ''}</div>}
             <div style={{ position: 'absolute', top: 0, right: 0 }}>
               <img src="/logo.png" alt="CeCube Logo" style={{ width: '60px', objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />
             </div>

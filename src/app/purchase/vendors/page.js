@@ -1,9 +1,15 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Save, X, Star, Edit2, Trash2 } from 'lucide-react';
+import { Search, Plus, Save, X, Star, Edit2, Trash2, Mail } from 'lucide-react';
 import Dialog from '@/components/Dialog';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
+import { getClientActor } from '@/lib/clientActor';
 
 export default function VendorMaster() {
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const can = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', name)));
+  const canViewVendors = can('Vendor Master View') || can('Vendor Master Create') || can('Vendor Master Edit') || can('Vendor Master Approve') || can('Send Vendor Master by Email');
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -11,6 +17,24 @@ export default function VendorMaster() {
   const [editingVendor, setEditingVendor] = useState(null);
   const [deletingVendor, setDeletingVendor] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [sendingId, setSendingId] = useState('');
+
+  const sendVendorEmail = async vendor => {
+    setSendingId(vendor.id);
+    try {
+      const response = await fetch('/api/documents/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ documentType: 'vendor-master', id: vendor.id, sentBy: getClientActor() }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to email vendor details.');
+      alert(result.mocked ? `Email is configured in demo mode for ${result.recipient}.` : `Vendor details emailed to ${result.recipient}.`);
+    } catch (error) { alert(error.message); }
+    finally { setSendingId(''); }
+  };
+
+  const approveVendor = async vendor => {
+    const response = await fetch('/api/purchase/vendors', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: vendor.id, action: 'approve' }) });
+    if (!response.ok) { const result = await response.json(); alert(result.error || 'Unable to approve vendor.'); return; }
+    fetchData();
+  };
 
   const [formData, setFormData] = useState({
     name: '', type: 'Supplier', contactPerson: '', mobile: '', email: '',
@@ -82,10 +106,11 @@ export default function VendorMaster() {
         return { name: file.name, type: file.type, url: result.url };
       }));
       const documents = [...(formData.documents || []), ...uploadedDocuments];
+      const payload = { ...formData, documents, status: editingVendor?.status || (activeEmployee ? 'Pending Approval' : 'Active') };
       const res = await fetch('/api/purchase/vendors', {
         method: editingVendor ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingVendor ? { ...formData, documents, id: editingVendor.id } : { ...formData, documents })
+        body: JSON.stringify(editingVendor ? { ...payload, id: editingVendor.id } : payload)
       });
       if (res.ok) {
         setShowAddModal(false);
@@ -137,12 +162,12 @@ export default function VendorMaster() {
           <h1 className="pur-title">Vendor Master</h1>
           <p className="pur-subtitle">Manage suppliers and service providers</p>
         </div>
-        <button onClick={openCreateModal} className="pur-btn pur-btn-primary" style={{ backgroundColor: '#f59e0b', color: '#fff' }}>
+        {can('Vendor Master Create') && <button onClick={openCreateModal} className="pur-btn pur-btn-primary" style={{ backgroundColor: '#f59e0b', color: '#fff' }}>
           <Plus size={16} /> New Vendor
-        </button>
+        </button>}
       </div>
 
-      <div className="pur-card">
+      {canViewVendors ? <div className="pur-card">
         <div className="pur-toolbar">
           <div className="pur-search">
             <Search className="pur-search-icon" size={16} />
@@ -197,12 +222,14 @@ export default function VendorMaster() {
                       </span>
                     </td>
                     <td className="pur-text-right">
-                      <button type="button" className="pur-icon-btn" title="Edit vendor" onClick={() => openEditModal(v)}>
+                      {can('Vendor Master Edit') && <button type="button" className="pur-icon-btn" title="Edit vendor" onClick={() => openEditModal(v)}>
                         <Edit2 size={16} />
-                      </button>
-                      <button type="button" className="pur-icon-btn pur-text-danger" title="Delete vendor" onClick={() => setDeletingVendor(v)}>
+                      </button>}
+                      {can('Send Vendor Master by Email') && <button type="button" className="pur-icon-btn" title="Email vendor details" disabled={sendingId === v.id || !v.email} onClick={() => sendVendorEmail(v)}><Mail size={15} /></button>}
+                      {can('Vendor Master Approve') && v.status === 'Pending Approval' && <button type="button" className="pur-btn pur-btn-outline" onClick={() => approveVendor(v)}>Approve</button>}
+                      {can('Vendor Master Edit') && <button type="button" className="pur-icon-btn pur-text-danger" title="Delete vendor" onClick={() => setDeletingVendor(v)}>
                         <Trash2 size={16} />
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 ))}
@@ -215,7 +242,7 @@ export default function VendorMaster() {
             </table>
           )}
         </div>
-      </div>
+      </div> : <div className="pur-card pur-text-center pur-text-muted pur-py-8">You need Vendor Master View access to see vendor records.</div>}
 
       {showAddModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>

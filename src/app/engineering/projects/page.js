@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { Search, Plus, Filter, Building2, Eye, Pencil, Trash2, X, ChevronRight, Home, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 const STATUS_STYLES = {
   Planning:    { bg: '#f1f5f9', color: '#475569' },
@@ -15,8 +17,12 @@ const STATUS_STYLES = {
 
 export default function ProjectMaster() {
   const router = useRouter();
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const can = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Engineering', name)));
+  const canOnProject = (name, projectId) => !activeEmployee || (!!activeProject && activeProject.id === projectId && hasRight(employeeToolCode('Engineering', name)));
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -33,11 +39,20 @@ export default function ProjectMaster() {
 
   async function loadData() {
     setLoading(true);
+    setLoadError(null);
     try {
-      const res = await fetch('/api/projects');
-      if (res.ok) setProjects(await res.json());
+      const res = await fetch('/api/projects', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const error = new Error(data.error || `Unable to fetch projects (${res.status}).`);
+        error.status = res.status;
+        throw error;
+      }
+      if (!Array.isArray(data)) throw new Error('The projects API returned an invalid response.');
+      setProjects(data);
     } catch (err) {
       console.error(err);
+      setLoadError({ message: err.message || 'Unable to fetch projects.', status: err.status || 0 });
     } finally {
       setLoading(false);
     }
@@ -107,7 +122,7 @@ export default function ProjectMaster() {
             </div>
           </div>
         </div>
-        <Link href="/engineering/projects/add-project" style={{ textDecoration: 'none' }}>
+        {can('New Project') && <Link href="/engineering/projects/add-project" style={{ textDecoration: 'none' }}>
           <button style={{
             display: 'flex', alignItems: 'center', gap: '8px',
             background: 'linear-gradient(135deg, #7c2d12, #b45309)',
@@ -120,7 +135,7 @@ export default function ProjectMaster() {
           >
             <Plus size={16} /> New Project
           </button>
-        </Link>
+        </Link>}
       </div>
 
       {/* Card */}
@@ -145,7 +160,7 @@ export default function ProjectMaster() {
               />
             </div>
             <span style={{ fontSize: '0.8rem', color: '#78716c', fontWeight: 500 }}>
-              {filteredProjects.length} project{filteredProjects.length !== 1 ? 's' : ''}
+              {loadError ? 'Projects unavailable' : `${filteredProjects.length} project${filteredProjects.length !== 1 ? 's' : ''}`}
             </span>
           </div>
           <button style={{
@@ -164,6 +179,20 @@ export default function ProjectMaster() {
             <div style={{ padding: '60px', textAlign: 'center', color: '#a8a29e' }}>
               <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
               Loading projects...
+            </div>
+          ) : loadError ? (
+            <div role="alert" style={{ padding: '52px 24px', textAlign: 'center', color: '#991b1b' }}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 8 }}>Projects could not be fetched</div>
+              <div style={{ fontSize: '0.85rem', marginBottom: 16 }}>{loadError.message}</div>
+              {loadError.status === 401 && (
+                <div style={{ fontSize: '0.8rem', marginBottom: 16, color: '#64748b' }}>
+                  Your sign-in session may have expired. Sign in again, then return to Project Master.
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+                <button onClick={loadData} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #e7e5e4', background: '#fff', cursor: 'pointer' }}>Retry</button>
+                {loadError.status === 401 && <button onClick={() => window.location.assign('/login')} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#7c2d12', color: '#fff', cursor: 'pointer' }}>Sign in</button>}
+              </div>
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -212,7 +241,7 @@ export default function ProjectMaster() {
                       <td style={{ padding: '13px 16px' }}>
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                           {/* View */}
-                          <button
+                          {canOnProject('Project View', proj.id) && <button
                             onClick={() => router.push(`/engineering/projects/add-project?id=${proj.id}`)}
                             title="View"
                             style={{
@@ -225,9 +254,9 @@ export default function ProjectMaster() {
                             onMouseOut={e => e.currentTarget.style.background = '#eff6ff'}
                           >
                             <Eye size={13} /> View
-                          </button>
+                          </button>}
                           {/* Edit */}
-                          <button
+                          {canOnProject('Project Edit', proj.id) && <button
                             onClick={() => router.push(`/engineering/projects/add-project?id=${proj.id}&edit=true`)}
                             title="Edit"
                             style={{
@@ -240,9 +269,9 @@ export default function ProjectMaster() {
                             onMouseOut={e => e.currentTarget.style.background = '#fefce8'}
                           >
                             <Pencil size={13} /> Edit
-                          </button>
+                          </button>}
                           {/* Delete */}
-                          <button
+                          {canOnProject('Project Delete', proj.id) && <button
                             onClick={() => setDeleteTarget(proj)}
                             title="Delete"
                             style={{
@@ -255,7 +284,7 @@ export default function ProjectMaster() {
                             onMouseOut={e => e.currentTarget.style.background = '#fef2f2'}
                           >
                             <Trash2 size={13} /> Delete
-                          </button>
+                          </button>}
                         </div>
                       </td>
                     </tr>
@@ -265,8 +294,14 @@ export default function ProjectMaster() {
                   <tr>
                     <td colSpan={8} style={{ padding: '60px', textAlign: 'center', color: '#a8a29e' }}>
                       <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>📁</div>
-                      <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>No projects found</div>
-                      <div style={{ fontSize: '0.8rem', marginTop: '4px' }}>Try a different search or add a new project</div>
+                      <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                        {activeEmployee && projects.length === 0 ? 'No projects assigned to this employee' : 'No projects found'}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', marginTop: '4px' }}>
+                        {activeEmployee && projects.length === 0
+                          ? 'Ask an administrator to grant at least one tool for the required project in Employee Access.'
+                          : 'Try a different search or add a new project'}
+                      </div>
                     </td>
                   </tr>
                 )}

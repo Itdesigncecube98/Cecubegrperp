@@ -3647,16 +3647,16 @@ model ContractingQuotationItem {
 }
 
 model AdminTool {
-  id                        String                      @id
+  id          String            @id @default(cuid())
   module                    String
   name                      String
   code                      String?
   description               String?
   isActive                  Boolean                     @default(true)
   createdAt                 DateTime                    @default(now())
-  updatedAt                 DateTime
-  EmployeeProjectToolAccess EmployeeProjectToolAccess[]
-  RoleToolAccess            RoleToolAccess[]
+  updatedAt   DateTime          @updatedAt
+  employeeProjectAccess EmployeeProjectToolAccess[]
+  roleAccess            RoleToolAccess[]
 
   @@unique([module, name])
   @@index([module])
@@ -3694,13 +3694,13 @@ model AdvancePayment {
 }
 
 model EmployeeProjectToolAccess {
-  id         String    @id
+  id         String    @id @default(cuid())
   employeeId String
   projectId  String
   toolId     String
   granted    Boolean   @default(true)
   createdAt  DateTime  @default(now())
-  AdminTool  AdminTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  tool       AdminTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, projectId, toolId])
   @@index([employeeId])
@@ -3709,12 +3709,12 @@ model EmployeeProjectToolAccess {
 }
 
 model RoleToolAccess {
-  id        String    @id
+  id        String    @id @default(cuid())
   roleId    String
   toolId    String
   granted   Boolean   @default(true)
   createdAt DateTime  @default(now())
-  AdminTool AdminTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  tool      AdminTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, toolId])
   @@index([roleId])

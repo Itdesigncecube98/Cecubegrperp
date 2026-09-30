@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -16,17 +16,18 @@ const NAV_SECTIONS = [
     items: [
       { id: 'overview',    label: 'Overview',        icon: LayoutDashboard, href: '/admin-dashboard' },
       { id: 'users',       label: 'User Management', icon: Users,          href: '/admin-dashboard/users' },
-      { id: 'roles',       label: 'Role & Rights',   icon: Shield,         href: '/admin-dashboard/roles' },
+      { id: 'tools',       label: 'Tool Permissions', icon: Key,           href: '/admin-dashboard/tools' },
+      { id: 'employee-tools', label: 'Employee Access', icon: Users,       href: '/admin-dashboard/employee-tools' },
       { id: 'company',     label: 'Company Setup',   icon: Building2,      href: '/admin-dashboard/company' },
       { id: 'security',    label: 'Security Policy', icon: Key,            href: '/admin-dashboard/security' },
-      { id: 'audit',       label: 'Audit Log',       icon: ClipboardList,  href: '/admin-dashboard/audit' },
+      { id: 'access-logs', label: 'Access Logs',     icon: ClipboardList,  href: '/admin-dashboard/access-logs' },
       { id: 'license',     label: 'License',         icon: FileText,       href: '/admin-dashboard/license' },
       { id: 'settings',    label: 'System Settings', icon: Settings,       href: '/admin-dashboard/settings' },
     ],
   },
 ];
 
-export default function AdminDashboardLayout({ children }) {
+function AdminDashboardContent({ children }) {
   const router   = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -108,7 +109,7 @@ export default function AdminDashboardLayout({ children }) {
             <LayoutDashboard size={15} style={{ minWidth: 15 }} />
             {!collapsed && 'Back to Portal'}
           </Link>
-          <button onClick={() => { sessionStorage.clear(); router.push('/login'); }}
+          <button onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); sessionStorage.clear(); localStorage.removeItem('employeeData'); localStorage.removeItem('activeEmp'); localStorage.removeItem('activeProj'); router.push('/login'); }}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13, fontWeight: 500, justifyContent: collapsed ? 'center' : 'flex-start' }}
             onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
             onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; }}>
@@ -126,5 +127,13 @@ export default function AdminDashboardLayout({ children }) {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AdminDashboardLayout({ children }) {
+  return (
+    <Suspense fallback={<div hidden />}>
+      <AdminDashboardContent>{children}</AdminDashboardContent>
+    </Suspense>
   );
 }

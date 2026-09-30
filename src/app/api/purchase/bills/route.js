@@ -1,7 +1,8 @@
-export const dynamic = 'force-dynamic';
+xport const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getPurchaseBillPreview } from '@/lib/purchaseBillAmounts';
+import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
 
 async function getNextBillNumbers(client = prisma, year = new Date().getFullYear()) {
   const existingBills = await client.vendorBill.findMany({
@@ -54,6 +55,7 @@ export async function GET(request) {
     if (id) {
       const bill = await prisma.vendorBill.findUnique({ where: { id } });
       if (!bill) return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
+      const editors = await getDocumentEditors(prisma, 'PurchaseBill', [bill.id]);
       let meta = {};
       let remarks = bill.remarks || '';
       try {
@@ -65,7 +67,7 @@ export async function GET(request) {
       } catch { /* Keep the original remarks if stored metadata is malformed. */ }
       const po = bill.poNo ? await prisma.purchaseOrder.findUnique({ where: { poNumber: bill.poNo } }) : null;
       const preview = bill.poNo ? await getPurchaseBillPreview(prisma, bill.poNo) : null;
-      return NextResponse.json({ ...bill, ...meta, remarks, po, items: preview?.items || [] });
+      return NextResponse.json({ ...bill, ...meta, ...editors[bill.id], remarks, po, items: preview?.items || [] });
     }
 
     const where = {};
@@ -79,6 +81,7 @@ export async function GET(request) {
     });
 
     // Enrich bills with computed GST fields stored in remarks (JSON prefix)
+    const editors = await getDocumentEditors(prisma, 'PurchaseBill', bills.map(bill => bill.id));
     const enriched = bills.map(bill => {
       let extra = {};
       let remarks = bill.remarks || '';
@@ -87,7 +90,7 @@ export async function GET(request) {
         if (match) extra = JSON.parse(match[1]);
         if (match) remarks = remarks.slice(match[0].length);
       } catch { /* ignore parse errors */ }
-      return { ...bill, ...extra, remarks };
+      return { ...bill, ...extra, ...editors[bill.id], remarks };
     });
 
     return NextResponse.json(enriched);
@@ -223,6 +226,18 @@ export async function PUT(request) {
     const current = await prisma.vendorBill.findUnique({ where: { id: body.id } });
     if (!current) return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
 
+    if (body.action === 'approve') {
+      let existingMeta = {};
+      let existingRemarks = current.remarks || '';
+      try {
+        const match = existingRemarks.match(/^__META__:(\{.*?\})\n?/);
+        if (match) { existingMeta = JSON.parse(match[1]); existingRemarks = existingRemarks.slice(match[0].length); }
+      } catch { /* Preserve old remarks if metadata is malformed. */ }
+      const metaRemarks = `__META__:${JSON.stringify({ ...existingMeta, approvalStatus: 'APPROVED', approvedBy: body.approvedBy || null, approvedAt: new Date().toISOString() })}\n${existingRemarks}`;
+      const approvedBill = await prisma.vendorBill.update({ where: { id: body.id }, data: { remarks: metaRemarks } });
+      return NextResponse.json({ ...approvedBill, approvalStatus: 'APPROVED', approvedBy: body.approvedBy || null });
+    }
+
     const meta = {
       taxableAmount: Number(body.taxableAmount) || 0,
       cgstAmount: Number(body.cgstAmount) || 0,
@@ -249,7 +264,11 @@ export async function PUT(request) {
       }
     });
 
-    return NextResponse.json({ ...bill, ...meta, remarks });
+    await recordDocumentEdit(prisma, {
+      entityType: 'PurchaseBill', entityId: bill.id, module: 'Purchase', editorName: body.editedBy,
+    });
+
+    return NextResponse.json({ ...bill, ...meta, editedBy: body.editedBy || null, remarks });
   } catch (error) {
     console.error('Error updating purchase bill:', error);
     return NextResponse.json({ error: error.message || 'Failed to update bill' }, { status: 500 });

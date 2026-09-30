@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polyline, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { cleanTripTrack } from '@/lib/tripGps';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -60,6 +61,9 @@ function LiveFollow({ position }) {
  */
 export default function TripMap({ pings: initialPings, startLocation, endLocation, tripId, isActive }) {
   const [pings, setPings] = useState(initialPings || []);
+  const track = useMemo(() => cleanTripTrack(pings), [pings]);
+  const positions = track.accepted.map(point => [point.latitude, point.longitude]);
+  const routeSegments = track.segments.map(segment => segment.map(point => [point.latitude, point.longitude]));
 
   // Sync when parent passes new pings (e.g. completed trip modal)
   useEffect(() => {
@@ -83,7 +87,7 @@ export default function TripMap({ pings: initialPings, startLocation, endLocatio
     return () => clearInterval(interval);
   }, [isActive, tripId]);
 
-  if (!pings || pings.length === 0) {
+  if (positions.length === 0) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', background: '#f9fafb', borderRadius: '8px', color: '#9ca3af' }}>
         No GPS data available for this trip.
@@ -91,7 +95,6 @@ export default function TripMap({ pings: initialPings, startLocation, endLocatio
     );
   }
 
-  const positions = pings.map(p => [p.latitude, p.longitude]);
   const livePos = isActive ? positions[positions.length - 1] : null;
 
   return (
@@ -102,13 +105,16 @@ export default function TripMap({ pings: initialPings, startLocation, endLocatio
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* Full route polyline */}
-        <Polyline
-          positions={positions}
-          color={isActive ? '#3b82f6' : '#10b981'}
-          weight={4}
-          opacity={0.8}
-        />
+        {/* Draw only cleaned GPS segments. Never join separate trips or GPS gaps. */}
+        {routeSegments.filter(segment => segment.length > 1).map((segment, index) => (
+          <Polyline
+            key={`route-${index}`}
+            positions={segment}
+            color={isActive ? '#3b82f6' : '#10b981'}
+            weight={5}
+            opacity={0.85}
+          />
+        ))}
 
         {/* Start marker */}
         <Marker position={positions[0]} icon={greenIcon}>

@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
+import { attachAuthSession } from '@/lib/authSession';
 
 export async function POST(request) {
   try {
@@ -9,6 +10,11 @@ export async function POST(request) {
     // Normalize so leading/trailing spaces and email casing never break login.
     const normalizedEmail = (email || '').trim().toLowerCase();
     const normalizedPassword = (password || '').trim();
+    
+    // Extract IP address from request headers
+    const forwardedFor = request.headers.get('x-forwarded-for');
+    const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
 
     // Bypass DB completely for default employee credentials
     // This allows login on Vercel even if database is not connected
@@ -16,7 +22,7 @@ export async function POST(request) {
     const EMP_PASSWORD = process.env.EMP_PASSWORD || 'password123';
 
     if (normalizedEmail === EMP_EMAIL.toLowerCase() && normalizedPassword === EMP_PASSWORD) {
-      return NextResponse.json({ 
+      return attachAuthSession(NextResponse.json({ 
         success: true, 
         employee: {
           id: 1,
@@ -25,7 +31,7 @@ export async function POST(request) {
           email: EMP_EMAIL,
           department: 'Engineering'
         }
-      });
+      }), { type: 'employee', id: '1' });
     }
 
     // Check if employee exists in DB (email match is case-insensitive)
@@ -38,7 +44,24 @@ export async function POST(request) {
     }
     
     if ((employee.password || '').trim() === normalizedPassword) {
-      return NextResponse.json({ 
+      
+      // Log successful login
+      await prisma.auditLog.create({
+        data: {
+          employeeId: employee.id,
+          module: 'AUTH',
+          subModule: 'Employee Portal',
+          action: 'LOGIN',
+          entityType: 'Employee',
+          entityId: employee.id,
+          ipAddress: ipAddress,
+          userAgent: userAgent,
+          status: 'SUCCESS',
+          remarks: `Employee ${employee.name} logged in.`
+        }
+      });
+
+      return attachAuthSession(NextResponse.json({ 
         success: true, 
         employee: {
           id: employee.id,
@@ -50,7 +73,7 @@ export async function POST(request) {
           password: employee.password,
           supervisorId: employee.supervisorId
         }
-      });
+      }), { type: 'employee', id: employee.id });
     } else {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }

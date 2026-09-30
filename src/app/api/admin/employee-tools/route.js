@@ -1,82 +1,109 @@
-﻿import { NextResponse } from "next/server";
-import { prisma } from "../../../../lib/prisma";
-import crypto from "crypto";
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { readAuthSession } from '@/lib/authSession';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const employeeId = searchParams.get("employeeId");
-  const projectId = searchParams.get("projectId");
+/**
+ * GET /api/admin/employee-tools?employeeId=xxx&projectId=yyy
+ *   → returns all AdminTool records with granted flag for that employee+project
+ * GET /api/admin/employee-tools?employeeId=xxx&allProjects=true
+ *   → returns granted tools grouped by project for the employee
+ *
+ * POST /api/admin/employee-tools
+ *   body: { employeeId, projectId, toolIds: string[] }
+ *   → replaces the access grants for this employee+project combo
+ */
 
-  if (!employeeId || !projectId) {
-    return NextResponse.json({ error: "employeeId and projectId are required" }, { status: 400 });
-  }
-
+export async function GET(req) {
   try {
-    const tools = await prisma.adminTool.findMany({
-      where: { isActive: true },
-      orderBy: [{ module: "asc" }, { name: "asc" }],
-    });
+    const session = readAuthSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in to view tool permissions.' }, { status: 401 });
+    const { searchParams } = new URL(req.url);
+    const employeeId = searchParams.get('employeeId');
+    const projectId  = searchParams.get('projectId');
+    const module     = searchParams.get('module');
 
-    const grants = await prisma.employeeProjectToolAccess.findMany({
-      where: { employeeId, projectId },
-    });
+    if (!employeeId) {
+      return NextResponse.json({ error: 'employeeId is required' }, { status: 400 });
+    }
+    if (session.type === 'employee' && session.id !== employeeId) {
+      return NextResponse.json({ error: 'You can only view your own tool permissions.' }, { status: 403 });
+    }
+
+    const where = module ? { module } : {};
+
+    if (!projectId && searchParams.get('allProjects') === 'true') {
+      const grants = await prisma.employeeProjectToolAccess.findMany({
+        where: { employeeId, granted: true, tool: module ? { is: { module } } : undefined },
+        select: { projectId: true, tool: { select: { code: true, module: true, name: true } } },
+      });
+      return NextResponse.json(grants
+        .filter(grant => grant.tool)
+        .map(grant => ({
+          projectId: grant.projectId,
+          code: grant.tool.code || employeeToolCode(grant.tool.module, grant.tool.name),
+          isGranted: true,
+        })));
+    }
+
+    if (!projectId) {
+      return NextResponse.json({ error: 'projectId is required unless allProjects=true' }, { status: 400 });
+    }
+
+    const [tools, grants] = await Promise.all([
+      prisma.adminTool.findMany({
+        where,
+        orderBy: [{ module: 'asc' }, { name: 'asc' }],
+      }),
+      prisma.employeeProjectToolAccess.findMany({
+        where: { employeeId, projectId },
+        select: { toolId: true, granted: true },
+      }),
+    ]);
+
     const grantedSet = new Set(grants.filter(g => g.granted).map(g => g.toolId));
 
     const result = tools.map(t => ({
-      id: t.id,
-      module: t.module,
-      name: t.name,
+      ...t,
       isGranted: grantedSet.has(t.id),
     }));
 
     return NextResponse.json(result);
-  } catch (error) {
-    console.error("Error fetching employee tools:", error);
-    return NextResponse.json({ error: "Failed to fetch employee tools" }, { status: 500 });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-export async function POST(request) {
-  const body = await request.json();
-  const { employeeId, projectId, toolIds } = body;
-
-  if (!employeeId || !projectId || !Array.isArray(toolIds)) {
-    return NextResponse.json({ error: "employeeId, projectId and toolIds[] are required" }, { status: 400 });
-  }
-
+export async function POST(req) {
   try {
-    const allTools = await prisma.adminTool.findMany({ where: { isActive: true } });
-    const grantedSet = new Set(toolIds);
+    const session = readAuthSession(req);
+    if (!session || session.type !== 'admin') {
+      return NextResponse.json({ error: 'Administrator access is required to change tool permissions.' }, { status: session ? 403 : 401 });
+    }
+    const body = await req.json();
+    const { employeeId, projectId, toolIds } = body;
 
-    for (const tool of allTools) {
-      const shouldGrant = grantedSet.has(tool.id);
-      const existing = await prisma.employeeProjectToolAccess.findFirst({
-        where: { employeeId, projectId, toolId: tool.id },
-      });
-
-      if (existing) {
-        if (existing.granted !== shouldGrant) {
-          await prisma.employeeProjectToolAccess.update({
-            where: { id: existing.id },
-            data: { granted: shouldGrant },
-          });
-        }
-      } else {
-        await prisma.employeeProjectToolAccess.create({
-          data: {
-            id: crypto.randomUUID(),
-            employeeId,
-            projectId,
-            toolId: tool.id,
-            granted: shouldGrant,
-          },
-        });
-      }
+    if (!employeeId || !projectId || !Array.isArray(toolIds)) {
+      return NextResponse.json({ error: 'employeeId, projectId and toolIds[] are required' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("Error saving employee tools:", error);
-    return NextResponse.json({ error: "Failed to save employee tools" }, { status: 500 });
+    // Remove all existing grants for this employee+project
+    await prisma.employeeProjectToolAccess.deleteMany({
+      where: { employeeId, projectId },
+    });
+
+    // Re-insert granted ones
+    if (toolIds.length > 0) {
+      await prisma.employeeProjectToolAccess.createMany({
+        data: toolIds.map(toolId => ({ employeeId, projectId, toolId, granted: true })),
+        skipDuplicates: true,
+      });
+    }
+
+    return NextResponse.json({ saved: toolIds.length });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
