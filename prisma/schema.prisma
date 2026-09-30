@@ -643,14 +643,15 @@ model ImprestExpense {
 }
 
 model ImprestWorkflowConfig {
-  id             Int       @id @default(1)
-  projectsHeadId String?
-  accountsId     String?
-  adminId        String?
-  updatedAt      DateTime  @updatedAt
-  accounts       Employee? @relation("AccountsRel", fields: [accountsId], references: [id])
-  admin          Employee? @relation("AdminRel", fields: [adminId], references: [id])
-  projectsHead   Employee? @relation("ProjectsHeadRel", fields: [projectsHeadId], references: [id])
+  id              Int       @id @default(1)
+  projectsHeadId  String?
+  projectsHeadId2 String?
+  accountsId      String?
+  adminId         String?
+  updatedAt       DateTime  @updatedAt
+  accounts        Employee? @relation("AccountsRel", fields: [accountsId], references: [id])
+  admin           Employee? @relation("AdminRel", fields: [adminId], references: [id])
+  projectsHead    Employee? @relation("ProjectsHeadRel", fields: [projectsHeadId], references: [id])
 }
 
 model ImprestHead {
@@ -3858,7 +3859,7 @@ enum LabourStatus {
 
 model TenderMaster {
   id          String   @id @default(cuid())
-  type        String   // HOLDING_COMPANY | WORK_CATEGORY | OVERHEAD_CATEGORY | TENDER_STAGE
+  type        String // HOLDING_COMPANY | WORK_CATEGORY | OVERHEAD_CATEGORY | TENDER_STAGE
   name        String
   code        String?
   description String?
@@ -3871,14 +3872,14 @@ model TenderMaster {
 }
 
 model AdminTool {
-  id          String            @id @default(cuid())
-  module      String            // Contracting | Engineering | Purchase | Site | ...
-  name        String            // e.g. "Send WO to Contractor by Email"
-  code        String?           // short machine key e.g. "WO_EMAIL"
-  description String?
-  isActive    Boolean           @default(true)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id                    String                      @id @default(cuid())
+  module                String // Contracting | Engineering | Purchase | Site | ...
+  name                  String // e.g. "Send WO to Contractor by Email"
+  code                  String? // short machine key e.g. "WO_EMAIL"
+  description           String?
+  isActive              Boolean                     @default(true)
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
   roleAccess            RoleToolAccess[]
   employeeProjectAccess EmployeeProjectToolAccess[]
 

@@ -20,7 +20,7 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
   const [searchQuery, setSearchQuery] = useState('');
   const [showWidget, setShowWidget] = useState(true);
   const permissions = useUserPermissions();
-  const { activeEmployee, hasRight } = usePermissions();
+  const { activeEmployee, permissionsLoaded, hasRight } = usePermissions();
 
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
@@ -101,9 +101,9 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
 
   const visibleMenuConfig = useMemo(() => {
     return menuConfig
-      .map(group => ({ ...group, items: group.items.filter(item => item.projectScoped ? (!activeEmployee || hasRight('MARKETING_PROJECT_ENQUIRIES')) : canSee(item, permissions)) }))
+      .map(group => ({ ...group, items: group.items.filter(item => activeEmployee ? permissionsLoaded && hasRight(item.permissionCode) : canSee(item, permissions)) }))
       .filter(group => group.items.length > 0);
-  }, [permissions, activeEmployee, hasRight]);
+  }, [permissions, activeEmployee, permissionsLoaded, hasRight]);
 
   const allItems = useMemo(() => {
     const list = [];

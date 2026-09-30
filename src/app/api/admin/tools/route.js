@@ -92,7 +92,7 @@ const LEGACY_ADMIN_TOOLS = {
 // Marketing keeps its independent, non-project role permissions.
 export const ALL_ADMIN_TOOLS = {
   ...PROJECT_EMPLOYEE_TOOLS,
-  Marketing: [...LEGACY_ADMIN_TOOLS.Marketing, ...(PROJECT_EMPLOYEE_TOOLS.Marketing || [])],
+  Marketing: [...new Map([...LEGACY_ADMIN_TOOLS.Marketing, ...(PROJECT_EMPLOYEE_TOOLS.Marketing || [])].map(tool => [tool.name, tool])).values()],
 };
 
 // ─── GET /api/admin/tools ──────────────────────────────────────────────────────

@@ -32,6 +32,8 @@ export const PROJECT_TOOL_MODULES = {
   Marketing: [
     'Project Enquiry View', 'Project Enquiry Create', 'Project Enquiry Edit',
     'Project Enquiry Delete', 'Project Enquiry Follow-up',
+    'Marketing Dashboard', 'Analytics', 'Lead Register', 'Customer Master',
+    'Opportunity Pipeline', 'Tender & Proposal', 'Handover to Project',
   ],
 };
 
@@ -137,4 +139,12 @@ export const LEGACY_PERMISSION_ALIASES = {
   MARKETING_PROJECT_ENQUIRY_EDIT: alias('Marketing', 'Project Enquiry Edit'),
   MARKETING_PROJECT_ENQUIRY_DELETE: alias('Marketing', 'Project Enquiry Delete'),
   MARKETING_PROJECT_ENQUIRY_FOLLOWUP: alias('Marketing', 'Project Enquiry Follow-up'),
+
+  MARKETING_DASHBOARD: alias('Marketing', 'Marketing Dashboard'),
+  MARKETING_ANALYTICS: alias('Marketing', 'Analytics'),
+  MARKETING_LEAD_REGISTER: alias('Marketing', 'Lead Register'),
+  MARKETING_CUSTOMER_MASTER: alias('Marketing', 'Customer Master'),
+  MARKETING_OPP_PIPELINE: alias('Marketing', 'Opportunity Pipeline'),
+  MARKETING_TENDER_PROPOSAL: alias('Marketing', 'Tender & Proposal'),
+  MARKETING_HANDOVER: alias('Marketing', 'Handover to Project'),
 };
