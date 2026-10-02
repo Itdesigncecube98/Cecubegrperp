@@ -3915,3 +3915,22 @@ model EmployeeProjectToolAccess {
   @@index([projectId])
   @@index([toolId])
 }
+
+model AttendancePunch {
+  id           String   @id @default(cuid())
+  deviceLogId  Int
+  deviceId     String
+  userId       String?
+  employeeCode String?
+  employeeName String?
+  designation  String?
+  direction    String?
+  punchTime    DateTime
+  location     String?
+  source       String   @default("etimetracklite")
+  createdAt    DateTime @default(now())
+
+  @@unique([deviceId, deviceLogId])
+  @@index([punchTime])
+  @@index([employeeCode, punchTime])
+}
