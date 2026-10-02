@@ -151,7 +151,9 @@ export default function EmployeeProfilePage({ params }) {
       const headsData = await headsRes.json();
       if (Array.isArray(headsData)) setSalaryHeads(headsData.map(h => ({ ...h, category: h.headType?.name || 'Other' })));
 
-      const reasonsData = await leavingReasonsRes.json();
+      const reasonsData = leavingReasonsRes.ok
+        ? await leavingReasonsRes.json().catch(() => [])
+        : [];
       if (Array.isArray(reasonsData)) setLeavingReasons(reasonsData.filter(r => r.isActive));
 
       const relData = await relationshipsRes.json();

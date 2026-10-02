@@ -1,7 +1,7 @@
 'use client';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Shield, ChevronDown, Check, X, User } from 'lucide-react';
-import { LEGACY_PERMISSION_ALIASES } from '@/lib/employeeToolCatalog';
+import { LEGACY_PERMISSION_ALIASES } from '../lib/employeeToolCatalog';
 
 const PermissionsContext = createContext({
   activeEmployee: null,

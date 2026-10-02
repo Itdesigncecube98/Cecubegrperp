@@ -1,8 +1,8 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
-import { readAuthSession } from '@/lib/authSession';
-import { employeeHasAnyTool, employeeHasProjectTool, getEmployeeGrantedLegacyProjectIds } from '@/lib/projectAccess';
+import { readAuthSession } from '../../../lib/authSession';
+import { employeeHasAnyTool, employeeHasProjectTool, getEmployeeGrantedLegacyProjectIds } from '../../../lib/projectAccess';
 
 export async function GET(req) {
   try {
