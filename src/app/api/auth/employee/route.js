@@ -23,7 +23,11 @@ export async function POST(request) {
     const EMP_PASSWORD = process.env.EMP_PASSWORD || 'password123';
 
     if (normalizedEmail === EMP_EMAIL.toLowerCase() && normalizedPassword === EMP_PASSWORD) {
-      await writeSessionAudit(prisma, request, { type: 'employee', id: '1' }, { module: 'AUTH', subModule: 'Employee Portal', action: 'LOGIN' });
+      // Keep fallback login available during a database outage; audit can
+      // be recorded on the next healthy session only if this write succeeds.
+      await writeSessionAudit(prisma, request, { type: 'employee', id: '1' }, { module: 'AUTH', subModule: 'Employee Portal', action: 'LOGIN' }).catch(error => {
+        console.warn('Employee login audit skipped:', error.message);
+      });
       return attachAuthSession(NextResponse.json({
         success: true, 
         employee: {

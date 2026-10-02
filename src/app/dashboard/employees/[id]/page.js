@@ -38,17 +38,10 @@ const calculateRevisionCtc = (revision) => {
     : null;
 };
 
-const getOrganizationCode = (organization) => {
-  const name = String(organization || '').trim().toLowerCase();
-  if (name.includes('green energy')) return { prefix: 'CGEPL', width: 2 };
-  if (name.includes('cecube') && name.includes('engineering')) return { prefix: 'CEIPL', width: 3 };
-  return null;
-};
-
 export default function EmployeeProfilePage({ params }) {
   const router = useRouter();
   const { id } = use(params);
-  const [activeTab, setActiveTab] = useState('basic');
+  const [activeTab, setActiveTab] = useState(id === 'new' ? 'contact' : 'basic');
   const [showSidebar, setShowSidebar] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [employee, setEmployee] = useState(null);
@@ -58,6 +51,7 @@ export default function EmployeeProfilePage({ params }) {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [form, setForm] = useState({});
+  const savedFormSnapshotRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [ocrStatus, setOcrStatus] = useState('');
   const [departments, setDepartments] = useState([]);
@@ -151,7 +145,9 @@ export default function EmployeeProfilePage({ params }) {
       const headsData = await headsRes.json();
       if (Array.isArray(headsData)) setSalaryHeads(headsData.map(h => ({ ...h, category: h.headType?.name || 'Other' })));
 
-      const reasonsData = await leavingReasonsRes.json();
+      const reasonsData = leavingReasonsRes.ok
+        ? await leavingReasonsRes.json().catch(() => [])
+        : [];
       if (Array.isArray(reasonsData)) setLeavingReasons(reasonsData.filter(r => r.isActive));
 
       const relData = await relationshipsRes.json();
@@ -244,6 +240,22 @@ export default function EmployeeProfilePage({ params }) {
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const hasCompanyEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.email || '').trim());
+  const hasPortalPassword = Boolean(String(form.password || '').trim());
+  const handleSectionSelect = (section) => {
+    if (id === 'new' && section !== 'contact' && !hasCompanyEmail) {
+      setActiveTab('contact');
+      showToast('Enter the company email in Contact Details first. It will be the employee app login ID.', 'error');
+      return;
+    }
+    if (id === 'new' && section !== 'contact' && !hasPortalPassword) {
+      setActiveTab('contact');
+      showToast('Set the portal login password in Contact Details before filling the employee profile.', 'error');
+      return;
+    }
+    setActiveTab(section);
   };
 
   const readFileAsDataUrl = (file) =>
@@ -534,8 +546,25 @@ export default function EmployeeProfilePage({ params }) {
   }, [form.empId, allEmployees, employee?.id, id]);
 
   const isEmpCodeDuplicate = Boolean(duplicateEmpCodeOwner);
+  const currentFormSnapshot = JSON.stringify(form);
+  const hasUnsavedChanges = savedFormSnapshotRef.current !== currentFormSnapshot;
 
   const handleSave = async () => {
+    if (id === 'new' && !String(form.organisation || '').trim()) {
+      setActiveTab('contact');
+      showToast('Select an organisation first so the employee code can be generated.', 'error');
+      return;
+    }
+    if (!hasCompanyEmail) {
+      setActiveTab('contact');
+      showToast('Enter a valid company email in Contact Details before saving. This email is the employee app login ID.', 'error');
+      return;
+    }
+    if (!hasPortalPassword) {
+      setActiveTab('contact');
+      showToast('Enter a portal login password in Contact Details before saving.', 'error');
+      return;
+    }
     if (isEmpCodeDuplicate) {
       showToast(`Employee Code "${(form.empId || '').trim()}" is already assigned to ${duplicateEmpCodeOwner.name}. Employee Code cannot be duplicated.`, 'error');
       return;
@@ -560,6 +589,7 @@ export default function EmployeeProfilePage({ params }) {
       const data = await res.json();
       if (data.id) {
         setEmployee(data);
+        savedFormSnapshotRef.current = currentFormSnapshot;
         showToast(id === 'new' ? 'Employee added successfully!' : 'Profile updated successfully!');
         if (id === 'new') {
           setTimeout(() => router.push(`/dashboard/employees/${data.id}`), 1000);
@@ -906,8 +936,8 @@ export default function EmployeeProfilePage({ params }) {
               Terminate
             </button>
           )}
-          <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 18px', background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
-            <Save size={18} /> {saving ? 'Saving...' : 'Save Changes'}
+          <button onClick={handleSave} disabled={saving || !hasUnsavedChanges} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 18px', background: hasUnsavedChanges ? '#007bff' : '#16a34a', color: 'white', border: 'none', borderRadius: '6px', cursor: saving || !hasUnsavedChanges ? 'default' : 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            <Save size={18} /> {saving ? 'Saving...' : hasUnsavedChanges ? 'Save Changes' : 'Changes Saved'}
           </button>
         </div>
       </div>
@@ -1010,7 +1040,7 @@ export default function EmployeeProfilePage({ params }) {
                 <button
                   type="button"
                   key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => handleSectionSelect(tab.key)}
                   style={{
                     width: '100%',
                     padding: '14px 20px',
@@ -1066,7 +1096,7 @@ export default function EmployeeProfilePage({ params }) {
                 <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>Go to Section:</span>
                 <select 
                   value={activeTab} 
-                  onChange={(e) => setActiveTab(e.target.value)}
+                  onChange={(e) => handleSectionSelect(e.target.value)}
                   style={{
                     padding: '6px 12px',
                     borderRadius: '6px',
@@ -1123,13 +1153,14 @@ export default function EmployeeProfilePage({ params }) {
                     </div>
                     <input 
                       value={f('empId') || ''} 
-                      onChange={e => set('empId', e.target.value)} 
+                      onChange={e => set('empId', e.target.value)}
+                      readOnly={id === 'new'}
                       style={{
                         ...inputStyle,
                         borderColor: isEmpCodeDuplicate ? '#ef4444' : inputStyle.borderColor,
-                        backgroundColor: isEmpCodeDuplicate ? '#fef2f2' : (inputStyle.backgroundColor || 'white')
+                        backgroundColor: isEmpCodeDuplicate ? '#fef2f2' : (id === 'new' ? '#f8fafc' : (inputStyle.backgroundColor || 'white'))
                       }} 
-                      placeholder="e.g. CEIPL084"
+                      placeholder={id === 'new' ? 'Generated when employee is saved' : 'e.g. CEIPL084'}
                     />
                   </div>
                 </div>
@@ -1293,21 +1324,6 @@ export default function EmployeeProfilePage({ params }) {
                     onChange={e => {
                       const organisation = e.target.value;
                       set('organisation', organisation);
-                      if (id === 'new') {
-                        const selectedOrg = organizations.find(org => org.name === organisation);
-                        const configuredCode = getOrganizationCode(organisation);
-                        const prefix = configuredCode?.prefix || selectedOrg?.code?.trim().toUpperCase();
-                        const codeWidth = configuredCode?.width || 3;
-                        if (prefix) {
-                          const usedNumbers = allEmployees
-                            .map(employee => {
-                              const match = (employee.empId || '').match(new RegExp(`^${prefix}(\\d+)$`, 'i'));
-                              return match ? Number(match[1]) : 0;
-                            });
-                          const nextNumber = Math.max(0, ...usedNumbers) + 1;
-                          set('empId', `${prefix}${String(nextNumber).padStart(codeWidth, '0')}`);
-                        }
-                      }
                     }} 
                     style={inputStyle}
                   >
@@ -1395,25 +1411,6 @@ export default function EmployeeProfilePage({ params }) {
                   <input type="date" value={f('confirmationDate') || ''} onChange={e => set('confirmationDate', e.target.value)} style={inputStyle} />
                 </div>
 
-                <div>
-                  <label style={labelSm}>Portal Login Password</label>
-                  <div style={{ position: 'relative' }}>
-                    <input 
-                      type={showPassword ? "text" : "password"} 
-                      value={f('password')} 
-                      onChange={e => set('password', e.target.value)} 
-                      placeholder="••••••••" 
-                      style={{ ...inputStyle, paddingRight: '40px' }} 
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
               </div>
               <div style={{ marginTop: '20px' }}>
                 <label style={labelSm}>Job Description</label>
@@ -1473,21 +1470,53 @@ export default function EmployeeProfilePage({ params }) {
           {activeTab === 'contact' && (
             <div>
               <h3 style={{ margin: '0 0 24px', fontSize: '18px', fontWeight: 600 }}>Contact Details</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div>
-                  <label style={labelSm}>COMPANY EMAIL ADDRESS</label>
-                  <input type="email" value={f('email')} onChange={e => set('email', e.target.value)} style={inputStyle} />
+              {id === 'new' && (
+                <div style={{ padding: '14px 16px', marginBottom: '20px', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e40af', fontSize: '13px', lineHeight: 1.5 }}>
+                  Select the employee organisation, then enter the company email and portal login password. The email becomes the employee app login ID, and the organisation determines the employee code generated when you save.
                 </div>
+              )}
+              {id === 'new' && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={labelSm}>ORGANISATION <span style={{ color: '#dc2626' }}>*</span></label>
+                  <select required value={f('organisation') || ''} onChange={e => set('organisation', e.target.value)} style={inputStyle}>
+                    <option value="">-- Select Organisation --</option>
+                    {organizations.map(org => <option key={org.id} value={org.name}>{org.name}{org.code ? ` (${org.code})` : ''}</option>)}
+                  </select>
+                  {f('organisation') && <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: '13px' }}>Employee code will be generated for {f('organisation')} when you save.</p>}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label style={labelSm}>COMPANY EMAIL ADDRESS {id === 'new' && <span style={{ color: '#dc2626' }}>*</span>}</label>
+                  <input autoFocus={id === 'new'} type="email" required={id === 'new'} value={f('email')} onChange={e => set('email', e.target.value)} style={inputStyle} placeholder="name@company.com" />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label style={labelSm}>PORTAL LOGIN PASSWORD {id === 'new' && <span style={{ color: '#dc2626' }}>*</span>}</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type={showPassword ? 'text' : 'password'} required={id === 'new'} value={f('password')} onChange={e => set('password', e.target.value)} placeholder="Set employee app password" style={{ ...inputStyle, paddingRight: '40px' }} />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {id === 'new' && !(hasCompanyEmail && hasPortalPassword) ? (
+                <p style={{ margin: '4px 0 16px', color: '#64748b', fontSize: '13px' }}>Complete both login fields above to unlock the rest of the employee profile.</p>
+              ) : (
+              <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div>
                   <label style={labelSm}>COMPANY MOBILE NUMBER</label>
                   <input type="text" value={f('workTelephone')} onChange={e => set('workTelephone', e.target.value)} style={inputStyle} />
                 </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div>
                   <label style={labelSm}>PERSONAL EMAIL ADDRESS</label>
                   <input type="email" value={f('otherEmail')} onChange={e => set('otherEmail', e.target.value)} style={inputStyle} />
                 </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div>
                   <label style={labelSm}>PERSONAL MOBILE NUMBER</label>
                   <input type="text" value={f('phone')} onChange={e => set('phone', e.target.value)} style={inputStyle} />
@@ -1515,6 +1544,8 @@ export default function EmployeeProfilePage({ params }) {
                 ))}
                 {(f('emergencyContacts') || []).length < 3 && <button type="button" onClick={() => set('emergencyContacts', [...(f('emergencyContacts') || []), { name: '', phone: '', relationship: '' }])} style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>+ Add Emergency Contact</button>}
               </div>
+              </>
+              )}
             </div>
           )}
 

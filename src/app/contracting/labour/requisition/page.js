@@ -14,10 +14,11 @@ const FormGroup = ({ label, required, children }) => (
 
 export default function LabourRequisition() {
   const [projects, setProjects] = useState([]);
-  const [taskLabours, setTaskLabours] = useState([]); // labours from task library for selected project's library
+  const [taskResources, setTaskResources] = useState([]); // labour and equipment from the selected project's library
+  const [libraryTasks, setLibraryTasks] = useState([]);
   const [availableUnits, setAvailableUnits] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
-  const [loadingLabours, setLoadingLabours] = useState(false);
+  const [loadingResources, setLoadingResources] = useState(false);
   const [searched, setSearched] = useState(false);
 
   const [filters, setFilters] = useState({
@@ -61,42 +62,34 @@ export default function LabourRequisition() {
   // Fetch labours from task library when project changes
   useEffect(() => {
     if (!filters.projectId) {
-      setTaskLabours([]);
+      setTaskResources([]);
+      setLibraryTasks([]);
       setRows([]);
       setSearched(false);
       return;
     }
-    setLoadingLabours(true);
-    // Fetch all master task library groups (which have the labours)
-    fetch('/api/engineering/task-library')
-      .then(r => r.json())
-      .then(groups => {
-        if (!Array.isArray(groups)) { setTaskLabours([]); return; }
-        // Flatten all labours from all tasks in all groups
-        const labourMap = new Map();
-        groups.forEach(group => {
-          (group.tasks || []).forEach(task => {
-            (task.labours || []).forEach(labour => {
-              // We'll store a unique key per labour per task so we can filter by task
-              const key = `${task.id}-${labour.name}`;
-              if (!labourMap.has(key)) {
-                labourMap.set(key, {
-                  id: labour.id,
-                  name: labour.name,
-                  taskId: task.id,
-                  taskName: task.name,
-                  unit: labour.unit || 'Manday',
-                  quantity: labour.quantity || 0,
-                  rate: labour.rate || 0,
-                });
-              }
-            });
-          });
+    setLoadingResources(true);
+    fetch(`/api/engineering/task-library?projectId=${encodeURIComponent(filters.projectId)}`, { cache: 'no-store' })
+      .then(async response => {
+        const groups = await response.json();
+        if (!response.ok) throw new Error(groups.error || 'Unable to load the selected project library.');
+        const resources = [];
+        const tasks = (Array.isArray(groups) ? groups : []).flatMap(group => group.tasks || []);
+        setLibraryTasks(tasks.map(task => ({ id: task.id, name: task.name })));
+        tasks.forEach(task => {
+          (task.labours || []).forEach(labour => resources.push({
+            id: labour.id, name: labour.name, taskId: task.id, taskName: task.name,
+            resourceType: 'Labour', unit: labour.unit || 'Manday', quantity: labour.quantity || 0, rate: labour.rate || 0,
+          }));
+          (task.equipments || []).forEach(equipment => resources.push({
+            id: equipment.id, name: equipment.name, taskId: task.id, taskName: task.name,
+            resourceType: 'Equipment', unit: equipment.unit || 'Hour', quantity: equipment.quantity || 0, rate: equipment.rate || 0,
+          }));
         });
-        setTaskLabours(Array.from(labourMap.values()));
+        setTaskResources(resources);
       })
-      .catch(console.error)
-      .finally(() => setLoadingLabours(false));
+      .catch(error => { setTaskResources([]); setLibraryTasks([]); showToast(error.message || 'Unable to load project resources', 'error'); })
+      .finally(() => setLoadingResources(false));
   }, [filters.projectId]);
 
   const handleReset = () => {
@@ -108,25 +101,27 @@ export default function LabourRequisition() {
       toDate: new Date().toISOString().split('T')[0],
       groupBy: 'Labour',
     });
-    setTaskLabours([]);
+    setTaskResources([]);
+    setLibraryTasks([]);
     setRows([]);
     setSearched(false);
   };
 
   const handleSearch = () => {
     if (!filters.projectId) return;
-    // Build initial rows from task labours, filtered by task and labour if selected
-    let source = taskLabours;
+    // Build initial rows from the selected project's library, filtered by task/resource.
+    let source = taskResources.filter(resource => resource.resourceType === filters.groupBy);
     if (filters.taskId) {
       source = source.filter(l => l.taskId === filters.taskId);
     }
     if (filters.labourId) {
-      source = source.filter(l => l.id === filters.labourId);
+      source = source.filter(resource => resource.id === filters.labourId);
     }
 
     setRows(source.map(l => ({
       id: l.id,
       labour: l.name,
+      resourceType: l.resourceType,
       unit: l.unit,
       qty: l.quantity || 1,
       leadTime: '',
@@ -140,8 +135,27 @@ export default function LabourRequisition() {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
   };
 
+  const handleResourceSelection = (idx, resourceId) => {
+    const resource = taskResources.find(item => item.id === resourceId && item.resourceType === filters.groupBy);
+    if (!resource) {
+      handleRowChange(idx, 'id', '');
+      handleRowChange(idx, 'labour', '');
+      return;
+    }
+    setRows(previous => previous.map((row, rowIndex) => rowIndex === idx ? {
+      ...row, id: resource.id, labour: resource.name, taskName: resource.taskName,
+      unit: resource.unit, qty: resource.quantity || 1, rate: resource.rate || 0,
+    } : row));
+  };
+
+  const filteredResources = taskResources.filter(resource => resource.resourceType === filters.groupBy);
+  const taskOptions = libraryTasks.map(task => [task.id, task.name]);
+  const resourceFilterOptions = Array.from(new Map(
+    filteredResources.filter(resource => !filters.taskId || resource.taskId === filters.taskId).map(resource => [resource.name, resource])
+  ).values());
+
   const handleAddRow = () => {
-    setRows(prev => [...prev, { id: '', labour: '', unit: 'Manday', qty: 1, leadTime: '', taskName: '', rate: 0 }]);
+    setRows(prev => [...prev, { id: '', labour: '', resourceType: filters.groupBy, unit: filters.groupBy === 'Equipment' ? 'Hour' : 'Manday', qty: 1, leadTime: '', taskName: '', rate: 0 }]);
   };
 
   const handleDeleteRow = (idx) => {
@@ -156,7 +170,7 @@ export default function LabourRequisition() {
     }
     const validRows = rows.filter(r => r.labour && r.qty > 0);
     if (validRows.length === 0) {
-      showToast('Please fill in Labour name and Quantity for each row', 'error');
+      showToast(`Please fill in ${filters.groupBy.toLowerCase()} name and quantity for each row`, 'error');
       return;
     }
 
@@ -173,6 +187,7 @@ export default function LabourRequisition() {
             quantity: parseFloat(row.qty) || 1,
             unit: row.unit,
             rate: parseFloat(row.rate) || 0,
+            duration: parseInt(row.leadTime, 10) || 1,
             purpose: row.taskName || '',
             requiredDate: filters.toDate,
           })
@@ -224,8 +239,8 @@ export default function LabourRequisition() {
           <div style={{ background: '#f1f5f9', padding: '10px 16px', fontWeight: 600, fontSize: '0.85rem', color: '#334155', borderBottom: '1px solid #e2e8f0' }}>
             - Filter
           </div>
-          <div style={{ padding: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '20px' }}>
+            <div style={{ padding: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '20px' }}>
 
               {/* Project */}
               <FormGroup label="Project" required>
@@ -244,55 +259,57 @@ export default function LabourRequisition() {
               </FormGroup>
 
               {/* Task */}
+              <FormGroup label="Resource Type">
+                <select className="contracting-input" style={{ width: '100%' }} value={filters.groupBy} onChange={e => setFilters(f => ({ ...f, groupBy: e.target.value, taskId: '', labourId: '' }))} disabled={!filters.projectId || loadingResources}>
+                  <option value="Labour">Labour</option>
+                  <option value="Equipment">Equipment</option>
+                </select>
+              </FormGroup>
+
+              {/* Task */}
               <FormGroup label="Task">
                 <select
                   className="contracting-input"
                   style={{ width: '100%' }}
                   value={filters.taskId}
                   onChange={e => setFilters(f => ({ ...f, taskId: e.target.value, labourId: '' }))}
-                  disabled={!filters.projectId || loadingLabours}
+                  disabled={!filters.projectId || loadingResources}
                 >
                   <option value="">
                     {!filters.projectId
                       ? 'Select Project'
-                      : loadingLabours
+                      : loadingResources
                       ? 'Loading...'
-                      : taskLabours.length === 0
+                      : taskOptions.length === 0
                       ? 'No tasks found'
                       : '-- All Tasks --'}
                   </option>
-                  {Array.from(new Map(taskLabours.map(l => [l.taskId, l.taskName])).entries()).map(([id, name]) => (
+                  {taskOptions.map(([id, name]) => (
                     <option key={id} value={id}>{name}</option>
                   ))}
                 </select>
               </FormGroup>
 
-              {/* Labour */}
-              <FormGroup label="Labour">
+              {/* Labour / Equipment */}
+              <FormGroup label={filters.groupBy}>
                 <select
                   className="contracting-input"
                   style={{ width: '100%' }}
                   value={filters.labourId}
                   onChange={e => setFilters(f => ({ ...f, labourId: e.target.value }))}
-                  disabled={!filters.projectId || loadingLabours}
+                  disabled={!filters.projectId || loadingResources}
                 >
                   <option value="">
                     {!filters.projectId
                       ? 'Select Project'
-                      : loadingLabours
+                      : loadingResources
                       ? 'Loading...'
-                      : taskLabours.length === 0
-                      ? 'No labours found'
-                      : '-- All Labours --'}
+                      : resourceFilterOptions.length === 0
+                      ? `No ${filters.groupBy.toLowerCase()} found`
+                      : `-- All ${filters.groupBy}s --`}
                   </option>
-                  {Array.from(
-                    new Map(
-                      taskLabours
-                        .filter(l => !filters.taskId || l.taskId === filters.taskId)
-                        .map(l => [l.name, l])
-                    ).values()
-                  ).map((l, i) => (
-                    <option key={i} value={l.id}>{l.name}</option>
+                  {resourceFilterOptions.map(resource => (
+                    <option key={resource.id} value={resource.id}>{resource.name}</option>
                   ))}
                 </select>
               </FormGroup>
@@ -320,14 +337,14 @@ export default function LabourRequisition() {
               </FormGroup>
 
               {/* Actions */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', gridColumn: 'span 5', alignSelf: 'end', paddingBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', gridColumn: 'span 6', alignSelf: 'end', paddingBottom: '16px' }}>
                 <button className="btn-cyan" onClick={handleReset}>
                   <RefreshCw size={14} /> Reset
                 </button>
                 <button
                   className="btn-cyan"
                   onClick={handleSearch}
-                  disabled={!filters.projectId || loadingLabours}
+                  disabled={!filters.projectId || loadingResources}
                   style={{ opacity: filters.projectId ? 1 : 0.5, cursor: filters.projectId ? 'pointer' : 'not-allowed' }}
                 >
                   <Search size={14} /> Search
@@ -342,7 +359,7 @@ export default function LabourRequisition() {
         {searched && (
           <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
             <div style={{ background: '#f1f5f9', padding: '10px 16px', fontWeight: 600, fontSize: '0.85rem', color: '#334155', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Labour Requisition Details</span>
+              <span>{filters.groupBy} Requisition Details</span>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   onClick={handleAddRow}
@@ -365,7 +382,7 @@ export default function LabourRequisition() {
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#17a2b8', fontWeight: 700, width: '40px' }}>#</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#17a2b8', fontWeight: 700 }}>Labour</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#17a2b8', fontWeight: 700 }}>{filters.groupBy}</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#17a2b8', fontWeight: 700 }}>Task</th>
                     <th style={{ padding: '10px 12px', textAlign: 'center', color: '#17a2b8', fontWeight: 700, width: '100px' }}>Qty</th>
                     <th style={{ padding: '10px 12px', textAlign: 'center', color: '#17a2b8', fontWeight: 700, width: '120px' }}>Unit</th>
@@ -379,7 +396,7 @@ export default function LabourRequisition() {
                   {rows.length === 0 ? (
                     <tr>
                       <td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem' }}>
-                        No labour data found. Click "Add Row" to manually add or check task library for this project.
+                        No {filters.groupBy.toLowerCase()} data found. Click "Add Row" to enter a requisition manually or check this project's task library.
                       </td>
                     </tr>
                   ) : rows.map((row, idx) => (
@@ -389,22 +406,15 @@ export default function LabourRequisition() {
                         <select
                           className="contracting-input"
                           style={{ width: '100%', minWidth: '180px' }}
-                          value={row.labour}
-                          onChange={e => {
-                            const found = taskLabours.find(l => l.name === e.target.value);
-                            handleRowChange(idx, 'labour', e.target.value);
-                            if (found) {
-                              handleRowChange(idx, 'unit', found.unit);
-                              handleRowChange(idx, 'qty', found.quantity || 1);
-                              handleRowChange(idx, 'rate', found.rate || 0);
-                            }
-                          }}
+                          value={row.id || ''}
+                          onChange={e => handleResourceSelection(idx, e.target.value)}
                         >
-                          <option value="">-- Select Labour --</option>
-                          {taskLabours.map((l, i) => (
-                            <option key={i} value={l.name}>{l.name}</option>
+                          <option value="">-- Select {filters.groupBy} --</option>
+                          {filteredResources.map(resource => (
+                            <option key={resource.id} value={resource.id}>{resource.name} — {resource.taskName}</option>
                           ))}
                         </select>
+                        {!row.id && <input type="text" className="contracting-input" placeholder={`Enter ${filters.groupBy.toLowerCase()} name`} value={row.labour} onChange={e => handleRowChange(idx, 'labour', e.target.value)} style={{ width: '100%', minWidth: '180px', marginTop: '8px' }} />}
                       </td>
                       <td style={{ padding: '8px 12px', color: '#64748b', fontSize: '0.8rem' }}>{row.taskName || '—'}</td>
                       <td style={{ padding: '8px 12px' }}>

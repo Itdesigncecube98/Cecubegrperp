@@ -22,7 +22,11 @@ export async function POST(request) {
     );
 
     if (directMatch) {
-      await writeSessionAudit(prisma, request, { type: 'admin', id: directMatch.email }, { module: 'AUTH', subModule: 'Admin Portal', action: 'LOGIN' });
+      // Demo/admin fallback credentials must still be able to establish a
+      // signed session while the database is offline. Audit is best-effort.
+      await writeSessionAudit(prisma, request, { type: 'admin', id: directMatch.email }, { module: 'AUTH', subModule: 'Admin Portal', action: 'LOGIN' }).catch(error => {
+        console.warn('Admin login audit skipped:', error.message);
+      });
       return attachAuthSession(NextResponse.json({ success: true, email: directMatch.email, name: 'Super Admin' }), { type: 'admin', id: directMatch.email });
     }
 

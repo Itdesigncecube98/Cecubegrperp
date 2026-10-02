@@ -1,8 +1,8 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { readAuthSession } from '@/lib/authSession';
-import { writeSessionAudit } from '@/lib/serverAudit';
+import { readAuthSession } from '../../../../lib/authSession';
+import { writeSessionAudit } from '../../../../lib/serverAudit';
 
 const prisma = new PrismaClient();
 

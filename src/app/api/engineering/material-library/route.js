@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { resolveProjectLibraryContext } from '@/lib/projectLibrary';
 
 // Auto-seed default library hierarchy if empty
 async function seedDefaultMaterialTreeIfNeeded() {
@@ -179,6 +180,7 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const libraryId = searchParams.get('libraryId');
+    const projectId = searchParams.get('projectId');
     const search = searchParams.get('search');
     const resourceType = searchParams.get('resourceType') || 'Material';
 
@@ -188,6 +190,11 @@ export async function GET(req) {
 
     if (libraryId) {
       where.libraryId = libraryId;
+    } else if (projectId) {
+      const { library } = await resolveProjectLibraryContext(prisma, projectId);
+      // Keep a missing project/library mapping empty rather than showing
+      // materials from every library to this project.
+      where.libraryId = library?.id || '__unmatched_project_library__';
     }
     where.resourceType = resourceType;
 

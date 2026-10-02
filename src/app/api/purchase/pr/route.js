@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { readAuthSession } from '@/lib/authSession';
 
 async function syncUnlinkedMaterialRequisitions() {
   const unlinked = await prisma.siteMaterialRequisition.findMany({
@@ -67,7 +68,12 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    const session = readAuthSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in to submit a purchase indent.' }, { status: 401 });
     const body = await req.json();
+    // Employees can only submit requests under their own name. Admins may
+    // submit on behalf of any employee using the Requested By selector.
+    const requestedById = session.type === 'employee' ? session.id : (body.requestedById || null);
 
     // Auto-generate PR No
     const count = await prisma.purchaseIndent.count();
@@ -84,7 +90,7 @@ export async function POST(req) {
         purpose: body.purpose,
         remarks: body.remarks,
         status: 'Pending Approval',
-        requestedById: body.requestedById,
+        requestedById,
         items: {
           create: body.items.map(item => ({
             item: item.item,

@@ -1335,6 +1335,21 @@ export default function EmployeeDashboard() {
                 <span style={{ color: '#cbd5e1' }}>•</span> Position Indent
               </button>
             </li>
+            <li>
+              <button onClick={() => router.push('/employee/dashboard/dpr')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Daily Progress Report (DPR)
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/dashboard/material-requisition')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Material Requisition
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/dashboard/labour-requisition')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Labour Requisition
+              </button>
+            </li>
           </ul>
         </div>
 

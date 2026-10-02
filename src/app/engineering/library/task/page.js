@@ -21,11 +21,14 @@ export default function TaskLibrary() {
   const [masterResources, setMasterResources] = useState({ material: [], equipment: [], labour: [] });
 
   // Fetch Master Resources to populate dropdowns
-  const fetchMasterResources = async (libId) => {
+  const fetchMasterResources = async (libId, projectId) => {
     if (!libId) return;
     try {
       const fetchType = async (type) => {
-        const res = await fetch('/api/engineering/material-library?libraryId=' + libId + '&resourceType=' + type);
+        const scope = projectId
+          ? `projectId=${encodeURIComponent(projectId)}`
+          : `libraryId=${encodeURIComponent(libId)}`;
+        const res = await fetch(`/api/engineering/material-library?${scope}&resourceType=${encodeURIComponent(type)}`, { cache: 'no-store' });
         if (res.ok) {
           const groups = await res.json();
           // Flatten items from groups and subgroups
@@ -99,11 +102,18 @@ export default function TaskLibrary() {
     fetch('/api/projects').then(res => res.ok ? res.json() : []).then(data => setProjects(Array.isArray(data) ? data : [])).catch(() => setProjects([]));
   }, []);
 
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    const project = projects.find(item => item.id === selectedProjectId);
+    const linkedLibrary = libraries.find(item => item.name?.trim().toLowerCase() === project?.library?.trim().toLowerCase());
+    if (linkedLibrary && linkedLibrary.id !== selectedLibraryId) setSelectedLibraryId(linkedLibrary.id);
+  }, [selectedProjectId, projects, libraries, selectedLibraryId]);
+
   // 2. Fetch groups whenever selectedLibraryId changes
   useEffect(() => {
     if (selectedLibraryId) {
       fetchGroups(selectedLibraryId);
-      fetchMasterResources(selectedLibraryId);
+      fetchMasterResources(selectedLibraryId, selectedProjectId);
     } else {
       setGroups([]);
       setSelectedGroupId(null);
@@ -375,6 +385,7 @@ export default function TaskLibrary() {
             id: taskModal.data.id,
             type: 'task',
             groupId: targetGroupId,
+            projectId: selectedProjectId || null,
             name,
             unit,
             quantity,
@@ -751,11 +762,19 @@ export default function TaskLibrary() {
             <select
               className="modern-input modern-select"
               value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
+              onChange={(e) => {
+                const projectId = e.target.value;
+                setSelectedProjectId(projectId);
+                if (projectId) {
+                  const project = projects.find(item => item.id === projectId);
+                  const linkedLibrary = libraries.find(item => item.name?.trim().toLowerCase() === project?.library?.trim().toLowerCase());
+                  if (linkedLibrary && linkedLibrary.id !== selectedLibraryId) setSelectedLibraryId(linkedLibrary.id);
+                }
+              }}
               style={{ fontWeight: 600, color: '#0f172a', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1' }}
             >
               <option value="">All / Reusable Tasks</option>
-              {projects.map(project => <option key={project.id} value={project.id}>{project.projectId} - {project.name}</option>)}
+              {projects.map(project => <option key={project.id} value={project.id}>{project.projectId || project.id} - {project.name}</option>)}
             </select>
           </div>
 

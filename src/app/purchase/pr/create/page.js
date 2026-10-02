@@ -33,24 +33,13 @@ export default function CreatePR() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [empRes, materialRes, projRes] = await Promise.all([
+        const [empRes, projRes] = await Promise.all([
           fetch('/api/employees'),
-          fetch('/api/engineering/material-library?resourceType=Material'),
-          fetch('/api/engineering/projects')
+          fetch('/api/projects', { cache: 'no-store' })
         ]);
         if (empRes.ok) {
           const data = await empRes.json();
           setEmployees(Array.isArray(data) ? data : data.employees || []);
-        }
-        if (materialRes.ok) {
-          const groups = await materialRes.json();
-          const allMaterials = [];
-          const flatten = nodes => (nodes || []).forEach(node => {
-            (node.materials || []).forEach(material => allMaterials.push(material));
-            flatten(node.subgroups);
-          });
-          flatten(Array.isArray(groups) ? groups : []);
-          setMaterials(allMaterials);
         }
         if (projRes.ok) {
           const projs = await projRes.json();
@@ -64,6 +53,24 @@ export default function CreatePR() {
     }
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!formData.project) { setMaterials([]); return; }
+    const selectedProject = projects.find(project => project.name === formData.project);
+    if (!selectedProject) { setMaterials([]); return; }
+    fetch(`/api/engineering/material-library?resourceType=Material&projectId=${encodeURIComponent(selectedProject.id)}`, { cache: 'no-store' })
+      .then(response => response.ok ? response.json() : [])
+      .then(groups => {
+        const allMaterials = [];
+        const flatten = nodes => (nodes || []).forEach(node => {
+          (node.materials || []).forEach(material => allMaterials.push(material));
+          flatten(node.subgroups);
+        });
+        flatten(Array.isArray(groups) ? groups : []);
+        setMaterials(allMaterials);
+      })
+      .catch(() => setMaterials([]));
+  }, [formData.project, projects]);
 
   const handleHeaderChange = (e) => {
     const { name, value } = e.target;

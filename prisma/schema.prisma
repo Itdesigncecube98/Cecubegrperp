@@ -240,6 +240,25 @@ model Attendance {
   @@index([date])
 }
 
+model AttendancePunch {
+  id           String   @id @default(cuid())
+  deviceLogId  Int
+  deviceId     String
+  userId       String?
+  employeeCode String?
+  employeeName String?
+  designation  String?
+  direction    String?
+  punchTime    DateTime
+  location     String?
+  source       String   @default("etimetracklite")
+  createdAt    DateTime @default(now())
+
+  @@unique([deviceId, deviceLogId])
+  @@index([punchTime])
+  @@index([employeeCode, punchTime])
+}
+
 model PunchRequest {
   id           Int      @id @default(autoincrement())
   employeeId   String
@@ -2304,10 +2323,15 @@ model AccountsAccountGroup {
   id          String                 @id @default(cuid())
   name        String                 @unique
   type        String
+  parentId    String?
   description String?
   createdAt   DateTime               @default(now())
   updatedAt   DateTime               @updatedAt
   ledgers     AccountsLedgerMaster[]
+  parent      AccountsAccountGroup?  @relation("AccountsGroupTree", fields: [parentId], references: [id], onDelete: SetNull)
+  subgroups   AccountsAccountGroup[] @relation("AccountsGroupTree")
+
+  @@index([parentId])
 }
 
 model AccountsLedgerMaster {
@@ -2316,7 +2340,44 @@ model AccountsLedgerMaster {
   name           String
   groupId        String
   company        String?
+  legalChequeName String?
   branch         String?
+  contactPerson  String?
+  address        String?
+  buildingNo     String?
+  street         String?
+  city            String?
+  district        String?
+  state           String?
+  country         String?
+  pinCode         String?
+  mobile         String?
+  phone           String?
+  email          String?
+  nature          String?
+  vatNo           String?
+  corporateIdNo   String?
+  panStatus       String?
+  panRefNo        String?
+  itDeclarationStatus String?
+  taxMasterCode   String?
+  msmeCategory    String?
+  msmeRegistrationNo String?
+  msmeType        String?
+  msmeActivity    String?
+  acCategory1     String?
+  acCategory2     String?
+  acCategory3     String?
+  interestRate    Float                   @default(0)
+  minBalance      Float                   @default(0)
+  remarks         String?
+  serviceTaxNo    String?
+  tinNo           String?
+  cstNo           String?
+  localBodyTaxNo  String?
+  bankDetails     Json?
+  additionalNames Json?
+  documents       Json?
   gstApplicable  Boolean                 @default(false)
   gstin          String?
   pan            String?

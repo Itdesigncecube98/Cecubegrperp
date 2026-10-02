@@ -160,6 +160,9 @@ export async function POST(request) {
     if (!name) {
       return NextResponse.json({ error: 'Employee name is required.' }, { status: 400 });
     }
+    if (!String(organisation || '').trim()) {
+      return NextResponse.json({ error: 'Organisation is required to generate an employee code.' }, { status: 400 });
+    }
 
     // A password must always be stored so the employee can log in. Fall back to
     // the shared default (and surface it) when the admin leaves it blank.
