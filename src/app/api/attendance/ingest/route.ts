@@ -25,6 +25,26 @@ function keyMatches(provided: string | null): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+const indiaTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function getIndiaDateAndTime(value: Date) {
+  const parts = Object.fromEntries(
+    indiaTimeFormatter.formatToParts(value).map(({ type, value: part }) => [type, part]),
+  );
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+}
+
 export async function POST(request: Request) {
   if (!keyMatches(request.headers.get("x-api-key"))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -92,10 +112,95 @@ export async function POST(request: Request) {
 
   const result = await prisma.attendancePunch.createMany({ data: rows, skipDuplicates: true });
 
+  // Also reflect machine punches in the employee attendance records. The
+  // ingest request is replayed by the HR sync script, so rebuild each affected
+  // employee/day from all stored punches and keep it idempotent.
+  const affectedDays = new Set<string>();
+  const employeeCodes = [...new Set(rows.map((row) => row.employeeCode).filter((code): code is string => Boolean(code)))];
+  for (const row of rows) {
+    if (!row.employeeCode) continue;
+    affectedDays.add(`${row.employeeCode}|${getIndiaDateAndTime(row.punchTime).date}`);
+  }
+
+  let attendanceUpdated = 0;
+  let attendanceSkippedApproved = 0;
+  let unmatchedEmployeeCodes: string[] = [];
+
+  if (affectedDays.size > 0) {
+    const employees = await prisma.employee.findMany({
+      where: { empId: { in: employeeCodes } },
+      select: { id: true, empId: true },
+    });
+    const employeeByCode = new Map<string, { id: string; empId: string }>();
+    for (const employee of employees) {
+      if (employee.empId) employeeByCode.set(employee.empId, { id: employee.id, empId: employee.empId });
+    }
+    unmatchedEmployeeCodes = employeeCodes.filter((code) => !employeeByCode.has(code));
+
+    const dayKeys = [...affectedDays].map((key) => {
+      const separator = key.lastIndexOf("|");
+      return { code: key.slice(0, separator), date: key.slice(separator + 1) };
+    });
+    const dates = dayKeys.map(({ date }) => date).sort();
+    const rangeStart = new Date(`${dates[0]}T00:00:00+05:30`);
+    const rangeEnd = new Date(`${dates[dates.length - 1]}T00:00:00+05:30`);
+    rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+
+    const storedPunches = await prisma.attendancePunch.findMany({
+      where: {
+        employeeCode: { in: employeeCodes },
+        punchTime: { gte: rangeStart, lt: rangeEnd },
+      },
+      orderBy: { punchTime: "asc" },
+    });
+    const punchesByEmployeeDay = new Map<string, typeof storedPunches>();
+    for (const punch of storedPunches) {
+      if (!punch.employeeCode) continue;
+      const key = `${punch.employeeCode}|${getIndiaDateAndTime(punch.punchTime).date}`;
+      if (!affectedDays.has(key)) continue;
+      const grouped = punchesByEmployeeDay.get(key) || [];
+      grouped.push(punch);
+      punchesByEmployeeDay.set(key, grouped);
+    }
+
+    for (const [key, dayPunches] of punchesByEmployeeDay) {
+      const separator = key.lastIndexOf("|");
+      const code = key.slice(0, separator);
+      const date = key.slice(separator + 1);
+      const employee = employeeByCode.get(code);
+      if (!employee || dayPunches.length === 0) continue;
+
+      const firstPunch = getIndiaDateAndTime(dayPunches[0].punchTime);
+      const lastPunch = getIndiaDateAndTime(dayPunches[dayPunches.length - 1].punchTime);
+      const timeSlots = JSON.stringify([{ in: firstPunch.time, out: dayPunches.length > 1 ? lastPunch.time : "" }]);
+      const existing = await prisma.attendance.findUnique({
+        where: { employeeId_date: { employeeId: employee.id, date } },
+        select: { isApproved: true, shiftType: true },
+      });
+
+      if (existing?.isApproved) {
+        attendanceSkippedApproved++;
+        continue;
+      }
+
+      const firstHour = Number(firstPunch.time.slice(0, 2));
+      const shiftType = existing?.shiftType || (firstHour >= 19 || firstHour < 8 ? "Night" : "Day");
+      await prisma.attendance.upsert({
+        where: { employeeId_date: { employeeId: employee.id, date } },
+        update: { status: "Present", shiftType, timeSlots },
+        create: { employeeId: employee.id, date, status: "Present", shiftType, timeSlots },
+      });
+      attendanceUpdated++;
+    }
+  }
+
   return NextResponse.json({
     received: punches.length,
     inserted: result.count,
     duplicatesOrSkipped: punches.length - result.count,
     invalid,
+    attendanceUpdated,
+    attendanceSkippedApproved,
+    unmatchedEmployeeCodes,
   });
 }
