@@ -5,6 +5,7 @@ import { Send } from 'lucide-react';
 
 export default function ImprestIssue() {
   const [approvedRequests, setApprovedRequests] = useState([]);
+  const [issuedRequests, setIssuedRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [issueData, setIssueData] = useState({
     issuedAmount: '',
@@ -15,13 +16,17 @@ export default function ImprestIssue() {
 
   const loadRequests = async () => {
     try {
-      const res = await fetch('/api/imprest?status=APPROVED', { cache: 'no-store' });
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setApprovedRequests(data);
-      }
+      const [resApproved, resIssued] = await Promise.all([
+        fetch('/api/imprest?status=APPROVED', { cache: 'no-store' }),
+        fetch('/api/imprest?status=ISSUED', { cache: 'no-store' })
+      ]);
+      const dataApproved = await resApproved.json();
+      const dataIssued = await resIssued.json();
+      
+      if (Array.isArray(dataApproved)) setApprovedRequests(dataApproved);
+      if (Array.isArray(dataIssued)) setIssuedRequests(dataIssued);
     } catch (err) {
-      console.error('Failed to load approved requests:', err);
+      console.error('Failed to load requests:', err);
     }
   };
 
@@ -137,6 +142,44 @@ export default function ImprestIssue() {
         <button onClick={handleIssue} disabled={!selectedRequest} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: !selectedRequest ? 0.5 : 1 }}>
           <Send size={18} /> Record Issue
         </button>
+      </div>
+
+      <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '32px 0 16px', paddingBottom: '8px', borderBottom: '1px solid #e2e8f0' }}>Previously Issued Imprests</h3>
+      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+        <table className="imprest-table" style={{ marginBottom: 0 }}>
+          <thead>
+            <tr>
+              <th>Request ID</th>
+              <th>Employee Name</th>
+              <th>Project / Site</th>
+              <th>Requested Amount</th>
+              <th>Issued Amount</th>
+              <th>Issue Date</th>
+              <th>Ref No.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {issuedRequests.length > 0 ? issuedRequests.map(req => (
+              <tr key={req.id}>
+                <td style={{ fontWeight: 500, color: '#0ea5e9' }}>{req.requestId}</td>
+                <td>
+                  <div style={{ fontWeight: 500 }}>{req.employee?.name}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>{req.employee?.department}</div>
+                </td>
+                <td>{req.projectSite || '-'}</td>
+                <td>₹ {req.amountRequested}</td>
+                <td style={{ fontWeight: 600, color: '#16a34a' }}>₹ {req.issuedAmount}</td>
+                <td>{req.issueDate ? new Date(req.issueDate).toISOString().split('T')[0] : '-'}</td>
+                <td>
+                  <div style={{ fontSize: '13px' }}>{req.paymentMode}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b', fontFamily: 'monospace' }}>{req.transactionRef || '-'}</div>
+                </td>
+              </tr>
+            )) : (
+              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>No previously issued imprests found.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

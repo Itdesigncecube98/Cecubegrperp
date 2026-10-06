@@ -64,7 +64,10 @@ export async function POST(request, { params }) {
     // Fetch ALL salary revisions for these employees separately
     const employeeIds = employees.map(e => e.id);
     const allRevisions = await prisma.salaryRevision.findMany({
-      where: { employeeId: { in: employeeIds } },
+      where: {
+        employeeId: { in: employeeIds },
+        effectiveFrom: { lte: cycle.endDate }
+      },
       include: {
         components: {
           include: {
@@ -151,35 +154,39 @@ export async function POST(request, { params }) {
       }
 
       let totalEarnings = 0, totalDeductions = 0;
-      let basicPay = 0, hra = 0, specialAllow = 0, bonus = 0;
+      let basicPay = 0, hra = 0, conveyance = 0, medical = 0, specialAllow = 0, bonus = 0;
       let pfEmployee = 0, professionalTax = 0, tds = 0, otherDeductions = 0;
 
       if (revision) {
         console.log(`[PAYROLL] ${emp.empId} using revision ${revision.id} with ${revision.components.length} components`);
 
         revision.components.forEach(comp => {
-          const typeName = comp.salaryHead?.headType?.name || '';
-          const headName = comp.salaryHead?.description || '';
+          const typeName = String(comp.salaryHead?.headType?.name || '').trim().toLowerCase();
+          const headName = String(comp.salaryHead?.description || '').trim().toLowerCase();
           const amount = parseFloat(comp.amount) || 0;
 
-          if (typeName === 'Earning') {
+          if (typeName === 'earning') {
+            // Employer PF contributes to CTC but is not an employee take-home earning.
+            if (['employer pf', 'employer provident fund'].includes(headName)) return;
             const prorated = amount * prorationFactor;
             totalEarnings += prorated;
-            if (headName === 'Basic') basicPay = prorated;
-            else if (headName === 'HRA') hra = prorated;
-            else if (headName === 'Special Allowance') specialAllow = prorated;
-          } else if (typeName === 'Deduction') {
+            if (['basic', 'basic pay'].includes(headName)) basicPay += prorated;
+            else if (['hra', 'house rent allowance'].includes(headName)) hra += prorated;
+            else if (['medical', 'medical allowance'].includes(headName)) medical += prorated;
+            else if (['conveyance', 'conveyance allowance', 'transport', 'transport allowance', 'transport / conveyance'].includes(headName)) conveyance += prorated;
+            else specialAllow += prorated;
+          } else if (typeName === 'deduction') {
             totalDeductions += amount;
-            if (['Provident Fund', 'Employer PF'].includes(headName)) pfEmployee += amount;
-            else if (headName === 'Professional Tax') professionalTax += amount;
-            else if (headName === 'TDS') {
+            if (['provident fund', 'employer pf', 'provident fund (pf)', 'pf'].includes(headName)) pfEmployee += amount;
+            else if (['professional tax', 'professional tax (pt)'].includes(headName)) professionalTax += amount;
+            else if (['tds', 'tds / income tax', 'income tax'].includes(headName)) {
               if (considerTds) tds += amount;
               else totalDeductions -= amount; // Revert deduction if not considered
             }
             else otherDeductions += amount;
-          } else if (typeName === 'Other') {
-            if (headName === 'Bonus' && considerBonus) bonus = amount * prorationFactor;
-            else if (headName === 'Leave Encashment' && considerLeaveEncash) leaveEncashment = amount;
+          } else if (typeName === 'other') {
+            if (headName === 'bonus' && considerBonus) bonus += amount * prorationFactor;
+            else if (headName === 'leave encashment' && considerLeaveEncash) leaveEncashment += amount;
           }
         });
 
@@ -196,8 +203,8 @@ export async function POST(request, { params }) {
         if (considerBonus) bonus = (parseFloat(emp.bonus) || 0) * prorationFactor;
         else bonus = 0;
         
-        const conveyance = (parseFloat(emp.conveyance) || 0) * prorationFactor;
-        const medical = (parseFloat(emp.medical) || 0) * prorationFactor;
+        conveyance = (parseFloat(emp.conveyance) || 0) * prorationFactor;
+        medical = (parseFloat(emp.medical) || 0) * prorationFactor;
         totalEarnings = basicPay + hra + conveyance + medical + specialAllow + leaveEncashment;
         pfEmployee = parseFloat(emp.pfEmployee) || 0;
         professionalTax = parseFloat(emp.professionalTax) || 0;
@@ -217,8 +224,8 @@ export async function POST(request, { params }) {
         employeeId: emp.id,
         basicPay:         Math.round(basicPay * 100) / 100,
         hra:              Math.round(hra * 100) / 100,
-        conveyance:       0,
-        medical:          0,
+        conveyance:       Math.round(conveyance * 100) / 100,
+        medical:          Math.round(medical * 100) / 100,
         specialAllow:     Math.round(specialAllow * 100) / 100,
         bonus:            Math.round(bonus * 100) / 100,
         leaveEncashment:  Math.round(leaveEncashment * 100) / 100,

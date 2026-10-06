@@ -247,6 +247,9 @@ export default function Attendance() {
                         <option value="Not Marked">Not Marked</option>
                         <option value="Present">Present</option>
                         <option value="Absent">Absent</option>
+                        <option value="EL">EL (Earned Leave)</option>
+                        <option value="CL">CL (Casual Leave)</option>
+                        <option value="SL">SL (Sick Leave)</option>
                       </select>
                       
                       <button 

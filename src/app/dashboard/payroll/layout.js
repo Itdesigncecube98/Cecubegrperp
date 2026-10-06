@@ -16,7 +16,8 @@ export default function PayrollLayout({ children }) {
     { name: 'Gratuity', path: '/dashboard/payroll/gratuity' },
     { name: 'Leave Encashment', path: '/dashboard/payroll/leave-encashment' },
     { name: 'Leave Travel Allowance', path: '/dashboard/payroll/lta' },
-    { name: 'Post Salary', path: '/dashboard/payroll/post-salary' }
+    { name: 'Post Salary', path: '/dashboard/payroll/post-salary' },
+    { name: 'Govt Forms', path: '/dashboard/payroll/govt-forms' }
   ];
 
   return (

@@ -209,13 +209,7 @@ export default function LeaveEncashment() {
                   <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeaveQuota}</td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeavesTaken}</td>
                   <td style={{ padding: '8px', fontWeight: 600 }}>
-                    <select 
-                      value={edit.leaveType}
-                      onChange={e => handleEditChange(row.id, 'leaveType', e.target.value)}
-                      style={{ padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                    >
-                      <option value="Earned Leave">Earned Leave</option>
-                    </select>
+                    Earned Leave
                   </td>
                   <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#64748b' }}>{balance}</td>
                   <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#0ea5e9' }}>{maxInput}</td>

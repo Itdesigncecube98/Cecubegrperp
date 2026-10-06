@@ -15,6 +15,29 @@ const getOrganizationCode = (organization) => {
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
+    const codePreviewOrganisation = searchParams.get('nextEmployeeCode');
+    if (codePreviewOrganisation) {
+      const organization = await prisma.organization.findFirst({ where: { name: codePreviewOrganisation } });
+      const configuredCode = getOrganizationCode(codePreviewOrganisation);
+      const prefix = configuredCode?.prefix || organization?.code?.trim().toUpperCase();
+      if (!prefix) return NextResponse.json({ employeeCode: null });
+
+      const [existingEmployees, counter] = await Promise.all([
+        prisma.employee.findMany({
+          where: { empId: { startsWith: prefix, mode: 'insensitive' } },
+          select: { empId: true }
+        }),
+        prisma.employeeCodeCounter.findUnique({ where: { prefix } })
+      ]);
+      const highestEmployeeNumber = existingEmployees.reduce((highest, employee) => {
+        const match = employee.empId?.match(new RegExp(`^${prefix}(\\d+)$`, 'i'));
+        return match ? Math.max(highest, Number(match[1])) : highest;
+      }, 0);
+      const nextNumber = Math.max(highestEmployeeNumber, counter?.nextNumber || 0) + 1;
+      const width = configuredCode?.width || 3;
+      return NextResponse.json({ employeeCode: `${prefix}${String(nextNumber).padStart(width, '0')}` });
+    }
+
     const checkSupervisorId = searchParams.get('checkSupervisor');
 
     if (checkSupervisorId) {
@@ -177,9 +200,6 @@ export async function POST(request) {
       if (prefix) {
         const counter = await prisma.$transaction(async (tx) => {
           const current = await tx.employeeCodeCounter.findUnique({ where: { prefix } });
-          if (current) {
-            return tx.employeeCodeCounter.update({ where: { prefix }, data: { nextNumber: { increment: 1 } } });
-          }
           const existingEmployees = await tx.employee.findMany({
             where: { empId: { startsWith: prefix, mode: 'insensitive' } },
             select: { empId: true }
@@ -188,7 +208,14 @@ export async function POST(request) {
             const match = employee.empId?.match(new RegExp(`^${prefix}(\\d+)$`, 'i'));
             return match ? Math.max(highest, Number(match[1])) : highest;
           }, 0);
-          return tx.employeeCodeCounter.create({ data: { prefix, nextNumber: highestExistingNumber + 1 } });
+          // Reconcile the counter against real employee codes every time. This
+          // handles manually edited codes and counters left behind by old imports.
+          const nextNumber = Math.max(highestExistingNumber, current?.nextNumber || 0) + 1;
+          return tx.employeeCodeCounter.upsert({
+            where: { prefix },
+            create: { prefix, nextNumber },
+            update: { nextNumber }
+          });
         });
         empId = `${prefix}${String(counter.nextNumber).padStart(codeWidth, '0')}`;
       }

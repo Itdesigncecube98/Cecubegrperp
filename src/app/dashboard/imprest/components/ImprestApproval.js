@@ -39,6 +39,8 @@ export default function ImprestApproval() {
     loadRequests();
   }, []);
 
+  const formRef = React.useRef(null);
+
   const handleSelect = (req) => {
     setSelectedRequest(req);
     const nextInfo = getNextStatusInfo(req.status);
@@ -47,6 +49,10 @@ export default function ImprestApproval() {
       approvedAmount: req.amountRequested,
       status: nextInfo.value
     });
+    // Give it a tiny delay to allow React to render the form before scrolling
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   const handleAction = async (status) => {
@@ -89,9 +95,9 @@ export default function ImprestApproval() {
     <div>
       <h2 className="section-title">Imprest Approval Workflow</h2>
       
-      <div style={{ overflowX: 'auto', marginBottom: '32px' }}>
-        <table className="imprest-table">
-          <thead>
+      <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '400px', marginBottom: '32px', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+        <table className="imprest-table" style={{ marginBottom: 0 }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
             <tr>
               <th>Request ID</th>
               <th>Employee Name</th>
@@ -135,7 +141,7 @@ export default function ImprestApproval() {
       </div>
 
       {selectedRequest && (
-        <div style={{ padding: '24px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#f8fafc' }}>
+        <div ref={formRef} style={{ padding: '24px', border: '1px solid #e2e8f0', borderRadius: '12px', backgroundColor: '#f8fafc', scrollMarginTop: '20px' }}>
           <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>Approval Action (Selected: {selectedRequest.requestId})</h3>
           
           <div className="form-grid">

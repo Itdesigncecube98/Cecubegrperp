@@ -69,22 +69,58 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
   const [professionalTax, setProfessionalTax] = useState(record?.professionalTax || 0);
   const [tds, setTds] = useState(record?.tds || 0);
   const [otherDeductions, setOtherDeductions] = useState(record?.otherDeductions || 0);
+  const [salaryBreakdown, setSalaryBreakdown] = useState(null);
+  const [salaryHeadDeductionValues, setSalaryHeadDeductionValues] = useState({});
+  const [salaryHeadsLoading, setSalaryHeadsLoading] = useState(true);
+  const [salaryHeadsError, setSalaryHeadsError] = useState('');
 
   const [leaveEncashmentState, setLeaveEncashmentState] = useState(record?.leaveEncashment || 0);
   const existingGratuity = empBonusIncentives.find(b => b.type === 'gratuity')?.amount || 0;
   const [gratuity, setGratuity] = useState(existingGratuity);
 
-  // Earnings
-  const basicPay = record?.basicPay || 0;
-  const hra = record?.hra || 0;
-  const conveyance = record?.conveyance || 0;
-  const medical = record?.medical || 0;
-  const specialAllow = record?.specialAllow || 0;
+  // Dynamic heads come from the salary revision effective for this pay cycle.
+  const configuredEarnings = salaryBreakdown?.earnings || [];
+  const hasConfiguredEarnings = configuredEarnings.length > 0;
+  const sumConfiguredEarnings = (names) => configuredEarnings
+    .filter(head => names.includes(String(head.name || '').trim().toLowerCase()))
+    .reduce((total, head) => total + (Number(head.amount) || 0), 0);
+  const basicPay = hasConfiguredEarnings ? sumConfiguredEarnings(['basic', 'basic pay']) : (record?.basicPay || 0);
+  const hra = hasConfiguredEarnings ? sumConfiguredEarnings(['hra', 'house rent allowance']) : (record?.hra || 0);
+  const conveyance = hasConfiguredEarnings ? sumConfiguredEarnings(['conveyance', 'conveyance allowance', 'transport', 'transport allowance', 'transport / conveyance']) : (record?.conveyance || 0);
+  const medical = hasConfiguredEarnings ? sumConfiguredEarnings(['medical', 'medical allowance']) : (record?.medical || 0);
+  const standardHeadNames = ['basic', 'basic pay', 'hra', 'house rent allowance', 'conveyance', 'conveyance allowance', 'transport', 'transport allowance', 'transport / conveyance', 'medical', 'medical allowance'];
+  const specialAllow = hasConfiguredEarnings
+    ? configuredEarnings.filter(head => !standardHeadNames.includes(String(head.name || '').trim().toLowerCase())).reduce((total, head) => total + (Number(head.amount) || 0), 0)
+    : (record?.specialAllow || 0);
 
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/payroll/records/${record.id}`, { cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error(`Could not load salary heads (${response.status})`);
+        return response.json();
+      })
+      .then(data => {
+        if (!active) return;
+        if (!data?.salaryBreakdown) throw new Error('Salary head details were not returned');
+        setSalaryBreakdown(data.salaryBreakdown);
+        setSalaryHeadDeductionValues(Object.fromEntries(
+          (data.salaryBreakdown.deductions || []).map(head => [head.id, String(head.amount)])
+        ));
+      })
+      .catch(error => {
+        if (!active) return;
+        console.error('Failed to load salary heads for payslip', error);
+        setSalaryHeadsError(error.message || 'Could not load configured salary heads.');
+      })
+      .finally(() => { if (active) setSalaryHeadsLoading(false); });
+    return () => { active = false; };
+  }, [record.id]);
 
   // Live Calculations
   const numArrears = parseFloat(arrears) || 0;
@@ -94,12 +130,27 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
   const numLeaveEncashment = parseFloat(leaveEncashmentState) || 0;
   const numGratuity = parseFloat(gratuity) || 0;
 
-  const numPf = parseFloat(pfEmployee) || 0;
-  const numPt = parseFloat(professionalTax) || 0;
-  const numTds = parseFloat(tds) || 0;
-  const numOtherDed = parseFloat(otherDeductions) || 0;
+  const configuredDeductions = salaryBreakdown?.deductions || [];
+  const hasConfiguredDeductions = configuredDeductions.length > 0;
+  const classifyDeduction = (name) => {
+    const normalized = String(name || '').toLowerCase();
+    if (normalized.includes('provident') || normalized === 'pf' || normalized.includes('(pf)')) return 'pf';
+    if (normalized.includes('professional tax') || normalized.includes('(pt)')) return 'pt';
+    if (normalized.includes('tds') || normalized.includes('income tax')) return 'tds';
+    return 'other';
+  };
+  const getConfiguredDeductionAmount = head => parseFloat(salaryHeadDeductionValues[head.id] ?? head.amount) || 0;
+  const configuredDeductionTotal = category => configuredDeductions
+    .filter(head => classifyDeduction(head.name) === category)
+    .reduce((total, head) => total + getConfiguredDeductionAmount(head), 0);
+  const numPf = hasConfiguredDeductions ? configuredDeductionTotal('pf') : (parseFloat(pfEmployee) || 0);
+  const numPt = hasConfiguredDeductions ? configuredDeductionTotal('pt') : (parseFloat(professionalTax) || 0);
+  const numTds = hasConfiguredDeductions ? configuredDeductionTotal('tds') : (parseFloat(tds) || 0);
+  const numOtherDed = hasConfiguredDeductions ? configuredDeductionTotal('other') : (parseFloat(otherDeductions) || 0);
 
-  const grossPay = Math.round((basicPay + hra + conveyance + medical + specialAllow + numLeaveEncashment + numArrears + numBonus + numIncentive + numGratuity) * 100) / 100;
+  const configuredEarningsTotal = configuredEarnings.reduce((total, head) => total + (Number(head.amount) || 0), 0);
+  const baseEarnings = hasConfiguredEarnings ? configuredEarningsTotal : basicPay + hra + conveyance + medical + specialAllow;
+  const grossPay = Math.round((baseEarnings + numLeaveEncashment + numArrears + numBonus + numIncentive + numGratuity) * 100) / 100;
   const totalDeductions = Math.round((numPf + numPt + numTds + numOtherDed) * 100) / 100;
   const netPay = Math.round((grossPay - totalDeductions) * 100) / 100;
 
@@ -654,6 +705,11 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
             </div>
 
             {/* Earnings & Deductions Tables */}
+            {salaryHeadsError && (
+              <div style={{ marginBottom: '12px', padding: '9px 12px', borderRadius: '6px', border: '1px solid #fca5a5', background: '#fef2f2', color: '#b91c1c', fontSize: '0.82rem' }}>
+                {salaryHeadsError}. Showing saved payroll amounts instead.
+              </div>
+            )}
             <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden', fontSize: '0.85rem', minWidth: '480px' }}>
               {/* EARNINGS COLUMN */}
@@ -664,36 +720,24 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                 </div>
 
                 <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}>
-                    <div style={{ color: '#334155' }}>Basic Pay</div>
-                    <div style={{ textAlign: 'right', fontWeight: 600 }}>₹{basicPay.toFixed(2)}</div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}>
-                    <div style={{ color: '#334155' }}>HRA</div>
-                    <div style={{ textAlign: 'right', fontWeight: 600 }}>₹{hra.toFixed(2)}</div>
-                  </div>
-
-                  {medical > 0 && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}>
-                      <div style={{ color: '#334155' }}>Medical Allowance</div>
-                      <div style={{ textAlign: 'right', fontWeight: 600 }}>₹{medical.toFixed(2)}</div>
+                  {salaryHeadsLoading ? <div style={{ color: '#64748b' }}>Loading configured salary heads…</div> : hasConfiguredEarnings ? configuredEarnings.map(head => (
+                    <div key={head.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}>
+                      <div style={{ color: '#334155' }}>{head.name}</div>
+                      <div style={{ textAlign: 'right', fontWeight: 600 }}>₹{Number(head.amount || 0).toFixed(2)}</div>
                     </div>
-                  )}
-
-                  {conveyance > 0 && (
+                  )) : <>
                     <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}>
-                      <div style={{ color: '#334155' }}>Transport / Conveyance</div>
-                      <div style={{ textAlign: 'right', fontWeight: 600 }}>₹{conveyance.toFixed(2)}</div>
+                      <div style={{ color: '#334155' }}>Basic Pay</div>
+                      <div style={{ textAlign: 'right', fontWeight: 600 }}>₹{basicPay.toFixed(2)}</div>
                     </div>
-                  )}
-
-                  {specialAllow > 0 && (
                     <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}>
-                      <div style={{ color: '#334155' }}>Special Allowance</div>
-                      <div style={{ textAlign: 'right', fontWeight: 600 }}>₹{specialAllow.toFixed(2)}</div>
+                      <div style={{ color: '#334155' }}>HRA</div>
+                      <div style={{ textAlign: 'right', fontWeight: 600 }}>₹{hra.toFixed(2)}</div>
                     </div>
-                  )}
+                    {medical > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>Medical Allowance</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{medical.toFixed(2)}</div></div>}
+                    {conveyance > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>Transport / Conveyance</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{conveyance.toFixed(2)}</div></div>}
+                    {specialAllow > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>Special Allowance</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{specialAllow.toFixed(2)}</div></div>}
+                  </>}
 
                   {/* CHANGEABLE: Leave Encashment */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center', background: '#f0f9ff', padding: '4px 6px', borderRadius: '4px', border: '1px dashed #7dd3fc', marginBottom: '8px' }}>
@@ -818,6 +862,17 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                 </div>
 
                 <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
+                  {salaryHeadsLoading ? <div style={{ color: '#64748b' }}>Loading configured deductions…</div> : hasConfiguredDeductions && configuredDeductions.map(head => (
+                    <div key={head.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center', background: '#fef2f2', padding: '4px 6px', borderRadius: '4px', border: '1px dashed #fca5a5' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', color: '#b91c1c', fontWeight: 600 }}>
+                        <span>{head.name}</span><span className="changeable-badge deduction-badge">Changeable</span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <input type="number" step="any" value={salaryHeadDeductionValues[head.id] ?? head.amount} onChange={event => setSalaryHeadDeductionValues(previous => ({ ...previous, [head.id]: event.target.value }))} className="changeable-input deduction-input" placeholder="0.00" disabled={record?.status === 'APPROVED'} />
+                      </div>
+                    </div>
+                  ))}
+                  {!salaryHeadsLoading && !hasConfiguredDeductions && <>
                   {/* CHANGEABLE: PF */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center', background: '#fef2f2', padding: '4px 6px', borderRadius: '4px', border: '1px dashed #fca5a5' }}>
                     <div style={{ display: 'flex', alignItems: 'center', color: '#b91c1c', fontWeight: 600 }}>
@@ -892,6 +947,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                       />
                     </div>
                   </div>
+                  </>}
                 </div>
 
                 {/* Total Deductions */}

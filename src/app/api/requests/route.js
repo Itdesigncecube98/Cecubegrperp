@@ -49,6 +49,18 @@ export async function POST(request) {
     const latitude = data.latitude !== undefined && data.latitude !== null ? parseFloat(data.latitude) : null;
     const longitude = data.longitude !== undefined && data.longitude !== null ? parseFloat(data.longitude) : null;
 
+    if (data.type === 'IN' && (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 || latitude > 90 ||
+      longitude < -180 || longitude > 180
+    )) {
+      return NextResponse.json(
+        { error: 'Location is required to punch in.' },
+        { status: 400 }
+      );
+    }
+
     let finalDate = data.date;
     const timeStr = data.time || '';
     

@@ -58,6 +58,7 @@ export default function EmployeeProfilePage({ params }) {
   const [branches, setBranches] = useState([]);
   const [siteOffices, setSiteOffices] = useState([]);
   const [organizations, setOrganizations] = useState([]);
+  const [generatedEmpCode, setGeneratedEmpCode] = useState('');
   const [grades, setGrades] = useState([]);
   const [designations, setDesignations] = useState([]);
   const [showAddSalaryModal, setShowAddSalaryModal] = useState(false);
@@ -236,6 +237,19 @@ export default function EmployeeProfilePage({ params }) {
 
     return () => clearTimeout(timeoutId);
   }, [router, fetchData]);
+
+  useEffect(() => {
+    if (id !== 'new' || !form.organisation) {
+      setGeneratedEmpCode('');
+      return;
+    }
+    let active = true;
+    fetch(`/api/employees?nextEmployeeCode=${encodeURIComponent(form.organisation)}`)
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (active) setGeneratedEmpCode(data?.employeeCode || ''); })
+      .catch(() => { if (active) setGeneratedEmpCode(''); });
+    return () => { active = false; };
+  }, [id, form.organisation]);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -1152,7 +1166,7 @@ export default function EmployeeProfilePage({ params }) {
                       )}
                     </div>
                     <input 
-                      value={f('empId') || ''} 
+                      value={id === 'new' ? generatedEmpCode : (f('empId') || '')} 
                       onChange={e => set('empId', e.target.value)}
                       readOnly={id === 'new'}
                       style={{
@@ -1160,7 +1174,7 @@ export default function EmployeeProfilePage({ params }) {
                         borderColor: isEmpCodeDuplicate ? '#ef4444' : inputStyle.borderColor,
                         backgroundColor: isEmpCodeDuplicate ? '#fef2f2' : (id === 'new' ? '#f8fafc' : (inputStyle.backgroundColor || 'white'))
                       }} 
-                      placeholder={id === 'new' ? 'Generated when employee is saved' : 'e.g. CEIPL084'}
+                      placeholder={id === 'new' ? 'Select an organisation to preview the next code' : 'e.g. CEIPL084'}
                     />
                   </div>
                 </div>
@@ -1482,7 +1496,7 @@ export default function EmployeeProfilePage({ params }) {
                     <option value="">-- Select Organisation --</option>
                     {organizations.map(org => <option key={org.id} value={org.name}>{org.name}{org.code ? ` (${org.code})` : ''}</option>)}
                   </select>
-                  {f('organisation') && <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: '13px' }}>Employee code will be generated for {f('organisation')} when you save.</p>}
+                  {f('organisation') && <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: '13px' }}>Next employee code: <strong>{generatedEmpCode || 'Calculating…'}</strong>. It follows the highest saved code for {f('organisation')}.</p>}
                 </div>
               )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '16px' }}>
@@ -2505,8 +2519,9 @@ export default function EmployeeProfilePage({ params }) {
                     const rev = salaryRevisions[activeRevisionIndex];
                     if (!rev) return null;
                     const earnings = rev.components.filter(c => c.salaryHead?.headType?.name === 'Earning').reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+                    const others = rev.components.filter(c => c.salaryHead?.headType?.name === 'Other').reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
                     const deductions = rev.components.filter(c => c.salaryHead?.headType?.name === 'Deduction').reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
-                    const net = earnings - deductions;
+                    const net = (earnings + others) - deductions;
                     return (
                       <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
                         <div style={{ background: 'linear-gradient(135deg,#7c3aed,#9333ea)', color: 'white', padding: '14px 32px', borderRadius: '10px', fontWeight: 700, fontSize: '16px', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
@@ -2621,10 +2636,22 @@ export default function EmployeeProfilePage({ params }) {
                               <input 
                                 type="number" 
                                 value={newRevisionForm.components[headObj.id] || ''} 
-                                onChange={(e) => setNewRevisionForm({
-                                  ...newRevisionForm, 
-                                  components: { ...newRevisionForm.components, [headObj.id]: e.target.value }
-                                })} 
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  let comps = { ...newRevisionForm.components, [headObj.id]: val };
+                                  
+                                  const earningTotal = salaryHeads.filter(h => h.category === 'Earning' && h.isActive).reduce((sum, h) => sum + (parseFloat(comps[h.id]) || 0), 0);
+                                  const otherTotal = salaryHeads.filter(h => h.category === 'Other' && h.isActive).reduce((sum, h) => sum + (parseFloat(comps[h.id]) || 0), 0);
+                                  const deductionTotal = salaryHeads.filter(h => h.category === 'Deduction' && h.isActive).reduce((sum, h) => sum + (parseFloat(comps[h.id]) || 0), 0);
+                                  
+                                  const grossHead = salaryHeads.find(h => h.category === 'CTC' && h.isActive && h.description.toLowerCase().includes('gross'));
+                                  const empPfHead = salaryHeads.find(h => h.category === 'CTC' && h.isActive && (h.description.toLowerCase().includes('employer pf') || h.description.toLowerCase() === 'pf'));
+                                  
+                                  if (grossHead) comps[grossHead.id] = (earningTotal + otherTotal).toString();
+                                  if (empPfHead) comps[empPfHead.id] = deductionTotal.toString();
+                                  
+                                  setNewRevisionForm({ ...newRevisionForm, components: comps });
+                                }}
                                 style={{ width: '100%', padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '13px', textAlign: 'right' }} 
                               />
                             </td>

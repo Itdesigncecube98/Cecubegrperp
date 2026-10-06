@@ -58,9 +58,6 @@ const TEMPLATES = [
   },
 ];
 
-// HOD list (used in print + track view)
-const HODS = ['Sanjay Arora', 'Raj Kumar'];
-
 // Approval stages in order
 const STAGES = [
   { key: 'PENDING_SUPERVISOR', label: 'Pending Supervisor Approval', next: 'PENDING_HR' },
@@ -226,7 +223,6 @@ export default function EmployeeDocGenerator() {
       };
       reader.readAsDataURL(file);
     });
-    // Reset file input so same file can be re-selected
     e.target.value = '';
   };
 
@@ -258,15 +254,6 @@ export default function EmployeeDocGenerator() {
   const handleDeleteRow = (id) => setTableRows(tableRows.filter(r => r.id !== id));
   const handleCellChange = (id, colId, val) => setTableRows(tableRows.map(r => (r.id === id ? { ...r, [colId]: val } : r)));
 
-  // HOD helpers: hodApproval = { approvedBy, approved (true/false), signature, date, remarks }
-  const hodState = (hod, name) => {
-    if (hod && hod.approvedBy === name) {
-      if (hod.approved === false) return 'REJECTED';
-      return 'APPROVED';
-    }
-    return 'NONE';
-  };
-
   const handlePrint = (sub) => {
     const tmpl = TEMPLATES.find(t => t.id === sub.templateId);
     if (!tmpl) return;
@@ -275,15 +262,17 @@ export default function EmployeeDocGenerator() {
     const aa = sub.accountsApproval || {};
     const hod = sub.hodApproval || {};
 
-    const hodCell = (name) => {
-      const st = hodState(hod, name);
-      const approved = st === 'APPROVED';
-      const rejected = st === 'REJECTED';
+    // HOD is decided by org structure, so show whoever actually acted (hodApproval)
+    const hodCell = () => {
+      const approved = hod.approved === true;
+      const rejected = hod.approved === false;
+      const done = approved || rejected;
       return `<td>${approved ? '&#9745;' : '&#9744;'} Approved &nbsp;&nbsp; ${rejected ? '&#9745;' : '&#9744;'} Not Approved<br/><br/>
-        Approved By: ${st !== 'NONE' ? hod.approvedBy : ''}<br/>
-        Signature: ${st !== 'NONE' ? (hod.signature || hod.approvedBy) : '__________________'}<br/>
-        Date: ${st !== 'NONE' ? (hod.date || '') : '________________________'}
-        ${st !== 'NONE' && hod.remarks ? `<br/>Remarks: ${hod.remarks}` : ''}</td>`;
+        Name: ${done ? (hod.name || hod.approvedBy || '') : ''}<br/>
+        Designation: ${done ? (hod.designation || '') : ''}<br/>
+        Signature: ${done ? (hod.signature || hod.approvedBy || '') : '__________________'}<br/>
+        Date: ${done ? (hod.date || '') : '________________________'}
+        ${done && hod.remarks ? `<br/>Remarks: ${hod.remarks}` : ''}</td>`;
     };
 
     const pw = window.open('', '_blank', 'width=1200,height=900');
@@ -338,11 +327,9 @@ export default function EmployeeDocGenerator() {
     </tr></tbody></table>
     <h4>HOD Approval</h4>
     <table class="approval"><thead><tr>
-      <th style="width:50%">${HODS[0]} (HOD)</th>
-      <th style="width:50%">${HODS[1]} (HOD)</th>
+      <th style="width:100%">HOD Approval</th>
     </tr></thead><tbody><tr>
-      ${hodCell(HODS[0])}
-      ${hodCell(HODS[1])}
+      ${hodCell()}
     </tr></tbody></table>
     <div class="notes-sec"><strong>Important Notes</strong><ol style="padding-left:20px;margin:5px 0">${tmpl.notes.map(n => `<li>${n}</li>`).join('')}</ol></div>
     <script>window.onload=()=>window.print();</script>
@@ -393,11 +380,25 @@ export default function EmployeeDocGenerator() {
               <tr>
                 <td style={{ ...cellSt, width: '20%', fontWeight: 'bold' }}>Employee Name</td>
                 <td style={{ ...cellSt, width: '30%' }}>
-                  <input
-                    style={{ ...inputSt, backgroundColor: '#f8fafc', color: '#334155', fontWeight: 500 }}
+                  <select
+                    style={{ ...inputSt, padding: '4px', cursor: 'pointer' }}
                     value={empName}
-                    disabled
-                  />
+                    onChange={e => {
+                      const name = e.target.value;
+                      setEmpName(name);
+                      const emp = employeesList.find(emp => emp.name === name);
+                      if (emp) {
+                        setEmpCode(emp.empId || emp.id || '');
+                        setDesignation(emp.designation || emp.jobTitle || '');
+                        setDepartment(emp.department || '');
+                      }
+                    }}
+                  >
+                    <option value="">Select Employee...</option>
+                    {employeesList.map(emp => (
+                      <option key={emp.id} value={emp.name}>{emp.name}</option>
+                    ))}
+                  </select>
                 </td>
                 <td style={{ ...cellSt, width: '20%', fontWeight: 'bold' }}>Employee Code</td>
                 <td style={{ ...cellSt, width: '30%' }}><input style={inputSt} value={empCode} onChange={e => setEmpCode(e.target.value)} /></td>
@@ -501,16 +502,6 @@ export default function EmployeeDocGenerator() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
             <input type="checkbox" id="certify" checked={certified} onChange={e => setCertified(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
             <label htmlFor="certify" style={{ fontSize: '14px', cursor: 'pointer', fontWeight: 500, color: '#334155' }}>I agree and certify the above statement.</label>
-          </div>
-
-          {/* Important Notes */}
-          <div style={{ marginTop: '20px', padding: '14px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
-            <strong style={{ fontSize: '13px', display: 'block', marginBottom: '8px', color: '#92400e' }}>Important Notes</strong>
-            <ol style={{ margin: 0, paddingLeft: '20px' }}>
-              {selectedTemplate.notes.map((note, i) => (
-                <li key={i} style={{ fontSize: '12px', color: '#78350f', marginBottom: '4px' }}>{note}</li>
-              ))}
-            </ol>
           </div>
         </div>
       </div>
@@ -662,45 +653,23 @@ export default function EmployeeDocGenerator() {
           <strong style={{ fontSize: '13px', display: 'block', marginTop: '16px' }}>HOD Approval</strong>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
             <thead><tr>
-              {HODS.map(name => <th key={name} style={thSt}>{name} (HOD)</th>)}
+              <th style={thSt}>HOD Approval</th>
             </tr></thead>
             <tbody><tr>
-              {HODS.map(name => {
-                const st = hodState(hod, name);
-                return (
-                  <td key={name} style={cellSt}>
-                    {st === 'APPROVED' && (
-                      <div>
-                        ✅ Approved
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>Date: {hod.date}</div>
-                        {hod.remarks && <div style={{ fontSize: '11px', color: '#64748b' }}>Remarks: {hod.remarks}</div>}
-                      </div>
-                    )}
-                    {st === 'REJECTED' && (
-                      <div>
-                        ❌ Not Approved
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>Date: {hod.date}</div>
-                        {hod.remarks && <div style={{ fontSize: '11px', color: '#64748b' }}>Remarks: {hod.remarks}</div>}
-                      </div>
-                    )}
-                    {st === 'NONE' && '⏳ Pending'}
-                  </td>
-                );
-              })}
+              <td style={cellSt}>
+                {hod.approved === true || hod.approved === false ? (
+                  <div>
+                    {hod.approved ? '✅ Approved' : '❌ Not Approved'}
+                    {(hod.name || hod.approvedBy) && <div style={{ marginTop: '6px' }}>Name: <strong>{hod.name || hod.approvedBy}</strong></div>}
+                    {hod.designation && <div>Designation: <strong>{hod.designation}</strong></div>}
+                    {hod.signature && <div>Signature: <strong>{hod.signature}</strong></div>}
+                    {hod.date && <div style={{ fontSize: '11px', color: '#64748b' }}>Date: {hod.date}</div>}
+                    {hod.remarks && <div style={{ fontSize: '11px', color: '#64748b' }}>Remarks: {hod.remarks}</div>}
+                  </div>
+                ) : '⏳ Pending'}
+              </td>
             </tr></tbody>
           </table>
-
-          {/* Important Notes */}
-          {tmpl && (
-            <div style={{ marginTop: '20px', padding: '14px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
-              <strong style={{ fontSize: '13px', display: 'block', marginBottom: '8px', color: '#92400e' }}>Important Notes</strong>
-              <ol style={{ margin: 0, paddingLeft: '20px' }}>
-                {tmpl.notes.map((note, i) => (
-                  <li key={i} style={{ fontSize: '12px', color: '#78350f', marginBottom: '4px' }}>{note}</li>
-                ))}
-              </ol>
-            </div>
-          )}
         </div>
       </div>
     );

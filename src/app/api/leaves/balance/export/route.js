@@ -41,7 +41,7 @@ export async function GET(request) {
       for (const emp of employees) {
         usageByEmp[emp.id] = {
           employeeId: emp.id,
-          casualLeaves: 1, 
+          casualLeaves: 1,
           earnedLeaves: 2,
           leaveWithoutPay: 0,
           compensatoryLeaves: 0
@@ -49,10 +49,10 @@ export async function GET(request) {
       }
 
       for (const req of approvedRequests) {
-        if (!usageByEmp[req.employeeId]) continue; 
+        if (!usageByEmp[req.employeeId]) continue;
         const start = new Date(req.startDate);
         const end = new Date(req.endDate);
-        
+
         let overlapDays = 0;
         let curr = new Date(start);
         while (curr <= end) {
@@ -63,7 +63,7 @@ export async function GET(request) {
               String(curr.getMonth() + 1).padStart(2, '0'),
               String(curr.getDate()).padStart(2, '0')
             ].join('-');
-            
+
             if (!presentSet.has(`${req.employeeId}_${dateStr}`)) {
               overlapDays += req.isHalfDay ? 0.5 : 1;
             }
