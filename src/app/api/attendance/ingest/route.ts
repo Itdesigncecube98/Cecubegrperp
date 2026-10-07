@@ -112,34 +112,104 @@ export async function POST(request: Request) {
 
   const result = await prisma.attendancePunch.createMany({ data: rows, skipDuplicates: true });
 
-  // Also reflect machine punches in the employee attendance records. The
-  // ingest request is replayed by the HR sync script, so rebuild each affected
-  // employee/day from all stored punches and keep it idempotent.
+  // Device user IDs and HR employee codes often differ. Prefer a persisted
+  // device/user mapping, then an exact HR-code alias, then an unambiguous
+  // employee-name + optional designation match. Save first-time matches so
+  // future attendance runs resolve by device ID instead of relying on names.
+  const identityForPunch = (punch: { deviceId: string; userId: string | null; employeeCode: string | null }) =>
+    punch.userId ? `${punch.deviceId}|${punch.userId}` : `${punch.deviceId}|code:${punch.employeeCode || ""}`;
   const affectedDays = new Set<string>();
   const employeeCodes = [...new Set(rows.map((row) => row.employeeCode).filter((code): code is string => Boolean(code)))];
   for (const row of rows) {
-    if (!row.employeeCode) continue;
-    affectedDays.add(`${row.employeeCode}|${getIndiaDateAndTime(row.punchTime).date}`);
+    if (!row.employeeCode && !row.userId) continue;
+    const identity = identityForPunch(row);
+    affectedDays.add(`${identity}|${getIndiaDateAndTime(row.punchTime).date}`);
   }
 
   let attendanceUpdated = 0;
   let attendanceSkippedApproved = 0;
+  let deviceUsersMapped = 0;
   let unmatchedEmployeeCodes: string[] = [];
 
   if (affectedDays.size > 0) {
     const employees = await prisma.employee.findMany({
-      where: { empId: { in: employeeCodes } },
-      select: { id: true, empId: true },
+      select: { id: true, empId: true, name: true, designation: true },
     });
-    const employeeByCode = new Map<string, { id: string; empId: string }>();
+    const employeeByKey = new Map<string, { id: string; ambiguous: boolean }>();
+    const addKey = (key: string, id: string) => {
+      const normalized = key.trim().toLowerCase();
+      if (!normalized) return;
+      const existing = employeeByKey.get(normalized);
+      employeeByKey.set(normalized, existing && existing.id !== id
+        ? { id: "", ambiguous: true }
+        : { id, ambiguous: false });
+    };
+    const employeeByName = new Map<string, Array<{ id: string; designation: string | null }>>();
     for (const employee of employees) {
-      if (employee.empId) employeeByCode.set(employee.empId, { id: employee.id, empId: employee.empId });
+      const raw = employee.empId?.trim().toLowerCase();
+      if (raw) {
+        addKey(raw, employee.id);
+        const ceipl = raw.match(/^ceipl0*(\d+)$/);
+        if (ceipl) addKey(ceipl[1], employee.id);
+        const ftc = raw.match(/^ftc0*(\d+)$/);
+        if (ftc) addKey(ftc[1], employee.id);
+        const cgepl = raw.match(/^cgepl(\d+)$/);
+        if (cgepl) addKey(`990${cgepl[1].padStart(3, "0")}`, employee.id);
+      }
+      const normalizedName = employee.name.trim().replace(/\s+/g, " ").toLowerCase();
+      if (normalizedName) {
+        const matches = employeeByName.get(normalizedName) || [];
+        matches.push({ id: employee.id, designation: employee.designation });
+        employeeByName.set(normalizedName, matches);
+      }
     }
-    unmatchedEmployeeCodes = employeeCodes.filter((code) => !employeeByCode.has(code));
+
+    const incomingDeviceIds = [...new Set(rows.map(row => row.deviceId))];
+    const savedMappings = await prisma.attendanceDeviceEmployeeMap.findMany({
+      where: { deviceId: { in: incomingDeviceIds } },
+      select: { deviceId: true, userId: true, employeeId: true },
+    });
+    const employeeByIdentity = new Map<string, string>();
+    for (const mapping of savedMappings) employeeByIdentity.set(`${mapping.deviceId}|${mapping.userId}`, mapping.employeeId);
+
+    const newMappings = new Map<string, { deviceId: string; userId: string; employeeId: string }>();
+    for (const row of rows) {
+      const identity = identityForPunch(row);
+      if (employeeByIdentity.has(identity)) continue;
+
+      const codeMatch = row.employeeCode ? employeeByKey.get(row.employeeCode.trim().toLowerCase()) : null;
+      let employeeId = codeMatch && !codeMatch.ambiguous ? codeMatch.id : null;
+      if (!employeeId && row.employeeName) {
+        const normalizedName = row.employeeName.trim().replace(/\s+/g, " ").toLowerCase();
+        const nameMatches = employeeByName.get(normalizedName) || [];
+        let candidates = nameMatches;
+        if (candidates.length > 1 && row.designation) {
+          const normalizedDesignation = row.designation.trim().replace(/\s+/g, " ").toLowerCase();
+          candidates = candidates.filter(employee => employee.designation?.trim().replace(/\s+/g, " ").toLowerCase() === normalizedDesignation);
+        }
+        if (candidates.length === 1) employeeId = candidates[0].id;
+      }
+      if (!employeeId) continue;
+
+      employeeByIdentity.set(identity, employeeId);
+      if (row.userId) {
+        newMappings.set(identity, { deviceId: row.deviceId, userId: row.userId, employeeId });
+      }
+    }
+
+    if (newMappings.size > 0) {
+      await prisma.attendanceDeviceEmployeeMap.createMany({
+        data: [...newMappings.values()],
+        skipDuplicates: true,
+      });
+      deviceUsersMapped = newMappings.size;
+    }
+    unmatchedEmployeeCodes = employeeCodes.filter(code => !rows.some(row =>
+      row.employeeCode === code && employeeByIdentity.has(identityForPunch(row))));
 
     const dayKeys = [...affectedDays].map((key) => {
       const separator = key.lastIndexOf("|");
-      return { code: key.slice(0, separator), date: key.slice(separator + 1) };
+      return { identity: key.slice(0, separator), date: key.slice(separator + 1) };
     });
     const dates = dayKeys.map(({ date }) => date).sort();
     const rangeStart = new Date(`${dates[0]}T00:00:00+05:30`);
@@ -147,17 +217,17 @@ export async function POST(request: Request) {
     rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
 
     const storedPunches = await prisma.attendancePunch.findMany({
-      where: {
-        employeeCode: { in: employeeCodes },
-        punchTime: { gte: rangeStart, lt: rangeEnd },
-      },
+      where: { deviceId: { in: incomingDeviceIds }, punchTime: { gte: rangeStart, lt: rangeEnd } },
       orderBy: { punchTime: "asc" },
     });
     const punchesByEmployeeDay = new Map<string, typeof storedPunches>();
     for (const punch of storedPunches) {
-      if (!punch.employeeCode) continue;
-      const key = `${punch.employeeCode}|${getIndiaDateAndTime(punch.punchTime).date}`;
-      if (!affectedDays.has(key)) continue;
+      const identity = identityForPunch(punch);
+      const date = getIndiaDateAndTime(punch.punchTime).date;
+      if (!affectedDays.has(`${identity}|${date}`)) continue;
+      const employeeId = employeeByIdentity.get(identity);
+      if (!employeeId) continue;
+      const key = `${employeeId}|${date}`;
       const grouped = punchesByEmployeeDay.get(key) || [];
       grouped.push(punch);
       punchesByEmployeeDay.set(key, grouped);
@@ -165,16 +235,22 @@ export async function POST(request: Request) {
 
     for (const [key, dayPunches] of punchesByEmployeeDay) {
       const separator = key.lastIndexOf("|");
-      const code = key.slice(0, separator);
+      const employeeId = key.slice(0, separator);
       const date = key.slice(separator + 1);
-      const employee = employeeByCode.get(code);
-      if (!employee || dayPunches.length === 0) continue;
+      if (dayPunches.length === 0) continue;
 
-      const firstPunch = getIndiaDateAndTime(dayPunches[0].punchTime);
+      const firstEligibleIn = dayPunches
+        .map((punch) => getIndiaDateAndTime(punch.punchTime))
+        .find(({ time }) => time < "19:00");
       const lastPunch = getIndiaDateAndTime(dayPunches[dayPunches.length - 1].punchTime);
-      const timeSlots = JSON.stringify([{ in: firstPunch.time, out: dayPunches.length > 1 ? lastPunch.time : "" }]);
+      // The device does not accept IN punches from 7 PM onward. Keep late-only
+      // days as OUT-only instead of misclassifying the evening punch as IN.
+      const timeSlots = JSON.stringify([{
+        in: firstEligibleIn?.time || "",
+        out: firstEligibleIn && lastPunch.time > firstEligibleIn.time ? lastPunch.time : (!firstEligibleIn ? lastPunch.time : ""),
+      }]);
       const existing = await prisma.attendance.findUnique({
-        where: { employeeId_date: { employeeId: employee.id, date } },
+        where: { employeeId_date: { employeeId, date } },
         select: { isApproved: true, shiftType: true },
       });
 
@@ -183,12 +259,12 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const firstHour = Number(firstPunch.time.slice(0, 2));
+      const firstHour = firstEligibleIn ? Number(firstEligibleIn.time.slice(0, 2)) : Number(lastPunch.time.slice(0, 2));
       const shiftType = existing?.shiftType || (firstHour >= 19 || firstHour < 8 ? "Night" : "Day");
       await prisma.attendance.upsert({
-        where: { employeeId_date: { employeeId: employee.id, date } },
+        where: { employeeId_date: { employeeId, date } },
         update: { status: "Present", shiftType, timeSlots },
-        create: { employeeId: employee.id, date, status: "Present", shiftType, timeSlots },
+        create: { employeeId, date, status: "Present", shiftType, timeSlots },
       });
       attendanceUpdated++;
     }
@@ -201,6 +277,7 @@ export async function POST(request: Request) {
     invalid,
     attendanceUpdated,
     attendanceSkippedApproved,
+    deviceUsersMapped,
     unmatchedEmployeeCodes,
   });
 }

@@ -144,6 +144,7 @@ model Employee {
   ncrsRaised             QualityNCR[]              @relation("NCRRaiser")
   safetyLogsLogged       SafetyLog[]               @relation("SafetyLogger")
   salaryRevisions        SalaryRevision[]
+  attendanceDeviceMappings AttendanceDeviceEmployeeMap[]
   dprsPrepared           SiteDPR[]                 @relation("DPRPreparer")
   materialRequesters     SiteMaterialRequisition[] @relation("MaterialRequester")
   tdsFilings             TdsFiling[]
@@ -257,6 +258,19 @@ model AttendancePunch {
   @@unique([deviceId, deviceLogId])
   @@index([punchTime])
   @@index([employeeCode, punchTime])
+}
+
+model AttendanceDeviceEmployeeMap {
+  id         String   @id @default(cuid())
+  deviceId   String
+  userId     String
+  employeeId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, userId])
+  @@index([employeeId])
 }
 
 model PunchRequest {
