@@ -255,7 +255,7 @@ model AttendancePunch {
   source       String   @default("etimetracklite")
   createdAt    DateTime @default(now())
 
-  @@unique([deviceId, deviceLogId])
+  @@unique([deviceId, deviceLogId, punchTime])
   @@index([punchTime])
   @@index([employeeCode, punchTime])
 }
