@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { getClientActor } from '@/lib/clientActor';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 const RA_BILLS_ENDPOINT = '/api/contracting/ra-bills';
 const WORK_ORDERS_ENDPOINT = '/api/contracting/work-orders';
@@ -302,6 +305,13 @@ const s = {
 // ─── Page component ───────────────────────────────────────────────────────────
 
 export default function RABillsPage() {
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const canTool = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', name)));
+  const canCreate = canTool('RA Bill Generation');
+  const canView = canTool('RA Bill Browse');
+  const canEdit = false;
+  const canApprove = canTool('RA Bill Approval');
+  const canList = canView || canEdit || canApprove;
   // ── Data ──────────────────────────────────────────────────────────────────
   const [bills, setBills]             = useState([]);
   const [workOrders, setWorkOrders]   = useState([]);
@@ -524,6 +534,7 @@ export default function RABillsPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!canCreate) { setError('You do not have permission to create RA bills for this project.'); return; }
     setError('');
     setSuccess('');
 
@@ -541,7 +552,7 @@ export default function RABillsPage() {
       const res = await fetch(RA_BILLS_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ ...form, taskLines: cleanTaskLines }),
+        body: JSON.stringify({ ...form, taskLines: cleanTaskLines, editedBy: getClientActor() }),
       });
       const ct = res.headers.get('content-type') || '';
       const data = ct.includes('application/json') ? await res.json() : await res.text();
@@ -568,6 +579,7 @@ export default function RABillsPage() {
   }
 
   async function handleStatusChange(id, status) {
+    if (!canApprove) { setError('You do not have permission to approve RA bills for this project.'); return; }
     setActionId(id);
     setError('');
     setSuccess('');
@@ -575,7 +587,7 @@ export default function RABillsPage() {
       const res = await fetch(RA_BILLS_ENDPOINT, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, status, editedBy: getClientActor() }),
       });
       const ct = res.headers.get('content-type') || '';
       const data = ct.includes('application/json') ? await res.json() : await res.text();
@@ -598,6 +610,7 @@ export default function RABillsPage() {
   }
 
   async function handleDelete(id) {
+    if (activeEmployee && !canEdit) { setError('You do not have permission to edit RA bills for this project.'); return; }
     if (!window.confirm('Delete this RA bill? This cannot be undone.')) return;
     setActionId(id);
     setError('');
@@ -640,9 +653,7 @@ export default function RABillsPage() {
       {/* ── Header ── */}
       <div style={s.headerRow}>
         <h1 style={s.h1}>RA Bills</h1>
-        <button type="button" style={s.primaryBtn} onClick={openForm}>
-          + Generate RA Bill
-        </button>
+        {canCreate && <button type="button" style={s.primaryBtn} onClick={openForm}>+ Generate RA Bill</button>}
       </div>
       <p style={s.subtitle}>
         Generate, review, and approve running-account bills for work orders.
@@ -691,13 +702,14 @@ export default function RABillsPage() {
       </div>
 
       {/* ── Bills table ── */}
-      <div style={s.tableWrap}>
+      {!canList ? <div style={s.emptyCell}>RA Bill View access is required to browse bills.</div> : <div style={s.tableWrap}>
         <table style={s.table}>
           <thead>
             <tr>
               <th style={s.th}>Bill No</th>
               <th style={s.th}>Work Order</th>
               <th style={s.th}>Bill Date</th>
+              <th style={s.th}>Last edited by</th>
               <th style={{ ...s.th, textAlign: 'right' }}>Current Bill</th>
               <th style={{ ...s.th, textAlign: 'right' }}>Cumulative</th>
               <th style={{ ...s.th, textAlign: 'right' }}>Retention</th>
@@ -708,9 +720,9 @@ export default function RABillsPage() {
           </thead>
           <tbody>
             {loadingBills ? (
-              <tr><td colSpan={9} style={s.emptyCell}>Loading…</td></tr>
+              <tr><td colSpan={10} style={s.emptyCell}>Loading…</td></tr>
             ) : bills.length === 0 ? (
-              <tr><td colSpan={9} style={s.emptyCell}>No RA bills found.</td></tr>
+              <tr><td colSpan={10} style={s.emptyCell}>No RA bills found.</td></tr>
             ) : bills.map(b => {
               const c = STATUS_COLORS[b.status] || { bg: '#f1f5f9', text: '#334155', border: '#e2e8f0' };
               return (
@@ -726,6 +738,9 @@ export default function RABillsPage() {
 
                   <td style={{ ...s.td, fontSize: '12px', color: '#64748b' }}>
                     {formatDate(b.date)}
+                  </td>
+                  <td style={{ ...s.td, fontSize: '12px', color: '#64748b' }}>
+                    {b.editedBy ? <>{b.editedBy}<div>{b.editedAt ? formatDate(b.editedAt) : ''}</div></> : '—'}
                   </td>
 
                   <td style={{ ...s.td, textAlign: 'right' }}>
@@ -749,14 +764,14 @@ export default function RABillsPage() {
 
                   <td style={s.td}>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', flexWrap: 'wrap' }}>
-                      <button
+                      {canView && <button
                         type="button"
                         style={{ ...s.actionBtn, color: '#475569' }}
                         onClick={() => window.open(`/contracting/ra-bills/${b.id}/print`, '_blank')}
                       >
                         Print
-                      </button>
-                      {b.status === 'Submitted' && (
+                      </button>}
+                      {b.status === 'Submitted' && canApprove && (
                         <>
                           <button
                             type="button"
@@ -774,17 +789,17 @@ export default function RABillsPage() {
                           >
                             {actionId === b.id ? '…' : 'Reject'}
                           </button>
-                          <button
+                      {!activeEmployee && <button
                             type="button"
                             style={{ ...s.actionBtn, color: '#64748b' }}
                             disabled={actionId === b.id}
                             onClick={() => handleDelete(b.id)}
                           >
                             {actionId === b.id ? '…' : 'Delete'}
-                          </button>
+                      </button>}
                         </>
                       )}
-                      {b.status === 'Approved' && (
+                      {b.status === 'Approved' && canApprove && (
                         <button
                           type="button"
                           style={{ ...s.actionBtn, color: '#15803d' }}
@@ -801,7 +816,7 @@ export default function RABillsPage() {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       {/* ── Generate RA Bill modal ── */}
       {showForm && (

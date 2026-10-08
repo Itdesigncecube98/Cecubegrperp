@@ -45,6 +45,8 @@ export async function POST(req) {
         activityType: body.activityType,
         discussion: body.discussion,
         commitment: body.commitment,
+        statusChangeDate: body.statusChangeDate ? new Date(body.statusChangeDate) : null,
+        references: body.references?.trim() || null,
         nextFollowUpDate: body.nextFollowUpDate ? new Date(body.nextFollowUpDate) : null,
         nextAction: body.nextAction,
         createdById: body.createdById

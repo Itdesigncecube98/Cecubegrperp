@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { calculateAttendanceStatus } from '../../../lib/attendanceCalculator';
+import { getEffectiveEmployeeShift, getShiftKind, resolveDayShiftAttendanceSlots } from '../../../lib/attendanceShiftPolicy';
 
 export async function GET(request) {
   try {
@@ -62,40 +63,46 @@ export async function GET(request) {
         try {
           let slots = JSON.parse(record.timeSlots);
           let updated = false;
-
-          const empShift = employeeShifts.find(es =>
-            es.employeeId === record.employeeId &&
-            es.effectiveFrom <= record.date &&
-            (!es.validTill || es.validTill >= record.date)
-          );
-          let bufferEndHour = 19;
-          let bufferEndMin = 0;
+          const empShift = getEffectiveEmployeeShift(employeeShifts, record.employeeId, record.date);
+          const dayShiftSlots = resolveDayShiftAttendanceSlots({
+            shift: empShift?.shift,
+            existingSlots: slots,
+            attendanceDate: record.date,
+            today: currentDateStr,
+            currentTime: `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`,
+            isApproved: record.isApproved,
+          });
           let outTimeStr = '19:00';
-          
-          if (empShift && empShift.shift && empShift.shift.endTime) {
-            const parts = empShift.shift.endTime.split(':');
-            const sh = Number(parts[0]) || 0;
-            const sm = Number(parts[1]) || 0;
-            bufferEndHour = sh + 1;
-            bufferEndMin = sm;
-            outTimeStr = `${String(bufferEndHour).padStart(2, '0')}:${String(bufferEndMin).padStart(2, '0')}`;
-          }
 
-          slots.forEach(slot => {
-            if (slot.in && !slot.out) {
-              const isPastBuffer = currentHour > bufferEndHour || (currentHour === bufferEndHour && currentMinute >= bufferEndMin);
-              if (record.date < currentDateStr || (record.date === currentDateStr && isPastBuffer)) {
-                if (slot.in < outTimeStr) {
-                  slot.out = outTimeStr;
-                  updated = true;
-                } else if (record.date < currentDateStr) {
-                  // If it's the next day and they punched in after the shift buffer, close at 23:59
-                  slot.out = '23:59';
-                  updated = true;
+          if (dayShiftSlots) {
+            slots = dayShiftSlots;
+            updated = true;
+          } else if (getShiftKind(empShift?.shift) === 'NIGHT' && !record.isApproved) {
+            let bufferEndHour = 19;
+            let bufferEndMin = 0;
+            if (empShift.shift.endTime) {
+              const parts = empShift.shift.endTime.split(':');
+              const shiftEndHour = Number(parts[0]) || 0;
+              bufferEndMin = Number(parts[1]) || 0;
+              bufferEndHour = shiftEndHour + 1;
+              outTimeStr = `${String(bufferEndHour).padStart(2, '0')}:${String(bufferEndMin).padStart(2, '0')}`;
+            }
+
+            slots.forEach(slot => {
+              if (slot.in && !slot.out) {
+                const isPastBuffer = currentHour > bufferEndHour || (currentHour === bufferEndHour && currentMinute >= bufferEndMin);
+                if (record.date < currentDateStr || (record.date === currentDateStr && isPastBuffer)) {
+                  if (slot.in < outTimeStr) {
+                    slot.out = outTimeStr;
+                    updated = true;
+                  } else if (record.date < currentDateStr) {
+                    slot.out = '23:59';
+                    updated = true;
+                  }
                 }
               }
-            }
-          });
+            });
+          }
 
           if (updated) {
             record.timeSlots = JSON.stringify(slots);
@@ -219,7 +226,7 @@ export async function POST(request) {
     }
 
     const latestSlot = parsedSlots.filter(slot => slot?.in && slot?.out).slice(-1)[0];
-    if (latestSlot) {
+    if (latestSlot && calculatedStatus !== 'Half Day') {
       const employeeShift = await prisma.employeeShift.findFirst({
         where: { employeeId, effectiveFrom: { lte: date }, OR: [{ validTill: null }, { validTill: { gte: date } }] },
         include: { shift: true },

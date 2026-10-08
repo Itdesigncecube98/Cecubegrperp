@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Save, UserCircle, Building2, Briefcase } from 'lucide-react';
 
-export default function EditLeadPage() {
+export default function EditLeadPage({ isEnquiryPage = false }) {
   const router = useRouter();
   const params = useParams();
   const id = params?.id;
@@ -76,7 +76,7 @@ export default function EditLeadPage() {
       try {
         const [empRes, leadRes] = await Promise.all([
           fetch('/api/employees'),
-          fetch(`/api/marketing/leads/${id}`)
+          fetch(`/api/marketing/${isEnquiryPage ? 'enquiries' : 'leads'}/${id}`)
         ]);
 
         if (empRes.ok) {
@@ -128,7 +128,7 @@ export default function EditLeadPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/marketing/leads/${id}`, {
+      const res = await fetch(`/api/marketing/${isEnquiryPage ? 'enquiries' : 'leads'}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -139,7 +139,7 @@ export default function EditLeadPage() {
         throw new Error(error.error || 'Failed to update lead');
       }
 
-      router.push('/marketing/leads');
+      router.push(isEnquiryPage ? '/marketing/enquiries' : '/marketing/leads');
     } catch (error) {
       console.error(error);
       alert(error.message || 'Failed to update lead');
@@ -164,7 +164,7 @@ export default function EditLeadPage() {
       <form onSubmit={handleSubmit} className="mkt-card">
         <div className="mkt-form-section">
           <h2 className="mkt-section-title"><UserCircle color="#4f46e5" size={20} /> Basic Information</h2>
-          <div className="mkt-grid-3">
+          <div className="mkt-grid-2">
             <div className="mkt-form-group">
               <label className="mkt-label">Lead Source <span className="mkt-text-danger">*</span></label>
               <select name="leadSource" value={formData.leadSource} onChange={handleChange} className="mkt-select" required>
@@ -174,14 +174,6 @@ export default function EditLeadPage() {
                 <option value="Tender Portal">Tender Portal</option>
                 <option value="Existing Client">Existing Client</option>
                 <option value="Other">Other</option>
-              </select>
-            </div>
-            <div className="mkt-form-group">
-              <label className="mkt-label">Lead Type</label>
-              <select name="leadType" value={formData.leadType} onChange={handleChange} className="mkt-select">
-                <option value="Hot">Hot</option>
-                <option value="Warm">Warm</option>
-                <option value="Cold">Cold</option>
               </select>
             </div>
             <div className="mkt-form-group">

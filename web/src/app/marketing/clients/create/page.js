@@ -15,12 +15,15 @@ export default function CreateClient() {
     industry: '',
     address: '',
     gstNo: '',
+    companyPan: '',
+    nationality: '',
+    state: '',
     previousBusinessHistory: ''
   });
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name]: name === 'companyPan' ? value.toUpperCase() : value }));
   };
 
   const handleSubmit = async (e) => {
@@ -82,6 +85,18 @@ export default function CreateClient() {
               <div className="mkt-form-group">
                 <label className="mkt-label">GST No.</label>
                 <input type="text" name="gstNo" value={formData.gstNo} onChange={handleChange} className="mkt-input" placeholder="GSTIN" />
+              </div>
+              <div className="mkt-form-group">
+                <label className="mkt-label">Company PAN No.</label>
+                <input type="text" name="companyPan" value={formData.companyPan} onChange={handleChange} className="mkt-input" placeholder="e.g. ABCDE1234F" maxLength={10} />
+              </div>
+              <div className="mkt-form-group">
+                <label className="mkt-label">Nationality</label>
+                <input type="text" name="nationality" value={formData.nationality} onChange={handleChange} className="mkt-input" placeholder="e.g. Indian" />
+              </div>
+              <div className="mkt-form-group">
+                <label className="mkt-label">State</label>
+                <input type="text" name="state" value={formData.state} onChange={handleChange} className="mkt-input" placeholder="State / Province" />
               </div>
             </div>
           </div>

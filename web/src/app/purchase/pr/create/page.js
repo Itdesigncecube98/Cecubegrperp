@@ -3,9 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, ArrowLeft, Plus, Trash2, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 export default function CreatePR() {
   const router = useRouter();
+  const { activeEmployee, activeProject, hasRight } = usePermissions();
+  const canCreate = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', 'Purchase Indent Create')));
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [materials, setMaterials] = useState([]);
@@ -29,24 +33,13 @@ export default function CreatePR() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [empRes, materialRes, projRes] = await Promise.all([
+        const [empRes, projRes] = await Promise.all([
           fetch('/api/employees'),
-          fetch('/api/engineering/material-library?resourceType=Material'),
-          fetch('/api/engineering/projects')
+          fetch('/api/projects', { cache: 'no-store' })
         ]);
         if (empRes.ok) {
           const data = await empRes.json();
           setEmployees(Array.isArray(data) ? data : data.employees || []);
-        }
-        if (materialRes.ok) {
-          const groups = await materialRes.json();
-          const allMaterials = [];
-          const flatten = nodes => (nodes || []).forEach(node => {
-            (node.materials || []).forEach(material => allMaterials.push(material));
-            flatten(node.subgroups);
-          });
-          flatten(Array.isArray(groups) ? groups : []);
-          setMaterials(allMaterials);
         }
         if (projRes.ok) {
           const projs = await projRes.json();
@@ -60,6 +53,24 @@ export default function CreatePR() {
     }
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!formData.project) { setMaterials([]); return; }
+    const selectedProject = projects.find(project => project.name === formData.project);
+    if (!selectedProject) { setMaterials([]); return; }
+    fetch(`/api/engineering/material-library?resourceType=Material&projectId=${encodeURIComponent(selectedProject.id)}`, { cache: 'no-store' })
+      .then(response => response.ok ? response.json() : [])
+      .then(groups => {
+        const allMaterials = [];
+        const flatten = nodes => (nodes || []).forEach(node => {
+          (node.materials || []).forEach(material => allMaterials.push(material));
+          flatten(node.subgroups);
+        });
+        flatten(Array.isArray(groups) ? groups : []);
+        setMaterials(allMaterials);
+      })
+      .catch(() => setMaterials([]));
+  }, [formData.project, projects]);
 
   const handleHeaderChange = (e) => {
     const { name, value } = e.target;
@@ -126,6 +137,8 @@ export default function CreatePR() {
       setLoading(false);
     }
   };
+
+  if (!canCreate) return <div className="pur-page-container"><div className="pur-card pur-text-center pur-text-muted pur-py-8">You need Purchase Indent Create access to create an indent.<div style={{ marginTop: 12 }}><Link href="/purchase/pr" className="pur-btn pur-btn-outline">Back to Purchase Indents</Link></div></div></div>;
 
   return (
     <div className="pur-page-container">

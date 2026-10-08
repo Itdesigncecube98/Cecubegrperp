@@ -1,12 +1,11 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.cecube.employee.dashboard',
+  appId: 'com.cecube.dashboard',
   appName: 'CeCube Employee Dashboard',
   webDir: 'www',
   server: {
-    url: 'http://172.236.185.37/employeedashboard/login',
-    cleartext: true
+    url: 'https://cecubeerp.duckdns.org/employeedashboard/login'
   }
 };
 

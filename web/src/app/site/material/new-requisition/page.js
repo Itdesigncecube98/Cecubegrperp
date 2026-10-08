@@ -38,13 +38,11 @@ function RequisitionFormContent() {
   useEffect(() => {
     async function loadMasterData() {
       try {
-        const [projectResponse, materialResponse, unitResponse] = await Promise.all([
+        const [projectResponse, unitResponse] = await Promise.all([
           fetch('/api/engineering/projects'),
-          fetch('/api/engineering/material-library?resourceType=Material'),
           fetch('/api/engineering/unit-library')
         ]);
         if (projectResponse.ok) setProjects(await projectResponse.json());
-        if (materialResponse.ok) setMaterials(flattenMaterials(await materialResponse.json()));
         if (unitResponse.ok) {
           const data = await unitResponse.json();
           setUnits(Array.isArray(data) ? data.map(unit => unit.name).filter(Boolean) : []);
@@ -55,6 +53,14 @@ function RequisitionFormContent() {
     }
     loadMasterData();
   }, []);
+
+  useEffect(() => {
+    if (!formData.projectId) { setMaterials([]); return; }
+    fetch(`/api/engineering/material-library?resourceType=Material&projectId=${encodeURIComponent(formData.projectId)}`, { cache: 'no-store' })
+      .then(response => response.ok ? response.json() : [])
+      .then(groups => setMaterials(flattenMaterials(Array.isArray(groups) ? groups : [])))
+      .catch(() => setMaterials([]));
+  }, [formData.projectId]);
 
   useEffect(() => {
     if (!formData.projectId) {

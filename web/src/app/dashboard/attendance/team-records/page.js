@@ -24,6 +24,7 @@ export default function TeamAttendanceRecords() {
 
   // Summary stats per employee
   const [empStats, setEmpStats] = useState({});
+  const [todayPunchLocations, setTodayPunchLocations] = useState({});
   // Map of date -> { lat, lng } for punch IN locations
   const [punchLocations, setPunchLocations] = useState({});
 
@@ -39,8 +40,24 @@ export default function TeamAttendanceRecords() {
       setEmployees(Array.isArray(emps) ? emps : []);
 
       // Load today attendance for quick status
-      const attRes = await fetch(`/api/attendance?date=${todayStr}`);
-      const todayAtt = await attRes.json();
+      const [attRes, requestsRes] = await Promise.all([
+        fetch(`/api/attendance?date=${todayStr}`),
+        fetch(`/api/requests?startDate=${todayStr}&endDate=${todayStr}`)
+      ]);
+      const [todayAtt, todayRequests] = await Promise.all([attRes.json(), requestsRes.json()]);
+      const locationMap = {};
+      if (Array.isArray(todayRequests)) {
+        todayRequests.forEach(punch => {
+          if ((punch.type === 'IN' || punch.type === 'REGULARIZE') && !locationMap[punch.employeeId]) {
+            locationMap[punch.employeeId] = {
+              lat: punch.latitude != null ? Number(punch.latitude) : null,
+              lng: punch.longitude != null ? Number(punch.longitude) : null,
+              siteOffice: punch.employee?.siteOffice || ''
+            };
+          }
+        });
+      }
+      setTodayPunchLocations(locationMap);
       const statsMap = {};
       if (Array.isArray(todayAtt)) {
         todayAtt.forEach(a => {
@@ -85,12 +102,16 @@ export default function TeamAttendanceRecords() {
         holidays.forEach(h => { holMap[h.date] = h.name; });
       }
 
-      // Build date -> location map from approved IN punches and REGULARIZE with coordinates
+      // Show saved punch locations, including pending punches awaiting review.
       const locMap = {};
       if (Array.isArray(punches)) {
         punches.forEach(p => {
-          if ((p.type === 'IN' || p.type === 'REGULARIZE') && p.status === 'APPROVED' && p.latitude && p.longitude) {
-            locMap[p.date] = { lat: p.latitude, lng: p.longitude };
+          if ((p.type === 'IN' || p.type === 'REGULARIZE') && !locMap[p.date]) {
+            locMap[p.date] = {
+              lat: p.latitude != null ? Number(p.latitude) : null,
+              lng: p.longitude != null ? Number(p.longitude) : null,
+              siteOffice: p.employee?.siteOffice || ''
+            };
           }
         });
       }
@@ -352,15 +373,17 @@ export default function TeamAttendanceRecords() {
                     </td>
                     <td>{renderStatus(r.attStatus)}</td>
                     <td>
-                      {punchLocations[r.date] ? (
+                      {punchLocations[r.date] && (punchLocations[r.date].lat != null && punchLocations[r.date].lng != null || punchLocations[r.date].siteOffice) ? (
                         <a
-                          href={`https://www.openstreetmap.org/?mlat=${punchLocations[r.date].lat}&mlon=${punchLocations[r.date].lng}#map=17/${punchLocations[r.date].lat}/${punchLocations[r.date].lng}`}
+                          href={punchLocations[r.date].lat != null && punchLocations[r.date].lng != null
+                            ? `https://www.openstreetmap.org/?mlat=${punchLocations[r.date].lat}&mlon=${punchLocations[r.date].lng}#map=17/${punchLocations[r.date].lat}/${punchLocations[r.date].lng}`
+                            : `https://maps.google.com/?q=${encodeURIComponent(punchLocations[r.date].siteOffice)}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          title={`${punchLocations[r.date].lat.toFixed(5)}, ${punchLocations[r.date].lng.toFixed(5)}`}
+                          title={punchLocations[r.date].lat != null && punchLocations[r.date].lng != null ? `${punchLocations[r.date].lat.toFixed(5)}, ${punchLocations[r.date].lng.toFixed(5)}` : `Site office: ${punchLocations[r.date].siteOffice}`}
                           style={{display:'inline-flex',alignItems:'center',gap:4,color:'#0ea5e9',fontWeight:600,fontSize:'0.8rem',textDecoration:'none'}}
                         >
-                          <MapPin size={13}/> View
+                          <MapPin size={13}/> {punchLocations[r.date].siteOffice && !(punchLocations[r.date].lat != null && punchLocations[r.date].lng != null) ? punchLocations[r.date].siteOffice : 'View'}
                         </a>
                       ) : <span style={{color:'#d1d5db'}}>—</span>}
                     </td>
@@ -410,14 +433,15 @@ export default function TeamAttendanceRecords() {
                 <th>TODAY STATUS</th>
                 <th>TIME IN</th>
                 <th>TIME OUT</th>
+                <th>LOCATION</th>
                 <th>ACTION</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="8" style={{textAlign:'center',padding:'3rem'}}>Loading employees...</td></tr>
+                <tr><td colSpan="9" style={{textAlign:'center',padding:'3rem'}}>Loading employees...</td></tr>
               ) : filteredEmployees.length === 0 ? (
-                <tr><td colSpan="8" style={{textAlign:'center',padding:'3rem'}}>No employees found</td></tr>
+                <tr><td colSpan="9" style={{textAlign:'center',padding:'3rem'}}>No employees found</td></tr>
               ) : filteredEmployees.map((emp, i) => {
                 const stat = empStats[emp.id] || { status: 'Not Marked', timeIn: '-', timeOut: '-' };
                 return (
@@ -453,6 +477,15 @@ export default function TeamAttendanceRecords() {
                     </td>
                     <td style={{color:stat.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{stat.timeIn}</td>
                     <td style={{color:stat.timeOut!=='-'?'#ef4444':'#9ca3af'}}>{stat.timeOut}</td>
+                    <td onClick={e => e.stopPropagation()}>
+                      {todayPunchLocations[emp.id] && (todayPunchLocations[emp.id].lat != null && todayPunchLocations[emp.id].lng != null || todayPunchLocations[emp.id].siteOffice) ? (
+                        <a href={todayPunchLocations[emp.id].lat != null && todayPunchLocations[emp.id].lng != null
+                          ? `https://www.openstreetmap.org/?mlat=${todayPunchLocations[emp.id].lat}&mlon=${todayPunchLocations[emp.id].lng}#map=17/${todayPunchLocations[emp.id].lat}/${todayPunchLocations[emp.id].lng}`
+                          : `https://maps.google.com/?q=${encodeURIComponent(todayPunchLocations[emp.id].siteOffice)}`} target="_blank" rel="noopener noreferrer" title={todayPunchLocations[emp.id].lat != null && todayPunchLocations[emp.id].lng != null ? `${todayPunchLocations[emp.id].lat.toFixed(5)}, ${todayPunchLocations[emp.id].lng.toFixed(5)}` : `Site office: ${todayPunchLocations[emp.id].siteOffice}`} style={{display:'inline-flex',alignItems:'center',gap:4,color:'#2563eb',fontWeight:600,textDecoration:'none'}}>
+                          <MapPin size={14}/> {todayPunchLocations[emp.id].lat != null && todayPunchLocations[emp.id].lng != null ? 'Map View' : todayPunchLocations[emp.id].siteOffice}
+                        </a>
+                      ) : <span style={{color:'#9ca3af'}}>—</span>}
+                    </td>
                     <td>
                       <button
                         className="btn btnPrimary"

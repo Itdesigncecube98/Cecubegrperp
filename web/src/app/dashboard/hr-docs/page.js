@@ -35,7 +35,8 @@ export default function HrDocsPage() {
     'aadharNumber', 'bankName', 'bankAccountNo', 'grossSalary', 'basicSalary', 'hra',
     'annualCtc', 'annualCTC', 'monthlyCtc', 'monthlyCTC', 'createdAt', 'createdAtDate', 'jobTitle', 'position', 'jobDescription', 'employeeType', 'branch',
     'siteOffice', 'grade', 'employeePosition', 'jobPosition', 'employeeGrade', 'gradeName',
-    'designationName', 'employmentStatus', 'organisation', 'joinedDate', 'currentDate'
+    'designationName', 'employmentStatus', 'organisation', 'joinedDate', 'currentDate',
+    'employerSignature', 'employerDate', 'employeeSignature', 'employeeDate'
   ]);
 
   useEffect(() => {
@@ -68,7 +69,8 @@ export default function HrDocsPage() {
         'aadharNumber', 'bankName', 'bankAccountNo', 'grossSalary', 'basicSalary', 'hra',
         'annualCtc', 'annualCTC', 'monthlyCtc', 'monthlyCTC', 'createdAt', 'createdAtDate', 'jobTitle', 'position', 'jobDescription', 'employeeType', 'branch',
         'siteOffice', 'grade', 'employeePosition', 'jobPosition', 'employeeGrade', 'gradeName',
-        'designationName', 'employmentStatus', 'organisation', 'joinedDate', 'currentDate'
+        'designationName', 'employmentStatus', 'organisation', 'joinedDate', 'currentDate',
+        'employerSignature', 'employerDate', 'employeeSignature', 'employeeDate'
       ]);
       
       const extractKeys = (arr) => {

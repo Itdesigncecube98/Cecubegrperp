@@ -60,6 +60,7 @@ export default function LedgerBrowsePage() {
   };
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(val || 0);
+  const rowKey = (row, index, scope) => `${scope}:${row.id ?? row.accountName ?? row.date ?? row.month ?? 'row'}:${index}`;
 
   const handleReset = () => {
     setFilters({
@@ -217,8 +218,8 @@ export default function LedgerBrowsePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((row) => (
-                    <tr key={row.id}>
+                  {data.map((row, index) => (
+                    <tr key={rowKey(row, index, 'account-list')}>
                       <td>{row.accountName}</td>
                       <td>{row.groupName}</td>
                       <td>{row.fixedGroup}</td>
@@ -281,8 +282,8 @@ export default function LedgerBrowsePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((row) => (
-                    <tr key={row.id}>
+                  {data.map((row, index) => (
+                    <tr key={rowKey(row, index, 'ledger-detail')}>
                       <td style={{ padding: '8px 12px' }}>{row.date}</td>
                       <td style={{ padding: '8px 12px' }}>{row.vtVno}</td>
                       <td style={{ padding: '8px 12px' }}>{row.description}</td>
@@ -327,8 +328,8 @@ export default function LedgerBrowsePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((row) => (
-                    <tr key={row.id}>
+                  {data.map((row, index) => (
+                    <tr key={rowKey(row, index, 'monthwise')}>
                       <td style={{ padding: '10px 16px', color: '#334155' }}>{row.month}</td>
                       <td style={{ padding: '10px 16px', textAlign: 'right' }}>{formatCurrency(row.debit)}</td>
                       <td style={{ padding: '10px 16px', textAlign: 'right' }}>{formatCurrency(row.credit)}</td>
@@ -366,8 +367,8 @@ export default function LedgerBrowsePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((row) => (
-                    <tr key={row.id}>
+                  {data.map((row, index) => (
+                    <tr key={rowKey(row, index, 'daywise')}>
                       <td style={{ padding: '10px 16px', color: '#334155' }}>{row.date}</td>
                       <td style={{ padding: '10px 16px', textAlign: 'right' }}>{formatCurrency(row.debit)}</td>
                       <td style={{ padding: '10px 16px', textAlign: 'right' }}>{formatCurrency(row.credit)}</td>
@@ -401,8 +402,8 @@ export default function LedgerBrowsePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {globalLedgersData.map((row) => (
-                    <tr key={row.id}>
+                  {globalLedgersData.map((row, index) => (
+                    <tr key={rowKey(row, index, 'global-ledger')}>
                       <td style={{ padding: '10px 16px', color: '#334155', fontWeight: 500 }}>{row.companyName}</td>
                       <td style={{ padding: '10px 16px', color: '#475569' }}>{row.accountType}</td>
                       <td style={{ padding: '10px 16px', textAlign: 'right' }}>{row.debit}</td>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ClipboardList, Search, Download, Filter, RefreshCw, CheckCircle, XCircle, Eye } from 'lucide-react';
 
-const MODULE_COLORS = { HR:'#6366f1',Admin:'#0f172a',Engineering:'#0ea5e9',Purchase:'#f59e0b',Store:'#10b981',Planning:'#8b5cf6',Site:'#ef4444',Accounts:'#14b8a6',Marketing:'#f97316',Tender:'#06b6d4',Quality:'#22c55e',Safety:'#dc2626' };
+const MODULE_COLORS = { HR:'#6366f1',HRMS:'#6366f1',Admin:'#0f172a',Engineering:'#0ea5e9',Purchase:'#f59e0b',Store:'#10b981',Planning:'#8b5cf6',Site:'#ef4444',Contracting:'#0891b2',Accounts:'#14b8a6',Marketing:'#f97316',Tender:'#06b6d4',Quality:'#22c55e',Safety:'#dc2626' };
 
 export default function AuditLogPage() {
   const [logs,     setLogs]     = useState([]);
@@ -26,8 +26,8 @@ export default function AuditLogPage() {
 
   const setFilter = (k, v) => { setFilters(f => ({ ...f, [k]: v })); setPage(1); };
 
-  const ACTIONS = ['', 'CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'APPROVE', 'REJECT', 'FORCE_LOGOUT', 'EXPORT'];
-  const MODULES = ['', 'HR', 'Admin', 'Engineering', 'Purchase', 'Store', 'Planning', 'Site', 'Accounts', 'Marketing', 'Tender', 'Quality', 'Safety'];
+  const ACTIONS = ['', 'CREATE', 'UPDATE', 'DELETE', 'STATUS_CHANGE', 'EMAIL_SEND', 'LOGIN', 'LOGOUT', 'MODULE_OPEN', 'APPROVE', 'REJECT', 'FORCE_LOGOUT', 'EXPORT'];
+  const MODULES = ['', 'HRMS', 'Admin', 'Engineering', 'Purchase', 'Store', 'Planning', 'Site', 'Contracting', 'Accounts', 'Marketing', 'Tender', 'Quality', 'Safety'];
 
   const exportCSV = () => {
     const headers = ['Date/Time', 'User', 'Module', 'Sub-Module', 'Action', 'Entity', 'Record ID', 'Status'];
@@ -102,7 +102,7 @@ export default function AuditLogPage() {
                         onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                         onMouseLeave={e => e.currentTarget.style.background = 'white'}>
                         <td style={{ padding: '10px 14px', fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>{new Date(log.createdAt).toLocaleString()}</td>
-                        <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{log.user?.displayName || <span style={{ color: '#94a3b8' }}>System</span>}</td>
+                        <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{log.user?.displayName || log.remarks || <span style={{ color: '#94a3b8' }}>System</span>}</td>
                         <td style={{ padding: '10px 14px' }}>
                           <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 700, background: `${mc}15`, color: mc }}>
                             {log.module}
@@ -154,7 +154,7 @@ export default function AuditLogPage() {
             </div>
             {[
               ['Date', new Date(selected.createdAt).toLocaleString()],
-              ['User', selected.user?.displayName || 'System'],
+              ['User', selected.user?.displayName || selected.remarks || 'System'],
               ['Module', selected.module],
               ['Sub-module', selected.subModule || '—'],
               ['Action', selected.action],
@@ -162,7 +162,7 @@ export default function AuditLogPage() {
               ['Record ID', selected.entityId || '—'],
               ['Status', selected.status],
               ['IP', selected.ipAddress || '—'],
-              ['Remarks', selected.remarks || '—'],
+              ['Client / Browser', selected.userAgent || '—'],
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f8fafc' }}>
                 <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{k}</span>

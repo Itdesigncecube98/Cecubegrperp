@@ -1,760 +1,796 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Save, Send, Download, Plus, Trash2, Edit2, FileIcon } from 'lucide-react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ImageRun } from 'docx';
-import { saveAs } from 'file-saver';
-import Dialog from '@/components/Dialog';
+import React, { useState, useEffect } from 'react';
+import { FileText, Save, Send, Download, Plus, Trash2, ArrowLeft, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { getEmployees } from '../../../../lib/data';
+
+// ---------------------------------------------------------------------------
+// Hardcoded templates
+// ---------------------------------------------------------------------------
+const TEMPLATES = [
+  {
+    id: 'ACCOMMODATION',
+    formName: 'Accommodation Reimbursement Form',
+    subtitle: 'Applicable for Employees Stationed Outside Gurgaon Region',
+    columns: [
+      { id: 'stayPeriod', name: 'Stay Period' },
+      { id: 'location', name: 'Accommodation Location / Hotel' },
+      { id: 'billNo', name: 'Bill / Invoice No.' },
+      { id: 'amount', name: 'Amount Claimed' },
+      { id: 'projectCostCenter', name: 'Project Cost Center' },
+    ],
+    eligibility: [
+      'I confirm that I am currently stationed outside Gurgaon region for official company work during the above-mentioned period.',
+      'I confirm that the accommodation reimbursement claimed below is as per company policy communicated through HR.',
+      'I understand that submission of incorrect information may lead to rejection of claim and disciplinary action as per company policy.',
+    ],
+    notes: [
+      'Accommodation reimbursement is applicable only for employees stationed outside Gurgaon region, as per company policy.',
+      'Claim must be submitted on a monthly basis.',
+      'Supporting bills / invoices must be attached with the claim, wherever applicable.',
+      'Reimbursement shall be processed subject to approval from Reporting Manager / Project Head.',
+      'Incomplete forms or unsupported claims may be kept on hold.',
+      'Company reserves the right to verify deployment details before processing reimbursement.',
+    ],
+  },
+  {
+    id: 'FOOD',
+    formName: 'Food Allowance Reimbursement Form',
+    subtitle: 'Applicable for Employees Stationed Outside Gurgaon Region',
+    columns: [
+      { id: 'period', name: 'Period' },
+      { id: 'eligibleAmount', name: 'Eligible Monthly Allowance' },
+      { id: 'amount', name: 'Amount Claimed' },
+      { id: 'projectCostCenter', name: 'Project Cost Center' },
+    ],
+    eligibility: [
+      'I confirm that I am currently stationed outside Gurgaon region for official company work during the above-mentioned period.',
+      'I confirm that the reimbursement claimed below is as per company policy communicated through HR circular dated 05 May 2026.',
+      'I understand that submission of incorrect information may lead to rejection of claim and disciplinary action as per company policy.',
+    ],
+    notes: [
+      'Food allowance reimbursement is applicable only for employees stationed outside Gurgaon region.',
+      'Claim must be submitted on monthly basis.',
+      'Reimbursement shall be processed subject to approval from Reporting Manager / Project Head.',
+      'Incomplete forms or unsupported claims may be kept on hold.',
+      'Company reserves the right to verify deployment details before processing reimbursement.',
+    ],
+  },
+];
+
+// HOD list (used in print + track view)
+const HODS = ['Sanjay Arora', 'Raj Kumar'];
+
+// Approval stages in order
+const STAGES = [
+  { key: 'PENDING_SUPERVISOR', label: 'Pending Supervisor Approval', next: 'PENDING_HR' },
+  { key: 'PENDING_HR', label: 'Pending HR Verification', next: 'PENDING_ACCOUNTS' },
+  { key: 'PENDING_ACCOUNTS', label: 'Pending Accounts Processing', next: 'PENDING_HOD' },
+  { key: 'PENDING_HOD', label: 'Pending HOD Approval', next: 'APPROVED' },
+  { key: 'APPROVED', label: 'Approved', next: null },
+  { key: 'REJECTED', label: 'Rejected', next: null },
+  { key: 'DRAFT', label: 'Draft', next: null },
+];
+
+function statusColor(status) {
+  if (status === 'APPROVED') return { bg: '#dcfce7', color: '#166534' };
+  if (status === 'REJECTED') return { bg: '#fee2e2', color: '#991b1b' };
+  if (status === 'DRAFT') return { bg: '#f1f5f9', color: '#475569' };
+  return { bg: '#fef9c3', color: '#854d0e' };
+}
+
+function statusLabel(status) {
+  const stage = STAGES.find(s => s.key === status);
+  return stage ? stage.label : status;
+}
 
 export default function EmployeeDocGenerator() {
+  const router = useRouter();
   const [employee, setEmployee] = useState(null);
-  const [templates, setTemplates] = useState([]);
   const [submissions, setSubmissions] = useState([]);
-
-  // Form State
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [formData, setFormData] = useState({});
-  const [tableData, setTableData] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
-  const [editingSubmissionId, setEditingSubmissionId] = useState(null);
-  
-  const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: 'info', title: '', message: '', onConfirm: null });
+  const [editingId, setEditingId] = useState(null);
+  const [viewSub, setViewSub] = useState(null); // read-only view of a submitted form
 
-  const printRef = useRef(null);
+  // Form fields
+  const [empName, setEmpName] = useState('');
+  const [empCode, setEmpCode] = useState('');
+  const [designation, setDesignation] = useState('');
+  const [department, setDepartment] = useState('');
+  const [projectName, setProjectName] = useState('');
+  const [monthYear, setMonthYear] = useState('');
+  const [reportingManager, setReportingManager] = useState('');
+  const [location, setLocation] = useState('');
+  const [remarks, setRemarks] = useState('');
+  const [supportingDocs, setSupportingDocs] = useState([]); // [{name, size, dataUrl}]
+  const [empSignature, setEmpSignature] = useState('');
+  const [place, setPlace] = useState('');
+  const [date, setDate] = useState('');
+  const [certified, setCertified] = useState(false);
+  const [tableRows, setTableRows] = useState([]);
+  const [employeesList, setEmployeesList] = useState([]);
 
   useEffect(() => {
     const empData = localStorage.getItem('employeeData');
     if (empData) {
-      setEmployee(JSON.parse(empData));
+      const emp = JSON.parse(empData);
+      setEmployee(emp);
+      setEmpName(emp.name || '');
+      setEmpCode(emp.empId || '');
+      setDesignation(emp.designation || '');
+      setDepartment(emp.department || '');
     }
-
-    const fetchTemplates = async () => {
+    loadSubmissions();
+    const fetchEmps = async () => {
       try {
-        const res = await fetch('/api/doc-generator/templates');
-        if (res.ok) {
-          const data = await res.json();
-          setTemplates(data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch document templates', err);
+        const data = await getEmployees();
+        setEmployeesList(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error('Failed to load employees:', e);
       }
     };
-    fetchTemplates();
-
-    loadSubmissions();
+    fetchEmps();
   }, []);
 
   const loadSubmissions = () => {
     const empData = localStorage.getItem('employeeData');
     if (!empData) return;
     const emp = JSON.parse(empData);
-
-    const savedSubmissions = localStorage.getItem('docGenerator_submissions');
-    if (savedSubmissions) {
-      const allSubs = JSON.parse(savedSubmissions);
-      setSubmissions(allSubs.filter(s => s.employeeId === emp.id));
-    }
+    const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+    setSubmissions(saved.filter(s => s.employeeId === emp.id));
   };
 
-  const handleSelectTemplate = (tmpl) => {
+  const emptyRow = (template) => {
+    const row = { id: Date.now() + Math.random() };
+    template.columns.forEach(c => (row[c.id] = ''));
+    return row;
+  };
+
+  const startNew = (template) => {
+    setSelectedTemplate(template);
+    setIsEditing(true);
+    setEditingId(null);
+    setCertified(false);
+    setEmpSignature('');
+    setPlace('');
+    setDate('');
+    setProjectName('');
+    setMonthYear('');
+    setReportingManager('');
+    setLocation('');
+    setRemarks('');
+    setSupportingDocs([]);
+    // pre-fill from employee
+    const empData = localStorage.getItem('employeeData');
+    if (empData) {
+      const emp = JSON.parse(empData);
+      setEmpName(emp.name || '');
+      setEmpCode(emp.empId || '');
+      setDesignation(emp.designation || '');
+      setDepartment(emp.department || '');
+    }
+    setTableRows([emptyRow(template), emptyRow(template), emptyRow(template)]);
+  };
+
+  const editDraft = (sub) => {
+    const tmpl = TEMPLATES.find(t => t.id === sub.templateId);
+    if (!tmpl) return alert('Template not found');
     setSelectedTemplate(tmpl);
     setIsEditing(true);
-    setEditingSubmissionId(null);
-    
-    const initialData = {};
-    tmpl.fields?.forEach(f => {
-      initialData[f.name] = '';
+    setEditingId(sub.id);
+    setEmpName(sub.fields.empName || '');
+    setEmpCode(sub.fields.empCode || '');
+    setDesignation(sub.fields.designation || '');
+    setDepartment(sub.fields.department || '');
+    setProjectName(sub.fields.projectName || '');
+    setMonthYear(sub.fields.monthYear || '');
+    setReportingManager(sub.fields.reportingManager || '');
+    setLocation(sub.fields.location || '');
+    setRemarks(sub.fields.remarks || '');
+    setSupportingDocs(sub.supportingDocs || []);
+    setEmpSignature(sub.fields.empSignature || '');
+    setPlace(sub.fields.place || '');
+    setDate(sub.fields.date || '');
+    setCertified(sub.certified || false);
+    setTableRows(sub.tableRows || [emptyRow(tmpl)]);
+  };
+
+  const deleteDraft = (id) => {
+    if (!confirm('Delete this draft?')) return;
+    const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+    localStorage.setItem('docgen_submissions', JSON.stringify(saved.filter(s => s.id !== id)));
+    loadSubmissions();
+  };
+
+  const buildSub = (status) => ({
+    id: editingId || Date.now().toString(),
+    employeeId: employee?.id,
+    employeeName: empName,
+    templateId: selectedTemplate.id,
+    templateName: selectedTemplate.formName,
+    status,
+    createdAt: new Date().toISOString(),
+    certified,
+    fields: { empName, empCode, designation, department, projectName, monthYear, reportingManager, location, empSignature, place, date, remarks },
+    tableRows,
+    supportingDocs,
+  });
+
+  const handleSupportingDocs = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setSupportingDocs(prev => [...prev, { name: file.name, size: file.size, dataUrl: ev.target.result }]);
+      };
+      reader.readAsDataURL(file);
     });
-    if (employee) {
-      Object.keys(initialData).forEach(key => {
-        const lower = key.toLowerCase();
-        if (lower.includes('name')) initialData[key] = employee.name;
-        else if (lower.includes('designation')) initialData[key] = employee.designation;
-        else if (lower.includes('department')) initialData[key] = employee.department;
-        else if (lower.includes('code')) initialData[key] = employee.empId;
-      });
-    }
-    setFormData(initialData);
-    
-    if (tmpl.tableColumns && tmpl.tableColumns.length > 0) {
-      const emptyRow = { id: Date.now() };
-      tmpl.tableColumns.forEach(c => emptyRow[c.name] = '');
-      setTableData([emptyRow]);
-    } else {
-      setTableData([]);
-    }
+    // Reset file input so same file can be re-selected
+    e.target.value = '';
   };
 
-  const editSubmission = (sub) => {
-    const tmpl = templates.find(t => t.id === sub.templateId);
-    if (!tmpl) {
-      setDialogConfig({ isOpen: true, type: 'info', title: 'Error', message: 'Original template not found.', onConfirm: null });
-      return;
-    }
-    setSelectedTemplate(tmpl);
-    setFormData(sub.formData);
-    setTableData(sub.tableData);
-    setEditingSubmissionId(sub.id);
-    setIsEditing(true);
-  };
+  const removeDoc = (idx) => setSupportingDocs(prev => prev.filter((_, i) => i !== idx));
 
-  const deleteSubmission = (id) => {
-    setDialogConfig({
-      isOpen: true,
-      type: 'confirm',
-      title: 'Delete Draft',
-      message: 'Are you sure you want to delete this draft?',
-      onConfirm: () => {
-        const savedSubmissions = localStorage.getItem('docGenerator_submissions');
-        if (savedSubmissions) {
-          const allSubs = JSON.parse(savedSubmissions);
-          const updated = allSubs.filter(s => s.id !== id);
-          localStorage.setItem('docGenerator_submissions', JSON.stringify(updated));
-          loadSubmissions();
-        }
-      }
-    });
-  };
-
-  const handleFieldChange = (name, value) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const addTableRow = () => {
-    const emptyRow = { id: Date.now() };
-    selectedTemplate.tableColumns.forEach(c => emptyRow[c.name] = '');
-    setTableData([...tableData, emptyRow]);
-  };
-
-  const removeTableRow = (id) => {
-    setTableData(tableData.filter(r => r.id !== id));
-  };
-
-  const handleTableCellChange = (rowId, colName, value) => {
-    setTableData(tableData.map(r => r.id === rowId ? { ...r, [colName]: value } : r));
-  };
-
-  const saveDocument = (isSubmit = false) => {
-    if (isSubmit && !formData._certified) {
-      setDialogConfig({ isOpen: true, type: 'info', title: 'Action Required', message: 'Please check the certification box to agree to the Employee Declaration before submitting.', onConfirm: null });
-      return;
-    }
-    if (isSubmit) {
-      setDialogConfig({
-        isOpen: true,
-        type: 'confirm',
-        title: 'Submit Document',
-        message: 'Are you sure you want to submit this document? It will go to your supervisor for approval.',
-        onConfirm: () => performSave(true)
-      });
-      return;
-    }
-
-    performSave(false);
-  };
-
-  const performSave = (isSubmit) => {
-    const allSubs = JSON.parse(localStorage.getItem('docGenerator_submissions') || '[]');
-    
-    const newSub = {
-      id: editingSubmissionId || Date.now().toString(),
-      employeeId: employee.id,
-      employeeName: employee.name,
-      templateId: selectedTemplate.id,
-      templateName: selectedTemplate.formName,
-      templateDescription: selectedTemplate.description,
-      formData,
-      tableData,
-      status: isSubmit ? 'PENDING_SUPERVISOR' : 'DRAFT',
-      createdAt: new Date().toISOString()
-    };
-
-    let updated;
-    if (editingSubmissionId) {
-      updated = allSubs.map(s => s.id === editingSubmissionId ? newSub : s);
-    } else {
-      updated = [...allSubs, newSub];
-    }
-
-    localStorage.setItem('docGenerator_submissions', JSON.stringify(updated));
-    setDialogConfig({ isOpen: true, type: 'info', title: 'Success', message: isSubmit ? 'Document submitted successfully!' : 'Draft saved successfully!', onConfirm: null });
+  const handleSaveDraft = () => {
+    const sub = buildSub('DRAFT');
+    const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+    const updated = editingId ? saved.map(s => (s.id === editingId ? sub : s)) : [...saved, sub];
+    localStorage.setItem('docgen_submissions', JSON.stringify(updated));
+    alert('Draft saved!');
     setIsEditing(false);
     loadSubmissions();
   };
 
-  const exportPDF = async (sub) => {
-    const origin = window.location.origin;
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = `
-      <div style="padding: 40px; font-family: sans-serif; color: black; background: white; width: 800px; margin: 0 auto; box-sizing: border-box;">
-        
-        <!-- Header Section -->
-        <div style="display: flex; align-items: center; justify-content: flex-start; margin-bottom: 20px; border-bottom: 2px dashed #94a3b8; padding-bottom: 20px;">
-          <img src="${origin}/logo.png" style="height: 60px; object-fit: contain; margin-right: 20px;" crossorigin="anonymous" />
-          <div style="display: flex; flex-direction: column; gap: 4px;">
-            <h1 style="font-size: 22px; font-weight: bold; margin: 0; color: #1e3a8a;">CeCube Engineering India Pvt. Ltd.</h1>
-            <h2 style="font-size: 18px; font-weight: bold; margin: 0; color: #1e3a8a;">CeCube Green Energy Pvt. Ltd.</h2>
+  const handleSubmit = () => {
+    if (!certified) return alert('Please check the Employee Declaration box before submitting.');
+    if (!confirm('Submit this form for approval? It will go to your Supervisor first.')) return;
+    const sub = buildSub('PENDING_SUPERVISOR');
+    const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+    const updated = editingId ? saved.map(s => (s.id === editingId ? sub : s)) : [...saved, sub];
+    localStorage.setItem('docgen_submissions', JSON.stringify(updated));
+    alert('Form submitted successfully! Your supervisor will review it.');
+    setIsEditing(false);
+    loadSubmissions();
+  };
+
+  const handleAddRow = () => setTableRows([...tableRows, emptyRow(selectedTemplate)]);
+  const handleDeleteRow = (id) => setTableRows(tableRows.filter(r => r.id !== id));
+  const handleCellChange = (id, colId, val) => setTableRows(tableRows.map(r => (r.id === id ? { ...r, [colId]: val } : r)));
+
+  // HOD helpers: hodApproval = { approvedBy, approved (true/false), signature, date, remarks }
+  const hodState = (hod, name) => {
+    if (hod && hod.approvedBy === name) {
+      if (hod.approved === false) return 'REJECTED';
+      return 'APPROVED';
+    }
+    return 'NONE';
+  };
+
+  const handlePrint = (sub) => {
+    const tmpl = TEMPLATES.find(t => t.id === sub.templateId);
+    if (!tmpl) return;
+    const sa = sub.supervisorApproval || {};
+    const ha = sub.hrApproval || {};
+    const aa = sub.accountsApproval || {};
+    const hod = sub.hodApproval || {};
+
+    const hodCell = (name) => {
+      const st = hodState(hod, name);
+      const approved = st === 'APPROVED';
+      const rejected = st === 'REJECTED';
+      return `<td>${approved ? '&#9745;' : '&#9744;'} Approved &nbsp;&nbsp; ${rejected ? '&#9745;' : '&#9744;'} Not Approved<br/><br/>
+        Approved By: ${st !== 'NONE' ? hod.approvedBy : ''}<br/>
+        Signature: ${st !== 'NONE' ? (hod.signature || hod.approvedBy) : '__________________'}<br/>
+        Date: ${st !== 'NONE' ? (hod.date || '') : '________________________'}
+        ${st !== 'NONE' && hod.remarks ? `<br/>Remarks: ${hod.remarks}` : ''}</td>`;
+    };
+
+    const pw = window.open('', '_blank', 'width=1200,height=900');
+    pw.document.write(`<!DOCTYPE html><html><head><title>${tmpl.formName}</title>
+    <style>
+      *{box-sizing:border-box} body{font-family:'Times New Roman',serif;margin:0;padding:20px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      @page{size:A4;margin:15mm} table{width:100%;border-collapse:collapse;margin-bottom:15px}
+      td,th{border:1.5px solid #000;padding:6px;font-size:13px;text-align:left}
+      th{font-weight:bold;background:#e6f2ff}
+      .logo-area{text-align:center;margin-bottom:20px} .logo-area img{height:70px;object-fit:contain}
+      .sub-header h2{margin:0;font-size:14px} .sub-header h3{margin:0;font-size:12px}
+      h1.form-title{font-size:16px;margin:0 0 4px 0} p.form-sub{font-size:12px;font-style:italic;margin:0 0 15px 0}
+      h4{margin:5px 0;font-size:13px} ul{margin:0 0 10px 0;padding-left:20px;font-size:12px} li{margin-bottom:3px}
+      .sig-row{display:flex;justify-content:space-between;font-size:13px;margin:20px 0}
+      .notes-sec{font-size:11px} .approval th{background:#e6f2ff}
+      .approval td{vertical-align:top;min-height:100px}
+      .status-badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:bold}
+    </style></head><body>
+    <div class="logo-area"><img src="/logo.png" onerror="this.style.display='none'" /></div>
+    <div class="sub-header"><h2>CeCube Engineering India Pvt. Ltd.</h2><h3>CeCube Green Energy Pvt. Ltd.</h3></div>
+    <h1 class="form-title">${tmpl.formName.toUpperCase()}</h1>
+    <p class="form-sub">${tmpl.subtitle}</p>
+    <h4>Employee Details</h4>
+    <table><tbody>
+      <tr><td style="width:20%;font-weight:bold">Employee Name</td><td style="width:30%">${sub.fields.empName}</td><td style="width:20%;font-weight:bold">Employee Code</td><td style="width:30%">${sub.fields.empCode}</td></tr>
+      <tr><td style="font-weight:bold">Designation</td><td>${sub.fields.designation}</td><td style="font-weight:bold">Department</td><td>${sub.fields.department}</td></tr>
+      <tr><td style="font-weight:bold">Project / Site Name</td><td>${sub.fields.projectName}</td><td style="font-weight:bold">Month & Year of Claim</td><td>${sub.fields.monthYear}</td></tr>
+      <tr><td style="font-weight:bold">Reporting Manager</td><td>${sub.fields.reportingManager}</td><td style="font-weight:bold">Location of Deployment</td><td>${sub.fields.location}</td></tr>
+    </tbody></table>
+    <h4>Eligibility Declaration</h4>
+    <ul>${tmpl.eligibility.map(e => `<li>${e}</li>`).join('')}</ul>
+    <h4>${sub.templateId === 'FOOD' ? 'Food Allowance Claim Details' : 'Accommodation Reimbursement Claim Details'}</h4>
+    <table><thead><tr><th style="width:8%">Sr.No.</th>${tmpl.columns.map(c => `<th>${c.name}</th>`).join('')}</tr></thead>
+    <tbody>${(sub.tableRows || []).map((row, i) => `<tr><td style="text-align:center">${i + 1}</td>${tmpl.columns.map(c => `<td>${row[c.id] || ''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    ${sub.fields.remarks ? `<h4>Remarks / Description</h4><p style="font-size:13px;border:1px solid #ccc;padding:10px;min-height:50px">${sub.fields.remarks}</p>` : ''}
+    <h4>Employee Declaration</h4>
+    <p style="font-size:13px">I hereby certify that the above claim is true and correct to the best of my knowledge and is being submitted in accordance with company policy.</p>
+    <div class="sig-row">
+      <span>Employee Signature: ${sub.fields.empSignature || '______________________'}</span>
+      <span>Place: ${sub.fields.place || '______________________'}</span>
+      <span>Date: ${sub.fields.date || '______________________'}</span>
+    </div>
+    <h4>Approval Workflow</h4>
+    <table class="approval"><thead><tr>
+      <th style="width:33%">Reporting Manager</th>
+      <th style="width:33%">HR Verification</th>
+      <th style="width:34%">Accounts Processing</th>
+    </tr></thead><tbody><tr>
+      <td>${sa.approved === true ? '&#9745;' : '&#9744;'} Approved &nbsp;&nbsp; ${sa.approved === false ? '&#9745;' : '&#9744;'} Not Approved<br/><br/>Name: ${sa.name || ''}<br/>Designation: ${sa.designation || ''}<br/>Signature: ${sa.signature || '__________________'}<br/>Date: ${sa.date || '________________________'}</td>
+      <td>${ha.verifiedBy ? '&#9745;' : '&#9744;'} Eligibility Verified<br/>${ha.verifiedBy ? '&#9745;' : '&#9744;'} Policy Compliance Checked<br/><br/>Verified By: ${ha.verifiedBy || ''}<br/>Signature: ${ha.signature || '__________________'}<br/>Date: ${ha.date || '________________________'}</td>
+      <td>${aa.processedBy ? '&#9745;' : '&#9744;'} Processed for the Month of ${aa.processedFor || '______'}<br/><br/>Processed By: ${aa.processedBy || ''}<br/>Signature: ${aa.signature || '__________________'}<br/>Date: ${aa.date || '________________________'}</td>
+    </tr></tbody></table>
+    <h4>HOD Approval</h4>
+    <table class="approval"><thead><tr>
+      <th style="width:50%">${HODS[0]} (HOD)</th>
+      <th style="width:50%">${HODS[1]} (HOD)</th>
+    </tr></thead><tbody><tr>
+      ${hodCell(HODS[0])}
+      ${hodCell(HODS[1])}
+    </tr></tbody></table>
+    <div class="notes-sec"><strong>Important Notes</strong><ol style="padding-left:20px;margin:5px 0">${tmpl.notes.map(n => `<li>${n}</li>`).join('')}</ol></div>
+    <script>window.onload=()=>window.print();</script>
+    </body></html>`);
+    pw.document.close();
+  };
+
+  const inputSt = { border: 'none', width: '100%', outline: 'none', background: 'transparent', fontSize: '13px' };
+  const cellSt = { border: '1.5px solid #000', padding: '6px', fontSize: '13px' };
+  const thSt = { ...cellSt, background: '#e6f2ff', fontWeight: 'bold' };
+
+  // ---- FORM VIEW ----
+  if (isEditing && selectedTemplate) {
+    return (
+      <div style={{ padding: '24px', background: '#f8fafc', minHeight: '100vh' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button onClick={() => setIsEditing(false)} style={{ padding: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' }}>
+              <ArrowLeft size={20} color="#475569" />
+            </button>
+            <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700 }}>{selectedTemplate.formName}</h1>
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={handleSaveDraft} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
+              <Save size={16} /> Save Draft
+            </button>
+            <button onClick={handleSubmit} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
+              <Send size={16} /> Submit for Approval
+            </button>
           </div>
         </div>
 
-        <!-- Form Title -->
-        <div style="text-align: center; margin-bottom: 20px;">
-          <h3 style="font-size: 18px; font-weight: bold; margin: 0; text-transform: uppercase;">${sub.templateName}</h3>
-        </div>
-        
-        <!-- Static Fields Table -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
-          ${Object.entries(sub.formData).filter(([k]) => k !== '_certified').map(([k, v]) => `
-            <tr>
-              <td style="padding: 8px; border: 1px solid #000; font-weight: bold; width: 40%;">${k}</td>
-              <td style="padding: 8px; border: 1px solid #000;">${v || '-'}</td>
-            </tr>
-          `).join('')}
-        </table>
-        
-        <!-- Description -->
-        ${sub.templateDescription ? `
-          <div style="margin-bottom: 20px; font-size: 12px; line-height: 1.5; font-family: inherit;">
-            ${sub.templateDescription}
+        <div style={{ background: 'white', padding: '30px', border: '1px solid #e2e8f0', maxWidth: '900px', margin: '0 auto', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          {/* Logo */}
+          <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+            <img src="/logo.png" alt="CeCube" style={{ height: '65px', objectFit: 'contain' }} onError={e => (e.target.style.display = 'none')} />
           </div>
-        ` : ''}
-        
-        <!-- Dynamic Table -->
-        ${sub.tableData && sub.tableData.length > 0 ? `
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontWeight: 'bold', fontSize: '13px' }}>CeCube Engineering India Pvt. Ltd.</div>
+            <div style={{ fontSize: '12px' }}>CeCube Green Energy Pvt. Ltd.</div>
+          </div>
+          <h2 style={{ margin: '0 0 4px 0', fontSize: '16px' }}>{selectedTemplate.formName.toUpperCase()}</h2>
+          <p style={{ margin: '0 0 16px 0', fontSize: '12px', fontStyle: 'italic', color: '#555' }}>{selectedTemplate.subtitle}</p>
+
+          <h4 style={{ margin: '0 0 8px 0' }}>Employee Details</h4>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px' }}>
+            <tbody>
+              <tr>
+                <td style={{ ...cellSt, width: '20%', fontWeight: 'bold' }}>Employee Name</td>
+                <td style={{ ...cellSt, width: '30%' }}>
+                  <input
+                    style={{ ...inputSt, backgroundColor: '#f8fafc', color: '#334155', fontWeight: 500 }}
+                    value={empName}
+                    disabled
+                  />
+                </td>
+                <td style={{ ...cellSt, width: '20%', fontWeight: 'bold' }}>Employee Code</td>
+                <td style={{ ...cellSt, width: '30%' }}><input style={inputSt} value={empCode} onChange={e => setEmpCode(e.target.value)} /></td>
+              </tr>
+              <tr>
+                <td style={{ ...cellSt, fontWeight: 'bold' }}>Designation</td>
+                <td style={cellSt}><input style={inputSt} value={designation} onChange={e => setDesignation(e.target.value)} /></td>
+                <td style={{ ...cellSt, fontWeight: 'bold' }}>Department</td>
+                <td style={cellSt}><input style={inputSt} value={department} onChange={e => setDepartment(e.target.value)} /></td>
+              </tr>
+              <tr>
+                <td style={{ ...cellSt, fontWeight: 'bold' }}>Project / Site Name</td>
+                <td style={cellSt}><input style={inputSt} value={projectName} onChange={e => setProjectName(e.target.value)} /></td>
+                <td style={{ ...cellSt, fontWeight: 'bold' }}>Month & Year of Claim</td>
+                <td style={cellSt}><input style={inputSt} value={monthYear} onChange={e => setMonthYear(e.target.value)} /></td>
+              </tr>
+              <tr>
+                <td style={{ ...cellSt, fontWeight: 'bold' }}>Reporting Manager</td>
+                <td style={cellSt}><input style={inputSt} value={reportingManager} onChange={e => setReportingManager(e.target.value)} /></td>
+                <td style={{ ...cellSt, fontWeight: 'bold' }}>Location of Deployment</td>
+                <td style={cellSt}><input style={inputSt} value={location} onChange={e => setLocation(e.target.value)} /></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h4 style={{ margin: '0 0 8px 0' }}>Eligibility Declaration</h4>
+          <ul style={{ fontSize: '13px', paddingLeft: '20px', marginBottom: '15px' }}>
+            {selectedTemplate.eligibility.map((e, i) => <li key={i}>{e}</li>)}
+          </ul>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <h4 style={{ margin: 0 }}>{selectedTemplate.id === 'FOOD' ? 'Food Allowance Claim Details' : 'Accommodation Reimbursement Claim Details'}</h4>
+            <button onClick={handleAddRow} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
+              <Plus size={14} /> Add Row
+            </button>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px' }}>
             <thead>
               <tr>
-                ${Object.keys(sub.tableData[0]).filter(k => k !== 'id').map(k => `
-                  <th style="padding: 8px; border: 1px solid #000; background: #e0f2fe; text-align: left;">${k}</th>
-                `).join('')}
+                <th style={{ ...thSt, width: '8%' }}>Sr. No.</th>
+                {selectedTemplate.columns.map(c => <th key={c.id} style={thSt}>{c.name}</th>)}
+                <th style={{ ...thSt, width: '32px' }}></th>
               </tr>
             </thead>
             <tbody>
-              ${sub.tableData.map(row => `
-                <tr>
-                  ${Object.entries(row).filter(([k]) => k !== 'id').map(([_, v]) => `
-                    <td style="padding: 8px; border: 1px solid #000;">${v || '-'}</td>
-                  `).join('')}
+              {tableRows.map((row, i) => (
+                <tr key={row.id}>
+                  <td style={{ ...cellSt, textAlign: 'center' }}>{i + 1}</td>
+                  {selectedTemplate.columns.map(c => (
+                    <td key={c.id} style={cellSt}><input style={inputSt} value={row[c.id] || ''} onChange={e => handleCellChange(row.id, c.id, e.target.value)} /></td>
+                  ))}
+                  <td style={{ ...cellSt, textAlign: 'center', padding: '2px' }}>
+                    <button onClick={() => handleDeleteRow(row.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}>✕</button>
+                  </td>
                 </tr>
-              `).join('')}
+              ))}
             </tbody>
           </table>
-        ` : ''}
-        
-        <!-- Employee Declaration -->
-        <div style="margin-bottom: 30px; font-size: 13px; line-height: 1.5;">
-          <strong>Employee Declaration</strong><br/>
-          I hereby certify that the above claim is true and correct to the best of my knowledge and is being submitted in accordance with company policy.
-          <div style="margin-top: 30px; display: flex; justify-content: space-between;">
-            <div>Employee Signature: ______________________</div>
-            <div>Place: ______________________</div>
-            <div>Date: ______________________</div>
+
+          <div style={{ marginBottom: '15px' }}>
+            <h4 style={{ margin: '0 0 8px 0' }}>Remarks / Description</h4>
+            <textarea style={{ ...inputSt, width: '100%', minHeight: '80px', resize: 'vertical' }} placeholder="Enter any additional remarks or description here..." value={remarks} onChange={e => setRemarks(e.target.value)} />
+          </div>
+
+          <div style={{ marginBottom: '15px' }}>
+            <h4 style={{ margin: '0 0 8px 0' }}>Supporting Documents</h4>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, color: '#0284c7', marginBottom: '10px' }}>
+              <Plus size={14} /> Attach Files
+              <input type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" style={{ display: 'none' }} onChange={handleSupportingDocs} />
+            </label>
+            {supportingDocs.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {supportingDocs.map((doc, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px' }}>
+                    <FileText size={13} color="#0ea5e9" />
+                    <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</span>
+                    <span style={{ color: '#94a3b8' }}>({(doc.size / 1024).toFixed(1)} KB)</span>
+                    <button onClick={() => removeDoc(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {supportingDocs.length === 0 && (
+              <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>No documents attached. Please attach bills / invoices / receipts as required.</p>
+            )}
+          </div>
+
+          <h4 style={{ margin: '0 0 8px 0' }}>Employee Declaration</h4>
+          <p style={{ fontSize: '13px', margin: '0 0 12px 0' }}>I hereby certify that the above claim is true and correct to the best of my knowledge and is being submitted in accordance with company policy.</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '13px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Employee Signature: <input value={empSignature} onChange={e => setEmpSignature(e.target.value)} style={{ borderBottom: '1px solid #000', borderTop: 'none', borderLeft: 'none', borderRight: 'none', width: '140px', outline: 'none', fontSize: '13px' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Place: <input value={place} onChange={e => setPlace(e.target.value)} style={{ borderBottom: '1px solid #000', borderTop: 'none', borderLeft: 'none', borderRight: 'none', width: '100px', outline: 'none', fontSize: '13px' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Date: <input value={date} onChange={e => setDate(e.target.value)} style={{ borderBottom: '1px solid #000', borderTop: 'none', borderLeft: 'none', borderRight: 'none', width: '100px', outline: 'none', fontSize: '13px' }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+            <input type="checkbox" id="certify" checked={certified} onChange={e => setCertified(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+            <label htmlFor="certify" style={{ fontSize: '14px', cursor: 'pointer', fontWeight: 500, color: '#334155' }}>I agree and certify the above statement.</label>
+          </div>
+
+          {/* Important Notes */}
+          <div style={{ marginTop: '20px', padding: '14px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
+            <strong style={{ fontSize: '13px', display: 'block', marginBottom: '8px', color: '#92400e' }}>Important Notes</strong>
+            <ol style={{ margin: 0, paddingLeft: '20px' }}>
+              {selectedTemplate.notes.map((note, i) => (
+                <li key={i} style={{ fontSize: '12px', color: '#78350f', marginBottom: '4px' }}>{note}</li>
+              ))}
+            </ol>
           </div>
         </div>
-        
-        <!-- Approval Workflow -->
-        <div style="font-size: 14px; font-weight: bold; margin-bottom: 10px;">Approval Workflow</div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 12px;">
-          <thead>
-            <tr>
-              <th style="padding: 8px; border: 1px solid #000; text-align: left; width: 33%;">Reporting Manager</th>
-              <th style="padding: 8px; border: 1px solid #000; text-align: left; width: 33%;">HR Verification</th>
-              <th style="padding: 8px; border: 1px solid #000; text-align: left; width: 33%;">Accounts Processing</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top; height: 100px;">
-                <div style="margin-bottom: 15px;">
-                  <span style="margin-right: 15px;">&#9744; Approved</span>
-                  <span>&#9744; Not Approved</span>
-                </div>
-                <div style="line-height: 1.8;">
-                  Name:<br/>
-                  Designation:<br/>
-                  Signature:<br/>
-                  Date:
-                </div>
-              </td>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">
-                <div style="margin-bottom: 15px; line-height: 1.8;">
-                  &#9744; Eligibility Verified<br/>
-                  &#9744; Policy Compliance Checked
-                </div>
-                <div style="line-height: 1.8;">
-                  Verified By:<br/>
-                  Signature:<br/>
-                  Date:
-                </div>
-              </td>
-              <td style="padding: 8px; border: 1px solid #000; vertical-align: top;">
-                <div style="margin-bottom: 15px;">
-                  &#9744; Processed for the Month of ______
-                </div>
-                <div style="line-height: 1.8;">
-                  Processed By:<br/>
-                  Signature:<br/>
-                  Date:
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <!-- Important Notes -->
-        <div style="font-size: 12px; line-height: 1.5;">
-          <strong>Important Notes</strong>
-          <ol style="margin-top: 5px; padding-left: 15px; margin-bottom: 0;">
-            <li>Claim must be submitted on monthly basis.</li>
-            <li>Supporting bills / invoices must be attached to this form wherever applicable.</li>
-            <li>Reimbursements shall be processed subject to approval from Reporting Manager / Project Head.</li>
-            <li>Incomplete forms or unsupported claims may be kept on hold.</li>
-            <li>Company reserves the right to verify deployment details before processing reimbursement.</li>
-          </ol>
+      </div>
+    );
+  }
+
+  // ---- READ-ONLY TRACK STATUS VIEW ----
+  if (viewSub) {
+    const tmpl = TEMPLATES.find(t => t.id === viewSub.templateId);
+    const sa = viewSub.supervisorApproval || {};
+    const ha = viewSub.hrApproval || {};
+    const aa = viewSub.accountsApproval || {};
+    const hod = viewSub.hodApproval || {};
+    const { bg, color } = statusColor(viewSub.status);
+    return (
+      <div style={{ padding: '24px', background: '#f8fafc', minHeight: '100vh' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <button onClick={() => setViewSub(null)} style={{ padding: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' }}>
+            <ArrowLeft size={20} color="#475569" />
+          </button>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700 }}>{viewSub.templateName}</h1>
+          <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: 600, background: bg, color }}>{statusLabel(viewSub.status)}</span>
+          <button onClick={() => handlePrint(viewSub)} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
+            <Download size={14} /> Print/PDF
+          </button>
         </div>
-      </div>
-    `;
-    
-    document.body.appendChild(tempDiv);
-    
-    try {
-      const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true });
-      const imgData = canvas.toDataURL('image/jpeg', 1.0);
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`${sub.templateName.replace(/\s+/g, '_')}_${sub.employeeName}.pdf`);
-    } catch (err) {
-      console.error(err);
-      setDialogConfig({ isOpen: true, type: 'info', title: 'Error', message: 'Failed to generate PDF', onConfirm: null });
-    } finally {
-      document.body.removeChild(tempDiv);
-    }
-  };
 
-  const exportDOCX = async (sub) => {
-    try {
-      const response = await fetch('/logo.png');
-      const blobLogo = await response.blob();
-      const arrayBuffer = await blobLogo.arrayBuffer();
-
-      const doc = new Document({
-        sections: [{
-          properties: {},
-          children: [
-            new Table({
-              width: { size: 100, type: WidthType.PERCENTAGE },
-              borders: {
-                top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-                bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-                left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-                right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-                insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-                insideVertical: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-              },
-              rows: [
-                new TableRow({
-                  children: [
-                    new TableCell({
-                      width: { size: 20, type: WidthType.PERCENTAGE },
-                      children: [
-                        new Paragraph({
-                          children: [
-                            new ImageRun({
-                              data: arrayBuffer,
-                              transformation: {
-                                width: 80,
-                                height: 80,
-                              },
-                            }),
-                          ],
-                          alignment: AlignmentType.CENTER,
-                        }),
-                      ],
-                    }),
-                    new TableCell({
-                      width: { size: 80, type: WidthType.PERCENTAGE },
-                      verticalAlign: "center",
-                      children: [
-                        new Paragraph({
-                          children: [
-                            new TextRun({ text: "CeCube Engineering India Pvt. Ltd.", bold: true, size: 28, color: "1e3a8a" }),
-                          ],
-                          alignment: AlignmentType.CENTER,
-                        }),
-                        new Paragraph({
-                          children: [
-                            new TextRun({ text: "CeCube Green Energy Pvt. Ltd.", bold: true, size: 24, color: "1e3a8a" }),
-                          ],
-                          alignment: AlignmentType.CENTER,
-                          spacing: { after: 200 },
-                        }),
-                      ],
-                    }),
-                  ],
-                }),
-              ],
-            }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: sub.templateName.toUpperCase(), bold: true, size: 24 }),
-            ],
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 400 },
-          }),
-          // Static Fields Table
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: Object.entries(sub.formData).filter(([k]) => k !== '_certified').map(([k, v]) => 
-              new TableRow({
-                children: [
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: k, bold: true })] })], width: { size: 40, type: WidthType.PERCENTAGE } }),
-                  new TableCell({ children: [new Paragraph({ text: String(v || '-') })], width: { size: 60, type: WidthType.PERCENTAGE } }),
-                ]
-              })
-            ),
-          }),
-          new Paragraph({ text: "", spacing: { after: 400 } }),
-          // Description
-          ...(sub.templateDescription ? [
-            new Paragraph({ text: sub.templateDescription.replace(/<[^>]*>?/gm, ''), spacing: { after: 400 } })
-          ] : []),
-          // Dynamic Table
-          ...(sub.tableData && sub.tableData.length > 0 ? [
-            new Table({
-              width: { size: 100, type: WidthType.PERCENTAGE },
-              rows: [
-                new TableRow({
-                  children: Object.keys(sub.tableData[0]).filter(k => k !== 'id').map(k => 
-                    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: k, bold: true })] })] })
-                  )
-                }),
-                ...sub.tableData.map(row => 
-                  new TableRow({
-                    children: Object.entries(row).filter(([k]) => k !== 'id').map(([_, v]) => 
-                      new TableCell({ children: [new Paragraph({ text: String(v || '-') })] })
-                    )
-                  })
-                )
-              ]
-            })
-          ] : []),
-          new Paragraph({ text: "", spacing: { after: 400 } }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: "Employee Declaration", bold: true }),
-            ],
-          }),
-          new Paragraph({
-            text: "I hereby certify that the above claim is true and correct to the best of my knowledge and is being submitted in accordance with company policy.",
-            spacing: { after: 400 },
-          }),
-          new Paragraph({ text: "Employee Signature: ______________________      Place: ______________________      Date: ______________________", spacing: { after: 400 } }),
-          
-          // Approval Workflow
-          new Paragraph({
-            children: [
-              new TextRun({ text: "Approval Workflow", bold: true }),
-            ],
-            spacing: { after: 200 }
-          }),
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: [
-              new TableRow({
-                children: [
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Reporting Manager", bold: true })] })], width: { size: 33, type: WidthType.PERCENTAGE } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "HR Verification", bold: true })] })], width: { size: 33, type: WidthType.PERCENTAGE } }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Accounts Processing", bold: true })] })], width: { size: 33, type: WidthType.PERCENTAGE } }),
-                ]
-              }),
-              new TableRow({
-                children: [
-                  new TableCell({
-                    children: [
-                      new Paragraph({ text: "☐ Approved    ☐ Not Approved", spacing: { after: 200 } }),
-                      new Paragraph({ text: "Name:" }),
-                      new Paragraph({ text: "Designation:" }),
-                      new Paragraph({ text: "Signature:" }),
-                      new Paragraph({ text: "Date:" }),
-                    ]
-                  }),
-                  new TableCell({
-                    children: [
-                      new Paragraph({ text: "☐ Eligibility Verified" }),
-                      new Paragraph({ text: "☐ Policy Compliance Checked", spacing: { after: 200 } }),
-                      new Paragraph({ text: "Verified By:" }),
-                      new Paragraph({ text: "Signature:" }),
-                      new Paragraph({ text: "Date:" }),
-                    ]
-                  }),
-                  new TableCell({
-                    children: [
-                      new Paragraph({ text: "☐ Processed for the Month of ______", spacing: { after: 200 } }),
-                      new Paragraph({ text: "Processed By:" }),
-                      new Paragraph({ text: "Signature:" }),
-                      new Paragraph({ text: "Date:" }),
-                    ]
-                  }),
-                ]
-              }),
-            ]
-          }),
-          new Paragraph({ text: "", spacing: { after: 400 } }),
-
-          // Important Notes
-          new Paragraph({
-            children: [
-              new TextRun({ text: "Important Notes", bold: true }),
-            ],
-            spacing: { after: 100 }
-          }),
-          new Paragraph({ text: "1. Claim must be submitted on monthly basis." }),
-          new Paragraph({ text: "2. Supporting bills / invoices must be attached to this form wherever applicable." }),
-          new Paragraph({ text: "3. Reimbursements shall be processed subject to approval from Reporting Manager / Project Head." }),
-          new Paragraph({ text: "4. Incomplete forms or unsupported claims may be kept on hold." }),
-          new Paragraph({ text: "5. Company reserves the right to verify deployment details before processing reimbursement." }),
-        ],
-      }],
-    });
-
-    Packer.toBlob(doc).then((blob) => {
-      saveAs(blob, `${sub.templateName.replace(/\\s+/g, '_')}_${sub.employeeName}.docx`);
-    }).catch(err => {
-      console.error(err);
-      setDialogConfig({ isOpen: true, type: 'info', title: 'Error', message: 'Failed to generate DOCX', onConfirm: null });
-    });
-    } catch (error) {
-      console.error(error);
-      setDialogConfig({ isOpen: true, type: 'info', title: 'Error', message: 'Failed to fetch logo for DOCX', onConfirm: null });
-    }
-  };
-
-  const inputStyle = {
-    width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', 
-    borderRadius: '6px', fontSize: '14px', outline: 'none'
-  };
-
-  return (
-    <div style={{ padding: '24px', background: '#f8fafc', minHeight: '100vh' }}>
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>My Applications</h1>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Create and track your document requests.</p>
-      </div>
-
-      {!isEditing ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '24px' }}>
-          {/* Templates Sidebar */}
-          <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', height: 'fit-content' }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600 }}>Available Forms</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {templates.length === 0 && <p style={{ fontSize: '13px', color: '#64748b' }}>No forms available.</p>}
-              {templates.map(tmpl => (
-                <button 
-                  key={tmpl.id}
-                  onClick={() => handleSelectTemplate(tmpl)}
-                  style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}
-                >
-                  <FileText size={20} color="#0ea5e9" style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <div>
-                    <div style={{ fontWeight: 600, color: '#334155', fontSize: '14px' }}>{tmpl.formName}</div>
-                    <div 
-                      style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-                      dangerouslySetInnerHTML={{ __html: tmpl.description }}
-                    />
+        {/* Approval Status Timeline */}
+        <div style={{ background: 'white', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+          <h3 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: 700, color: '#374151' }}>Approval Progress</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+            {[
+              { label: 'Submitted', done: true },
+              { label: 'Supervisor', done: viewSub.supervisorApproval?.approved === true || ['PENDING_HR', 'PENDING_ACCOUNTS', 'PENDING_HOD', 'APPROVED'].includes(viewSub.status), active: viewSub.status === 'PENDING_SUPERVISOR' },
+              { label: 'HR Verify', done: viewSub.hrApproval?.approved !== false && ['PENDING_ACCOUNTS', 'PENDING_HOD', 'APPROVED'].includes(viewSub.status), active: viewSub.status === 'PENDING_HR' },
+              { label: 'Accounts', done: viewSub.accountsApproval?.processedBy && ['PENDING_HOD', 'APPROVED'].includes(viewSub.status), active: viewSub.status === 'PENDING_ACCOUNTS' },
+              { label: 'HOD', done: viewSub.status === 'APPROVED', active: viewSub.status === 'PENDING_HOD' },
+              { label: 'Approved', done: viewSub.status === 'APPROVED' },
+            ].map((step, i, arr) => (
+              <React.Fragment key={i}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                  <div style={{
+                    width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '14px',
+                    background: step.done ? '#22c55e' : step.active ? '#f59e0b' : '#e2e8f0',
+                    color: step.done || step.active ? 'white' : '#94a3b8',
+                  }}>
+                    {step.done ? '✓' : i + 1}
                   </div>
-                </button>
-              ))}
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: step.done ? '#16a34a' : step.active ? '#d97706' : '#94a3b8', whiteSpace: 'nowrap' }}>{step.label}</span>
+                </div>
+                {i < arr.length - 1 && <div style={{ flex: 1, height: '2px', background: step.done ? '#22c55e' : '#e2e8f0', minWidth: '30px' }} />}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+        {/* Read-only form */}
+        <div style={{ background: 'white', padding: '24px', border: '1px solid #e2e8f0', borderRadius: '8px', maxWidth: '900px', margin: '0 auto', opacity: 0.95 }}>
+          <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+            <img src="/logo.png" alt="CeCube" style={{ height: '60px', objectFit: 'contain' }} onError={e => (e.target.style.display = 'none')} />
+          </div>
+          <div style={{ fontWeight: 'bold', fontSize: '13px' }}>CeCube Engineering India Pvt. Ltd.</div>
+          <div style={{ fontSize: '12px', marginBottom: '12px' }}>CeCube Green Energy Pvt. Ltd.</div>
+          <h2 style={{ margin: '0 0 12px 0', fontSize: '15px' }}>{viewSub.templateName?.toUpperCase()}</h2>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px' }}>
+            <tbody>
+              <tr>
+                <td style={{ ...cellSt, width: '20%', fontWeight: 'bold', background: '#e6f2ff' }}>Employee Name</td><td style={cellSt}>{viewSub.fields?.empName}</td>
+                <td style={{ ...cellSt, fontWeight: 'bold', background: '#e6f2ff' }}>Employee Code</td><td style={cellSt}>{viewSub.fields?.empCode}</td>
+              </tr>
+              <tr>
+                <td style={{ ...cellSt, fontWeight: 'bold', background: '#e6f2ff' }}>Designation</td><td style={cellSt}>{viewSub.fields?.designation}</td>
+                <td style={{ ...cellSt, fontWeight: 'bold', background: '#e6f2ff' }}>Department</td><td style={cellSt}>{viewSub.fields?.department}</td>
+              </tr>
+              <tr>
+                <td style={{ ...cellSt, fontWeight: 'bold', background: '#e6f2ff' }}>Project / Site Name</td><td style={cellSt}>{viewSub.fields?.projectName}</td>
+                <td style={{ ...cellSt, fontWeight: 'bold', background: '#e6f2ff' }}>Month & Year</td><td style={cellSt}>{viewSub.fields?.monthYear}</td>
+              </tr>
+              <tr>
+                <td style={{ ...cellSt, fontWeight: 'bold', background: '#e6f2ff' }}>Reporting Manager</td><td style={cellSt}>{viewSub.fields?.reportingManager}</td>
+                <td style={{ ...cellSt, fontWeight: 'bold', background: '#e6f2ff' }}>Location</td><td style={cellSt}>{viewSub.fields?.location}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {tmpl && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px' }}>
+              <thead><tr>
+                <th style={{ ...thSt, width: '8%' }}>Sr. No.</th>
+                {tmpl.columns.map(c => <th key={c.id} style={thSt}>{c.name}</th>)}
+              </tr></thead>
+              <tbody>
+                {(viewSub.tableRows || []).map((row, i) => (
+                  <tr key={i}>
+                    <td style={{ ...cellSt, textAlign: 'center' }}>{i + 1}</td>
+                    {tmpl.columns.map(c => <td key={c.id} style={cellSt}>{row[c.id] || ''}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {viewSub.fields?.remarks && (
+            <div style={{ marginBottom: '15px' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '13px' }}>Remarks / Description</h4>
+              <div style={{ ...inputSt, minHeight: '60px', background: '#f8fafc' }}>
+                {viewSub.fields.remarks}
+              </div>
+            </div>
+          )}
+
+          <div style={{ fontSize: '13px', marginBottom: '12px' }}>
+            <strong>Employee Declaration</strong>
+            <p style={{ margin: '4px 0 12px' }}>I hereby certify that the above claim is true and correct to the best of my knowledge.</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Employee Signature: <strong>{viewSub.fields?.empSignature || '—'}</strong></span>
+              <span>Place: <strong>{viewSub.fields?.place || '—'}</strong></span>
+              <span>Date: <strong>{viewSub.fields?.date || '—'}</strong></span>
             </div>
           </div>
 
-          {/* Submissions List */}
-          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#475569' }}>Form Name</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#475569' }}>Date</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#475569' }}>Status</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '13px', fontWeight: 600, color: '#475569' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {submissions.map(sub => (
+          <strong style={{ fontSize: '13px' }}>Approval Workflow</strong>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
+            <thead><tr>
+              <th style={thSt}>Reporting Manager</th>
+              <th style={thSt}>HR Verification</th>
+              <th style={thSt}>Accounts Processing</th>
+            </tr></thead>
+            <tbody><tr>
+              <td style={cellSt}>
+                {sa.approved === true ? '✅ Approved' : sa.approved === false ? '❌ Not Approved' : '⏳ Pending'}
+                {sa.name && <div><strong>{sa.name}</strong>{sa.designation && ` (${sa.designation})`}</div>}
+                {sa.date && <div style={{ fontSize: '11px', color: '#64748b' }}>Date: {sa.date}</div>}
+              </td>
+              <td style={cellSt}>
+                {ha.verifiedBy ? (
+                  <div>✅ Verified by <strong>{ha.verifiedBy}</strong><div style={{ fontSize: '11px', color: '#64748b' }}>Date: {ha.date}</div></div>
+                ) : '⏳ Pending'}
+              </td>
+              <td style={cellSt}>
+                {aa.processedBy ? (
+                  <div>✅ Processed by <strong>{aa.processedBy}</strong><div style={{ fontSize: '11px', color: '#64748b' }}>For: {aa.processedFor} · Date: {aa.date}</div></div>
+                ) : '⏳ Pending'}
+              </td>
+            </tr></tbody>
+          </table>
+
+          <strong style={{ fontSize: '13px', display: 'block', marginTop: '16px' }}>HOD Approval</strong>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
+            <thead><tr>
+              {HODS.map(name => <th key={name} style={thSt}>{name} (HOD)</th>)}
+            </tr></thead>
+            <tbody><tr>
+              {HODS.map(name => {
+                const st = hodState(hod, name);
+                return (
+                  <td key={name} style={cellSt}>
+                    {st === 'APPROVED' && (
+                      <div>
+                        ✅ Approved
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>Date: {hod.date}</div>
+                        {hod.remarks && <div style={{ fontSize: '11px', color: '#64748b' }}>Remarks: {hod.remarks}</div>}
+                      </div>
+                    )}
+                    {st === 'REJECTED' && (
+                      <div>
+                        ❌ Not Approved
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>Date: {hod.date}</div>
+                        {hod.remarks && <div style={{ fontSize: '11px', color: '#64748b' }}>Remarks: {hod.remarks}</div>}
+                      </div>
+                    )}
+                    {st === 'NONE' && '⏳ Pending'}
+                  </td>
+                );
+              })}
+            </tr></tbody>
+          </table>
+
+          {/* Important Notes */}
+          {tmpl && (
+            <div style={{ marginTop: '20px', padding: '14px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
+              <strong style={{ fontSize: '13px', display: 'block', marginBottom: '8px', color: '#92400e' }}>Important Notes</strong>
+              <ol style={{ margin: 0, paddingLeft: '20px' }}>
+                {tmpl.notes.map((note, i) => (
+                  <li key={i} style={{ fontSize: '12px', color: '#78350f', marginBottom: '4px' }}>{note}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ---- LIST VIEW ----
+  return (
+    <div style={{ padding: '24px', background: '#f8fafc', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+        <button onClick={() => router.push('/employee/dashboard')} style={{ padding: '8px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' }}>
+          <ArrowLeft size={20} color="#475569" />
+        </button>
+        <div>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>My Applications</h1>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Create and track your document requests.</p>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '24px' }}>
+        {/* Templates Sidebar */}
+        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', height: 'fit-content' }}>
+          <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600 }}>Available Forms</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {TEMPLATES.map(tmpl => (
+              <button
+                key={tmpl.id}
+                onClick={() => startNew(tmpl)}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}
+              >
+                <FileText size={20} color="#0ea5e9" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <div style={{ fontWeight: 600, color: '#334155', fontSize: '14px' }}>{tmpl.formName}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{tmpl.subtitle}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Submissions List */}
+        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#475569' }}>Form Name</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#475569' }}>Date</th>
+                <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#475569' }}>Status</th>
+                <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '13px', fontWeight: 600, color: '#475569' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {submissions.map(sub => {
+                const { bg, color } = statusColor(sub.status);
+                return (
                   <tr key={sub.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '16px', fontSize: '14px', fontWeight: 500, color: '#0f172a' }}>{sub.templateName}</td>
                     <td style={{ padding: '16px', fontSize: '13px', color: '#64748b' }}>{new Date(sub.createdAt).toLocaleDateString()}</td>
                     <td style={{ padding: '16px' }}>
-                      <span style={{ 
-                        padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 600,
-                        background: sub.status === 'DRAFT' ? '#f1f5f9' : sub.status === 'APPROVED' ? '#dcfce7' : '#fef9c3',
-                        color: sub.status === 'DRAFT' ? '#475569' : sub.status === 'APPROVED' ? '#166534' : '#854d0e'
-                      }}>
-                        {sub.status.replace('_', ' ')}
-                      </span>
+                      <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 600, background: bg, color }}>{statusLabel(sub.status)}</span>
                     </td>
                     <td style={{ padding: '16px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                         {sub.status === 'DRAFT' && (
                           <>
-                            <button onClick={() => editSubmission(sub)} style={{ padding: '6px', background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0284c7', borderRadius: '6px', cursor: 'pointer' }} title="Edit Draft">
-                              <Edit2 size={16} />
-                            </button>
-                            <button onClick={() => deleteSubmission(sub.id)} style={{ padding: '6px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', borderRadius: '6px', cursor: 'pointer' }} title="Delete Draft">
-                              <Trash2 size={16} />
-                            </button>
+                            <button onClick={() => editDraft(sub)} style={{ padding: '6px 12px', background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0284c7', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>Edit</button>
+                            <button onClick={() => deleteDraft(sub.id)} style={{ padding: '6px 12px', background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>Delete</button>
                           </>
                         )}
-                        <button onClick={() => exportPDF(sub)} style={{ padding: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 500 }} title="Download PDF">
-                          <Download size={16} /> PDF
-                        </button>
-                        <button onClick={() => exportDOCX(sub)} style={{ padding: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 500 }} title="Download DOCX">
-                          <FileIcon size={16} /> DOCX
+                        {sub.status !== 'DRAFT' && (
+                          <button onClick={() => setViewSub(sub)} style={{ padding: '6px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>Track Status</button>
+                        )}
+                        <button onClick={() => handlePrint(sub)} style={{ padding: '6px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Download size={14} /> Print/PDF
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))}
-                {submissions.length === 0 && (
-                  <tr>
-                    <td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-                      You haven't submitted any applications yet. Select a form from the left to begin.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+              {submissions.length === 0 && (
+                <tr>
+                  <td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                    You haven't submitted any applications yet. Select a form from the left to begin.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      ) : (
-        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-          <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0', background: '#f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#0f172a' }}>
-              {selectedTemplate.formName}
-            </h2>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={() => setIsEditing(false)} style={{ padding: '8px 16px', border: '1px solid #cbd5e1', background: 'white', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
-              <button onClick={() => saveDocument(false)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
-                <Save size={16} /> Save Draft
-              </button>
-              <button onClick={() => saveDocument(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
-                <Send size={16} /> Submit
-              </button>
-            </div>
-          </div>
-          
-          <div style={{ padding: '32px' }}>
-            {/* Static Fields */}
-            {selectedTemplate.fields?.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px', marginBottom: '40px' }}>
-                {selectedTemplate.fields.map(field => (
-                  <div key={field.id} style={{ gridColumn: field.width === 'full' ? 'span 2' : 'span 1' }}>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>{field.name}</label>
-                    <input 
-                      type={field.type} 
-                      value={formData[field.name] || ''} 
-                      onChange={e => handleFieldChange(field.name, e.target.value)}
-                      style={inputStyle}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {selectedTemplate.description && (
-              <div style={{ padding: '16px', background: '#f8fafc', borderLeft: '4px solid #0ea5e9', marginBottom: '32px', color: '#475569', fontSize: '14px', lineHeight: 1.5 }}>
-                <div style={{ fontFamily: 'inherit', margin: 0, whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: selectedTemplate.description }} />
-              </div>
-            )}
-
-            {/* Dynamic Table */}
-            {selectedTemplate.tableColumns?.length > 0 && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>Claim Details</h3>
-                  <button onClick={addTableRow} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f0f9ff', color: '#0284c7', border: '1px solid #bae6fd', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-                    <Plus size={14} /> Add Row
-                  </button>
-                </div>
-                
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #e2e8f0' }}>
-                    <thead>
-                      <tr style={{ background: '#f1f5f9' }}>
-                        {selectedTemplate.tableColumns.map(col => (
-                          <th key={col.id} style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: 600, border: '1px solid #e2e8f0' }}>{col.name}</th>
-                        ))}
-                        <th style={{ padding: '12px', width: '50px', border: '1px solid #e2e8f0' }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tableData.map((row) => (
-                        <tr key={row.id}>
-                          {selectedTemplate.tableColumns.map(col => (
-                            <td key={col.id} style={{ padding: '8px', border: '1px solid #e2e8f0' }}>
-                              <input 
-                                type={col.type} 
-                                value={row[col.name] || ''}
-                                onChange={e => handleTableCellChange(row.id, col.name, e.target.value)}
-                                style={{ width: '100%', padding: '6px 8px', border: '1px solid transparent', borderBottom: '1px solid #cbd5e1', outline: 'none', background: 'transparent' }}
-                                onFocus={e => e.target.style.borderBottom = '2px solid #0ea5e9'}
-                                onBlur={e => e.target.style.borderBottom = '1px solid #cbd5e1'}
-                              />
-                            </td>
-                          ))}
-                          <td style={{ padding: '8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                            <button onClick={() => removeTableRow(row.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}>
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {tableData.length === 0 && (
-                        <tr>
-                          <td colSpan={selectedTemplate.tableColumns.length + 1} style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
-                            No rows added. Click "Add Row" to start adding items.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginTop: '40px', padding: '20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-              <h4 style={{ margin: '0 0 10px 0', fontSize: '15px', fontWeight: 600, color: '#0f172a' }}>Employee Declaration</h4>
-              <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#475569' }}>
-                I hereby certify that the above claim is true and correct to the best of my knowledge and is being submitted in accordance with company policy.
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input 
-                  type="checkbox" 
-                  id="certify" 
-                  checked={formData._certified || false}
-                  onChange={e => handleFieldChange('_certified', e.target.checked)}
-                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                />
-                <label htmlFor="certify" style={{ fontSize: '14px', fontWeight: 500, color: '#334155', cursor: 'pointer' }}>I agree and certify the above statement.</label>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      <Dialog
-        isOpen={dialogConfig.isOpen}
-        type={dialogConfig.type}
-        title={dialogConfig.title}
-        message={dialogConfig.message}
-        onConfirm={() => {
-          if (dialogConfig.onConfirm) dialogConfig.onConfirm();
-          setDialogConfig({ ...dialogConfig, isOpen: false });
-        }}
-        onCancel={() => setDialogConfig({ ...dialogConfig, isOpen: false })}
-      />
+      </div>
     </div>
   );
 }

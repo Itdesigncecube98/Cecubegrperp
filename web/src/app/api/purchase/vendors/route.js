@@ -51,6 +51,7 @@ export async function POST(req) {
         category: body.category,
         fixedGroup: body.fixedGroup,
         documents: JSON.stringify(Array.isArray(body.documents) ? body.documents : []),
+        status: body.status || 'Active',
         createdById: body.createdById
       }
     });
@@ -67,6 +68,12 @@ export async function PUT(req) {
     const body = await req.json();
     if (!body.id) {
       return NextResponse.json({ error: 'Vendor id is required' }, { status: 400 });
+    }
+
+    if (body.action === 'approve' || body.action === 'reject') {
+      const approved = body.action === 'approve';
+      const vendor = await prisma.vendorMaster.update({ where: { id: body.id }, data: { status: approved ? 'Active' : 'Inactive' } });
+      return NextResponse.json(vendor);
     }
 
     const vendor = await prisma.vendorMaster.update({
@@ -94,7 +101,7 @@ export async function PUT(req) {
         category: body.category,
         fixedGroup: body.fixedGroup,
         documents: JSON.stringify(Array.isArray(body.documents) ? body.documents : []),
-        status: body.status || 'Active'
+        status: body.status || (await prisma.vendorMaster.findUnique({ where: { id: body.id }, select: { status: true } }))?.status || 'Pending Approval'
       }
     });
 

@@ -1,10 +1,18 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { readAuthSession } from '@/lib/authSession';
+import { employeeHasAnyTool, employeeHasProjectTool, getEmployeeGrantedLegacyProjectIds } from '@/lib/projectAccess';
 
 export async function GET(req) {
   try {
+    const session = readAuthSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in to view projects.' }, { status: 401 });
+    const assignedIds = session.type === 'employee'
+      ? await getEmployeeGrantedLegacyProjectIds(prisma, session.id)
+      : null;
     const legacyProjects = await prisma.project.findMany({
+      where: assignedIds ? { id: { in: assignedIds } } : {},
       select: { id: true, name: true, company: true, state: true },
       orderBy: { createdAt: 'desc' }
     });
@@ -26,7 +34,19 @@ export async function GET(req) {
       }
     }
 
-    const projects = await prisma.projectMaster.findMany({ orderBy: { createdAt: 'desc' } });
+    let where = {};
+    if (assignedIds) {
+      const assignedProjects = await prisma.project.findMany({
+        where: { id: { in: assignedIds } },
+        select: { id: true, name: true },
+      });
+      const assignedNames = assignedProjects.map(project => project.name).filter(Boolean);
+      where = { OR: [
+        { projectId: { in: assignedIds.map(id => `PROJECT-${id}`) } },
+        { name: { in: assignedNames } },
+      ] };
+    }
+    const projects = await prisma.projectMaster.findMany({ where, orderBy: { createdAt: 'desc' } });
     return NextResponse.json(projects);
   } catch (error) {
     console.error('Error fetching projects:', error);
@@ -36,7 +56,12 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    const session = readAuthSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in to create projects.' }, { status: 401 });
     const body = await req.json();
+    if (session.type === 'employee' && !await employeeHasAnyTool(prisma, session.id, 'Engineering', 'New Project')) {
+      return NextResponse.json({ error: 'You do not have New Project access.' }, { status: 403 });
+    }
     
     // Convert dates to DateTime if provided
     let startDate = null;
@@ -71,8 +96,20 @@ export async function POST(req) {
 
 export async function PUT(req) {
   try {
+    const session = readAuthSession(req);
+    if (!session) return NextResponse.json({ error: 'Please sign in to edit projects.' }, { status: 401 });
     const body = await req.json();
     const { id, ...data } = body;
+    if (session.type === 'employee') {
+      const projectMaster = await prisma.projectMaster.findUnique({ where: { id }, select: { name: true, projectId: true } });
+      const linkedId = projectMaster?.projectId?.startsWith('PROJECT-') ? projectMaster.projectId.slice('PROJECT-'.length) : null;
+      const legacyProject = linkedId
+        ? await prisma.project.findUnique({ where: { id: linkedId }, select: { id: true } })
+        : projectMaster?.name ? await prisma.project.findFirst({ where: { name: projectMaster.name }, select: { id: true } }) : null;
+      if (!legacyProject || !await employeeHasProjectTool(prisma, session.id, legacyProject.id, 'Project Edit')) {
+        return NextResponse.json({ error: 'You do not have Project Edit access for this project.' }, { status: 403 });
+      }
+    }
     
     // Convert dates if provided
     const updateData = { ...data };

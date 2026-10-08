@@ -5,6 +5,7 @@ import { Calculator, CheckCircle2 } from 'lucide-react';
 
 export default function ImprestSettlement() {
   const [openRequests, setOpenRequests] = useState([]);
+  const [settledRequests, setSettledRequests] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [settleData, setSettleData] = useState({
     settlementDate: new Date().toISOString().split('T')[0],
@@ -14,14 +15,14 @@ export default function ImprestSettlement() {
 
   const loadRequests = async () => {
     try {
-      const res = await fetch('/api/imprest?settledStatus=OPEN', { cache: 'no-store' });
+      const res = await fetch('/api/imprest', { cache: 'no-store' });
       const data = await res.json();
       if (Array.isArray(data)) {
-        // Only show ISSUED requests
-        setOpenRequests(data.filter(r => r.status === 'ISSUED'));
+        setOpenRequests(data.filter(r => r.status === 'ISSUED' && (!r.settledStatus || r.settledStatus === 'OPEN')));
+        setSettledRequests(data.filter(r => r.status === 'ISSUED' && r.settledStatus && r.settledStatus !== 'OPEN'));
       }
     } catch (err) {
-      console.error('Failed to load open requests:', err);
+      console.error('Failed to load requests:', err);
     }
   };
 
@@ -167,6 +168,41 @@ export default function ImprestSettlement() {
         <button onClick={handleSettle} disabled={!selectedRequest} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#10b981', opacity: !selectedRequest ? 0.5 : 1 }}>
           <CheckCircle2 size={18} /> Finalize Settlement
         </button>
+      </div>
+
+      <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '32px 0 16px', paddingBottom: '8px', borderBottom: '1px solid #e2e8f0' }}>Settlement History</h3>
+      <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+        <table className="imprest-table" style={{ marginBottom: 0 }}>
+          <thead>
+            <tr>
+              <th>Request ID</th>
+              <th>Employee Name</th>
+              <th>Issued Amount</th>
+              <th>Final Status</th>
+              <th>Settlement Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {settledRequests.length > 0 ? settledRequests.map(req => (
+              <tr key={req.id}>
+                <td style={{ fontWeight: 500, color: '#0ea5e9' }}>{req.requestId}</td>
+                <td>
+                  <div style={{ fontWeight: 500 }}>{req.employee?.name}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>{req.employee?.department}</div>
+                </td>
+                <td style={{ fontWeight: 600 }}>₹ {req.issuedAmount}</td>
+                <td>
+                  <span className="status-badge" style={{ backgroundColor: req.settledStatus === 'CLOSED' ? '#f1f5f9' : '#dcfce3', color: req.settledStatus === 'CLOSED' ? '#475569' : '#16a34a' }}>
+                    {req.settledStatus}
+                  </span>
+                </td>
+                <td>{req.settlementDate ? new Date(req.settlementDate).toISOString().split('T')[0] : '-'}</td>
+              </tr>
+            )) : (
+              <tr><td colSpan="5" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>No settlement history found.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

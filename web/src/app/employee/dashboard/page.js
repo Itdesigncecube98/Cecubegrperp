@@ -192,23 +192,34 @@ export default function EmployeeDashboard() {
   };
 
   const [isPunching, setIsPunching] = useState(false);
+  const [punchStage, setPunchStage] = useState('');
   const [localPunchState, setLocalPunchState] = useState(null); // 'in' | 'out' | null
 
-  const getPunchCoords = () =>
-    new Promise((resolve) => {
-      if (!navigator.geolocation) {
-        resolve(null);
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude
-        }),
-        () => resolve(null),
-        { enableHighAccuracy: false, timeout: 2500, maximumAge: 60000 }
-      );
-    });
+  const getPunchCoords = () => new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('This browser does not support location. Open the employee app in a location-enabled browser.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const { latitude, longitude } = position.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          reject(new Error('Could not determine your location. Turn on device location and try again.'));
+          return;
+        }
+        resolve({ latitude, longitude });
+      },
+      error => {
+        const message = error.code === error.PERMISSION_DENIED
+          ? 'Location permission is blocked. Allow location access for this site in browser settings, then try again.'
+          : error.code === error.POSITION_UNAVAILABLE
+            ? 'Your device could not find a location. Turn on GPS/location services and try again.'
+            : 'Location is taking too long. Move to an area with GPS/network signal and try again.';
+        reject(new Error(message));
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  });
 
   const normalizeTimeInput = (value) => {
     if (!value || typeof value !== 'string') return '';
@@ -251,8 +262,7 @@ export default function EmployeeDashboard() {
     }
 
     setIsPunching(true);
-    // Instant button switch — NEVER wait for supervisor approval
-    setLocalPunchState(action === 'in' ? 'in' : 'out');
+    setPunchStage(action === 'in' ? 'Finding location…' : 'Saving punch…');
 
     // Duplicate declarations removed
     const isNight = isNightShiftTime();
@@ -317,33 +327,58 @@ export default function EmployeeDashboard() {
         }
       }
 
-      // Capture GPS with the punch so Team Regularization shows location while still PENDING
-      const coords = await getPunchCoords();
+      // Punch In must have a fresh GPS location, saved with its punch request.
+      let coords = null;
+      if (action === 'in') {
+        try {
+          coords = await getPunchCoords();
+        } catch (locationError) {
+          showToast(`${locationError.message} Regularization remains available without location.`, 'error');
+          return;
+        }
+      } else {
+        coords = await new Promise(resolve => {
+          if (!navigator.geolocation) return resolve(null);
+          navigator.geolocation.getCurrentPosition(
+            pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          );
+        });
+      }
 
-      await fetch('/api/attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employeeId: employee.id,
-          date: targetDate, // USE TARGET DATE
-          status: 'Present',
-          shiftType: shiftTypeToSave,
-          timeSlots: JSON.stringify(newSlots)
-        })
-      });
-
-      await fetch('/api/requests', {
+      setPunchStage('Saving punch…');
+      const requestRes = await fetch('/api/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: employee.id,
           type: action === 'in' ? 'IN' : 'OUT',
           time: currentTime,
-          date: targetDate, // USE TARGET DATE
+          date: targetDate,
           shiftType: shiftTypeToSave,
-          ...(coords || {})
+          ...(coords || {}),
+          locationName: coords ? `GPS location (${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)})` : null
         })
       });
+      const requestData = await requestRes.json().catch(() => ({}));
+      if (!requestRes.ok) throw new Error(requestData.error || 'Could not save the punch location. Please try again.');
+
+      const attendanceRes = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: employee.id,
+          date: targetDate,
+          status: 'Present',
+          shiftType: shiftTypeToSave,
+          timeSlots: JSON.stringify(newSlots)
+        })
+      });
+      const attendanceData = await attendanceRes.json().catch(() => ({}));
+      if (!attendanceRes.ok) throw new Error(attendanceData.error || 'Could not save attendance. Please try again.');
+
+      setLocalPunchState(action === 'in' ? 'in' : 'out');
 
       // Update UI immediately so Punch Out / Punch In shows without waiting
       setStatsData(prev => patchTodayInStats(prev, targetDate, newSlots, shiftTypeToSave));
@@ -366,33 +401,12 @@ export default function EmployeeDashboard() {
           : 'Punch Out recorded — supervisor can approve anytime. You can Punch In again.'
       );
 
-      // Fallback: if geo was slow/denied on create, still try to attach location after
-      if (!coords && navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            try {
-              await fetch('/api/requests', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  employeeId: employee.id,
-                  type: action === 'in' ? 'IN' : 'OUT',
-                  date: targetDate,
-                  latitude: position.coords.latitude,
-                  longitude: position.coords.longitude
-                })
-              });
-            } catch (e) { /* silent */ }
-          },
-          () => { },
-          { enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 }
-        );
-      }
     } catch (err) {
       console.error(err);
       setLocalPunchState(null);
-      showToast(`Failed to record punch ${action}`, 'error');
+      showToast(err.message || `Failed to record punch ${action}`, 'error');
     } finally {
+      setPunchStage('');
       setIsPunching(false); // unlock button NOW — do not wait for loadStats
     }
 
@@ -973,7 +987,7 @@ export default function EmployeeDashboard() {
                 onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 14px rgba(220, 38, 38, 0.35)' }}
                 onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 10px rgba(220, 38, 38, 0.25)' }}
               >
-                <Clock size={16} /> {isPunching ? 'Saving...' : 'Punch Out'}
+                <Clock size={16} /> {isPunching ? punchStage : 'Punch Out'}
               </button>
             </div>
           ) : (
@@ -1032,7 +1046,7 @@ export default function EmployeeDashboard() {
                 onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.2)' }}
                 onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)' }}
               >
-                <Clock size={16} /> {isPunching ? 'Saving...' : 'Punch In'}
+                <Clock size={16} /> {isPunching ? punchStage : 'Punch In'}
               </button>
             </div>
           )}
@@ -1333,6 +1347,21 @@ export default function EmployeeDashboard() {
             <li>
               <button onClick={() => router.push('/employee/requirements')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ color: '#cbd5e1' }}>•</span> Position Indent
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/dashboard/dpr')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Daily Progress Report (DPR)
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/dashboard/material-requisition')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Material Requisition
+              </button>
+            </li>
+            <li>
+              <button onClick={() => router.push('/employee/dashboard/labour-requisition')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: '#cbd5e1' }}>•</span> Labour Requisition
               </button>
             </li>
           </ul>

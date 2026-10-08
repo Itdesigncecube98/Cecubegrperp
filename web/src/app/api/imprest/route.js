@@ -93,12 +93,13 @@ export async function GET(req) {
       const isAccounts = approverId === accountsId;
 
       const results = await prisma.$queryRaw`
-        SELECT ir.id, ir."requestId", ir."employeeId",
+        SELECT ir.id, ir."requestId", ir."employeeId", ir."approverId", ir."targetSupervisorId",
                ir."amountRequested"::float AS "amountRequested",
                ir."approvedAmount"::float AS "approvedAmount",
                ir."requiredDate", ir.purpose, ir."projectSite",
                ir."imprestHead", ir."imprestType", ir.status, ir.remarks, ir."createdAt",
-               e.name AS emp_name, e."empId" AS emp_code, e.department AS emp_dept
+               e.name AS emp_name, e."empId" AS emp_code, e.department AS emp_dept,
+               e."supervisorId" AS employee_supervisor_id
         FROM "ImprestRequest" ir
         LEFT JOIN "Employee" e ON e.id = ir."employeeId"
         WHERE (
@@ -106,6 +107,8 @@ export async function GET(req) {
           OR (ir.status = 'PENDING_ACCOUNTS' AND ${isAccounts}::boolean)
           OR (ir.status = 'PENDING_PROJECTS_HEAD' AND ${isProjectsHead}::boolean)
           OR (ir.status = 'PENDING_PROJECTS_HEAD_2' AND ${isProjectsHead2}::boolean)
+          OR ir."approverId" = ${approverId}
+          OR (ir.status <> 'DRAFT' AND (ir."targetSupervisorId" = ${approverId} OR e."supervisorId" = ${approverId}))
         )
         ORDER BY ir."createdAt" DESC
       `;
@@ -114,6 +117,8 @@ export async function GET(req) {
         id: Number(r.id),
         requestId: r.requestId,
         employeeId: r.employeeId,
+        approverId: r.approverId,
+        targetSupervisorId: r.targetSupervisorId,
         amountRequested: Number(r.amountRequested) || 0,
         approvedAmount: r.approvedAmount != null ? Number(r.approvedAmount) : null,
         requiredDate: r.requiredDate,
@@ -128,7 +133,16 @@ export async function GET(req) {
           name: r.emp_name,
           empId: r.emp_code,
           department: r.emp_dept,
-        }
+        },
+        currentApprover: r.status === 'PENDING_ACCOUNTS' ? 'Accounts'
+          : r.status === 'PENDING_PROJECTS_HEAD' ? 'Projects Head'
+            : r.status === 'PENDING_PROJECTS_HEAD_2' ? 'Second Projects Head'
+              : r.status === 'PENDING_SUPERVISOR' ? 'Supervisor' : '-',
+        canApprove: r.status === 'PENDING_SUPERVISOR'
+          ? (r.targetSupervisorId === approverId || (!r.targetSupervisorId && r.employee_supervisor_id === approverId))
+          : r.status === 'PENDING_ACCOUNTS' ? isAccounts
+            : r.status === 'PENDING_PROJECTS_HEAD' ? isProjectsHead
+              : r.status === 'PENDING_PROJECTS_HEAD_2' ? isProjectsHead2 : false
       }));
 
     } else if (employeeId) {
@@ -167,6 +181,7 @@ export async function GET(req) {
                    ir."amountRequested"::float, ir."approvedAmount"::float, ir."issuedAmount"::float,
                    ir."paymentMode", ir."requiredDate", ir.purpose, ir."projectSite",
                    ir."imprestHead", ir.status, ir."settledStatus", ir."createdAt",
+                   ir."issueDate", ir."transactionRef", ir."settlementDate",
                    e.name AS emp_name, e."empId" AS emp_code, e.department AS emp_dept,
                    sup.name AS supervisor_name
             FROM "ImprestRequest" ir
@@ -180,6 +195,7 @@ export async function GET(req) {
                    ir."amountRequested"::float, ir."approvedAmount"::float, ir."issuedAmount"::float,
                    ir."paymentMode", ir."requiredDate", ir.purpose, ir."projectSite",
                    ir."imprestHead", ir.status, ir."settledStatus", ir."createdAt",
+                   ir."issueDate", ir."transactionRef", ir."settlementDate",
                    e.name AS emp_name, e."empId" AS emp_code, e.department AS emp_dept,
                    sup.name AS supervisor_name
             FROM "ImprestRequest" ir
@@ -193,6 +209,7 @@ export async function GET(req) {
                    ir."amountRequested"::float, ir."approvedAmount"::float, ir."issuedAmount"::float,
                    ir."paymentMode", ir."requiredDate", ir.purpose, ir."projectSite",
                    ir."imprestHead", ir.status, ir."settledStatus", ir."createdAt",
+                   ir."issueDate", ir."transactionRef", ir."settlementDate",
                    e.name AS emp_name, e."empId" AS emp_code, e.department AS emp_dept,
                    sup.name AS supervisor_name
             FROM "ImprestRequest" ir
@@ -206,6 +223,7 @@ export async function GET(req) {
                    ir."amountRequested"::float, ir."approvedAmount"::float, ir."issuedAmount"::float,
                    ir."paymentMode", ir."requiredDate", ir.purpose, ir."projectSite",
                    ir."imprestHead", ir.status, ir."settledStatus", ir."createdAt",
+                   ir."issueDate", ir."transactionRef", ir."settlementDate",
                    e.name AS emp_name, e."empId" AS emp_code, e.department AS emp_dept,
                    sup.name AS supervisor_name
             FROM "ImprestRequest" ir
@@ -259,6 +277,9 @@ export async function GET(req) {
           status: r.status,
           settledStatus: r.settledStatus,
           createdAt: r.createdAt,
+          issueDate: r.issueDate,
+          transactionRef: r.transactionRef,
+          settlementDate: r.settlementDate,
           employee: { name: r.emp_name, empId: r.emp_code, department: r.emp_dept },
           currentApprover
         };

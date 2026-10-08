@@ -1,6 +1,47 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { resolveProjectLibraryContext } from '@/lib/projectLibrary';
+
+async function syncWorkOrderTasksIntoLibrary(libraryId) {
+  if (!libraryId) return;
+  const library = await prisma.library.findUnique({ where: { id: libraryId }, select: { name: true } });
+  if (!library?.name) return;
+  const legacyProjects = await prisma.project.findMany({ where: { library: library.name }, select: { name: true } });
+  if (!legacyProjects.length) return;
+  const projectNames = [...new Set(legacyProjects.map(project => project.name).filter(Boolean))];
+  const projectMasters = await prisma.projectMaster.findMany({ where: { name: { in: projectNames } }, select: { id: true, name: true } });
+  if (!projectMasters.length) return;
+  const orders = await prisma.workOrder.findMany({ where: { projectId: { in: projectMasters.map(project => project.id) } }, select: { projectId: true, scope: true } });
+  const group = await prisma.taskLibraryGroup.findFirst({ where: { libraryId, name: { equals: 'work', mode: 'insensitive' } }, select: { id: true } });
+  if (!group) return;
+
+  const imported = [];
+  const scheduled = new Set();
+  for (const order of orders) {
+    let scope = {};
+    try { scope = order.scope ? JSON.parse(order.scope) : {}; } catch { continue; }
+    for (const item of Array.isArray(scope.items) ? scope.items : []) {
+      const name = String(item.description || '').trim();
+      if (!name) continue;
+      const key = `${order.projectId}:${name.toLowerCase()}`;
+      if (scheduled.has(key)) continue;
+      scheduled.add(key);
+      const exists = await prisma.taskLibraryItem.findFirst({ where: {
+        groupId: group.id,
+        name: { equals: name, mode: 'insensitive' },
+        OR: [{ projectId: order.projectId }, { projectId: null }],
+      }, select: { id: true } });
+      if (exists) continue;
+      imported.push({
+        groupId: group.id, libraryId, projectId: order.projectId, name,
+        unit: item.unit || 'Job', quantity: Number(item.qty) || 1,
+        description: 'Imported from generated work order',
+      });
+    }
+  }
+  if (imported.length) await prisma.taskLibraryItem.createMany({ data: imported, skipDuplicates: true });
+}
 
 export async function GET(req) {
   try {
@@ -8,6 +49,10 @@ export async function GET(req) {
     const libraryId = searchParams.get('libraryId');
     const search = searchParams.get('search');
     const projectId = searchParams.get('projectId');
+
+    // Work-order scopes are also kept in their project's Task Library group.
+    // This repairs older work orders that were previously copied only to Site Task Tree.
+    if (libraryId) await syncWorkOrderTasksIntoLibrary(libraryId);
 
     let where = {};
     if (libraryId) {
@@ -32,19 +77,22 @@ export async function GET(req) {
 
     let projectTaskFilter;
     if (projectId) {
-      const project = await prisma.projectMaster.findUnique({ where: { id: projectId } });
-      if (project) {
-        const legacyProject = await prisma.project.findFirst({
-          where: { name: project.name },
-          select: { id: true }
-        });
-        const projectIds = [project.id, project.projectId, legacyProject?.id].filter(Boolean);
+      const { legacyProject, projectMaster, library } = await resolveProjectLibraryContext(prisma, projectId, { ensureProjectMaster: true });
+      if (!libraryId) {
+        // The project's configured library is the source of its task and
+        // resource catalog. Never fall back to other libraries on a bad link.
+        where.libraryId = library?.id || '__unmatched_project_library__';
+      }
+      if (projectMaster) {
+        const projectIds = [projectMaster.id, projectMaster.projectId, legacyProject?.id].filter(Boolean);
         projectTaskFilter = {
           OR: [
             { projectId: { in: projectIds } },
             { projectId: null }
           ]
         };
+      } else {
+        projectTaskFilter = { id: '__unmatched_project_task__' };
       }
     }
 
@@ -147,16 +195,30 @@ export async function POST(req) {
       if (!name || !name.trim()) return NextResponse.json({ error: 'Task name is required' }, { status: 400 });
 
       let finalLibraryId = libraryId;
+      const group = await prisma.taskLibraryGroup.findUnique({ where: { id: groupId }, select: { libraryId: true } });
+      if (!group) return NextResponse.json({ error: 'Parent group not found' }, { status: 404 });
       if (!finalLibraryId) {
-        const group = await prisma.taskLibraryGroup.findUnique({ where: { id: groupId } });
-        if (!group) return NextResponse.json({ error: 'Parent group not found' }, { status: 404 });
         finalLibraryId = group.libraryId;
+      }
+      if (finalLibraryId !== group.libraryId) {
+        return NextResponse.json({ error: 'Selected task group does not belong to the selected library.' }, { status: 400 });
+      }
+
+      let finalProjectId = null;
+      if (projectId) {
+        const context = await resolveProjectLibraryContext(prisma, projectId, { ensureProjectMaster: true });
+        if (!context.projectMaster) return NextResponse.json({ error: 'Selected project could not be resolved.' }, { status: 400 });
+        if (context.library && context.library.id !== group.libraryId) {
+          return NextResponse.json({ error: `This project uses ${context.library.name}. Select that library before adding a project task.` }, { status: 400 });
+        }
+        finalProjectId = context.projectMaster.id;
       }
 
       const task = await prisma.taskLibraryItem.create({
         data: {
           groupId,
           libraryId: finalLibraryId,
+          projectId: finalProjectId,
           name: name.trim(),
           unit: unit ? unit.trim() : null,
           quantity: parseFloat(quantity) || 1,
@@ -251,13 +313,30 @@ export async function PUT(req) {
     }
 
     if (type === 'task') {
-      const { name, unit, quantity, description, groupId } = body;
+      const { name, unit, quantity, description, groupId, projectId } = body;
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (unit !== undefined) updateData.unit = unit ? unit.trim() : null;
       if (quantity !== undefined) updateData.quantity = parseFloat(quantity) || 1;
       if (description !== undefined) updateData.description = description ? description.trim() : null;
       if (groupId !== undefined) updateData.groupId = groupId;
+      if (projectId !== undefined) {
+        if (!projectId) {
+          updateData.projectId = null;
+        } else {
+          const context = await resolveProjectLibraryContext(prisma, projectId, { ensureProjectMaster: true });
+          if (!context.projectMaster) return NextResponse.json({ error: 'Selected project could not be resolved.' }, { status: 400 });
+          const task = await prisma.taskLibraryItem.findUnique({ where: { id }, select: { libraryId: true } });
+          const targetGroup = groupId
+            ? await prisma.taskLibraryGroup.findUnique({ where: { id: groupId }, select: { libraryId: true } })
+            : null;
+          const taskLibraryId = targetGroup?.libraryId || task?.libraryId;
+          if (context.library && context.library.id !== taskLibraryId) {
+            return NextResponse.json({ error: `This project uses ${context.library.name}. Move the task into that library before assigning the project.` }, { status: 400 });
+          }
+          updateData.projectId = context.projectMaster.id;
+        }
+      }
 
       const item = await prisma.taskLibraryItem.update({
         where: { id },

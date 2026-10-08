@@ -1,6 +1,8 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
+import { attachAuthSession } from '@/lib/authSession';
+import { writeSessionAudit } from '@/lib/serverAudit';
 
 export async function POST(request) {
   try {
@@ -20,7 +22,12 @@ export async function POST(request) {
     );
 
     if (directMatch) {
-      return NextResponse.json({ success: true, email: directMatch.email, name: 'Super Admin' });
+      // Demo/admin fallback credentials must still be able to establish a
+      // signed session while the database is offline. Audit is best-effort.
+      await writeSessionAudit(prisma, request, { type: 'admin', id: directMatch.email }, { module: 'AUTH', subModule: 'Admin Portal', action: 'LOGIN' }).catch(error => {
+        console.warn('Admin login audit skipped:', error.message);
+      });
+      return attachAuthSession(NextResponse.json({ success: true, email: directMatch.email, name: 'Super Admin' }), { type: 'admin', id: directMatch.email });
     }
 
     const admin = await prisma.admin.findFirst({
@@ -33,13 +40,14 @@ export async function POST(request) {
     });
 
     if (admin && admin.password === normalizedPassword) {
-      return NextResponse.json({
+      await writeSessionAudit(prisma, request, { type: 'admin', id: admin.id }, { module: 'AUTH', subModule: 'Admin Portal', action: 'LOGIN' });
+      return attachAuthSession(NextResponse.json({
         success: true,
         email: admin.email,
         name: admin.name,
         adminId: admin.adminId,
         department: admin.department
-      });
+      }), { type: 'admin', id: admin.id });
     }
 
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });

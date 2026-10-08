@@ -2,6 +2,22 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+function parsePayrollDate(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  // Parse day-first UI formats before Date's locale-dependent parser.
+  const match = text.match(/^(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{4})$/);
+  if (match) {
+    const [, day, monthPart, year] = match;
+    const month = /^\d+$/.test(monthPart)
+      ? Number(monthPart) - 1
+      : new Date(`${monthPart.slice(0, 3)} 1, 2000`).getMonth();
+    if (month >= 0 && month <= 11) return new Date(Number(year), month, Number(day));
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
@@ -42,7 +58,48 @@ export async function GET(request, { params }) {
       }
     });
 
-    return NextResponse.json({ record, bonusIncentives });
+    const revisions = await prisma.salaryRevision.findMany({
+      where: { employeeId: record.employeeId },
+      include: {
+        components: {
+          include: {
+            salaryHead: { include: { headType: true } }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    const cycleEnd = parsePayrollDate(record.payCycle?.endDate);
+    const applicableRevision = revisions
+      .filter(revision => {
+        const effectiveFrom = parsePayrollDate(revision.effectiveFrom);
+        return !cycleEnd || !effectiveFrom || effectiveFrom <= cycleEnd;
+      })
+      .sort((a, b) => {
+        const dateA = parsePayrollDate(a.effectiveFrom)?.getTime() ?? 0;
+        const dateB = parsePayrollDate(b.effectiveFrom)?.getTime() ?? 0;
+        return dateB - dateA || b.createdAt.getTime() - a.createdAt.getTime();
+      })[0] || revisions[0];
+    const periodDays = (record.workingDays || 0) + (record.absentDays || 0);
+    const prorationFactor = periodDays > 0 ? (record.workingDays || 0) / periodDays : 0;
+    const salaryBreakdown = { earnings: [], deductions: [] };
+    for (const component of applicableRevision?.components || []) {
+      const type = String(component.salaryHead?.headType?.name || '').trim().toLowerCase();
+      const name = String(component.salaryHead?.description || '').trim();
+      const normalizedName = name.toLowerCase();
+      const amount = Number(component.amount) || 0;
+      if (type === 'earning' && !['employer pf', 'employer provident fund'].includes(normalizedName)) {
+        salaryBreakdown.earnings.push({
+          id: component.salaryHeadId,
+          name,
+          amount: Math.round(amount * prorationFactor * 100) / 100
+        });
+      } else if (type === 'deduction') {
+        salaryBreakdown.deductions.push({ id: component.salaryHeadId, name, amount: Math.round(amount * 100) / 100 });
+      }
+    }
+
+    return NextResponse.json({ record, bonusIncentives, salaryBreakdown });
   } catch (error) {
     console.error('Error fetching payroll record:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

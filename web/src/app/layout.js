@@ -1,6 +1,8 @@
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import GlobalAlert from "../components/GlobalAlert";
+import { PermissionsProvider } from "../context/PermissionsContext";
+import ModuleAccessTracker from "../components/ModuleAccessTracker";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,8 +32,11 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col" style={{ fontFamily: 'var(--font-inter), Inter, system-ui, sans-serif' }}>
-        <GlobalAlert />
-        {children}
+        <PermissionsProvider>
+          <GlobalAlert />
+          <ModuleAccessTracker />
+          {children}
+        </PermissionsProvider>
       </body>
     </html>
   );

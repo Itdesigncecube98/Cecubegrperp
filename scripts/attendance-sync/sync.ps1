@@ -1,0 +1,176 @@
+# Read eTimeTrackLite device logs from the HR PC and send them to the dashboard.
+# Set ATTENDANCE_API_KEY in the Windows environment before running this script.
+# Dry run: powershell -NoProfile -ExecutionPolicy Bypass -File .\sync.ps1 -DryRun
+
+param(
+    [switch]$DryRun,
+    [string]$Endpoint = "https://cecubeerp.duckdns.org/api/attendance/ingest",
+    [string]$SqlServer = ".\SQLEXPRESS",
+    [string]$Database = "etimetracklite1",
+    [int]$LookbackHours = 48,
+    [int]$BackfillDays = 0,
+    [string]$CheckpointFile = "C:\ett-sync\last-successful-punch.txt",
+    [int]$CheckpointOverlapMinutes = 10,
+    [string]$LocationName = "",
+    [int]$BatchSize = 500,
+    [string]$LogFile = "C:\ett-sync\sync.log"
+)
+
+$ErrorActionPreference = "Stop"
+$ApiKey = $env:ATTENDANCE_API_KEY
+
+function Write-Log([string]$Message) {
+    $directory = Split-Path -Parent $LogFile
+    if ($directory -and -not (Test-Path -LiteralPath $directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+    $line = "{0}  {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message
+    Add-Content -LiteralPath $LogFile -Value $line
+    Write-Host $line
+}
+
+function Val($Value) {
+    if ($null -eq $Value -or $Value -is [DBNull]) { return $null }
+    return [string]$Value
+}
+
+try {
+    if (-not $DryRun -and -not $ApiKey) { throw "Set the ATTENDANCE_API_KEY environment variable before running the sync." }
+    if ($BatchSize -lt 1 -or $BatchSize -gt 2000) { throw "BatchSize must be between 1 and 2000." }
+    if ($BackfillDays -lt 0 -or $BackfillDays -gt 730) { throw "BackfillDays must be between 1 and 730 when provided." }
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+    $now = Get-Date
+    $since = $now.AddHours(-$LookbackHours)
+    if ($BackfillDays -gt 0) {
+        # One-time historical replay. Ignore the checkpoint so all device
+        # partitions in the requested date range are read and reprocessed.
+        $since = $now.Date.AddDays(-$BackfillDays)
+    } else {
+        if (Test-Path -LiteralPath $CheckpointFile) {
+            $checkpointText = (Get-Content -LiteralPath $CheckpointFile -Raw).Trim()
+            if ($checkpointText) {
+                $checkpoint = [DateTimeOffset]::Parse($checkpointText, [Globalization.CultureInfo]::InvariantCulture)
+                $since = $checkpoint.ToLocalTime().DateTime.AddMinutes(-[Math]::Max(0, $CheckpointOverlapMinutes))
+            }
+        }
+        # Re-read yesterday and today even when the checkpoint is later in the day.
+        # This recovers morning punches after a temporary dashboard/network outage,
+        # so an evening exit cannot become the first punch (and be shown as IN).
+        $dailyReplaySince = $now.Date.AddDays(-1)
+        if ($since -gt $dailyReplaySince) { $since = $dailyReplaySince }
+    }
+
+    # DeviceLogs tables are partitioned by month. Include every partition
+    # crossed by an outage so downtime across a month boundary is recovered.
+    $tables = New-Object System.Collections.ArrayList
+    $monthCursor = Get-Date -Year $since.Year -Month $since.Month -Day 1 -Hour 0 -Minute 0 -Second 0
+    $lastMonth = Get-Date -Year $now.Year -Month $now.Month -Day 1 -Hour 0 -Minute 0 -Second 0
+    while ($monthCursor -le $lastMonth) {
+        [void]$tables.Add(("DeviceLogs_{0}_{1}" -f $monthCursor.Month, $monthCursor.Year))
+        $monthCursor = $monthCursor.AddMonths(1)
+    }
+    if ([string]::IsNullOrWhiteSpace($env:SQL_USER) -or [string]::IsNullOrWhiteSpace($env:SQL_PASSWORD)) { throw "Set SQL_USER and SQL_PASSWORD environment variables before running the sync." }
+    $securePassword = ConvertTo-SecureString $env:SQL_PASSWORD -AsPlainText -Force
+    $securePassword.MakeReadOnly()
+    $sqlCredential = New-Object System.Data.SqlClient.SqlCredential($env:SQL_USER, $securePassword)
+    $connection = New-Object System.Data.SqlClient.SqlConnection("Server=$SqlServer;Database=$Database;TrustServerCertificate=True;Connect Timeout=15", $sqlCredential)
+    $connection.Open()
+    $punches = New-Object System.Collections.ArrayList
+
+    foreach ($table in $tables) {
+        $check = $connection.CreateCommand()
+        $check.CommandText = "SELECT COUNT(*) FROM sys.tables WHERE name = @name"
+        [void]$check.Parameters.AddWithValue("@name", $table)
+        if ([int]$check.ExecuteScalar() -eq 0) { continue }
+
+        $command = $connection.CreateCommand()
+        $command.CommandText = @"
+SELECT l.DeviceLogId, l.DeviceId, l.UserId, l.LogDate, l.AttDirection,
+       e.EmployeeName, e.EmployeeCode, e.Designation, e.Location
+FROM [$table] AS l
+OUTER APPLY (
+    SELECT TOP 1 EmployeeName, EmployeeCode, Designation, Location
+    FROM Employees
+    WHERE CAST(EmployeeCodeInDevice AS nvarchar(50)) = CAST(l.UserId AS nvarchar(50))
+      AND RecordStatus = 1
+    ORDER BY EmployeeId DESC
+) AS e
+WHERE l.LogDate >= @since
+ORDER BY l.LogDate
+"@
+        [void]$command.Parameters.AddWithValue("@since", $since)
+        $reader = $command.ExecuteReader()
+        try {
+            while ($reader.Read()) {
+                $punchTime = ([datetime]$reader["LogDate"]).ToString("yyyy-MM-dd'T'HH:mm:ss") + "+05:30"
+                $userId = Val $reader["UserId"]
+                $employeeCode = Val $reader["EmployeeCode"]
+                $employeeLocation = Val $reader["Location"]
+                if ($employeeLocation -match '^H\.O\.?$') { $employeeLocation = "Head Office" }
+                if ([string]::IsNullOrWhiteSpace($employeeLocation) -and -not [string]::IsNullOrWhiteSpace($LocationName)) {
+                    $employeeLocation = $LocationName
+                }
+                switch ($userId) {
+                    '54'      { $employeeCode = 'CEIPL054'; break }
+                    '131'     { $employeeCode = 'CEIPL131'; break }
+                    '9900020' { $employeeCode = 'CGEPL020'; break }
+                }
+                [void]$punches.Add([pscustomobject]@{
+                    deviceLogId  = [int]$reader["DeviceLogId"]
+                    deviceId     = Val $reader["DeviceId"]
+                    userId       = $userId
+                    employeeCode = $employeeCode
+                    employeeName = Val $reader["EmployeeName"]
+                    designation  = Val $reader["Designation"]
+                    direction    = Val $reader["AttDirection"]
+                    punchTime    = $punchTime
+                })
+            }
+        } finally {
+            $reader.Close()
+            $command.Dispose()
+            $check.Dispose()
+        }
+    }
+    $connection.Close()
+
+    Write-Log ("Found {0} punches since {1}" -f $punches.Count, $since.ToString("yyyy-MM-dd HH:mm"))
+    if ($DryRun) {
+        @($punches | Select-Object -First 3) | ConvertTo-Json -Depth 4
+        Write-Log "Dry run only; no punches were sent."
+        return
+    }
+    if ($punches.Count -eq 0) { return }
+
+    for ($start = 0; $start -lt $punches.Count; $start += $BatchSize) {
+        $end = [Math]::Min($start + $BatchSize, $punches.Count) - 1
+        $chunk = @($punches[$start..$end])
+        $json = @{ source = "etimetracklite"; punches = $chunk } | ConvertTo-Json -Depth 5 -Compress
+        $response = Invoke-RestMethod -Uri $Endpoint -Method Post `
+            -Headers @{ "x-api-key" = $ApiKey } `
+            -ContentType "application/json; charset=utf-8" `
+            -Body ([Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 60
+        Write-Log ("Sent {0} punches; server replied: {1}" -f $chunk.Count, ($response | ConvertTo-Json -Compress))
+    }
+
+    # Advance only after every API batch succeeded. If the dashboard is down,
+    # the checkpoint stays put and the next scheduled run retries the backlog.
+    $latestPunchTime = $punches | ForEach-Object { [DateTimeOffset]::Parse($_.punchTime) } | Sort-Object -Descending | Select-Object -First 1
+    if ($latestPunchTime) {
+        $checkpointDirectory = Split-Path -Parent $CheckpointFile
+        if ($checkpointDirectory -and -not (Test-Path -LiteralPath $checkpointDirectory)) {
+            New-Item -ItemType Directory -Path $checkpointDirectory -Force | Out-Null
+        }
+        $checkpointTempFile = "$CheckpointFile.tmp"
+        Set-Content -LiteralPath $checkpointTempFile -Value $latestPunchTime.ToUniversalTime().ToString("O") -Encoding ASCII
+        Move-Item -LiteralPath $checkpointTempFile -Destination $CheckpointFile -Force
+        Write-Log ("Checkpoint advanced to {0}" -f $latestPunchTime.ToString("yyyy-MM-dd HH:mm:ss zzz"))
+    }
+} catch {
+    Write-Log ("ERROR: " + $_.Exception.Message)
+    exit 1
+} finally {
+    if ($connection -and $connection.State -ne [System.Data.ConnectionState]::Closed) { $connection.Close() }
+}
+

@@ -208,7 +208,7 @@ export default function Employees() {
         setDialogConfig(prev => ({ ...prev, isOpen: false }));
         setSendingBulk(true);
         let successCount = 0;
-        const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.81:8080';
+        const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubeerp.duckdns.org';
         
         for (const emp of filteredByCompany) {
           if (!emp.email) continue;
@@ -322,7 +322,7 @@ export default function Employees() {
       return;
     }
     try {
-      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.81:8080';
+      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubeerp.duckdns.org';
       const res = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -406,6 +406,7 @@ export default function Employees() {
           </button>
         </div>
       </div>
+
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: '1rem' }}>
         {/* Organisation Tabs */}

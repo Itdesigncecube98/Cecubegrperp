@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 export default function NewDPR() {
   const router = useRouter();
   const [projects, setProjects] = useState([]);
+  const [projectsError, setProjectsError] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -27,8 +28,14 @@ export default function NewDPR() {
 
   useEffect(() => {
     async function loadProjects() {
-      const res = await fetch('/api/engineering/projects');
-      if (res.ok) setProjects(await res.json());
+      try {
+        const res = await fetch('/api/projects', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Unable to load your permitted projects.');
+        setProjects(Array.isArray(data) ? data : []);
+      } catch (error) {
+        setProjectsError(error.message || 'Unable to load your permitted projects.');
+      }
     }
     loadProjects();
   }, []);
@@ -111,8 +118,10 @@ export default function NewDPR() {
               style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
             >
               <option value="">-- Select Project --</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.projectId} - {p.name}</option>)}
+              {projects.map(p => <option key={p.id} value={p.id}>{p.projectId || p.id} - {p.name}</option>)}
             </select>
+            {projectsError && <p style={{ color: '#b91c1c', fontSize: '13px', margin: '6px 0 0' }}>{projectsError}</p>}
+            {!projectsError && projects.length === 0 && <p style={{ color: '#64748b', fontSize: '13px', margin: '6px 0 0' }}>No projects have been assigned to your account.</p>}
           </div>
 
           <div>

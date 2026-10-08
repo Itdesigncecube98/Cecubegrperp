@@ -30,6 +30,11 @@
   border-radius: 12px;
   margin-bottom: 24px;
   overflow-x: auto;
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.imprest-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab-button {

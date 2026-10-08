@@ -32,8 +32,10 @@ export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollaps
     setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const confirmLogout = () => {
-    sessionStorage.removeItem('isAdmin');
+  const confirmLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    sessionStorage.clear();
+    for (const key of ['employeeData', 'activeEmp', 'activeProj']) localStorage.removeItem(key);
     router.push('/login');
   };
 
@@ -53,6 +55,14 @@ export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollaps
       items: [
         { name: 'Tender Register', path: '/tender/register' },
         { name: 'New Tender', path: '/tender/create' },
+      ]
+    },
+    {
+      id: 'master',
+      label: 'Masters',
+      icon: Settings,
+      items: [
+        { name: 'Tender Master', path: '/tender/master' },
       ]
     }
   ];

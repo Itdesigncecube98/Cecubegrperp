@@ -4,6 +4,7 @@ import MarketingSidebar from '../../components/MarketingSidebar';
 import TopHeader from '../../components/TopHeader';
 import './layout.css';
 import './marketing.css';
+import ProjectRoutePermissionGate from '@/components/ProjectRoutePermissionGate';
 
 export default function MarketingLayout({ children }) {
   const [isCollapsed, setIsCollapsed] = React.useState(false);
@@ -16,7 +17,7 @@ export default function MarketingLayout({ children }) {
           <TopHeader title="Marketing Dashboard" />
         </div>
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', minWidth: 0 }} className="custom-horizontal-scrollbar">
-          {children}
+          <ProjectRoutePermissionGate>{children}</ProjectRoutePermissionGate>
         </div>
       </div>
     </div>

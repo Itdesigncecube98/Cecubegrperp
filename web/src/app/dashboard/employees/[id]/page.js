@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect, useMemo, useCallback, use, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, User, Eye, EyeOff, CalendarCheck, Plus, Edit2, Trash2, X, PanelLeft, PanelLeftClose, ChevronLeft } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { ArrowLeft, Save, User, Eye, EyeOff, CalendarCheck, Plus, Edit2, Trash2, X, PanelLeft, PanelLeftClose, ChevronLeft, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { createWorker } from 'tesseract.js';
 
@@ -19,6 +19,80 @@ const TABS = [
   { key: 'offdays', label: 'Off Days' },
   { key: 'salary', label: 'Salary Info' }
 ];
+
+const EMPLOYEE_EXCEL_FIELDS = {
+  empId: ['emp code', 'employee code', 'emp id', 'employee id', 'employee no', 'emp no'],
+  name: ['emp name', 'employee name', 'full name', 'name'],
+  title: ['title', 'salutation'],
+  email: ['company email', 'official email', 'email address', 'email id', 'email'],
+  otherEmail: ['personal email', 'other email'],
+  phone: ['personal phone', 'mobile no', 'mobile number', 'mobile', 'phone number', 'phone'],
+  workTelephone: ['work telephone', 'office phone', 'telephone'],
+  organisation: ['company', 'company name', 'organisation', 'organization'],
+  department: ['department', 'dept'],
+  designation: ['designation'],
+  position: ['position', 'job title'],
+  branch: ['branch'],
+  siteOffice: ['site office', 'office location', 'work location', 'location'],
+  employeeType: ['employment type', 'employee type', 'employment category'],
+  employmentStatus: ['employment status', 'employee status', 'status'],
+  gender: ['gender', 'sex'],
+  maritalStatus: ['marital status'],
+  dateOfBirth: ['date of birth', 'dob', 'birth date'],
+  joinedDate: ['date of joining', 'joining date', 'joined date'],
+  employmentToDate: ['employment to date', 'last working date', 'relieving date', 'termination date'],
+  fatherName: ['father name', "father's name"],
+  nationality: ['nationality'],
+  bloodGroup: ['blood group'],
+  address: ['address', 'permanent address'],
+  addressStreet1: ['communication address', 'street address', 'address line 1'],
+  city: ['city'],
+  state: ['state'],
+  country: ['country'],
+  zipCode: ['zip code', 'postal code', 'pincode', 'pin code'],
+  pan: ['pan', 'pan number', 'pan no', 'pan paye'],
+  aadharNo: ['aadhaar', 'aadhaar no', 'aadhar', 'aadhar no'],
+  uan: ['uan', 'uan no'],
+  esicNo: ['esic', 'esic no', 'esic number'],
+  passportNo: ['passport', 'passport no', 'passport number'],
+  bankName: ['bank name'],
+  bankAccountNo: ['bank account no', 'bank account number', 'account number'],
+  ifscCode: ['ifsc code', 'ifsc'],
+  identificationMark: ['identification mark'],
+  chargeType: ['charge type'],
+  grade: ['grade'],
+  annualCtc: ['annual ctc'],
+  basicSalary: ['basic salary'],
+  hra: ['hra'],
+  conveyance: ['conveyance'],
+  medical: ['medical'],
+  specialAllowance: ['special allowance'],
+  bonus: ['bonus'],
+  deductions: ['deductions'],
+  pfEmployee: ['pf employee'],
+  pfEmployer: ['pf employer'],
+  professionalTax: ['professional tax'],
+  tds: ['tds', 'tds income tax'],
+};
+
+const normalizeExcelHeader = (value) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const EMPLOYEE_EXCEL_FIELD_BY_HEADER = Object.entries(EMPLOYEE_EXCEL_FIELDS).reduce((lookup, [field, aliases]) => {
+  aliases.forEach(alias => { lookup[normalizeExcelHeader(alias)] = field; });
+  return lookup;
+}, {});
+
+function normalizeExcelDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const iso = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+  const local = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (local) return `${local[3]}-${local[2].padStart(2, '0')}-${local[1].padStart(2, '0')}`;
+  return text;
+}
 
 const calculateRevisionCtc = (revision) => {
   if (!revision?.components?.length) return null;
@@ -38,17 +112,11 @@ const calculateRevisionCtc = (revision) => {
     : null;
 };
 
-const getOrganizationCode = (organization) => {
-  const name = String(organization || '').trim().toLowerCase();
-  if (name.includes('green energy')) return { prefix: 'CGEPL', width: 2 };
-  if (name.includes('cecube') && name.includes('engineering')) return { prefix: 'CEIPL', width: 3 };
-  return null;
-};
-
-export default function EmployeeProfilePage({ params }) {
+export default function EmployeeProfilePage({ initialId }) {
   const router = useRouter();
-  const { id } = use(params);
-  const [activeTab, setActiveTab] = useState('basic');
+  const routeParams = useParams();
+  const id = initialId || routeParams?.id;
+  const [activeTab, setActiveTab] = useState(id === 'new' ? 'contact' : 'basic');
   const [showSidebar, setShowSidebar] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [employee, setEmployee] = useState(null);
@@ -58,12 +126,20 @@ export default function EmployeeProfilePage({ params }) {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [form, setForm] = useState({});
+  const savedFormSnapshotRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [ocrStatus, setOcrStatus] = useState('');
   const [departments, setDepartments] = useState([]);
   const [branches, setBranches] = useState([]);
   const [siteOffices, setSiteOffices] = useState([]);
   const [organizations, setOrganizations] = useState([]);
+  const [generatedEmpCode, setGeneratedEmpCode] = useState('');
+  const [excelImportRows, setExcelImportRows] = useState([]);
+  const [selectedExcelRow, setSelectedExcelRow] = useState('');
+  const [excelImportStatus, setExcelImportStatus] = useState('');
+  const excelFileInputRef = useRef(null);
+  const excelImportBaseFormRef = useRef(null);
+  const excelImportedFieldsRef = useRef([]);
   const [grades, setGrades] = useState([]);
   const [designations, setDesignations] = useState([]);
   const [showAddSalaryModal, setShowAddSalaryModal] = useState(false);
@@ -151,7 +227,9 @@ export default function EmployeeProfilePage({ params }) {
       const headsData = await headsRes.json();
       if (Array.isArray(headsData)) setSalaryHeads(headsData.map(h => ({ ...h, category: h.headType?.name || 'Other' })));
 
-      const reasonsData = await leavingReasonsRes.json();
+      const reasonsData = leavingReasonsRes.ok
+        ? await leavingReasonsRes.json().catch(() => [])
+        : [];
       if (Array.isArray(reasonsData)) setLeavingReasons(reasonsData.filter(r => r.isActive));
 
       const relData = await relationshipsRes.json();
@@ -241,9 +319,144 @@ export default function EmployeeProfilePage({ params }) {
     return () => clearTimeout(timeoutId);
   }, [router, fetchData]);
 
+  useEffect(() => {
+    if (id !== 'new' || !form.organisation) {
+      setGeneratedEmpCode('');
+      return;
+    }
+    let active = true;
+    fetch(`/api/employees?nextEmployeeCode=${encodeURIComponent(form.organisation)}`)
+      .then(response => response.ok ? response.json() : null)
+      .then(data => { if (active) setGeneratedEmpCode(data?.employeeCode || ''); })
+      .catch(() => { if (active) setGeneratedEmpCode(''); });
+    return () => { active = false; };
+  }, [id, form.organisation]);
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const applyExcelEmployeeRow = (rowIndex, rows = excelImportRows) => {
+    const importedRow = rows[rowIndex];
+    if (!importedRow) return;
+    const baseForm = excelImportBaseFormRef.current || {};
+    const previouslyImportedFields = [...excelImportedFieldsRef.current];
+    const nextImportedFields = Object.keys(importedRow.values);
+    setForm(previous => {
+      const next = { ...previous };
+      previouslyImportedFields.forEach(field => {
+        next[field] = baseForm[field] ?? '';
+      });
+      Object.assign(next, importedRow.values);
+      return next;
+    });
+    excelImportedFieldsRef.current = nextImportedFields;
+    setEmployee(previous => ({ ...(previous || {}), ...importedRow.values }));
+    setSelectedExcelRow(String(rowIndex));
+    setActiveTab('basic');
+    setExcelImportStatus(`Filled ${Object.keys(importedRow.values).length} fields from ${importedRow.values.name || importedRow.values.empId || `Excel row ${importedRow.rowNumber}`}. Review the form and save when ready.`);
+    showToast('Employee form filled from Excel. Review and save when ready.');
+  };
+
+  const handleEmployeeExcelImport = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Excel file must be 10 MB or smaller.', 'error');
+      return;
+    }
+
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) throw new Error('The workbook has no worksheets.');
+      const sheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', raw: false });
+      const fieldValueHeaderIndex = sheetRows.slice(0, 50).findIndex(row => {
+        const headers = row.map(normalizeExcelHeader);
+        return headers.includes('field') && headers.includes('value');
+      });
+      const dateFields = new Set(['dateOfBirth', 'joinedDate', 'employmentToDate']);
+      const normalizeImportedValue = (field, cellValue) => {
+        if (cellValue === null || cellValue === undefined || String(cellValue).trim() === '') return '';
+        let value = dateFields.has(field) ? normalizeExcelDate(cellValue) : String(cellValue).trim();
+        if (field === 'siteOffice' && /^h\.o\.?$/i.test(value)) value = 'Head Office';
+        return value;
+      };
+      let importedRows = [];
+
+      if (fieldValueHeaderIndex >= 0) {
+        const keyValueHeaders = sheetRows[fieldValueHeaderIndex].map(normalizeExcelHeader);
+        const fieldColumn = keyValueHeaders.indexOf('field');
+        const valueColumn = keyValueHeaders.indexOf('value');
+        const values = {};
+        sheetRows.slice(fieldValueHeaderIndex + 1).forEach(cells => {
+          const field = EMPLOYEE_EXCEL_FIELD_BY_HEADER[normalizeExcelHeader(cells[fieldColumn])];
+          const value = normalizeImportedValue(field, cells[valueColumn]);
+          if (field && value && values[field] === undefined) values[field] = value;
+        });
+        if (values.name || values.empId) importedRows = [{ values, rowNumber: fieldValueHeaderIndex + 2 }];
+      } else {
+        const headerRowIndex = sheetRows.slice(0, 50).findIndex(row => {
+          const detectedFields = row.map(cell => EMPLOYEE_EXCEL_FIELD_BY_HEADER[normalizeExcelHeader(cell)]).filter(Boolean);
+          return detectedFields.includes('name') || detectedFields.includes('empId');
+        });
+        if (headerRowIndex < 0) {
+          throw new Error('Could not find employee name or employee code headers in the first worksheet.');
+        }
+        const headers = sheetRows[headerRowIndex];
+        const columnFields = headers.map(header => EMPLOYEE_EXCEL_FIELD_BY_HEADER[normalizeExcelHeader(header)] || null);
+        importedRows = sheetRows.slice(headerRowIndex + 1).map((cells, index) => {
+          const values = {};
+          columnFields.forEach((field, columnIndex) => {
+            if (!field || values[field] !== undefined) return;
+            const value = normalizeImportedValue(field, cells[columnIndex]);
+            if (value) values[field] = value;
+          });
+          return Object.keys(values).length && (values.name || values.empId)
+            ? { values, rowNumber: headerRowIndex + index + 2 }
+            : null;
+        }).filter(Boolean);
+      }
+
+      if (!importedRows.length) throw new Error('No employee rows were found below the header row.');
+      const baseForm = { ...form };
+      excelImportedFieldsRef.current.forEach(field => {
+        baseForm[field] = excelImportBaseFormRef.current?.[field] ?? '';
+      });
+      excelImportBaseFormRef.current = baseForm;
+      excelImportedFieldsRef.current = [];
+      setExcelImportRows(importedRows);
+      setSelectedExcelRow('');
+      if (importedRows.length === 1) {
+        applyExcelEmployeeRow(0, importedRows);
+      } else {
+        setExcelImportStatus(`${importedRows.length} employees found in ${file.name}. Choose a row to fill the form.`);
+        showToast(`${importedRows.length} employees found. Choose one to fill the form.`);
+      }
+    } catch (error) {
+      setExcelImportRows([]);
+      setSelectedExcelRow('');
+      setExcelImportStatus('');
+      showToast(error.message || 'Could not read the Excel file.', 'error');
+    }
+  };
+
+  const hasCompanyEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.email || '').trim());
+  const hasPortalPassword = Boolean(String(form.password || '').trim());
+  const handleSectionSelect = (section) => {
+    if (id === 'new' && section !== 'contact' && !hasCompanyEmail) {
+      setActiveTab('contact');
+      showToast('Enter the company email in Contact Details first. It will be the employee app login ID.', 'error');
+      return;
+    }
+    if (id === 'new' && section !== 'contact' && !hasPortalPassword) {
+      setActiveTab('contact');
+      showToast('Set the portal login password in Contact Details before filling the employee profile.', 'error');
+      return;
+    }
+    setActiveTab(section);
   };
 
   const readFileAsDataUrl = (file) =>
@@ -534,8 +747,25 @@ export default function EmployeeProfilePage({ params }) {
   }, [form.empId, allEmployees, employee?.id, id]);
 
   const isEmpCodeDuplicate = Boolean(duplicateEmpCodeOwner);
+  const currentFormSnapshot = JSON.stringify(form);
+  const hasUnsavedChanges = savedFormSnapshotRef.current !== currentFormSnapshot;
 
   const handleSave = async () => {
+    if (id === 'new' && !String(form.organisation || '').trim()) {
+      setActiveTab('contact');
+      showToast('Select an organisation first so the employee code can be generated.', 'error');
+      return;
+    }
+    if (!hasCompanyEmail) {
+      setActiveTab('contact');
+      showToast('Enter a valid company email in Contact Details before saving. This email is the employee app login ID.', 'error');
+      return;
+    }
+    if (!hasPortalPassword) {
+      setActiveTab('contact');
+      showToast('Enter a portal login password in Contact Details before saving.', 'error');
+      return;
+    }
     if (isEmpCodeDuplicate) {
       showToast(`Employee Code "${(form.empId || '').trim()}" is already assigned to ${duplicateEmpCodeOwner.name}. Employee Code cannot be duplicated.`, 'error');
       return;
@@ -560,6 +790,7 @@ export default function EmployeeProfilePage({ params }) {
       const data = await res.json();
       if (data.id) {
         setEmployee(data);
+        savedFormSnapshotRef.current = currentFormSnapshot;
         showToast(id === 'new' ? 'Employee added successfully!' : 'Profile updated successfully!');
         if (id === 'new') {
           setTimeout(() => router.push(`/dashboard/employees/${data.id}`), 1000);
@@ -772,7 +1003,7 @@ export default function EmployeeProfilePage({ params }) {
 
   const handleSendLoginInstruction = async () => {
     try {
-      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://192.168.1.81:8080';
+      const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://cecubeerp.duckdns.org';
       const res = await fetch('/api/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -807,6 +1038,7 @@ export default function EmployeeProfilePage({ params }) {
       ['Department', employee.department || ''],
       ['Designation', employee.designation || ''],
       ['Branch', employee.branch || ''],
+      ['Site Office', employee.siteOffice || ''],
       ['Organization', employee.organisation || ''],
       ['Role', employee.role || ''],
       ['Employee Type', employee.employeeType || ''],
@@ -894,7 +1126,23 @@ export default function EmployeeProfilePage({ params }) {
             <span>{showSidebar ? 'Hide Sidebar' : 'Show Sidebar'}</span>
           </button>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={() => excelFileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
+            <FileSpreadsheet size={16} /> Auto Fill from Excel
+          </button>
+          <input ref={excelFileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleEmployeeExcelImport} style={{ display: 'none' }} />
+          {excelImportRows.length > 1 && (
+            <select value={selectedExcelRow} onChange={event => {
+              if (event.target.value !== '') applyExcelEmployeeRow(Number(event.target.value));
+            }} aria-label="Choose employee row from Excel" style={{ maxWidth: '220px', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white' }}>
+              <option value="">Choose employee row…</option>
+              {excelImportRows.map((row, index) => (
+                <option key={`${row.values.empId || row.values.name}-${row.rowNumber}`} value={index}>
+                  {[row.values.empId, row.values.name].filter(Boolean).join(' — ') || `Excel row ${row.rowNumber}`}
+                </option>
+              ))}
+            </select>
+          )}
           <button onClick={() => window.open(`/employee-card/${employee.id}`, '_blank')} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', background: 'none', border: '1px solid #d1d5db', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
             🪪 View Card
           </button>
@@ -906,11 +1154,16 @@ export default function EmployeeProfilePage({ params }) {
               Terminate
             </button>
           )}
-          <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 18px', background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
-            <Save size={18} /> {saving ? 'Saving...' : 'Save Changes'}
+          <button onClick={handleSave} disabled={saving || !hasUnsavedChanges} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 18px', background: hasUnsavedChanges ? '#007bff' : '#16a34a', color: 'white', border: 'none', borderRadius: '6px', cursor: saving || !hasUnsavedChanges ? 'default' : 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            <Save size={18} /> {saving ? 'Saving...' : hasUnsavedChanges ? 'Save Changes' : 'Changes Saved'}
           </button>
         </div>
       </div>
+      {excelImportStatus && (
+        <div role="status" style={{ maxWidth: '1200px', margin: '12px auto 0', padding: '10px 16px', borderRadius: '6px', background: '#eff6ff', color: '#1e40af', fontSize: '13px' }}>
+          {excelImportStatus}
+        </div>
+      )}
 
       {/* Header Card */}
       <div style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: '20px 24px' }}>
@@ -961,6 +1214,10 @@ export default function EmployeeProfilePage({ params }) {
                 { label: 'Department', value: employee.department || '—' },
                 { label: 'Site Office', value: employee.siteOffice || '—' },
                 { label: 'Organisation', value: employee.organisation || 'Cecube Engineering India Pvt Ltd' },
+                ...(employee.employmentStatus === 'Terminated' ? [
+                  { label: 'Termination Date', value: employee.terminationDate || employee.employmentToDate || '—' },
+                  { label: 'Termination Reason', value: employee.leavingReason?.name || '—' },
+                ] : []),
               ].map(({ label, value }) => (
                 <div key={label} style={{ fontSize: '12px' }}>
                   <div style={{ color: '#9ca3af', marginBottom: '2px' }}>{label}</div>
@@ -1010,7 +1267,7 @@ export default function EmployeeProfilePage({ params }) {
                 <button
                   type="button"
                   key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => handleSectionSelect(tab.key)}
                   style={{
                     width: '100%',
                     padding: '14px 20px',
@@ -1066,7 +1323,7 @@ export default function EmployeeProfilePage({ params }) {
                 <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>Go to Section:</span>
                 <select 
                   value={activeTab} 
-                  onChange={(e) => setActiveTab(e.target.value)}
+                  onChange={(e) => handleSectionSelect(e.target.value)}
                   style={{
                     padding: '6px 12px',
                     borderRadius: '6px',
@@ -1122,14 +1379,15 @@ export default function EmployeeProfilePage({ params }) {
                       )}
                     </div>
                     <input 
-                      value={f('empId') || ''} 
-                      onChange={e => set('empId', e.target.value)} 
+                      value={id === 'new' ? generatedEmpCode : (f('empId') || '')} 
+                      onChange={e => set('empId', e.target.value)}
+                      readOnly={id === 'new'}
                       style={{
                         ...inputStyle,
                         borderColor: isEmpCodeDuplicate ? '#ef4444' : inputStyle.borderColor,
-                        backgroundColor: isEmpCodeDuplicate ? '#fef2f2' : (inputStyle.backgroundColor || 'white')
+                        backgroundColor: isEmpCodeDuplicate ? '#fef2f2' : (id === 'new' ? '#f8fafc' : (inputStyle.backgroundColor || 'white'))
                       }} 
-                      placeholder="e.g. CEIPL084"
+                      placeholder={id === 'new' ? 'Select an organisation to preview the next code' : 'e.g. CEIPL084'}
                     />
                   </div>
                 </div>
@@ -1293,21 +1551,6 @@ export default function EmployeeProfilePage({ params }) {
                     onChange={e => {
                       const organisation = e.target.value;
                       set('organisation', organisation);
-                      if (id === 'new') {
-                        const selectedOrg = organizations.find(org => org.name === organisation);
-                        const configuredCode = getOrganizationCode(organisation);
-                        const prefix = configuredCode?.prefix || selectedOrg?.code?.trim().toUpperCase();
-                        const codeWidth = configuredCode?.width || 3;
-                        if (prefix) {
-                          const usedNumbers = allEmployees
-                            .map(employee => {
-                              const match = (employee.empId || '').match(new RegExp(`^${prefix}(\\d+)$`, 'i'));
-                              return match ? Number(match[1]) : 0;
-                            });
-                          const nextNumber = Math.max(0, ...usedNumbers) + 1;
-                          set('empId', `${prefix}${String(nextNumber).padStart(codeWidth, '0')}`);
-                        }
-                      }
                     }} 
                     style={inputStyle}
                   >
@@ -1395,25 +1638,6 @@ export default function EmployeeProfilePage({ params }) {
                   <input type="date" value={f('confirmationDate') || ''} onChange={e => set('confirmationDate', e.target.value)} style={inputStyle} />
                 </div>
 
-                <div>
-                  <label style={labelSm}>Portal Login Password</label>
-                  <div style={{ position: 'relative' }}>
-                    <input 
-                      type={showPassword ? "text" : "password"} 
-                      value={f('password')} 
-                      onChange={e => set('password', e.target.value)} 
-                      placeholder="••••••••" 
-                      style={{ ...inputStyle, paddingRight: '40px' }} 
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
               </div>
               <div style={{ marginTop: '20px' }}>
                 <label style={labelSm}>Job Description</label>
@@ -1473,21 +1697,53 @@ export default function EmployeeProfilePage({ params }) {
           {activeTab === 'contact' && (
             <div>
               <h3 style={{ margin: '0 0 24px', fontSize: '18px', fontWeight: 600 }}>Contact Details</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div>
-                  <label style={labelSm}>COMPANY EMAIL ADDRESS</label>
-                  <input type="email" value={f('email')} onChange={e => set('email', e.target.value)} style={inputStyle} />
+              {id === 'new' && (
+                <div style={{ padding: '14px 16px', marginBottom: '20px', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e40af', fontSize: '13px', lineHeight: 1.5 }}>
+                  Select the employee organisation, then enter the company email and portal login password. The email becomes the employee app login ID, and the organisation determines the employee code generated when you save.
                 </div>
+              )}
+              {id === 'new' && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={labelSm}>ORGANISATION <span style={{ color: '#dc2626' }}>*</span></label>
+                  <select required value={f('organisation') || ''} onChange={e => set('organisation', e.target.value)} style={inputStyle}>
+                    <option value="">-- Select Organisation --</option>
+                    {organizations.map(org => <option key={org.id} value={org.name}>{org.name}{org.code ? ` (${org.code})` : ''}</option>)}
+                  </select>
+                  {f('organisation') && <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: '13px' }}>Next employee code: <strong>{generatedEmpCode || 'Calculating…'}</strong>. It follows the highest saved code for {f('organisation')}.</p>}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label style={labelSm}>COMPANY EMAIL ADDRESS {id === 'new' && <span style={{ color: '#dc2626' }}>*</span>}</label>
+                  <input autoFocus={id === 'new'} type="email" required={id === 'new'} value={f('email')} onChange={e => set('email', e.target.value)} style={inputStyle} placeholder="name@company.com" />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label style={labelSm}>PORTAL LOGIN PASSWORD {id === 'new' && <span style={{ color: '#dc2626' }}>*</span>}</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type={showPassword ? 'text' : 'password'} required={id === 'new'} value={f('password')} onChange={e => set('password', e.target.value)} placeholder="Set employee app password" style={{ ...inputStyle, paddingRight: '40px' }} />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {id === 'new' && !(hasCompanyEmail && hasPortalPassword) ? (
+                <p style={{ margin: '4px 0 16px', color: '#64748b', fontSize: '13px' }}>Complete both login fields above to unlock the rest of the employee profile.</p>
+              ) : (
+              <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div>
                   <label style={labelSm}>COMPANY MOBILE NUMBER</label>
                   <input type="text" value={f('workTelephone')} onChange={e => set('workTelephone', e.target.value)} style={inputStyle} />
                 </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div>
                   <label style={labelSm}>PERSONAL EMAIL ADDRESS</label>
                   <input type="email" value={f('otherEmail')} onChange={e => set('otherEmail', e.target.value)} style={inputStyle} />
                 </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div>
                   <label style={labelSm}>PERSONAL MOBILE NUMBER</label>
                   <input type="text" value={f('phone')} onChange={e => set('phone', e.target.value)} style={inputStyle} />
@@ -1515,6 +1771,8 @@ export default function EmployeeProfilePage({ params }) {
                 ))}
                 {(f('emergencyContacts') || []).length < 3 && <button type="button" onClick={() => set('emergencyContacts', [...(f('emergencyContacts') || []), { name: '', phone: '', relationship: '' }])} style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>+ Add Emergency Contact</button>}
               </div>
+              </>
+              )}
             </div>
           )}
 
@@ -2474,8 +2732,9 @@ export default function EmployeeProfilePage({ params }) {
                     const rev = salaryRevisions[activeRevisionIndex];
                     if (!rev) return null;
                     const earnings = rev.components.filter(c => c.salaryHead?.headType?.name === 'Earning').reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+                    const others = rev.components.filter(c => c.salaryHead?.headType?.name === 'Other').reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
                     const deductions = rev.components.filter(c => c.salaryHead?.headType?.name === 'Deduction').reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
-                    const net = earnings - deductions;
+                    const net = (earnings + others) - deductions;
                     return (
                       <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
                         <div style={{ background: 'linear-gradient(135deg,#7c3aed,#9333ea)', color: 'white', padding: '14px 32px', borderRadius: '10px', fontWeight: 700, fontSize: '16px', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
@@ -2590,10 +2849,22 @@ export default function EmployeeProfilePage({ params }) {
                               <input 
                                 type="number" 
                                 value={newRevisionForm.components[headObj.id] || ''} 
-                                onChange={(e) => setNewRevisionForm({
-                                  ...newRevisionForm, 
-                                  components: { ...newRevisionForm.components, [headObj.id]: e.target.value }
-                                })} 
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  let comps = { ...newRevisionForm.components, [headObj.id]: val };
+                                  
+                                  const earningTotal = salaryHeads.filter(h => h.category === 'Earning' && h.isActive).reduce((sum, h) => sum + (parseFloat(comps[h.id]) || 0), 0);
+                                  const otherTotal = salaryHeads.filter(h => h.category === 'Other' && h.isActive).reduce((sum, h) => sum + (parseFloat(comps[h.id]) || 0), 0);
+                                  const deductionTotal = salaryHeads.filter(h => h.category === 'Deduction' && h.isActive).reduce((sum, h) => sum + (parseFloat(comps[h.id]) || 0), 0);
+                                  
+                                  const grossHead = salaryHeads.find(h => h.category === 'CTC' && h.isActive && h.description.toLowerCase().includes('gross'));
+                                  const empPfHead = salaryHeads.find(h => h.category === 'CTC' && h.isActive && (h.description.toLowerCase().includes('employer pf') || h.description.toLowerCase() === 'pf'));
+                                  
+                                  if (grossHead) comps[grossHead.id] = (earningTotal + otherTotal).toString();
+                                  if (empPfHead) comps[empPfHead.id] = deductionTotal.toString();
+                                  
+                                  setNewRevisionForm({ ...newRevisionForm, components: comps });
+                                }}
                                 style={{ width: '100%', padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '13px', textAlign: 'right' }} 
                               />
                             </td>
@@ -2634,6 +2905,9 @@ export default function EmployeeProfilePage({ params }) {
                 <select value={terminateForm.reasonId} onChange={e => setTerminateForm({...terminateForm, reasonId: e.target.value})} style={inputStyle}>
                   <option value="">Select Reason</option>
                   {leavingReasons.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  {!leavingReasons.some(r => r.name.trim().toLowerCase() === 'employee deceased') && (
+                    <option value="__employee_deceased__">Employee Deceased</option>
+                  )}
                 </select>
               </div>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>

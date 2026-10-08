@@ -9,6 +9,8 @@ import {
   ChevronLeft, Sparkles, BarChart2, PhoneCall, Trophy, CheckCircle, Layers
 } from 'lucide-react';
 import Dialog from './Dialog';
+import { useUserPermissions, canSee } from '@/lib/permission';
+import { usePermissions } from '@/context/PermissionsContext';
 import './sidebar.css';
 
 export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsCollapsed: propSetIsCollapsed }) {
@@ -17,6 +19,8 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showWidget, setShowWidget] = useState(true);
+  const permissions = useUserPermissions();
+  const { activeEmployee, permissionsLoaded, hasRight } = usePermissions();
 
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
@@ -35,8 +39,10 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
     setExpanded(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const confirmLogout = () => {
-    sessionStorage.removeItem('isAdmin');
+  const confirmLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    sessionStorage.clear();
+    for (const key of ['employeeData', 'activeEmp', 'activeProj']) localStorage.removeItem(key);
     router.push('/login');
   };
 
@@ -46,8 +52,8 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       label: 'Dashboard',
       icon: BarChart2,
       items: [
-        { name: 'Marketing Dashboard', path: '/marketing/dashboard' },
-        { name: 'Analytics', path: '/marketing/analytics' },
+        { name: 'Marketing Dashboard', path: '/marketing/dashboard', permissionCode: 'MARKETING_DASHBOARD' },
+        { name: 'Analytics', path: '/marketing/analytics', permissionCode: 'MARKETING_ANALYTICS' },
       ]
     },
     {
@@ -55,7 +61,8 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       label: 'Leads',
       icon: Users,
       items: [
-        { name: 'Lead Register', path: '/marketing/leads' },
+        { name: 'Lead Register', path: '/marketing/leads', permissionCode: 'MARKETING_LEAD_REGISTER' },
+        { name: 'Project Enquiries', path: '/marketing/enquiries', projectScoped: true },
       ]
     },
     {
@@ -63,7 +70,7 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       label: 'Customers',
       icon: Building2,
       items: [
-        { name: 'Customer Master', path: '/marketing/clients' },
+        { name: 'Customer Master', path: '/marketing/clients', permissionCode: 'MARKETING_CUSTOMER_MASTER' },
       ]
     },
     {
@@ -71,7 +78,7 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       label: 'Opportunities',
       icon: Briefcase,
       items: [
-        { name: 'Opportunity Pipeline', path: '/marketing/opportunities' },
+        { name: 'Opportunity Pipeline', path: '/marketing/opportunities', permissionCode: 'MARKETING_OPP_PIPELINE' },
       ]
     },
     {
@@ -79,7 +86,7 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       label: 'Proposals',
       icon: FileText,
       items: [
-        { name: 'Tender & Proposal', path: '/marketing/proposals' },
+        { name: 'Tender & Proposal', path: '/marketing/proposals', permissionCode: 'MARKETING_TENDER_PROPOSAL' },
       ]
     },
     {
@@ -87,20 +94,26 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       label: 'Won / Lost',
       icon: Trophy,
       items: [
-        { name: 'Handover to Project', path: '/marketing/won-lost' },
+        { name: 'Handover to Project', path: '/marketing/won-lost', permissionCode: 'MARKETING_HANDOVER' },
       ]
     }
   ];
 
+  const visibleMenuConfig = useMemo(() => {
+    return menuConfig
+      .map(group => ({ ...group, items: group.items.filter(item => activeEmployee ? permissionsLoaded && hasRight(item.permissionCode) : canSee(item, permissions)) }))
+      .filter(group => group.items.length > 0);
+  }, [permissions, activeEmployee, permissionsLoaded, hasRight]);
+
   const allItems = useMemo(() => {
     const list = [];
-    menuConfig.forEach(group => {
+    visibleMenuConfig.forEach(group => {
       group.items.forEach(item => {
         list.push({ ...item, group: group.label, icon: group.icon });
       });
     });
     return list;
-  }, []);
+  }, [visibleMenuConfig]);
 
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return null;
@@ -183,7 +196,7 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {filteredItems.length === 0 ? (
               <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: '12px', color: '#64748b' }}>
-                No results for "{searchQuery}"
+                No results for &quot;{searchQuery}&quot;
               </div>
             ) : (
               filteredItems.map(item => {
@@ -206,10 +219,10 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
             )}
           </div>
         ) : (
-          menuConfig.map((section) => {
+          visibleMenuConfig.map((section) => {
             const Icon = section.icon;
             const isGroupOpen = expanded[section.id];
-            const hasActiveChild = section.items.some(item => pathname === item.path);
+            const hasActiveChild = section.items.some(item => pathname === item.path || pathname.startsWith(`${item.path}/`));
 
             return (
               <div key={section.id} style={{ marginTop: '2px' }}>

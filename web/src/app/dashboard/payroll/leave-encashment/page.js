@@ -33,7 +33,7 @@ export default function LeaveEncashment() {
         empList.forEach(emp => {
           let amountPerDay = 0;
           if (emp.grossSalary) {
-             amountPerDay = emp.grossSalary / 30;
+             amountPerDay = emp.grossSalary / 26;
           }
 
           initialEdits[emp.id] = {
@@ -94,7 +94,6 @@ export default function LeaveEncashment() {
         asOnDate,
         leaveType: edits[emp.id].leaveType,
         encashedDays: parseFloat(edits[emp.id].encashedDays),
-        amountPerDay: parseFloat(edits[emp.id].amountPerDay),
         message: edits[emp.id].message
       };
 
@@ -173,8 +172,7 @@ export default function LeaveEncashment() {
             ) : filteredEmployees.map((row, idx) => {
               const edit = edits[row.id] || { leaveType: 'Earned Leave', encashedDays: '', amountPerDay: '0', message: '' };
               const encDays = parseFloat(edit.encashedDays) || 0;
-              const amtPerDay = parseFloat(edit.amountPerDay) || 0;
-              const encAmount = (encDays * amtPerDay).toFixed(2);
+              const encAmount = ((Number(row.grossSalary) || 0) * encDays / 26).toFixed(2);
               
               let balance = 0;
               let maxInput = 0;
@@ -209,13 +207,7 @@ export default function LeaveEncashment() {
                   <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeaveQuota}</td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeavesTaken}</td>
                   <td style={{ padding: '8px', fontWeight: 600 }}>
-                    <select 
-                      value={edit.leaveType}
-                      onChange={e => handleEditChange(row.id, 'leaveType', e.target.value)}
-                      style={{ padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                    >
-                      <option value="Earned Leave">Earned Leave</option>
-                    </select>
+                    Earned Leave
                   </td>
                   <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#64748b' }}>{balance}</td>
                   <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#0ea5e9' }}>{maxInput}</td>
@@ -237,9 +229,10 @@ export default function LeaveEncashment() {
                     <input 
                       type="number" 
                       step="0.01"
-                      style={{ width: '100px', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', textAlign: 'right' }}
+                      readOnly
+                      title="Gross salary divided by 26 working days"
+                      style={{ width: '100px', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', textAlign: 'right', background: '#f8fafc', color: '#475569' }}
                       value={edit.amountPerDay}
-                      onChange={e => handleEditChange(row.id, 'amountPerDay', e.target.value)}
                     />
                   </td>
                   <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>₹{encAmount}</td>

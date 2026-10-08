@@ -15,7 +15,9 @@ function ledgerSection(name) {
 
 export async function GET(request) {
   try {
+    const requestedId = new URL(request.url).searchParams.get('id');
     try {
+    if (!requestedId) {
     const approvedSalaries = await prisma.payrollRecord.findMany({
         where: { status: 'APPROVED' },
         include: { employee: true, payCycle: true }
@@ -131,17 +133,26 @@ export async function GET(request) {
         });
       }, { timeout: 30000 });
     }
+    }
 
     } catch (syncError) {
       console.warn('Historical accounting sync skipped:', syncError.message);
     }
 
-    const ledgers = await prisma.accountsLedgerMaster.findMany({
+    const [ledgers, accountGroups] = await Promise.all([prisma.accountsLedgerMaster.findMany({
+      where: requestedId ? { id: requestedId } : undefined,
       include: {
-        group: true,
+        group: { include: { parent: true } },
         journalEntries: true
       }
-    });
+    }), prisma.accountsAccountGroup.findMany({ select: { id: true, name: true, parentId: true } })]);
+    const groupById = new Map(accountGroups.map(group => [group.id, group]));
+    const getGroupPath = groupId => {
+      const path = [];
+      let current = groupById.get(groupId);
+      while (current && path.length < 32) { path.unshift(current.name); current = current.parentId ? groupById.get(current.parentId) : null; }
+      return path;
+    };
 
     // Calculate dynamic balance based on journal entries
     const formattedLedgers = ledgers.map(ledger => {
@@ -161,8 +172,35 @@ export async function GET(request) {
         id: ledger.id,
         code: ledger.ledgerCode,
         name: ledger.name,
-        group: ledger.group?.name || 'Unknown',
-        subGroup: ledger.group?.type || 'Unknown',
+        groupId: ledger.groupId,
+        subGroupId: ledger.group?.parentId ? ledger.group.id : '',
+        group: ledger.group?.parent?.name || ledger.group?.name || 'Unknown',
+        subGroup: ledger.group?.parent ? ledger.group.name : '',
+        groupPath: getGroupPath(ledger.groupId),
+        company: ledger.company || '',
+        legalChequeName: ledger.legalChequeName || '',
+        branch: ledger.branch || '',
+        contactPerson: ledger.contactPerson || '',
+        address: ledger.address || '',
+        buildingNo: ledger.buildingNo || '', street: ledger.street || '', city: ledger.city || '',
+        district: ledger.district || '', state: ledger.state || '', country: ledger.country || '', pinCode: ledger.pinCode || '',
+        mobile: ledger.mobile || '',
+        phone: ledger.phone || '',
+        email: ledger.email || '',
+        gstin: ledger.gstin || '',
+        gstApplicable: ledger.gstApplicable,
+        pan: ledger.pan || '',
+        nature: ledger.nature || '', vatNo: ledger.vatNo || '', corporateIdNo: ledger.corporateIdNo || '',
+        panStatus: ledger.panStatus || '', panRefNo: ledger.panRefNo || '',
+        itDeclarationStatus: ledger.itDeclarationStatus || '', taxMasterCode: ledger.taxMasterCode || '',
+        msmeCategory: ledger.msmeCategory || '', msmeRegistrationNo: ledger.msmeRegistrationNo || '',
+        msmeType: ledger.msmeType || '', msmeActivity: ledger.msmeActivity || '',
+        acCategory1: ledger.acCategory1 || '', acCategory2: ledger.acCategory2 || '', acCategory3: ledger.acCategory3 || '',
+        interestRate: ledger.interestRate || 0, minBalance: ledger.minBalance || 0, remarks: ledger.remarks || '',
+        serviceTaxNo: ledger.serviceTaxNo || '', tinNo: ledger.tinNo || '', cstNo: ledger.cstNo || '', localBodyTaxNo: ledger.localBodyTaxNo || '',
+        bankDetails: ledger.bankDetails || [], additionalNames: ledger.additionalNames || [],
+        documents: requestedId ? (ledger.documents || []) : (ledger.documents || []).map(({ fileData, ...document }) => document),
+        openingBalance: ledger.openingBalance,
         type: 'Ledger',
         balance: currentBalance,
         balanceType: ledger.balanceType,
@@ -188,16 +226,66 @@ export async function POST(request) {
     if (!name) return NextResponse.json({ error: 'Account name is required' }, { status: 400 });
 
     const ledger = await prisma.$transaction(async (tx) => {
-      const group = await tx.accountsAccountGroup.upsert({
-        where: { name: groupName },
-        update: {},
-        create: { name: groupName, type: groupTypes[groupName] || 'Asset' }
-      });
+      let group;
+      if (body.subGroupId) {
+        group = await tx.accountsAccountGroup.findUnique({ where: { id: String(body.subGroupId) }, include: { parent: true } });
+        if (!group || !group.parent || (body.groupId && group.parentId !== String(body.groupId))) throw new Error('Choose a valid subgroup under the selected group.');
+      } else if (body.groupId) {
+        group = await tx.accountsAccountGroup.findUnique({ where: { id: String(body.groupId) } });
+        if (!group) throw new Error('Choose a valid group or subgroup.');
+      } else {
+        group = await tx.accountsAccountGroup.upsert({
+          where: { name: groupName }, update: {},
+          create: { name: groupName, type: groupTypes[groupName] || 'Asset' }
+        });
+      }
       const created = await tx.accountsLedgerMaster.create({
         data: {
           ledgerCode: body.code || `AUTO-${Date.now()}`,
           name,
           groupId: group.id,
+          company: String(body.company || '').trim() || null,
+          legalChequeName: String(body.legalChequeName || '').trim() || null,
+          branch: String(body.branch || '').trim() || null,
+          contactPerson: String(body.contactPerson || '').trim() || null,
+          address: String(body.address || '').trim() || null,
+          buildingNo: String(body.buildingNo || '').trim() || null,
+          street: String(body.street || '').trim() || null,
+          city: String(body.city || '').trim() || null,
+          district: String(body.district || '').trim() || null,
+          state: String(body.state || '').trim() || null,
+          country: String(body.country || '').trim() || null,
+          pinCode: String(body.pinCode || '').trim() || null,
+          mobile: String(body.mobile || '').trim() || null,
+          phone: String(body.phone || '').trim() || null,
+          email: String(body.email || '').trim() || null,
+          gstin: String(body.gstin || '').trim() || null,
+          gstApplicable: Boolean(body.gstApplicable || body.gstin),
+          pan: String(body.pan || '').trim() || null,
+          nature: String(body.nature || '').trim() || null,
+          vatNo: String(body.vatNo || '').trim() || null,
+          corporateIdNo: String(body.corporateIdNo || '').trim() || null,
+          panStatus: String(body.panStatus || '').trim() || null,
+          panRefNo: String(body.panRefNo || '').trim() || null,
+          itDeclarationStatus: String(body.itDeclarationStatus || '').trim() || null,
+          taxMasterCode: String(body.taxMasterCode || '').trim() || null,
+          msmeCategory: String(body.msmeCategory || '').trim() || null,
+          msmeRegistrationNo: String(body.msmeRegistrationNo || '').trim() || null,
+          msmeType: String(body.msmeType || '').trim() || null,
+          msmeActivity: String(body.msmeActivity || '').trim() || null,
+          acCategory1: String(body.acCategory1 || '').trim() || null,
+          acCategory2: String(body.acCategory2 || '').trim() || null,
+          acCategory3: String(body.acCategory3 || '').trim() || null,
+          interestRate: amount(body.interestRate),
+          minBalance: amount(body.minBalance),
+          remarks: String(body.remarks || '').trim() || null,
+          serviceTaxNo: String(body.serviceTaxNo || '').trim() || null,
+          tinNo: String(body.tinNo || '').trim() || null,
+          cstNo: String(body.cstNo || '').trim() || null,
+          localBodyTaxNo: String(body.localBodyTaxNo || '').trim() || null,
+          bankDetails: Array.isArray(body.bankDetails) ? body.bankDetails : [],
+          additionalNames: Array.isArray(body.additionalNames) ? body.additionalNames : [],
+          documents: Array.isArray(body.documents) ? body.documents : [],
           openingBalance,
           balanceType,
           status: 'Active'
@@ -209,7 +297,7 @@ export async function POST(request) {
           type: 'JV',
           narration: `Opening balance for ${name}`,
           entries: [
-            { ledger: name, ledgerType: groupTypes[groupName] || 'Asset', type: balanceType, amount: openingBalance },
+            { ledger: name, ledgerType: group.type || groupTypes[groupName] || 'Asset', type: balanceType, amount: openingBalance },
             { ledger: 'Opening Balance Equity', ledgerType: 'Capital', type: balanceType === 'Dr' ? 'Cr' : 'Dr', amount: openingBalance }
           ]
         });
@@ -227,11 +315,63 @@ export async function PUT(request) {
   try {
     const body = await request.json();
     if (!body.id) return NextResponse.json({ error: 'Account id is required' }, { status: 400 });
+    if (body.subGroupId) {
+      const subgroup = await prisma.accountsAccountGroup.findUnique({ where: { id: String(body.subGroupId) }, include: { parent: true } });
+      if (!subgroup?.parent || (body.groupId && subgroup.parentId !== String(body.groupId))) {
+        return NextResponse.json({ error: 'Choose a valid subgroup under the selected group.' }, { status: 400 });
+      }
+    } else if (body.groupId) {
+      const group = await prisma.accountsAccountGroup.findUnique({ where: { id: String(body.groupId) } });
+      if (!group) return NextResponse.json({ error: 'Choose a valid group or subgroup.' }, { status: 400 });
+    }
     const ledger = await prisma.accountsLedgerMaster.update({
       where: { id: body.id },
       data: {
         ledgerCode: body.code || undefined,
         name: body.name,
+        ...(body.subGroupId ? { groupId: String(body.subGroupId) } : body.groupId ? { groupId: String(body.groupId) } : {}),
+        company: String(body.company || '').trim() || null,
+        legalChequeName: String(body.legalChequeName || '').trim() || null,
+        branch: String(body.branch || '').trim() || null,
+        contactPerson: String(body.contactPerson || '').trim() || null,
+        address: String(body.address || '').trim() || null,
+        buildingNo: String(body.buildingNo || '').trim() || null,
+        street: String(body.street || '').trim() || null,
+        city: String(body.city || '').trim() || null,
+        district: String(body.district || '').trim() || null,
+        state: String(body.state || '').trim() || null,
+        country: String(body.country || '').trim() || null,
+        pinCode: String(body.pinCode || '').trim() || null,
+        mobile: String(body.mobile || '').trim() || null,
+        phone: String(body.phone || '').trim() || null,
+        email: String(body.email || '').trim() || null,
+        gstin: String(body.gstin || '').trim() || null,
+        gstApplicable: Boolean(body.gstApplicable || body.gstin),
+        pan: String(body.pan || '').trim() || null,
+        nature: String(body.nature || '').trim() || null,
+        vatNo: String(body.vatNo || '').trim() || null,
+        corporateIdNo: String(body.corporateIdNo || '').trim() || null,
+        panStatus: String(body.panStatus || '').trim() || null,
+        panRefNo: String(body.panRefNo || '').trim() || null,
+        itDeclarationStatus: String(body.itDeclarationStatus || '').trim() || null,
+        taxMasterCode: String(body.taxMasterCode || '').trim() || null,
+        msmeCategory: String(body.msmeCategory || '').trim() || null,
+        msmeRegistrationNo: String(body.msmeRegistrationNo || '').trim() || null,
+        msmeType: String(body.msmeType || '').trim() || null,
+        msmeActivity: String(body.msmeActivity || '').trim() || null,
+        acCategory1: String(body.acCategory1 || '').trim() || null,
+        acCategory2: String(body.acCategory2 || '').trim() || null,
+        acCategory3: String(body.acCategory3 || '').trim() || null,
+        interestRate: amount(body.interestRate),
+        minBalance: amount(body.minBalance),
+        remarks: String(body.remarks || '').trim() || null,
+        serviceTaxNo: String(body.serviceTaxNo || '').trim() || null,
+        tinNo: String(body.tinNo || '').trim() || null,
+        cstNo: String(body.cstNo || '').trim() || null,
+        localBodyTaxNo: String(body.localBodyTaxNo || '').trim() || null,
+        bankDetails: Array.isArray(body.bankDetails) ? body.bankDetails : [],
+        additionalNames: Array.isArray(body.additionalNames) ? body.additionalNames : [],
+        documents: Array.isArray(body.documents) ? body.documents : [],
         openingBalance: amount(body.openingBalance),
         balanceType: body.balanceType === 'Cr' ? 'Cr' : 'Dr'
       }
@@ -240,5 +380,25 @@ export async function PUT(request) {
   } catch (error) {
     console.error('Error updating ledger:', error);
     return NextResponse.json({ error: error.message || 'Failed to update ledger' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const id = new URL(request.url).searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'Account ID is required.' }, { status: 400 });
+    const ledger = await prisma.accountsLedgerMaster.findUnique({
+      where: { id },
+      include: { _count: { select: { journalEntries: true, tdsAdjustments: true } } },
+    });
+    if (!ledger) return NextResponse.json({ error: 'Contractor / party was not found.' }, { status: 404 });
+    if (ledger._count.journalEntries || ledger._count.tdsAdjustments) {
+      return NextResponse.json({ error: 'This contractor / party has accounting entries and cannot be deleted.' }, { status: 409 });
+    }
+    await prisma.accountsLedgerMaster.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Accounts party delete failed:', error);
+    return NextResponse.json({ error: 'Unable to delete contractor / party.' }, { status: 500 });
   }
 }

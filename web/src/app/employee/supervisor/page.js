@@ -2,8 +2,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { getPunchRequests, updatePunchRequestStatus, getImprestApprovals, updateImprestRequest } from '../../../lib/data';
-import { Check, X, Clock, ArrowLeft, CalendarCheck, Map as MapIcon, RefreshCw, IndianRupee } from 'lucide-react';
+import { Check, X, Clock, ArrowLeft, CalendarCheck, Map as MapIcon, RefreshCw, IndianRupee, FileText } from 'lucide-react';
 import { useAutoRefresh, formatRefreshTime } from '../../../lib/useAutoRefresh';
+import DocApprovalsPanel from '../../../components/DocApprovalsPanel';
 import './supervisor.css';
 
 export default function SupervisorDashboard() {
@@ -24,6 +25,7 @@ export default function SupervisorDashboard() {
   const [requests, setRequests] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [imprestRequests, setImprestRequests] = useState([]);
+  const [pendingDocCount, setPendingDocCount] = useState(0);
   const [initialLoading, setInitialLoading] = useState(true);
   const [leaveLoading, setLeaveLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -56,9 +58,18 @@ export default function SupervisorDashboard() {
     setLeaveRequests(Array.isArray(data) ? data : []);
   }, [employee]);
 
+  const loadDocCount = useCallback(() => {
+    try {
+      const all = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+      const pending = all.filter(s => s.status === 'PENDING_SUPERVISOR');
+      setPendingDocCount(pending.length);
+    } catch {}
+  }, []);
+
   const refreshAll = useCallback(async () => {
     await Promise.all([loadRequests(), loadLeaveRequests()]);
-  }, [loadRequests, loadLeaveRequests]);
+    loadDocCount();
+  }, [loadRequests, loadLeaveRequests, loadDocCount]);
 
   const { refresh, refreshing, lastRefreshed, autoRefresh, setAutoRefresh } = useAutoRefresh(refreshAll, {
     intervalMs: 10000,
@@ -70,6 +81,10 @@ export default function SupervisorDashboard() {
       router.replace('/login');
     }
   }, [employee, router]);
+
+  useEffect(() => {
+    loadDocCount();
+  }, [loadDocCount]);
 
   useEffect(() => {
     if (!employee?.id) return;
@@ -227,6 +242,13 @@ export default function SupervisorDashboard() {
             </span>
           )}
         </button>
+        <button style={tabStyle('docs')} onClick={() => { setActiveTab('docs'); loadDocCount(); }}>
+          <FileText size={16} /> Doc Approvals {pendingDocCount > 0 && (
+            <span style={{ background: '#7c3aed', color: 'white', borderRadius: '50%', width: 20, height: 20, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
+              {pendingDocCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {activeTab === 'punch' && (
@@ -244,12 +266,12 @@ export default function SupervisorDashboard() {
               </tr>
             </thead>
             <tbody>
-              {initialLoading && pendingPunch.length === 0 ? (
+              {initialLoading && requests.length === 0 ? (
                 <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
-              ) : pendingPunch.length === 0 ? (
-                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No pending punch requests.</td></tr>
+              ) : requests.length === 0 ? (
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No punch request history yet.</td></tr>
               ) : (
-                pendingPunch.map(req => (
+                requests.map(req => (
                   <tr key={req.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
                     <td style={{ padding: '1rem' }}>
                       <div style={{ fontWeight: 500 }}>{req.date}</div>
@@ -328,12 +350,12 @@ export default function SupervisorDashboard() {
               </tr>
             </thead>
             <tbody>
-              {leaveLoading && pendingLeave.length === 0 ? (
+              {leaveLoading && leaveRequests.length === 0 ? (
                 <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
-              ) : pendingLeave.length === 0 ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No pending leave requests.</td></tr>
+              ) : leaveRequests.length === 0 ? (
+                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No leave request history yet.</td></tr>
               ) : (
-                pendingLeave.map(req => (
+                leaveRequests.map(req => (
                   <tr key={req.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
                     <td style={{ padding: '1rem' }}>
                       <div style={{ fontWeight: 600, color: '#111827' }}>{req.employee?.name || 'Unknown'}</div>
@@ -401,12 +423,12 @@ export default function SupervisorDashboard() {
               </tr>
             </thead>
             <tbody>
-              {initialLoading && pendingImprest.length === 0 ? (
+              {initialLoading && imprestRequests.length === 0 ? (
                 <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
-              ) : pendingImprest.length === 0 ? (
-                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No pending imprest requests.</td></tr>
+              ) : imprestRequests.length === 0 ? (
+                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No imprest request history yet.</td></tr>
               ) : (
-                pendingImprest.map(req => (
+                imprestRequests.map(req => (
                   <tr key={req.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
                     <td style={{ padding: '1rem' }}>
                       <div style={{ fontWeight: 600, color: '#111827' }}>{req.employee?.name || 'Unknown'}</div>
@@ -422,7 +444,7 @@ export default function SupervisorDashboard() {
                       {req.purpose}
                     </td>
                     <td style={{ padding: '1rem', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                      {req.canApprove ? <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                         <button
                           onClick={() => handleImprestAction(req.id, req.status, 'APPROVE')}
                           style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#dcfce7', color: '#16a34a', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}
@@ -435,13 +457,19 @@ export default function SupervisorDashboard() {
                         >
                           <X size={14} /> Reject
                         </button>
-                      </div>
+                      </div> : <span style={{ color: '#64748b', fontSize: '0.85rem' }}>{req.status?.replaceAll('_', ' ')}{req.currentApprover && req.currentApprover !== '-' ? ` · with ${req.currentApprover}` : ''}</span>}
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table></div>
+        </div>
+      )}
+
+      {activeTab === 'docs' && (
+        <div style={{ marginTop: '24px' }}>
+          <DocApprovalsPanel role="SUPERVISOR" currentEmployee={employee} />
         </div>
       )}
 

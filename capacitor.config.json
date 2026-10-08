@@ -3,7 +3,7 @@
   "appName": "Cecube Group",
   "webDir": "www",
   "server": {
-    "url": "",
+    "url": "https://cecubeerp.duckdns.org",
     "cleartext": true
   }
 }

@@ -26,13 +26,26 @@ export async function GET(request, { params }) {
         assignedGpsLocations: true,
         emergencyContacts: { orderBy: { id: 'asc' } },
         documents: true,
+        leavingReason: { select: { id: true, name: true } },
         shifts: { include: { shift: true }, orderBy: { effectiveFrom: 'desc' } },
         jobHistories: { orderBy: { id: 'desc' } },
         _count: { select: { attendances: true, leaveRequests: true } }
       }
     });
     if (!employee) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json(employee);
+
+    // Portal module tiles historically used Employee.assignedModules. Include
+    // modules that now have project-wise Employee Tools grants so those
+    // employees can enter the workspace they were assigned.
+    const projectToolGrants = await prisma.employeeProjectToolAccess.findMany({
+      where: { employeeId: employee.id, granted: true },
+      select: { tool: { select: { module: true } } },
+    });
+    const assignedModules = Array.from(new Set([
+      ...(employee.assignedModules || []),
+      ...projectToolGrants.map(grant => grant.tool.module),
+    ]));
+    return NextResponse.json({ ...employee, assignedModules });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
