@@ -1,11 +1,26 @@
 const AUTO_OUT_TIME = '19:00';
 
+const normalizeMachinePunch = (entry) => {
+  if (typeof entry === 'string') {
+    return { time: entry, direction: null };
+  }
+  if (!entry || typeof entry.time !== 'string') return null;
+
+  const rawDirection = typeof entry.direction === 'string' ? entry.direction.trim().toUpperCase() : '';
+  let direction = null;
+  if (rawDirection) {
+    if (rawDirection === 'IN' || rawDirection === 'I' || rawDirection.includes('IN')) direction = 'IN';
+    else if (rawDirection === 'OUT' || rawDirection === 'O' || rawDirection.includes('OUT')) direction = 'OUT';
+  }
+
+  return { time: entry.time, direction };
+};
+
 export const getShiftKind = (shift) => {
   if (!shift) return null;
   const label = `${shift.shiftName || ''} ${shift.shortName || ''}`.toLowerCase();
   if (label.includes('night')) return 'NIGHT';
-  if (label.includes('day')) return 'DAY';
-  return null;
+  return 'DAY'; // all non-night shifts treated as Day (General Shift, Morning Shift, etc.)
 };
 
 export const getEffectiveEmployeeShift = (employeeShifts, employeeId, date) =>
@@ -17,9 +32,10 @@ export const getEffectiveEmployeeShift = (employeeShifts, employeeId, date) =>
 
 /**
  * Enforce the attendance cutoff consistently for machine ingest and stats.
- * A Day shift machine attendance starts at its first pre-19:00 punch and ends
- * at 19:00. For stats, only an unapproved, open Day shift slot is auto-closed.
- * Night, unassigned, and unknown shifts are deliberately left untouched.
+ * - Prefer the first non-OUT pre-19:00 punch as IN
+ * - Prefer the last explicit OUT pre-19:00 punch as OUT
+ * - Fallback to first/last pre-19:00 punch when direction is unavailable
+ * - If only one punch exists and day is over, auto-close at 19:00
  */
 export const resolveDayShiftAttendanceSlots = ({
   shift,
@@ -33,12 +49,31 @@ export const resolveDayShiftAttendanceSlots = ({
   if (getShiftKind(shift) !== 'DAY') return null;
 
   if (Array.isArray(machinePunchTimes)) {
-    const firstIn = [...machinePunchTimes]
-      .filter((time) => typeof time === 'string' && time < AUTO_OUT_TIME)
-      .sort()[0];
-    if (!firstIn) return null;
+    const validPunches = [...machinePunchTimes]
+      .map(normalizeMachinePunch)
+      .filter((entry) => entry?.time && entry.time < AUTO_OUT_TIME)
+      .sort((a, b) => a.time.localeCompare(b.time));
+
+    if (!validPunches.length) return null;
+
+    const firstIn = validPunches.find((entry) => entry.direction !== 'OUT') || validPunches[0];
+    const laterPunches = validPunches.filter((entry) => entry.time > firstIn.time);
+    const lastExplicitOut = [...laterPunches].reverse().find((entry) => entry.direction === 'OUT');
+    const lastPunch = laterPunches[laterPunches.length - 1] || null;
     const shouldClose = attendanceDate < today || (attendanceDate === today && currentTime >= AUTO_OUT_TIME);
-    return [{ in: firstIn, out: shouldClose ? AUTO_OUT_TIME : '' }];
+
+    let punchOut = '';
+    if (lastExplicitOut?.time) {
+      punchOut = lastExplicitOut.time;
+    } else if (lastPunch?.time) {
+      // Multiple punches but no explicit OUT direction — fallback to the last punch
+      punchOut = lastPunch.time;
+    } else if (shouldClose) {
+      // Single punch and day is over — auto close at 19:00
+      punchOut = AUTO_OUT_TIME;
+    }
+
+    return [{ in: firstIn.time, out: punchOut }];
   }
 
   if (!Array.isArray(existingSlots) || isApproved) return null;
