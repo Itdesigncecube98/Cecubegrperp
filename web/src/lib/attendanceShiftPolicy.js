@@ -49,31 +49,37 @@ export const resolveDayShiftAttendanceSlots = ({
   if (getShiftKind(shift) !== 'DAY') return null;
 
   if (Array.isArray(machinePunchTimes)) {
-    const validPunches = [...machinePunchTimes]
+    const toMinutes = (t) => {
+      const [h, m] = t.split(':');
+      return Number(h) * 60 + Number(m);
+    };
+
+    const times = machinePunchTimes
       .map(normalizeMachinePunch)
-      .filter((entry) => entry?.time && entry.time < AUTO_OUT_TIME)
-      .sort((a, b) => a.time.localeCompare(b.time));
+      .filter((entry) => entry && entry.time && entry.time < AUTO_OUT_TIME)
+      .map((entry) => entry.time)
+      .sort();
 
-    if (!validPunches.length) return null;
+    // 2 minute ke andar duplicate punch ko ek maano
+    const punches = [];
+    for (const t of times) {
+      const prev = punches[punches.length - 1];
+      if (prev && toMinutes(t) - toMinutes(prev) < 2) continue;
+      punches.push(t);
+    }
+    if (!punches.length) return null;
 
-    const firstIn = validPunches.find((entry) => entry.direction !== 'OUT') || validPunches[0];
-    const laterPunches = validPunches.filter((entry) => entry.time > firstIn.time);
-    const lastExplicitOut = [...laterPunches].reverse().find((entry) => entry.direction === 'OUT');
-    const lastPunch = laterPunches[laterPunches.length - 1] || null;
-    const shouldClose = attendanceDate < today || (attendanceDate === today && currentTime >= AUTO_OUT_TIME);
-
-    let punchOut = '';
-    if (lastExplicitOut?.time) {
-      punchOut = lastExplicitOut.time;
-    } else if (lastPunch?.time) {
-      // Multiple punches but no explicit OUT direction — fallback to the last punch
-      punchOut = lastPunch.time;
-    } else if (shouldClose) {
-      // Single punch and day is over — auto close at 19:00
-      punchOut = AUTO_OUT_TIME;
+    // 1st = IN, 2nd = OUT, 3rd = IN, 4th = OUT ...
+    const slots = [];
+    for (let i = 0; i < punches.length; i += 2) {
+      slots.push({ in: punches[i], out: punches[i + 1] || '' });
     }
 
-    return [{ in: firstIn.time, out: punchOut }];
+    const shouldClose = attendanceDate < today || (attendanceDate === today && currentTime >= AUTO_OUT_TIME);
+    const last = slots[slots.length - 1];
+    if (!last.out && shouldClose) last.out = AUTO_OUT_TIME;
+
+    return slots;
   }
 
   if (!Array.isArray(existingSlots) || isApproved) return null;
