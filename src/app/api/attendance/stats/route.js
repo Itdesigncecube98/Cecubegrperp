@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { calculateAttendanceStatus } from '../../../../lib/attendanceCalculator';
+import { getEffectiveEmployeeShift, resolveDayShiftAttendanceSlots } from '../../../../lib/attendanceShiftPolicy';
 
 export async function GET(request) {
   try {
@@ -68,14 +69,15 @@ export async function GET(request) {
     const today = new Date();
     const parts = new Intl.DateTimeFormat('en-GB', { 
       timeZone: 'Asia/Kolkata', 
-      year: 'numeric', month: '2-digit', day: '2-digit', 
-      hour: '2-digit', hour12: false 
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
     }).formatToParts(today);
     const p = {};
     parts.forEach(part => p[part.type] = part.value);
     const todayStr = `${p.year}-${p.month}-${p.day}`;
     let currentHour = parseInt(p.hour, 10);
     if (currentHour === 24) currentHour = 0;
+    const currentTime = `${String(currentHour).padStart(2, '0')}:${p.minute || '00'}`;
 
     const isNightTime = (t) => t ? (t > '19:00' || t <= '08:00') : false;
     const dayCountsAsNightShift = (slots, shiftType, effStatus) => {
@@ -98,17 +100,23 @@ export async function GET(request) {
     const recordMap = new Map();
 
     records.forEach(record => {
-      const parsedSlots = record.timeSlots ? JSON.parse(record.timeSlots) : [];
-      let updatedSlots = false;
-      parsedSlots.forEach(slot => {
-        if (slot.in && !slot.out) {
-          if (record.date < todayStr || (record.date === todayStr && currentHour >= 19)) {
-            slot.out = '19:00';
-            updatedSlots = true;
-          }
-        }
+      let parsedSlots = [];
+      try {
+        parsedSlots = record.timeSlots ? JSON.parse(record.timeSlots) : [];
+      } catch {
+        parsedSlots = [];
+      }
+      const effectiveShift = getEffectiveEmployeeShift(employeeShifts, record.employeeId, record.date);
+      const updatedSlots = resolveDayShiftAttendanceSlots({
+        shift: effectiveShift?.shift,
+        existingSlots: parsedSlots,
+        attendanceDate: record.date,
+        today: todayStr,
+        currentTime,
+        isApproved: record.isApproved,
       });
       if (updatedSlots) {
+        parsedSlots = updatedSlots;
         prisma.attendance.update({
           where: { id: record.id },
           data: { timeSlots: JSON.stringify(parsedSlots) }
@@ -174,10 +182,31 @@ export async function GET(request) {
         let effStatus = record.status;
         const slots = record.timeSlots ? JSON.parse(record.timeSlots) : [];
         const completedSlot = slots.filter(s => s?.in && s?.out).slice(-1)[0];
-        const effectiveShift = employeeShifts.find(es =>
-          es.effectiveFrom <= dateStr && (!es.validTill || es.validTill >= dateStr)
-        );
-        if (completedSlot && effectiveShift?.shift) {
+        const effectiveShift = getEffectiveEmployeeShift(employeeShifts, employeeId, dateStr);
+        const calculateTotalMins = (arr) => {
+          if (!Array.isArray(arr)) return 0;
+          let mins = 0;
+          arr.forEach(slot => {
+            if (slot?.in && slot?.out) {
+              const [inH, inM] = slot.in.split(':').map(Number);
+              const [outH, outM] = slot.out.split(':').map(Number);
+              const inTotal = (inH || 0) * 60 + (inM || 0);
+              let outTotal = (outH || 0) * 60 + (outM || 0);
+              if (outTotal < inTotal) {
+                const adjustedOut = outTotal + 12 * 60;
+                outTotal = adjustedOut >= inTotal ? adjustedOut : outTotal + 24 * 60;
+              }
+              mins += (outTotal - inTotal);
+            }
+          });
+          return mins;
+        };
+
+        const totalMins = calculateTotalMins(slots);
+
+        if (totalMins >= 350) {
+          effStatus = 'Present';
+        } else if (completedSlot && effectiveShift?.shift) {
           effStatus = calculateAttendanceStatus(effectiveShift.shift, completedSlot.in, completedSlot.out).status;
         }
         if (dateStr < todayStr && effStatus !== 'Present' && effStatus !== 'Late' && effStatus !== 'Night Shift' && effStatus !== 'COFF') {

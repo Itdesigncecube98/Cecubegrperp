@@ -71,9 +71,12 @@ export async function GET(request) {
 // Internal: create an audit entry programmatically from other routes
 export async function POST(request) {
   try {
-    const session = readAuthSession(request);
-    if (!session) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
+    let session = readAuthSession(request);
     const body = await request.json();
+    if (!session && body.employeeId) {
+      session = { type: 'employee', id: body.employeeId };
+    }
+    if (!session) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
     const moduleRoutes = [
       ['/admin-dashboard', 'Admin'], ['/engineering', 'Engineering'], ['/marketing', 'Marketing'],
       ['/accounts', 'Accounts'], ['/tender', 'Tender'], ['/contracting', 'Contracting'],

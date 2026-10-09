@@ -1353,12 +1353,10 @@ export default function AdminDashboard() {
               <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Field Journey</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Summary View','/dashboard/journey/summary'],['Map View','/dashboard/journey/map']].map(([label,href])=>(
-                <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#ecfdf5';e.currentTarget.style.color='#059669'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#a7f3d0', flexShrink: 0 }} />
-                  {label}
-                </Link>
-              ))}
+              <Link href="/dashboard/attendance/live-tracking" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#ecfdf5';e.currentTarget.style.color='#059669'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#a7f3d0', flexShrink: 0 }} />
+                Live Tracking
+              </Link>
             </div>
           </div>
 

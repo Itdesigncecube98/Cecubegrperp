@@ -222,10 +222,110 @@
 .badge {
   padding: 4px 8px;
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
   display: inline-block;
+}
+
+.badge-success {
+  color: #166534;
+}
+
+.badge-danger {
+  color: #991b1b;
+}
+
+.attendance-table-wrap {
+  overflow-x: auto;
+}
+
+.attendance-table {
+  min-width: 960px;
+  table-layout: fixed;
+}
+
+.attendance-table th:nth-child(1) { width: 10%; }
+.attendance-table th:nth-child(2) { width: 20%; }
+.attendance-table th:nth-child(3) { width: 16%; }
+.attendance-table th:nth-child(4) { width: 21%; }
+.attendance-table th:nth-child(5) { width: 16%; }
+.attendance-table th:nth-child(6) { width: 17%; }
+
+.attendance-table td {
+  vertical-align: middle;
+}
+
+.attendance-time-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attendance-time-slot {
+  padding: 4px 7px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.attendance-no-times {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.attendance-status-select {
+  min-width: 145px;
+}
+
+.attendance-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.attendance-export-button {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid #0369a1;
+  border-radius: 8px;
+  background: #0284c7;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.attendance-export-button:hover:not(:disabled) {
+  background: #0369a1;
+}
+
+.attendance-export-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.attendance-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.attendance-edit-times {
+  padding: 8px;
+  border: 1px solid #dbe4ee;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0369a1;
+}
+
+.attendance-edit-times:hover {
+  border-color: #0284c7;
+  background: #f0f9ff;
 }
 
 .badgeAbsent {

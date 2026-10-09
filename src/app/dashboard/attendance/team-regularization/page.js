@@ -274,17 +274,17 @@ export default function TeamRegularizationRequests() {
                     </td>
                     <td><span style={{ fontSize: '12px', color: '#6b7280' }}>{req.reason || '-'}</span></td>
                     <td>
-                      {req.locationName && <div style={{ fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '2px' }}>{req.locationName}</div>}
-                      {req.latitude != null && req.longitude != null ? (
+                      {(req.locationName || req.employee?.siteOffice) && <div style={{ fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '2px' }}>{req.locationName || `Site office: ${req.employee.siteOffice}`}</div>}
+                      {req.latitude != null && req.longitude != null || req.employee?.siteOffice ? (
                         <a
-                          href={`https://maps.google.com/?q=${req.latitude},${req.longitude}`}
+                          href={`https://maps.google.com/?q=${encodeURIComponent(req.latitude != null && req.longitude != null ? `${req.latitude},${req.longitude}` : req.employee.siteOffice)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          title={`${Number(req.latitude).toFixed(5)}, ${Number(req.longitude).toFixed(5)}`}
+                          title={req.latitude != null && req.longitude != null ? `${Number(req.latitude).toFixed(5)}, ${Number(req.longitude).toFixed(5)}` : `Site office: ${req.employee.siteOffice}`}
                           style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
                         >
-                          <MapPin size={12} /> Map View
+                          <MapPin size={12} /> {req.latitude != null && req.longitude != null ? 'Map View' : 'Site office map'}
                         </a>
                       ) : (
                         <span style={{ fontSize: '12px', color: '#9ca3af' }}>N/A</span>

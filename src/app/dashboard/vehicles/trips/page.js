@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import React, { useState, useEffect } from 'react';
 import { Search, MapPin, CheckCircle, XCircle, ArrowLeft, Map as MapIcon, Download } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -294,7 +294,7 @@ export default function TripReportsPage() {
                   </span>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', textAlign: 'center', display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                  {(trip.status === 'ACTIVE' || trip.status === 'COMPLETED' || trip.status === 'APPROVED' || trip.status === 'PAID' || trip.status === 'REJECTED') && (trip.pings?.length > 0 || trip.status === 'ACTIVE') && (
+                  {(trip.status === 'ACTIVE' || trip.status === 'COMPLETED' || trip.status === 'APPROVED' || trip.status === 'PAID' || trip.status === 'REJECTED') && (trip.pings?.length > 0 || trip.status === 'ACTIVE' || trip.routePath || trip.startLatitude) && (
                     <button onClick={() => setSelectedMapTrip(trip)} style={{ background: trip.status === 'ACTIVE' ? '#eff6ff' : '#f3f4f6', color: trip.status === 'ACTIVE' ? '#1d4ed8' : '#374151', border: `1px solid ${trip.status === 'ACTIVE' ? '#bfdbfe' : '#d1d5db'}`, padding: '0.4rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <MapIcon size={14} /> {trip.status === 'ACTIVE' ? 'Live Map' : 'Route'}
                     </button>
@@ -503,8 +503,11 @@ export default function TripReportsPage() {
               pings={selectedMapTrip.pings} 
               startLocation={selectedMapTrip.startLocation} 
               endLocation={selectedMapTrip.endLocation}
+              routePath={selectedMapTrip.routePath}
               tripId={selectedMapTrip.id}
               isActive={selectedMapTrip.status === 'ACTIVE'}
+              startCoords={selectedMapTrip.startLatitude ? { lat: selectedMapTrip.startLatitude, lng: selectedMapTrip.startLongitude } : null}
+              endCoords={selectedMapTrip.endLatitude ? { lat: selectedMapTrip.endLatitude, lng: selectedMapTrip.endLongitude } : null}
             />
           </div>
         </div>

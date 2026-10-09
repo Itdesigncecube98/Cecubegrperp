@@ -3,6 +3,24 @@ import { prisma } from '../../../../lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+function calculateGrossSalary(employee) {
+  const revision = employee.salaryRevisions?.[0];
+  const grossSalaryHead = revision?.components?.find((component) => {
+    const headName = String(component.salaryHead?.description || '').trim().toLowerCase();
+    const headType = String(component.salaryHead?.headType?.name || '').trim().toLowerCase();
+    return headName === 'gross salary' || (headType === 'ctc' && headName.includes('gross'));
+  });
+  const explicitGrossSalary = Number(grossSalaryHead?.amount) || 0;
+  if (explicitGrossSalary > 0) return explicitGrossSalary;
+
+  const revisionGross = revision?.components?.reduce((sum, component) => {
+    const headType = String(component.salaryHead?.headType?.name || '').trim().toLowerCase();
+    return headType === 'earning' ? sum + (Number(component.amount) || 0) : sum;
+  }, 0) || 0;
+
+  return revisionGross || Number.parseFloat(employee.basicSalary) || 0;
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -33,7 +51,7 @@ export async function GET(request) {
           orderBy: { effectiveFrom: 'desc' },
           take: 1,
           include: {
-             components: { include: { salaryHead: true } }
+             components: { include: { salaryHead: { include: { headType: true } } } }
           }
         }
       },
@@ -42,16 +60,7 @@ export async function GET(request) {
 
     const enrichedEmployees = employees.map(emp => {
       // 1. Calculate Gross Salary
-      let grossSalary = 0;
-      if (emp.salaryRevisions && emp.salaryRevisions.length > 0) {
-        const rev = emp.salaryRevisions[0];
-        grossSalary = rev.components?.reduce((sum, c) => {
-          if (c.salaryHead?.type === 'EARNING') return sum + parseFloat(c.amount);
-          return sum;
-        }, 0) || parseFloat(emp.basicSalary) || 0;
-      } else {
-        grossSalary = parseFloat(emp.basicSalary) || 0;
-      }
+      const grossSalary = calculateGrossSalary(emp);
 
       // 2. Calculate Tenure
       let monthsSinceJoining = 0;
@@ -96,11 +105,26 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const { employeeId, asOnDate, encashedDays, amountPerDay, message, leaveType } = await request.json();
+    const { employeeId, asOnDate, encashedDays, message, leaveType } = await request.json();
+    const numericEncashedDays = Number(encashedDays);
+    if (!Number.isFinite(numericEncashedDays) || numericEncashedDays <= 0) {
+      return NextResponse.json({ error: 'Encashed days must be greater than zero.' }, { status: 400 });
+    }
 
     const employee = await prisma.employee.findUnique({
       where: { id: employeeId },
-      include: { leaveBalance: true }
+      include: {
+        leaveBalance: true,
+        salaryRevisions: {
+          orderBy: { effectiveFrom: 'desc' },
+          take: 1,
+          include: {
+            components: {
+              include: { salaryHead: { include: { headType: true } } }
+            }
+          }
+        }
+      }
     });
 
     if (!employee) {
@@ -132,7 +156,9 @@ export async function POST(request) {
     // User wants to be able to just fill amount even for Leave without pay (which might be 0 balance).
     // Let's allow negative balance or encashment for LWP.
 
-    const totalAmount = encashedDays * amountPerDay;
+    const grossSalary = calculateGrossSalary(employee);
+    const calculatedAmountPerDay = Math.round((grossSalary / 26) * 100) / 100;
+    const totalAmount = Math.round((grossSalary * numericEncashedDays / 26) * 100) / 100;
 
     // Use a transaction to deduct the balance and create the encashment record
     const transaction = await prisma.$transaction([
@@ -142,8 +168,8 @@ export async function POST(request) {
           asOnDate,
           leaveType: type,
           balanceBefore: currentBalance,
-          encashedDays,
-          amountPerDay,
+          encashedDays: numericEncashedDays,
+          amountPerDay: calculatedAmountPerDay,
           totalAmount,
           message,
           isProcessed: false
@@ -152,7 +178,7 @@ export async function POST(request) {
       prisma.leaveBalance.update({
         where: { employeeId },
         data: {
-          [balanceField]: currentBalance - encashedDays
+          [balanceField]: currentBalance - numericEncashedDays
         }
       })
     ]);

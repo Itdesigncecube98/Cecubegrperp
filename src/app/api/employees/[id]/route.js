@@ -26,6 +26,7 @@ export async function GET(request, { params }) {
         assignedGpsLocations: true,
         emergencyContacts: { orderBy: { id: 'asc' } },
         documents: true,
+        leavingReason: { select: { id: true, name: true } },
         shifts: { include: { shift: true }, orderBy: { effectiveFrom: 'desc' } },
         jobHistories: { orderBy: { id: 'desc' } },
         _count: { select: { attendances: true, leaveRequests: true } }

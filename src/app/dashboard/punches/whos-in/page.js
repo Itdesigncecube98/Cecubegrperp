@@ -7,6 +7,7 @@ import styles from '../punches.module.css';
 
 import { getAttendance } from '../../../../lib/data';
 import { useAutoRefresh, formatRefreshTime } from '../../../../lib/useAutoRefresh';
+import PunchLiveLocationMap from '@/components/PunchLiveLocationMap';
 
 export default function WhosInPage() {
   const [employee, setEmployee] = useState(null);
@@ -122,6 +123,8 @@ export default function WhosInPage() {
       </div>
 
       <div className={styles.contentArea}>
+        <PunchLiveLocationMap />
+
         {/* Who is in Chart */}
         <div className="card chartCard" style={{ marginBottom: '1.5rem', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e5e7eb', backgroundColor: 'white' }}>
           <div className="chartHeader" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>

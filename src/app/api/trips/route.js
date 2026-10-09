@@ -60,7 +60,10 @@ export async function GET(request) {
         return NextResponse.json({ error: 'Vehicle not found' }, { status: 404 });
       }
   
-      const km = distanceKm ? parseFloat(distanceKm) : 0;
+      const km = distanceKm ? Number(distanceKm) : 0;
+      if (!Number.isFinite(km) || km < 0) {
+        return NextResponse.json({ error: 'Trip distance must be a valid non-negative number' }, { status: 400 });
+      }
       const amount = km * vehicle.ratePerKm;
   
       const tripData = {
@@ -72,6 +75,48 @@ export async function GET(request) {
         distanceKm: km,
         amount
       };
+
+      if (
+        data.startCoords != null ||
+        data.endCoords != null ||
+        (Array.isArray(data.routePath) && data.routePath.length > 0)
+      ) {
+        const { startCoords, endCoords, routePath } = data;
+        const rawCoordinates = [startCoords?.lat, startCoords?.lng, endCoords?.lat, endCoords?.lng];
+        const coordinates = rawCoordinates.map(Number);
+        const validCoordinates =
+          rawCoordinates.every(value => value != null && value !== '') &&
+          coordinates.every(Number.isFinite) &&
+          coordinates[0] >= -90 && coordinates[0] <= 90 &&
+          coordinates[2] >= -90 && coordinates[2] <= 90 &&
+          coordinates[1] >= -180 && coordinates[1] <= 180 &&
+          coordinates[3] >= -180 && coordinates[3] <= 180;
+        const validRoutePath =
+          Array.isArray(routePath) &&
+          routePath.length >= 2 &&
+          routePath.length <= 5000 &&
+          routePath.every(point =>
+            point?.lat != null &&
+            point?.lng != null &&
+            Number.isFinite(Number(point?.lat)) &&
+            Number.isFinite(Number(point?.lng)) &&
+            Number(point.lat) >= -90 &&
+            Number(point.lat) <= 90 &&
+            Number(point.lng) >= -180 &&
+            Number(point.lng) <= 180
+          );
+        if (!validCoordinates || !validRoutePath) {
+          return NextResponse.json({ error: 'Trip needs valid pickup, destination, and calculated route coordinates' }, { status: 400 });
+        }
+        tripData.startLatitude = coordinates[0];
+        tripData.startLongitude = coordinates[1];
+        tripData.endLatitude = coordinates[2];
+        tripData.endLongitude = coordinates[3];
+        tripData.routePath = routePath.map(point => ({
+          lat: Number(point.lat),
+          lng: Number(point.lng),
+        }));
+      }
 
       if (status) tripData.status = status;
       if (reason) tripData.reason = reason;

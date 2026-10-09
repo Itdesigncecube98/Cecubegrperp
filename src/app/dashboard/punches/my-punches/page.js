@@ -45,9 +45,22 @@ export default function MyPunchesPage() {
     try {
       const dates = getDaysInRange(filters.startDate, filters.endDate);
       const allPunches = [];
+      const requestUrl = `/api/requests?employeeId=${encodeURIComponent(employee.id)}&startDate=${filters.startDate}&endDate=${filters.endDate}`;
+      const [requestResponse, ...attendanceResponses] = await Promise.all([
+        fetch(requestUrl),
+        ...dates.map(date => fetch(`/api/attendance?date=${date}`)),
+      ]);
+      const requestData = await requestResponse.json();
+      const appPunches = Array.isArray(requestData)
+        ? requestData.filter(punch => ['IN', 'OUT'].includes(punch.type))
+        : [];
+      const appPunchKeys = new Set(appPunches.map(punch =>
+        `${punch.date}|${String(punch.time || '').slice(0, 5)}|${punch.type}`
+      ));
+      const appOutDates = new Set(appPunches.filter(punch => punch.type === 'OUT').map(punch => punch.date));
 
-      await Promise.all(dates.map(async (date) => {
-        const res = await fetch(`/api/attendance?date=${date}`);
+      await Promise.all(dates.map(async (date, index) => {
+        const res = attendanceResponses[index];
         const data = await res.json();
         const myRecord = data.find(d => d.employee.id === employee.id);
         
@@ -58,7 +71,9 @@ export default function MyPunchesPage() {
           } catch(e){}
 
           slots.forEach(slot => {
-            if (slot.in) {
+            const inKey = `${date}|${String(slot.in || '').slice(0, 5)}|IN`;
+            const outKey = `${date}|${String(slot.out || '').slice(0, 5)}|OUT`;
+            if (slot.in && !appPunchKeys.has(inKey)) {
               allPunches.push({
                 org: 'Cecube Engineering India Pvt Ltd',
                 empCode: myRecord.employee.empId || '-',
@@ -69,7 +84,7 @@ export default function MyPunchesPage() {
                 mode: 'Web'
               });
             }
-            if (slot.out) {
+            if (slot.out && !(slot.out === '19:00' && appOutDates.has(date)) && !appPunchKeys.has(outKey)) {
               allPunches.push({
                 org: 'Cecube Engineering India Pvt Ltd',
                 empCode: myRecord.employee.empId || '-',
@@ -83,6 +98,18 @@ export default function MyPunchesPage() {
           });
         }
       }));
+
+      appPunches.forEach(punch => {
+        allPunches.push({
+          org: 'Cecube Engineering India Pvt Ltd',
+          empCode: employee.empId || '-',
+          name: employee.name,
+          date: punch.date,
+          time: punch.time,
+          type: punch.type,
+          mode: 'Mobile',
+        });
+      });
       
       // Sort punches by date and time
       allPunches.sort((a, b) => {

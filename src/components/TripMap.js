@@ -1,9 +1,11 @@
-'use client';
+﻿'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polyline, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cleanTripTrack } from '@/lib/tripGps';
+import GoogleMapsView from '@/components/GoogleMapsView';
+import LiveTripMap from '@/components/LiveTripMap';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -59,11 +61,30 @@ function LiveFollow({ position }) {
  *   tripId         - (optional) if provided AND trip is ACTIVE, polls for fresh pings every 5s
  *   isActive       - boolean, enables live polling when true
  */
-export default function TripMap({ pings: initialPings, startLocation, endLocation, tripId, isActive }) {
+export default function TripMap({ pings: initialPings, startLocation, endLocation, routePath: savedRoutePath = [], tripId, isActive, startCoords, endCoords }) {
+  // Ola/Uber style live tracking for active trips
+  if (isActive) {
+    return (
+      <LiveTripMap
+        tripId={tripId}
+        isActive={isActive}
+        startLocation={startLocation}
+        endLocation={endLocation}
+        startCoords={startCoords}
+        endCoords={endCoords}
+        plannedPath={Array.isArray(savedRoutePath) ? savedRoutePath : []}
+      />
+    );
+  }
   const [pings, setPings] = useState(initialPings || []);
   const track = useMemo(() => cleanTripTrack(pings), [pings]);
   const positions = track.accepted.map(point => [point.latitude, point.longitude]);
   const routeSegments = track.segments.map(segment => segment.map(point => [point.latitude, point.longitude]));
+  const plannedPath = Array.isArray(savedRoutePath)
+    ? savedRoutePath
+      .map(point => ({ lat: Number(point?.lat), lng: Number(point?.lng) }))
+      .filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng))
+    : [];
 
   // Sync when parent passes new pings (e.g. completed trip modal)
   useEffect(() => {
@@ -87,11 +108,52 @@ export default function TripMap({ pings: initialPings, startLocation, endLocatio
     return () => clearInterval(interval);
   }, [isActive, tripId]);
 
+  if (positions.length === 0 && plannedPath.length > 1) {
+    return (
+      <div>
+        <GoogleMapsView
+          locations={[
+            { latitude: plannedPath[0].lat, longitude: plannedPath[0].lng, title: `Pickup: ${startLocation || 'Start'}` },
+            { latitude: plannedPath[plannedPath.length - 1].lat, longitude: plannedPath[plannedPath.length - 1].lng, title: `Destination: ${endLocation || 'End'}` },
+          ]}
+          paths={[plannedPath]}
+          active={false}
+        />
+        <p style={{ margin: '8px 0 0', color: '#64748b', fontSize: 13 }}>
+          Estimated Google Maps route; live GPS tracking was not recorded for this trip.
+        </p>
+      </div>
+    );
+  }
+
   if (positions.length === 0) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', background: '#f9fafb', borderRadius: '8px', color: '#9ca3af' }}>
         No GPS data available for this trip.
       </div>
+    );
+  }
+
+  if (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+    const routeLocations = [
+      {
+        latitude: track.accepted[0].latitude,
+        longitude: track.accepted[0].longitude,
+        title: `Start: ${startLocation || 'Unknown'}`,
+      },
+      ...(positions.length > 1 ? [{
+        latitude: track.accepted[track.accepted.length - 1].latitude,
+        longitude: track.accepted[track.accepted.length - 1].longitude,
+        title: isActive ? 'Live position' : `End: ${endLocation || 'Unknown'}`,
+      }] : []),
+    ];
+
+    return (
+      <GoogleMapsView
+        locations={routeLocations}
+        paths={track.segments.map(segment => segment.map(point => ({ lat: point.latitude, lng: point.longitude })))}
+        active={isActive}
+      />
     );
   }
 

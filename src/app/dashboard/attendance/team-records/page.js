@@ -48,8 +48,12 @@ export default function TeamAttendanceRecords() {
       const locationMap = {};
       if (Array.isArray(todayRequests)) {
         todayRequests.forEach(punch => {
-          if ((punch.type === 'IN' || punch.type === 'REGULARIZE') && punch.latitude != null && punch.longitude != null && !locationMap[punch.employeeId]) {
-            locationMap[punch.employeeId] = { lat: Number(punch.latitude), lng: Number(punch.longitude) };
+          if ((punch.type === 'IN' || punch.type === 'REGULARIZE') && !locationMap[punch.employeeId]) {
+            locationMap[punch.employeeId] = {
+              lat: punch.latitude != null ? Number(punch.latitude) : null,
+              lng: punch.longitude != null ? Number(punch.longitude) : null,
+              siteOffice: punch.employee?.siteOffice || ''
+            };
           }
         });
       }
@@ -100,10 +104,20 @@ export default function TeamAttendanceRecords() {
 
       // Show saved punch locations, including pending punches awaiting review.
       const locMap = {};
+      const appPunchesByDate = {};
       if (Array.isArray(punches)) {
         punches.forEach(p => {
-          if ((p.type === 'IN' || p.type === 'REGULARIZE') && p.latitude != null && p.longitude != null && !locMap[p.date]) {
-            locMap[p.date] = { lat: Number(p.latitude), lng: Number(p.longitude) };
+          if ((p.type === 'IN' || p.type === 'OUT') && p.status !== 'REJECTED') {
+            const dayPunches = appPunchesByDate[p.date] || [];
+            dayPunches.push({ type: p.type, time: p.time, status: p.status });
+            appPunchesByDate[p.date] = dayPunches;
+          }
+          if ((p.type === 'IN' || p.type === 'REGULARIZE') && !locMap[p.date]) {
+            locMap[p.date] = {
+              lat: p.latitude != null ? Number(p.latitude) : null,
+              lng: p.longitude != null ? Number(p.longitude) : null,
+              siteOffice: p.employee?.siteOffice || ''
+            };
           }
         });
       }
@@ -154,7 +168,8 @@ export default function TeamAttendanceRecords() {
           });
           workedHours = totalMins > 0 ? `${Math.floor(totalMins/60)}h ${totalMins%60}m` : '0h 0m';
         }
-        allRecs.push({ date: dateStr, dayName, timeIn, timeOut, workedHours, shiftType, attStatus });
+        const appPunches = (appPunchesByDate[dateStr] || []).sort((a, b) => a.time.localeCompare(b.time));
+        allRecs.push({ date: dateStr, dayName, timeIn, timeOut, appPunches, workedHours, shiftType, attStatus });
       }
       allRecs.sort((a, b) => b.date.localeCompare(a.date));
       setDetailRecords(allRecs);
@@ -197,8 +212,17 @@ export default function TeamAttendanceRecords() {
 
   const handleExport = () => {
     if (!selectedEmployee) return;
-    const headers = ['Date', 'Day', 'Time In', 'Time Out', 'Worked Hours', 'Shift', 'Status'];
-    const rows = detailFiltered.map(r => [r.date, r.dayName, r.timeIn, r.timeOut, r.workedHours, r.shiftType, r.attStatus]);
+    const headers = ['Date', 'Day', 'Time In', 'Time Out', 'App Punches', 'Worked Hours', 'Shift', 'Status'];
+    const rows = detailFiltered.map(r => [
+      r.date,
+      r.dayName,
+      r.timeIn,
+      r.timeOut,
+      (r.appPunches || []).map(p => `${p.type} ${p.time} (${p.status})`).join('; '),
+      r.workedHours,
+      r.shiftType,
+      r.attStatus,
+    ]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -309,14 +333,14 @@ export default function TeamAttendanceRecords() {
               <thead>
                 <tr>
                   <th>DATE</th><th>DAY</th><th>EMP CODE</th><th>TIME IN</th>
-                  <th>TIME OUT</th><th>WORKED HOURS</th><th>SHIFT</th><th>STATUS</th><th>LOCATION</th>
+                  <th>TIME OUT</th><th>APP PUNCHES</th><th>WORKED HOURS</th><th>SHIFT</th><th>STATUS</th><th>LOCATION</th>
                 </tr>
               </thead>
               <tbody>
                 {detailLoading ? (
-                  <tr><td colSpan="9" style={{textAlign:'center',padding:'2rem'}}>Loading...</td></tr>
+                  <tr><td colSpan="10" style={{textAlign:'center',padding:'2rem'}}>Loading...</td></tr>
                 ) : detailFiltered.length === 0 ? (
-                  <tr><td colSpan="9" style={{textAlign:'center',padding:'2rem'}}>No records found</td></tr>
+                  <tr><td colSpan="10" style={{textAlign:'center',padding:'2rem'}}>No records found</td></tr>
                 ) : detailFiltered.map((r,i) => (
                   <tr key={i} style={r.dayName === 'Sun' ? { backgroundColor: '#fee2e2' } : {}}>
                     <td>{r.date}</td>
@@ -324,6 +348,13 @@ export default function TeamAttendanceRecords() {
                     <td>{selectedEmployee.empId || '-'}</td>
                     <td style={{color:r.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{r.timeIn}</td>
                     <td style={{color:r.timeOut!=='-'?'#ef4444':'#9ca3af'}}>{r.timeOut}</td>
+                    <td>
+                      {r.appPunches?.length ? r.appPunches.map((p, punchIndex) => (
+                        <div key={`${p.type}-${p.time}-${punchIndex}`} style={{whiteSpace:'nowrap'}}>
+                          <strong>{p.type}</strong> {p.time} <span style={{color:'#64748b'}}>({p.status})</span>
+                        </div>
+                      )) : <span style={{color:'#9ca3af'}}>-</span>}
+                    </td>
                     <td style={{fontWeight:600}}>{r.workedHours}</td>
                     <td>
                       {(() => {
@@ -365,15 +396,17 @@ export default function TeamAttendanceRecords() {
                     </td>
                     <td>{renderStatus(r.attStatus)}</td>
                     <td>
-                      {punchLocations[r.date] ? (
+                      {punchLocations[r.date] && (punchLocations[r.date].lat != null && punchLocations[r.date].lng != null || punchLocations[r.date].siteOffice) ? (
                         <a
-                          href={`https://maps.google.com/?q=${punchLocations[r.date].lat},${punchLocations[r.date].lng}`}
+                          href={punchLocations[r.date].lat != null && punchLocations[r.date].lng != null
+                            ? `https://www.openstreetmap.org/?mlat=${punchLocations[r.date].lat}&mlon=${punchLocations[r.date].lng}#map=17/${punchLocations[r.date].lat}/${punchLocations[r.date].lng}`
+                            : `https://maps.google.com/?q=${encodeURIComponent(punchLocations[r.date].siteOffice)}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          title={`${punchLocations[r.date].lat.toFixed(5)}, ${punchLocations[r.date].lng.toFixed(5)}`}
+                          title={punchLocations[r.date].lat != null && punchLocations[r.date].lng != null ? `${punchLocations[r.date].lat.toFixed(5)}, ${punchLocations[r.date].lng.toFixed(5)}` : `Site office: ${punchLocations[r.date].siteOffice}`}
                           style={{display:'inline-flex',alignItems:'center',gap:4,color:'#0ea5e9',fontWeight:600,fontSize:'0.8rem',textDecoration:'none'}}
                         >
-                          <MapPin size={13}/> View
+                          <MapPin size={13}/> {punchLocations[r.date].siteOffice && !(punchLocations[r.date].lat != null && punchLocations[r.date].lng != null) ? punchLocations[r.date].siteOffice : 'View'}
                         </a>
                       ) : <span style={{color:'#d1d5db'}}>—</span>}
                     </td>
@@ -468,9 +501,11 @@ export default function TeamAttendanceRecords() {
                     <td style={{color:stat.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{stat.timeIn}</td>
                     <td style={{color:stat.timeOut!=='-'?'#ef4444':'#9ca3af'}}>{stat.timeOut}</td>
                     <td onClick={e => e.stopPropagation()}>
-                      {todayPunchLocations[emp.id] ? (
-                        <a href={`https://maps.google.com/?q=${todayPunchLocations[emp.id].lat},${todayPunchLocations[emp.id].lng}`} target="_blank" rel="noopener noreferrer" title={`${todayPunchLocations[emp.id].lat.toFixed(5)}, ${todayPunchLocations[emp.id].lng.toFixed(5)}`} style={{display:'inline-flex',alignItems:'center',gap:4,color:'#2563eb',fontWeight:600,textDecoration:'none'}}>
-                          <MapPin size={14}/> Map View
+                      {todayPunchLocations[emp.id] && (todayPunchLocations[emp.id].lat != null && todayPunchLocations[emp.id].lng != null || todayPunchLocations[emp.id].siteOffice) ? (
+                        <a href={todayPunchLocations[emp.id].lat != null && todayPunchLocations[emp.id].lng != null
+                          ? `https://www.openstreetmap.org/?mlat=${todayPunchLocations[emp.id].lat}&mlon=${todayPunchLocations[emp.id].lng}#map=17/${todayPunchLocations[emp.id].lat}/${todayPunchLocations[emp.id].lng}`
+                          : `https://maps.google.com/?q=${encodeURIComponent(todayPunchLocations[emp.id].siteOffice)}`} target="_blank" rel="noopener noreferrer" title={todayPunchLocations[emp.id].lat != null && todayPunchLocations[emp.id].lng != null ? `${todayPunchLocations[emp.id].lat.toFixed(5)}, ${todayPunchLocations[emp.id].lng.toFixed(5)}` : `Site office: ${todayPunchLocations[emp.id].siteOffice}`} style={{display:'inline-flex',alignItems:'center',gap:4,color:'#2563eb',fontWeight:600,textDecoration:'none'}}>
+                          <MapPin size={14}/> {todayPunchLocations[emp.id].lat != null && todayPunchLocations[emp.id].lng != null ? 'Map View' : todayPunchLocations[emp.id].siteOffice}
                         </a>
                       ) : <span style={{color:'#9ca3af'}}>—</span>}
                     </td>

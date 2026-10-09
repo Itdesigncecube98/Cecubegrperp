@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/attendance/auto-punchout",
+      "schedule": "30 13 * * *"
+    }
+  ]
+}

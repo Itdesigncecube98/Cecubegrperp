@@ -139,6 +139,8 @@ model Employee {
   projectManaged         ProjectMaster[]           @relation("ProjectManager")
   projectTeamsMember     ProjectTeam[]             @relation("ProjectTeamMember")
   punchRequests          PunchRequest[]
+  punchLiveLocation      PunchLiveLocation?
+  punchHistories         PunchLocationHistory[]    @relation("PunchHistory")
   approvedIndents        PurchaseApproval[]
   purchaseIndents        PurchaseIndent[]
   ncrsRaised             QualityNCR[]              @relation("NCRRaiser")
@@ -290,6 +292,32 @@ model PunchRequest {
 
   @@index([date])
   @@index([employeeId, date])
+}
+
+model PunchLiveLocation {
+  employeeId String   @id
+  date       String
+  latitude   Float
+  longitude  Float
+  accuracy   Float?
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([date, updatedAt])
+}
+
+model PunchLocationHistory {
+  id         String   @id @default(cuid())
+  employeeId String
+  date       String
+  latitude   Float
+  longitude  Float
+  accuracy   Float?
+  timestamp  DateTime @default(now())
+  employee   Employee @relation("PunchHistory", fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, date])
+  @@index([timestamp])
 }
 
 model LeaveBalance {
@@ -459,6 +487,11 @@ model TripLog {
   date          String?
   startLocation String?
   endLocation   String?
+  startLatitude  Float?
+  startLongitude Float?
+  endLatitude    Float?
+  endLongitude   Float?
+  routePath      Json?
   distanceKm    Float?     @default(0.0)
   amount        Float?     @default(0.0)
   status        String     @default("REQUESTED")

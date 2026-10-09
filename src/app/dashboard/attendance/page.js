@@ -1,8 +1,23 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
 import { getAttendance, markAttendance, getAnnouncements } from '../../../lib/data';
-import { Plus, X, Trash2, Save, Check, Calendar } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { Plus, X, Trash2, Save, Check, Calendar, Clock, FileSpreadsheet } from 'lucide-react';
 import './attendance.css';
+
+const format24HourTime = (value) => {
+  if (!value) return '';
+  const match = String(value).trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+  if (!match) return String(value);
+
+  let hours = Number(match[1]);
+  if (match[3]) {
+    const meridiem = match[3].toUpperCase();
+    if (meridiem === 'AM' && hours === 12) hours = 0;
+    if (meridiem === 'PM' && hours !== 12) hours += 12;
+  }
+  return `${String(hours).padStart(2, '0')}:${match[2]}`;
+};
 
 export default function Attendance() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -55,16 +70,33 @@ export default function Attendance() {
   }, [attendanceData, searchTerm]);
 
   const [savingId, setSavingId] = useState(null);
+  const exportAttendance = () => {
+    if (filteredAttendance.length === 0) return;
+
+    const rows = filteredAttendance.map(record => ({
+      'Employee ID': record.employee.empId || '',
+      'Employee Name': record.employee.name || '',
+      Department: record.employee.department || '',
+      Date: date,
+      'Time Slots': record.timeSlots.map(slot =>
+        `${format24HourTime(slot.in) || '--:--'} - ${format24HourTime(slot.out) || 'Open'}`
+      ).join(', '),
+      Status: record.status || 'Not Marked',
+      Shift: record.shiftType === 'Night' ? 'Night Shift' : 'Day Shift',
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 16 }, { wch: 28 }, { wch: 24 }, { wch: 14 },
+      { wch: 32 }, { wch: 18 }, { wch: 16 },
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
+    XLSX.writeFile(workbook, `Attendance_${date}.xlsx`);
+  };
 
   const handleStatusChange = (employeeId, status) => {
     setAttendanceData(prev => prev.map(record => 
       record.employee.id === employeeId ? { ...record, status } : record
-    ));
-  };
-
-  const handleShiftChange = (employeeId, shiftType) => {
-    setAttendanceData(prev => prev.map(record => 
-      record.employee.id === employeeId ? { ...record, shiftType } : record
     ));
   };
 
@@ -122,10 +154,10 @@ export default function Attendance() {
       <div className="page-header">
         <div>
           <h1 className="page-title" style={{ margin: 0, marginBottom: '0.5rem' }}>Attendance Tracking</h1>
-          <p className="page-subtitle">Mark and view daily attendance records.</p>
+          <p className="page-subtitle">Mark and view daily attendance records. Open punches are automatically closed at 19:00.</p>
         </div>
         
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+        <div className="attendance-controls" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
           <div style={{ position: 'relative', width: '280px' }}>
             <input 
               type="text" 
@@ -171,6 +203,16 @@ export default function Attendance() {
               }}
             />
           </div>
+          <button
+            type="button"
+            className="attendance-export-button"
+            onClick={exportAttendance}
+            disabled={filteredAttendance.length === 0}
+            title="Export visible attendance to Excel"
+          >
+            <FileSpreadsheet size={17} />
+            Export Excel
+          </button>
         </div>
       </div>
 
@@ -186,14 +228,14 @@ export default function Attendance() {
         </div>
       )}
 
-      <div className="glass-panel table-container">
-        <table>
+      <div className="glass-panel attendance-table-wrap">
+        <table className="attendance-table">
           <thead>
             <tr>
               <th>Emp ID</th>
               <th>Employee Name</th>
               <th>Department</th>
-              <th>Shift</th>
+              <th>Time Slots</th>
               <th>Status</th>
               <th>Action</th>
             </tr>
@@ -201,11 +243,11 @@ export default function Attendance() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="5" className="empty-state">Loading records...</td>
+                <td colSpan="6" className="empty-state">Loading records...</td>
               </tr>
             ) : filteredAttendance.length === 0 ? (
               <tr>
-                <td colSpan="5" className="empty-state">No matching employees found.</td>
+                <td colSpan="6" className="empty-state">No matching employees found.</td>
               </tr>
             ) : (
               filteredAttendance.map(record => (
@@ -218,52 +260,48 @@ export default function Attendance() {
                   </td>
                   <td>{record.employee.department}</td>
                   <td>
-                    <span className={`badge ${
-                      record.status === 'Present' ? 'badge-success' : 
-                      record.status === 'Absent' ? 'badge-danger' : ''
-                    }`}>
-                      {record.status}
-                    </span>
+                    {record.timeSlots.length ? (
+                      <div className="attendance-time-list">
+                        {record.timeSlots.map((slot, index) => (
+                          <span className="attendance-time-slot" key={`${record.employee.id}-${index}`}>
+                            {format24HourTime(slot.in) || '--:--'} - {format24HourTime(slot.out) || 'Open'}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="attendance-no-times">No punches</span>
+                    )}
                   </td>
                   <td>
-                    <select 
-                      value={record.shiftType || 'Day'}
-                      onChange={(e) => handleShiftChange(record.employee.id, e.target.value)}
-                      className="status-select"
-                      style={{ width: '110px' }}
+                    <select
+                      value={record.status}
+                      onChange={(e) => handleStatusChange(record.employee.id, e.target.value)}
+                      className="attendance-status-select"
                     >
-                      <option value="Day">Day Shift</option>
-                      <option value="Night">Night Shift</option>
+                      <option value="Not Marked">Not Marked</option>
+                      <option value="Present">Present</option>
+                      <option value="Half Day">Half Day</option>
+                      <option value="Absent">Absent</option>
+                      <option value="EL">EL (Earned Leave)</option>
+                      <option value="CL">CL (Casual Leave)</option>
+                      <option value="SL">SL (Sick Leave)</option>
                     </select>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                      <select 
-                        value={record.status}
-                        onChange={(e) => handleStatusChange(record.employee.id, e.target.value)}
-                        className="status-select"
-                        style={{ width: '120px' }}
-                      >
-                        <option value="Not Marked">Not Marked</option>
-                        <option value="Present">Present</option>
-                        <option value="Absent">Absent</option>
-                        <option value="EL">EL (Earned Leave)</option>
-                        <option value="CL">CL (Casual Leave)</option>
-                        <option value="SL">SL (Sick Leave)</option>
-                      </select>
-                      
-                      <button 
-                        className="btn-outline" 
+                    <div className="attendance-actions">
+                      <button
+                        type="button"
+                        className="attendance-edit-times"
                         onClick={() => openTimeSlotsModal(record)}
-                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                        aria-label={`Edit time slots for ${record.employee.name}`}
+                        title="Edit time slots"
                       >
-                        Times ({record.timeSlots.length})
+                        <Clock size={16} />
                       </button>
-
-                      <button 
+                      <button
+                        type="button"
                         className="btn-primary" 
                         onClick={() => saveRow(record.employee.id)}
-                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                       >
                         {savingId === record.employee.id ? <Check size={16} /> : <Save size={16} />} 
                         {savingId === record.employee.id ? 'Saved' : 'Save'}
@@ -299,7 +337,9 @@ export default function Attendance() {
                     <div>
                       <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>In Time</label>
                       <input 
-                        type="time" 
+                        type="time"
+                        lang="en-GB"
+                        step="60"
                         value={slot.in} 
                         onChange={(e) => updateTimeSlot(idx, 'in', e.target.value)}
                         className="date-input" 
@@ -309,7 +349,9 @@ export default function Attendance() {
                     <div>
                       <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Out Time</label>
                       <input 
-                        type="time" 
+                        type="time"
+                        lang="en-GB"
+                        step="60"
                         value={slot.out} 
                         onChange={(e) => updateTimeSlot(idx, 'out', e.target.value)}
                         className="date-input"

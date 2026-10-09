@@ -1,62 +1,9 @@
 'use client';
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
-
-function LocationMarker({ position, setPosition }) {
-  const markerRef = useRef(null);
-  const map = useMapEvents({
-    click(e) {
-      setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
-    }
-  });
-
-  useEffect(() => {
-    if (position) {
-      map.flyTo(position, map.getZoom(), { animate: true });
-    }
-  }, [position, map]);
-
-  const eventHandlers = useMemo(
-    () => ({
-      dragend() {
-        const marker = markerRef.current;
-        if (marker != null) {
-          const newPos = marker.getLatLng();
-          setPosition({ lat: newPos.lat, lng: newPos.lng });
-        }
-      },
-    }),
-    [setPosition]
-  );
-
-  return position === null ? null : (
-    <Marker
-      draggable={true}
-      eventHandlers={eventHandlers}
-      position={position}
-      ref={markerRef}
-    />
-  );
-}
+import { useEffect, useState } from 'react';
+import GoogleMapsView from './GoogleMapsView';
 
 export default function LocationPicker({ defaultPosition, onChange }) {
   const [position, setPosition] = useState(defaultPosition || { lat: 28.6139, lng: 77.2090 });
-  const [mapId, setMapId] = useState(null);
-
-  useEffect(() => {
-    // This prevents the "Map container is being reused" and "Cannot read properties of undefined (reading 'appendChild')" 
-    // errors in React Strict Mode by delaying render until client side and giving a unique key.
-    setMapId(Math.random().toString(36).substring(7));
-  }, []);
 
   useEffect(() => {
     if (position && onChange) {
@@ -80,7 +27,9 @@ export default function LocationPicker({ defaultPosition, onChange }) {
     if (!isNaN(val)) setPosition(prev => ({ ...prev, lng: val }));
   };
 
-  if (!mapId) return null;
+  const handleLocationSelect = (newPos) => {
+    setPosition(newPos);
+  };
 
   return (
     <div>
@@ -107,13 +56,11 @@ export default function LocationPicker({ defaultPosition, onChange }) {
         </div>
       </div>
       <div style={{ height: '300px', width: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-        <MapContainer key={mapId} center={position} zoom={13} style={{ height: '100%', width: '100%' }}>
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <LocationMarker position={position} setPosition={setPosition} />
-        </MapContainer>
+        <GoogleMapsView 
+          defaultCenter={position} 
+          onLocationSelect={handleLocationSelect} 
+          height={300} 
+        />
       </div>
     </div>
   );

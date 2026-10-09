@@ -74,9 +74,6 @@ export default function JourneyMap() {
             onChange={(e) => setDate(e.target.value)} 
             style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', outline: 'none' }}
           />
-          <Link href={`/dashboard/journey/summary?date=${date}`} style={{ background: '#f1f5f9', color: '#334155', padding: '8px 16px', borderRadius: '8px', textDecoration: 'none', fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #e2e8f0' }}>
-            <List size={16} /> Summary View
-          </Link>
         </div>
       </div>
 

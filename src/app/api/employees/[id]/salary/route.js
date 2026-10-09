@@ -86,14 +86,15 @@ export async function POST(request, { params }) {
     });
 
     // Also update backward-compatible fields on the Employee table
-    let basicSalary = 0, hra = 0, pfEmployee = 0, specialAllowance = 0;
+    let basicSalary = 0, hra = 0, pfEmployee = 0, pfEmployer = 0, specialAllowance = 0;
     
     newRevision.components.forEach(c => {
-      const headName = c.salaryHead.description;
-      if (headName === 'Basic') basicSalary = c.amount;
-      else if (headName === 'HRA') hra = c.amount;
-      else if (headName === 'Employer PF' || headName === 'Provident Fund') pfEmployee = c.amount;
-      else if (headName === 'Special Allowance') specialAllowance = c.amount;
+      const headName = c.salaryHead.description.trim().toLowerCase();
+      if (headName === 'basic' || headName === 'basic salary') basicSalary = c.amount;
+      else if (headName === 'hra' || headName === 'house rent allowance') hra = c.amount;
+      else if (headName === 'employee pf' || headName === 'pf employee' || headName === 'provident fund') pfEmployee = c.amount;
+      else if (headName === 'employer pf' || headName === 'pf employer') pfEmployer = c.amount;
+      else if (headName === 'special allowance') specialAllowance = c.amount;
     });
 
     await prisma.employee.update({
@@ -102,6 +103,7 @@ export async function POST(request, { params }) {
         basicSalary: String(basicSalary),
         hra: String(hra),
         pfEmployee: String(pfEmployee),
+        pfEmployer: String(pfEmployer),
         specialAllowance: String(specialAllowance)
       }
     });
@@ -154,17 +156,18 @@ export async function PUT(request, { params }) {
     });
 
     if (employee) {
-      let basicSalary = 0, hra = 0, pfEmployee = 0, specialAllowance = 0;
+      let basicSalary = 0, hra = 0, pfEmployee = 0, pfEmployer = 0, specialAllowance = 0;
       updated.components.forEach(c => {
-        const n = c.salaryHead.description;
-        if (n === 'Basic') basicSalary = c.amount;
-        else if (n === 'HRA') hra = c.amount;
-        else if (n === 'Employer PF' || n === 'Provident Fund') pfEmployee = c.amount;
-        else if (n === 'Special Allowance') specialAllowance = c.amount;
+        const n = c.salaryHead.description.trim().toLowerCase();
+        if (n === 'basic' || n === 'basic salary') basicSalary = c.amount;
+        else if (n === 'hra' || n === 'house rent allowance') hra = c.amount;
+        else if (n === 'employee pf' || n === 'pf employee' || n === 'provident fund') pfEmployee = c.amount;
+        else if (n === 'employer pf' || n === 'pf employer') pfEmployer = c.amount;
+        else if (n === 'special allowance') specialAllowance = c.amount;
       });
       await prisma.employee.update({
         where: { id: employee.id },
-        data: { basicSalary: String(basicSalary), hra: String(hra), pfEmployee: String(pfEmployee), specialAllowance: String(specialAllowance) }
+        data: { basicSalary: String(basicSalary), hra: String(hra), pfEmployee: String(pfEmployee), pfEmployer: String(pfEmployer), specialAllowance: String(specialAllowance) }
       });
     }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { prisma } from "../../../../lib/prisma";
+import { getEffectiveEmployeeShift, resolveDayShiftAttendanceSlots } from "../../../../lib/attendanceShiftPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
   const source = typeof body.source === "string" && body.source.trim()
     ? body.source.trim().slice(0, 100)
     : "etimetracklite";
+  const indiaNow = getIndiaDateAndTime(new Date());
   const rows: Array<{
     deviceLogId: number;
     deviceId: string;
@@ -128,6 +130,7 @@ export async function POST(request: Request) {
 
   let attendanceUpdated = 0;
   let attendanceSkippedApproved = 0;
+  let attendanceSkippedNonDayShift = 0;
   let deviceUsersMapped = 0;
   let unmatchedEmployeeCodes: string[] = [];
 
@@ -220,6 +223,16 @@ export async function POST(request: Request) {
       where: { deviceId: { in: incomingDeviceIds }, punchTime: { gte: rangeStart, lt: rangeEnd } },
       orderBy: { punchTime: "asc" },
     });
+    const attendanceEmployeeIds = [...new Set(
+      [...employeeByIdentity.values()]
+    )];
+    const employeeShifts = attendanceEmployeeIds.length > 0
+      ? await prisma.employeeShift.findMany({
+        where: { employeeId: { in: attendanceEmployeeIds } },
+        include: { shift: true },
+        orderBy: { effectiveFrom: "desc" },
+      })
+      : [];
     const punchesByEmployeeDay = new Map<string, typeof storedPunches>();
     for (const punch of storedPunches) {
       const identity = identityForPunch(punch);
@@ -239,32 +252,57 @@ export async function POST(request: Request) {
       const date = key.slice(separator + 1);
       if (dayPunches.length === 0) continue;
 
-      const firstEligibleIn = dayPunches
-        .map((punch) => getIndiaDateAndTime(punch.punchTime))
-        .find(({ time }) => time < "19:00");
-      const lastPunch = getIndiaDateAndTime(dayPunches[dayPunches.length - 1].punchTime);
-      // The device does not accept IN punches from 7 PM onward. Keep late-only
-      // days as OUT-only instead of misclassifying the evening punch as IN.
-      const timeSlots = JSON.stringify([{
-        in: firstEligibleIn?.time || "",
-        out: firstEligibleIn && lastPunch.time > firstEligibleIn.time ? lastPunch.time : (!firstEligibleIn ? lastPunch.time : ""),
-      }]);
+      const assignment = getEffectiveEmployeeShift(employeeShifts, employeeId, date);
       const existing = await prisma.attendance.findUnique({
         where: { employeeId_date: { employeeId, date } },
-        select: { isApproved: true, shiftType: true },
+        select: { isApproved: true, shiftType: true, timeSlots: true },
       });
+      const shift = assignment?.shift || (existing?.shiftType === "Night" ? null : { shiftName: "Day Shift" });
+      // Merge stored punch times with new ones so IN+OUT from separate sync runs combine.
+      // Raw device punches replace matching slot times, preserving their IN/OUT direction.
+      const machinePunchTimes = dayPunches.map((p) => ({
+        time: getIndiaDateAndTime(p.punchTime).time,
+        direction: typeof p.direction === "string" ? p.direction : null,
+      }));
+      const machineTimes = new Set(machinePunchTimes.map((punch) => punch.time));
+      let existingPunchTimes: Array<{ time: string; direction: string | null }> = [];
+      if (existing?.timeSlots) {
+        try {
+          const parsed = JSON.parse(existing.timeSlots) as Array<{ in?: string; out?: string }>;
+          for (const slot of parsed) {
+            if (slot.in && !machineTimes.has(slot.in)) existingPunchTimes.push({ time: slot.in, direction: null });
+            if (slot.out && slot.out !== "19:00" && !machineTimes.has(slot.out)) {
+              existingPunchTimes.push({ time: slot.out, direction: null });
+            }
+          }
+        } catch { /* ignore */ }
+      }
+      const allPunchTimes = [
+        ...existingPunchTimes,
+        ...machinePunchTimes,
+      ];
+      const timeSlots = resolveDayShiftAttendanceSlots({
+        shift,
+        machinePunchTimes: allPunchTimes,
+        attendanceDate: date,
+        today: indiaNow.date,
+        currentTime: indiaNow.time,
+        existingSlots: [],
+      });
+      if (!timeSlots) {
+        attendanceSkippedNonDayShift++;
+        continue;
+      }
 
       if (existing?.isApproved) {
         attendanceSkippedApproved++;
         continue;
       }
 
-      const firstHour = firstEligibleIn ? Number(firstEligibleIn.time.slice(0, 2)) : Number(lastPunch.time.slice(0, 2));
-      const shiftType = existing?.shiftType || (firstHour >= 19 || firstHour < 8 ? "Night" : "Day");
       await prisma.attendance.upsert({
         where: { employeeId_date: { employeeId, date } },
-        update: { status: "Present", shiftType, timeSlots },
-        create: { employeeId, date, status: "Present", shiftType, timeSlots },
+        update: { status: "Present", shiftType: "Day", timeSlots: JSON.stringify(timeSlots) },
+        create: { employeeId, date, status: "Present", shiftType: "Day", timeSlots: JSON.stringify(timeSlots) },
       });
       attendanceUpdated++;
     }
@@ -275,8 +313,10 @@ export async function POST(request: Request) {
     inserted: result.count,
     duplicatesOrSkipped: punches.length - result.count,
     invalid,
+    skippedAfterCutoff: 0,
     attendanceUpdated,
     attendanceSkippedApproved,
+    attendanceSkippedNonDayShift,
     deviceUsersMapped,
     unmatchedEmployeeCodes,
   });
