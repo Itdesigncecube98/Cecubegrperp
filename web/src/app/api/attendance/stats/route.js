@@ -183,7 +183,30 @@ export async function GET(request) {
         const slots = record.timeSlots ? JSON.parse(record.timeSlots) : [];
         const completedSlot = slots.filter(s => s?.in && s?.out).slice(-1)[0];
         const effectiveShift = getEffectiveEmployeeShift(employeeShifts, employeeId, dateStr);
-        if (completedSlot && effectiveShift?.shift) {
+        const calculateTotalMins = (arr) => {
+          if (!Array.isArray(arr)) return 0;
+          let mins = 0;
+          arr.forEach(slot => {
+            if (slot?.in && slot?.out) {
+              const [inH, inM] = slot.in.split(':').map(Number);
+              const [outH, outM] = slot.out.split(':').map(Number);
+              const inTotal = (inH || 0) * 60 + (inM || 0);
+              let outTotal = (outH || 0) * 60 + (outM || 0);
+              if (outTotal < inTotal) {
+                const adjustedOut = outTotal + 12 * 60;
+                outTotal = adjustedOut >= inTotal ? adjustedOut : outTotal + 24 * 60;
+              }
+              mins += (outTotal - inTotal);
+            }
+          });
+          return mins;
+        };
+
+        const totalMins = calculateTotalMins(slots);
+
+        if (totalMins >= 350) {
+          effStatus = 'Present';
+        } else if (completedSlot && effectiveShift?.shift) {
           effStatus = calculateAttendanceStatus(effectiveShift.shift, completedSlot.in, completedSlot.out).status;
         }
         if (dateStr < todayStr && effStatus !== 'Present' && effStatus !== 'Late' && effStatus !== 'Night Shift' && effStatus !== 'COFF') {

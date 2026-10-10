@@ -70,7 +70,6 @@ export default function Attendance() {
   }, [attendanceData, searchTerm]);
 
   const [savingId, setSavingId] = useState(null);
-
   const exportAttendance = () => {
     if (filteredAttendance.length === 0) return;
 
@@ -155,7 +154,7 @@ export default function Attendance() {
       <div className="page-header">
         <div>
           <h1 className="page-title" style={{ margin: 0, marginBottom: '0.5rem' }}>Attendance Tracking</h1>
-          <p className="page-subtitle">Mark and view daily attendance records.</p>
+          <p className="page-subtitle">Mark and view daily attendance records. Open punches are automatically closed at 19:00.</p>
         </div>
         
         <div className="attendance-controls" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>

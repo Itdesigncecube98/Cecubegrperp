@@ -74,6 +74,12 @@ export default function ModuleAccessTracker() {
         const module = moduleForPath(currentPath.current);
         if (!module) return;
 
+        let employeeId = undefined;
+        try {
+          const emp = localStorage.getItem('employeeData');
+          if (emp) employeeId = JSON.parse(emp).id;
+        } catch (e) {}
+
         nativeFetch('/api/admin/audit-log', {
           method: 'POST', credentials: 'same-origin', keepalive: true,
           headers: { 'Content-Type': 'application/json' },
@@ -85,6 +91,7 @@ export default function ModuleAccessTracker() {
             entityType: entityName.replace(/[^a-z0-9_-]/gi, '').slice(0, 80),
             entityId: id && !String(id).startsWith('api') ? String(id) : undefined,
             details,
+            employeeId,
           }),
         }).catch(error => console.error('Activity audit request failed.', error));
       } catch (error) {
@@ -108,12 +115,18 @@ export default function ModuleAccessTracker() {
     if (module === lastModule.current) return;
     lastModule.current = module;
     if (!module) return;
+    let employeeId = undefined;
+    try {
+      const emp = localStorage.getItem('employeeData');
+      if (emp) employeeId = JSON.parse(emp).id;
+    } catch (e) {}
+
     fetch('/api/admin/audit-log', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       keepalive: true,
-      body: JSON.stringify({ pagePath: pathname, action: 'MODULE_OPEN' }),
+      body: JSON.stringify({ pagePath: pathname, action: 'MODULE_OPEN', employeeId }),
     }).then(response => {
       if (!response.ok) console.error(`Module access log failed (${response.status}) for ${module}.`);
     }).catch(error => console.error('Module access log request failed.', error));

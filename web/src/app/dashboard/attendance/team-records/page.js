@@ -104,8 +104,14 @@ export default function TeamAttendanceRecords() {
 
       // Show saved punch locations, including pending punches awaiting review.
       const locMap = {};
+      const appPunchesByDate = {};
       if (Array.isArray(punches)) {
         punches.forEach(p => {
+          if ((p.type === 'IN' || p.type === 'OUT') && p.status !== 'REJECTED') {
+            const dayPunches = appPunchesByDate[p.date] || [];
+            dayPunches.push({ type: p.type, time: p.time, status: p.status });
+            appPunchesByDate[p.date] = dayPunches;
+          }
           if ((p.type === 'IN' || p.type === 'REGULARIZE') && !locMap[p.date]) {
             locMap[p.date] = {
               lat: p.latitude != null ? Number(p.latitude) : null,
@@ -162,7 +168,8 @@ export default function TeamAttendanceRecords() {
           });
           workedHours = totalMins > 0 ? `${Math.floor(totalMins/60)}h ${totalMins%60}m` : '0h 0m';
         }
-        allRecs.push({ date: dateStr, dayName, timeIn, timeOut, workedHours, shiftType, attStatus });
+        const appPunches = (appPunchesByDate[dateStr] || []).sort((a, b) => a.time.localeCompare(b.time));
+        allRecs.push({ date: dateStr, dayName, timeIn, timeOut, appPunches, workedHours, shiftType, attStatus });
       }
       allRecs.sort((a, b) => b.date.localeCompare(a.date));
       setDetailRecords(allRecs);
@@ -205,8 +212,17 @@ export default function TeamAttendanceRecords() {
 
   const handleExport = () => {
     if (!selectedEmployee) return;
-    const headers = ['Date', 'Day', 'Time In', 'Time Out', 'Worked Hours', 'Shift', 'Status'];
-    const rows = detailFiltered.map(r => [r.date, r.dayName, r.timeIn, r.timeOut, r.workedHours, r.shiftType, r.attStatus]);
+    const headers = ['Date', 'Day', 'Time In', 'Time Out', 'App Punches', 'Worked Hours', 'Shift', 'Status'];
+    const rows = detailFiltered.map(r => [
+      r.date,
+      r.dayName,
+      r.timeIn,
+      r.timeOut,
+      (r.appPunches || []).map(p => `${p.type} ${p.time} (${p.status})`).join('; '),
+      r.workedHours,
+      r.shiftType,
+      r.attStatus,
+    ]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -317,14 +333,14 @@ export default function TeamAttendanceRecords() {
               <thead>
                 <tr>
                   <th>DATE</th><th>DAY</th><th>EMP CODE</th><th>TIME IN</th>
-                  <th>TIME OUT</th><th>WORKED HOURS</th><th>SHIFT</th><th>STATUS</th><th>LOCATION</th>
+                  <th>TIME OUT</th><th>APP PUNCHES</th><th>WORKED HOURS</th><th>SHIFT</th><th>STATUS</th><th>LOCATION</th>
                 </tr>
               </thead>
               <tbody>
                 {detailLoading ? (
-                  <tr><td colSpan="9" style={{textAlign:'center',padding:'2rem'}}>Loading...</td></tr>
+                  <tr><td colSpan="10" style={{textAlign:'center',padding:'2rem'}}>Loading...</td></tr>
                 ) : detailFiltered.length === 0 ? (
-                  <tr><td colSpan="9" style={{textAlign:'center',padding:'2rem'}}>No records found</td></tr>
+                  <tr><td colSpan="10" style={{textAlign:'center',padding:'2rem'}}>No records found</td></tr>
                 ) : detailFiltered.map((r,i) => (
                   <tr key={i} style={r.dayName === 'Sun' ? { backgroundColor: '#fee2e2' } : {}}>
                     <td>{r.date}</td>
@@ -332,6 +348,13 @@ export default function TeamAttendanceRecords() {
                     <td>{selectedEmployee.empId || '-'}</td>
                     <td style={{color:r.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{r.timeIn}</td>
                     <td style={{color:r.timeOut!=='-'?'#ef4444':'#9ca3af'}}>{r.timeOut}</td>
+                    <td>
+                      {r.appPunches?.length ? r.appPunches.map((p, punchIndex) => (
+                        <div key={`${p.type}-${p.time}-${punchIndex}`} style={{whiteSpace:'nowrap'}}>
+                          <strong>{p.type}</strong> {p.time} <span style={{color:'#64748b'}}>({p.status})</span>
+                        </div>
+                      )) : <span style={{color:'#9ca3af'}}>-</span>}
+                    </td>
                     <td style={{fontWeight:600}}>{r.workedHours}</td>
                     <td>
                       {(() => {

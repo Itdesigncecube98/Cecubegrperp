@@ -1,11 +1,12 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getEmployeeStats, updateEmployee, getPunchRequests, createPunchRequest, getEmployees, getAnnouncements, getLocationRequests, updateLocationRequest, pingLocation, getLocations, getHolidays, getLeaveBalance, getImprestApprovals, updateImprestRequest, getMyImprestRequests } from '../../../lib/data';
 import dynamic from 'next/dynamic';
 const LocationPicker = dynamic(() => import('@/components/LocationPicker'), { ssr: false });
 import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, Edit2, Plus, X, Trash2, UserCircle, Shield, Bell, MapPin, Car, IndianRupee, ClipboardList, Layers, Sun, Moon, Star, Briefcase, ShoppingCart, FileSignature, FileText, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import ImprestModal from './ImprestModal';
+
 
 export default function EmployeeDashboard() {
   const [statsData, setStatsData] = useState([]);
@@ -40,10 +41,16 @@ export default function EmployeeDashboard() {
   // Toast State
   const [toast, setToast] = useState(null);
 
-  const showToast = (message, type = 'success') => {
+  const showToast = React.useCallback((message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleTrackingError = event => showToast(event.detail || 'Background location tracking could not start.', 'error');
+    window.addEventListener('punch-location-tracking-error', handleTrackingError);
+    return () => window.removeEventListener('punch-location-tracking-error', handleTrackingError);
+  }, [showToast]);
 
   // Profile Modal State
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -101,7 +108,7 @@ export default function EmployeeDashboard() {
 
       const interval = setInterval(() => {
         loadStats(parsed.id, false);
-      }, 60000);
+      }, 15000); // refresh every 15s for near-real-time biometric sync
       return () => clearInterval(interval);
     }
   }, []);
@@ -194,6 +201,9 @@ export default function EmployeeDashboard() {
   const [isPunching, setIsPunching] = useState(false);
   const [punchStage, setPunchStage] = useState('');
   const [localPunchState, setLocalPunchState] = useState(null); // 'in' | 'out' | null
+  const punchLocationIntervalRef = useRef(null);
+  const punchLocationTrackingRef = useRef(false);
+  const punchTrackingStateRef = useRef(null);
 
   const getPunchCoords = () => new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -220,6 +230,91 @@ export default function EmployeeDashboard() {
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   });
+
+  const lastKnownPositionRef = useRef(null);
+  const punchLocationHeartbeatRef = useRef(null);
+
+  const sendPunchLiveLocation = React.useCallback(async (position) => {
+    const response = await fetch('/api/attendance/live-location', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        employeeId: employee?.id,
+        latitude: position.coords?.latitude ?? position.latitude,
+        longitude: position.coords?.longitude ?? position.longitude,
+        accuracy: position.coords?.accuracy ?? position.accuracy ?? null,
+      }),
+    });
+    if (response.status === 409) {
+      void stopPunchLiveTracking();
+      return;
+    }
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || 'Could not update live location.');
+    }
+  }, [employee]); // note: stopPunchLiveTracking is used inside, but we'll manage the dependency to avoid loops
+
+  const startPunchLiveTracking = React.useCallback(async (initialPosition = null) => {
+    if (punchLocationTrackingRef.current) return;
+    punchLocationTrackingRef.current = true;
+
+    try {
+      if (initialPosition) {
+        lastKnownPositionRef.current = initialPosition;
+        await sendPunchLiveLocation(initialPosition);
+      }
+      if (window.AndroidPunchTracking?.startPunchTracking) {
+        window.AndroidPunchTracking.startPunchTracking();
+        return;
+      }
+
+      if (!navigator.geolocation) return;
+      
+      const watchId = navigator.geolocation.watchPosition(
+        position => {
+          lastKnownPositionRef.current = position;
+          sendPunchLiveLocation(position).catch(error => {
+            console.error('Punch live-location update failed:', error);
+          });
+        },
+        error => console.warn('Punch live-location GPS update failed:', error.message),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+      );
+      punchLocationIntervalRef.current = watchId;
+
+      // Heartbeat to keep the user on the map even if they are stationary
+      punchLocationHeartbeatRef.current = window.setInterval(() => {
+        if (lastKnownPositionRef.current) {
+          sendPunchLiveLocation(lastKnownPositionRef.current).catch(() => {});
+        }
+      }, 15000); // 15 seconds
+    } catch (error) {
+      punchLocationTrackingRef.current = false;
+      showToast(error.message || 'Live location tracking could not start.', 'error');
+    }
+  }, [sendPunchLiveLocation, showToast]);
+
+  const stopPunchLiveTracking = React.useCallback(async () => {
+    punchLocationTrackingRef.current = false;
+    if (punchLocationIntervalRef.current != null) {
+      if (navigator.geolocation && navigator.geolocation.clearWatch) {
+        navigator.geolocation.clearWatch(punchLocationIntervalRef.current);
+      }
+      punchLocationIntervalRef.current = null;
+    }
+    if (punchLocationHeartbeatRef.current != null) {
+      window.clearInterval(punchLocationHeartbeatRef.current);
+      punchLocationHeartbeatRef.current = null;
+    }
+    window.AndroidPunchTracking?.stopPunchTracking?.();
+    try {
+      const response = await fetch(`/api/attendance/live-location${employee ? `?employeeId=${employee.id}` : ''}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Could not clear the live location.');
+    } catch (error) {
+      console.error('Could not stop punch live-location tracking:', error);
+    }
+  }, [employee]);
 
   const normalizeTimeInput = (value) => {
     if (!value || typeof value !== 'string') return '';
@@ -378,6 +473,14 @@ export default function EmployeeDashboard() {
       const attendanceData = await attendanceRes.json().catch(() => ({}));
       if (!attendanceRes.ok) throw new Error(attendanceData.error || 'Could not save attendance. Please try again.');
 
+      if (action === 'in') {
+        punchTrackingStateRef.current = true;
+        await startPunchLiveTracking(coords);
+      } else {
+        punchTrackingStateRef.current = false;
+        await stopPunchLiveTracking();
+      }
+
       setLocalPunchState(action === 'in' ? 'in' : 'out');
 
       // Update UI immediately so Punch Out / Punch In shows without waiting
@@ -413,6 +516,32 @@ export default function EmployeeDashboard() {
     // Background refresh (do not block UI)
     loadStats(employee.id, false);
   };
+
+  useEffect(() => {
+    if (!employee || loading) return;
+
+    const today = getTodayDate();
+    const yesterdayDate = new Date(`${today}T12:00:00Z`);
+    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+    const yesterday = yesterdayDate.toISOString().slice(0, 10);
+    const hasOpenPunch = statsData
+      .flatMap(month => month.details || [])
+      .some(record => {
+        if (record.date !== today && record.date !== yesterday) return false;
+        return Array.isArray(record.timeSlots) && record.timeSlots.some(slot => slot?.in && !slot.out);
+      });
+
+    if (punchTrackingStateRef.current === hasOpenPunch) return undefined;
+    const syncTimer = window.setTimeout(() => {
+      punchTrackingStateRef.current = hasOpenPunch;
+      if (hasOpenPunch) {
+        void startPunchLiveTracking();
+      } else {
+        void stopPunchLiveTracking();
+      }
+    }, 0);
+    return () => window.clearTimeout(syncTimer);
+  }, [employee, loading, statsData, startPunchLiveTracking, stopPunchLiveTracking]);
 
   // Profile Handlers
   const openProfileModal = async () => {
@@ -500,6 +629,33 @@ export default function EmployeeDashboard() {
     });
     if (totalMinutes === 0) return '-';
     return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`;
+  };
+
+  const handleDeleteSlot = async (date, slotIndex, currentSlots, shiftType, currentStatus) => {
+    if (!confirm('Are you sure you want to delete this time slot? This cannot be undone.')) return;
+    const updatedSlots = [...currentSlots];
+    updatedSlots.splice(slotIndex, 1);
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId: employee.id,
+          date: date,
+          status: currentStatus,
+          shiftType: shiftType,
+          timeSlots: updatedSlots
+        })
+      });
+      if (res.ok) {
+        showToast('Time slot deleted successfully', 'success');
+        loadStats(employee.id, false);
+      } else {
+        showToast('Failed to delete time slot', 'error');
+      }
+    } catch (e) {
+      showToast('Error deleting time slot', 'error');
+    }
   };
 
   const handleStartLiveLocation = () => {
@@ -800,6 +956,12 @@ export default function EmployeeDashboard() {
   const pendingOutCount = pendingToday.filter(r => r.type === 'OUT').length;
   const hasPendingPunch = pendingToday.length > 0;
 
+  // Open time slot from today's record — covers both biometric and app punches
+  const openTimeSlot = todayRecord?.timeSlots?.find(s => s.in && !s.out) || null;
+  const openPunchInTime = openTimeSlot?.in || null;
+  // True if punch came from biometric (no pending app request for IN today)
+  const biometricPunchedIn = isPunchedIn && pendingInCount === 0 && !!openPunchInTime;
+
   // Calculate upcoming events
   const currentMonth = new Date().getMonth();
   const currentDay = new Date().getDate();
@@ -972,6 +1134,22 @@ export default function EmployeeDashboard() {
                 <span style={{ fontSize: '14px', filter: 'drop-shadow(0 2px 2px rgba(220,38,38,0.2))' }}>🔴</span>
                 <span style={{ fontWeight: 700, fontSize: '13px', color: '#dc2626', letterSpacing: '0.02em', userSelect: 'none' }}>Active Shift</span>
               </div>
+              {/* Time slot display — shows biometric punch-in time */}
+              {openPunchInTime && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  padding: '4px 10px', borderRadius: '8px',
+                  background: biometricPunchedIn ? '#eff6ff' : '#f0fdf4',
+                  border: biometricPunchedIn ? '1px solid #bfdbfe' : '1px solid #bbf7d0',
+                }}>
+                  <span style={{ fontSize: '10px', fontWeight: 600, color: biometricPunchedIn ? '#3b82f6' : '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {biometricPunchedIn ? '📡 Biometric' : '📱 App'}
+                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+                    {openPunchInTime} – <span style={{ color: '#ef4444' }}>Open</span>
+                  </span>
+                </div>
+              )}
               <button
                 onClick={() => handlePunch('out', todayRecord, todayDate)}
                 disabled={isPunching}
@@ -1660,11 +1838,18 @@ export default function EmployeeDashboard() {
                                               {d.timeSlots.map((slot, i) => {
                                                 const isNight = slot.in ? (slot.in > '19:00' || slot.in <= '08:00') : false;
                                                 return (
-                                                  <span key={i} className="badge" style={{
-                                                    backgroundColor: isNight ? '#f3e8ff' : '#e0f2fe',
-                                                    color: isNight ? '#6b21a8' : '#0369a1'
-                                                  }}>
+                                                  <span key={i} className="badge" 
+                                                    onClick={() => handleDeleteSlot(d.date, i, d.timeSlots, d.shiftType, d.status)}
+                                                    title="Click to delete this time slot"
+                                                    style={{
+                                                      cursor: 'pointer',
+                                                      display: 'inline-flex',
+                                                      alignItems: 'center',
+                                                      backgroundColor: isNight ? '#f3e8ff' : '#e0f2fe',
+                                                      color: isNight ? '#6b21a8' : '#0369a1'
+                                                    }}>
                                                     {slot.in || '?'} - {slot.out || '?'}
+                                                    <XCircle size={12} style={{marginLeft: '4px'}} />
                                                   </span>
                                                 );
                                               })}

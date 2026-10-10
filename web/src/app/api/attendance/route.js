@@ -149,13 +149,22 @@ export async function GET(request) {
       );
       if (!effectiveShift?.shift) continue;
 
-      const calculated = calculateAttendanceStatus(effectiveShift.shift, completedSlot.in, completedSlot.out);
-      calculatedStatuses.set(record.id, calculated.status);
-      if (record.status !== calculated.status) {
-        record.status = calculated.status;
+      const totalMins = calculateTotalMinutes(slots);
+      let newStatus = record.status;
+      
+      if (totalMins >= 350) {
+        newStatus = 'Present';
+      } else {
+        const calculated = calculateAttendanceStatus(effectiveShift.shift, completedSlot.in, completedSlot.out);
+        newStatus = calculated.status;
+      }
+
+      calculatedStatuses.set(record.id, newStatus);
+      if (record.status !== newStatus) {
+        record.status = newStatus;
         prisma.attendance.update({
           where: { id: record.id },
-          data: { status: calculated.status }
+          data: { status: newStatus }
         }).catch(console.error);
       }
     }
@@ -213,6 +222,25 @@ export async function GET(request) {
   }
 }
 
+function calculateTotalMinutes(slots) {
+  if (!Array.isArray(slots)) return 0;
+  let totalMinutes = 0;
+  slots.forEach(slot => {
+    if (slot?.in && slot?.out) {
+      const [inH, inM] = slot.in.split(':').map(Number);
+      const [outH, outM] = slot.out.split(':').map(Number);
+      const inTotal = (inH || 0) * 60 + (inM || 0);
+      let outTotal = (outH || 0) * 60 + (outM || 0);
+      if (outTotal < inTotal) {
+        const adjustedOut = outTotal + 12 * 60;
+        outTotal = adjustedOut >= inTotal ? adjustedOut : outTotal + 24 * 60;
+      }
+      totalMinutes += (outTotal - inTotal);
+    }
+  });
+  return totalMinutes;
+}
+
 export async function POST(request) {
   try {
     const { employeeId, date, status, shiftType = 'Day', timeSlots } = await request.json();
@@ -225,8 +253,12 @@ export async function POST(request) {
       parsedSlots = [];
     }
 
+    const totalMinutes = calculateTotalMinutes(parsedSlots);
     const latestSlot = parsedSlots.filter(slot => slot?.in && slot?.out).slice(-1)[0];
-    if (latestSlot && calculatedStatus !== 'Half Day') {
+    
+    if (totalMinutes >= 350) {
+      calculatedStatus = 'Present';
+    } else if (latestSlot && calculatedStatus !== 'Half Day') {
       const employeeShift = await prisma.employeeShift.findFirst({
         where: { employeeId, effectiveFrom: { lte: date }, OR: [{ validTill: null }, { validTill: { gte: date } }] },
         include: { shift: true },

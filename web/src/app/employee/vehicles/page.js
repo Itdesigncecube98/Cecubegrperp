@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   Car,
   Navigation,
+  Crosshair,
   CheckCircle,
   Clock,
   MapPin,
@@ -13,8 +14,37 @@ import {
   XCircle,
 } from "lucide-react";
 import dynamic from "next/dynamic";
+import { loadGoogleMaps } from "@/components/GoogleMapsView";
 
 const TripMap = dynamic(() => import("@/components/TripMap"), { ssr: false });
+const LiveTripMap = dynamic(() => import("@/components/LiveTripMap"), { ssr: false });
+const GoogleMapsView = dynamic(() => import("@/components/GoogleMapsView"), { ssr: false });
+
+// Decode Google Maps encoded polyline to array of {lat, lng}
+function decodePolyline(encoded) {
+  const points = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : result >> 1;
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : result >> 1;
+    points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+  return points;
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  let timeoutId;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]).finally(() => window.clearTimeout(timeoutId));
+}
 
 export default function EmployeeVehiclesPage() {
   const [employee, setEmployee] = useState(null);
@@ -34,6 +64,8 @@ export default function EmployeeVehiclesPage() {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [liveTrackingTrip, setLiveTrackingTrip] = useState(null); // trip being live-tracked after submit
+  const [endingTrip, setEndingTrip] = useState(false);
   const [isRegularizeModalOpen, setIsRegularizeModalOpen] = useState(false);
   const [selectedMapTrip, setSelectedMapTrip] = useState(null);
   const [tripData, setTripData] = useState({
@@ -45,15 +77,19 @@ export default function EmployeeVehiclesPage() {
     reason: "",
     startCoords: null,
     endCoords: null,
+    routePath: [],
   });
 
   const [fromQuery, setFromQuery] = useState("");
   const [toQuery, setToQuery] = useState("");
-  const [fromResults, setFromResults] = useState([]);
-  const [toResults, setToResults] = useState([]);
-  const [isSearchingFrom, setIsSearchingFrom] = useState(false);
-  const [isSearchingTo, setIsSearchingTo] = useState(false);
+  const [destSuggestions, setDestSuggestions] = useState([]);
+  const [showDestSuggestions, setShowDestSuggestions] = useState(false);
+  const destSearchTimeout = useRef(null);
   const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
+  const [isLocatingPickup, setIsLocatingPickup] = useState(false);
+  const [locationError, setLocationError] = useState("");
+  const [routeError, setRouteError] = useState("");
+  const routeRequestRef = useRef(0);
 
   useEffect(() => {
     const empData = localStorage.getItem("employeeData");
@@ -258,9 +294,13 @@ export default function EmployeeVehiclesPage() {
 
   const handleLogTrip = async (e) => {
     e.preventDefault();
+    if (!tripData.startCoords || !tripData.endCoords || tripData.routePath.length < 2) {
+      alert("Please select a GPS start location and destination and wait for the route to calculate.");
+      return;
+    }
     if (!tripData.distanceKm || tripData.distanceKm <= 0) {
       alert(
-        "Distance must be calculated before logging a trip. Please ensure both locations are selected properly.",
+        "A valid driving route is required before logging the trip. Please check both locations and try again.",
       );
       return;
     }
@@ -276,7 +316,10 @@ export default function EmployeeVehiclesPage() {
           startLocation: tripData.startLocation,
           endLocation: tripData.endLocation,
           distanceKm: parseFloat(tripData.distanceKm),
-          status: "COMPLETED", // Mark as completed since distance is pre-calculated like Uber/Ola
+          startCoords: tripData.startCoords,
+          endCoords: tripData.endCoords,
+          routePath: tripData.routePath,
+          status: "ACTIVE", // Start ACTIVE — employee ends on arrival
         }),
       });
 
@@ -285,12 +328,50 @@ export default function EmployeeVehiclesPage() {
         return;
       }
 
-      setIsModalOpen(false);
+      const newTrip = await res.json();
+      // Start GPS tracking immediately
+      startTracking(newTrip.id);
+      setTrackingMessage("Trip started! Live location tracking is active. Keep this app open.");
+      // Switch modal to live tracking view
+      setLiveTrackingTrip({
+        ...newTrip,
+        startLatitude: tripData.startCoords?.lat,
+        startLongitude: tripData.startCoords?.lng,
+        endLatitude: tripData.endCoords?.lat,
+        endLongitude: tripData.endCoords?.lng,
+        routePath: tripData.routePath,
+      });
       resetTripData();
       fetchData(employee.id);
     } catch (error) {
       console.error(error);
       alert("Error logging trip");
+    }
+  };
+
+  const handleEndTrip = async () => {
+    if (!liveTrackingTrip) return;
+    setEndingTrip(true);
+    try {
+      // Stop GPS tracking
+      if (trackingId) {
+        navigator.geolocation.clearWatch(trackingId);
+        setTrackingId(null);
+      }
+      // Mark trip as COMPLETED
+      await fetch(`/api/trips/${liveTrackingTrip.id}/stop`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startLocation: liveTrackingTrip.startLocation, endLocation: liveTrackingTrip.endLocation }),
+      });
+      setLiveTrackingTrip(null);
+      setIsModalOpen(false);
+      setTrackingMessage("");
+      fetchData(employee.id);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setEndingTrip(false);
     }
   };
 
@@ -304,89 +385,110 @@ export default function EmployeeVehiclesPage() {
       reason: "",
       startCoords: null,
       endCoords: null,
+      routePath: [],
     });
     setFromQuery("");
     setToQuery("");
-    setFromResults([]);
-    setToResults([]);
+    setLocationError("");
+    setRouteError("");
   };
 
-  // OpenStreetMap Nominatim Search
-  const searchLocation = async (query, isFrom) => {
-    if (!query || query.length < 3) {
-      if (isFrom) setFromResults([]);
-      else setToResults([]);
+  const getCurrentPickupLocation = async () => {
+    if (!navigator.geolocation) {
+      setLocationError("GPS is not available on this device. Type the start address to calculate a route.");
       return;
     }
 
-    if (isFrom) setIsSearchingFrom(true);
-    else setIsSearchingTo(true);
-
+    setIsLocatingPickup(true);
+    routeRequestRef.current += 1;
+    setIsCalculatingDistance(false);
+    setLocationError("");
+    setRouteError("");
     try {
-      // Limit to India with countrycodes=in or general if not needed, let's keep it general but prioritize
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`,
-      );
-      const data = await res.json();
-
-      if (isFrom) setFromResults(data);
-      else setToResults(data);
-    } catch (e) {
-      console.error("Error searching location", e);
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 20_000,
+          maximumAge: 0,
+        });
+      });
+      const coords = { lat: position.coords.latitude, lng: position.coords.longitude };
+      const coordinateLabel = `Current location (${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`;
+      setTripData(prev => ({
+        ...prev,
+        startLocation: coordinateLabel,
+        startCoords: coords,
+        distanceKm: "",
+        routePath: [],
+      }));
+      setFromQuery(coordinateLabel);
+    } catch (error) {
+      const message = error.code === 1
+        ? "Location permission is blocked. Allow location access, then tap Use current location again."
+        : error.code === 3
+          ? "GPS took too long. Turn on device location and try again."
+          : "Current location is unavailable. Turn on GPS/location services and try again.";
+      setLocationError(message);
     } finally {
-      if (isFrom) setIsSearchingFrom(false);
-      else setIsSearchingTo(false);
+      setIsLocatingPickup(false);
     }
   };
 
-  const handleSelectLocation = (loc, isFrom) => {
-    if (isFrom) {
-      setFromQuery(loc.display_name.split(",")[0]);
-      setTripData((prev) => ({
-        ...prev,
-        startLocation: loc.display_name.split(",")[0],
-        startCoords: { lat: loc.lat, lon: loc.lon },
-      }));
-      setFromResults([]);
-    } else {
-      setToQuery(loc.display_name.split(",")[0]);
-      setTripData((prev) => ({
-        ...prev,
-        endLocation: loc.display_name.split(",")[0],
-        endCoords: { lat: loc.lat, lon: loc.lon },
-      }));
-      setToResults([]);
+  const calculateTripRoute = async () => {
+    if (isCalculatingDistance) return;
+    if (!fromQuery.trim() || !toQuery.trim()) {
+      setRouteError("Enter both start location and destination before calculating the route.");
+      return;
     }
-  };
-
-  // Auto calculate distance when both coords are present
-  useEffect(() => {
-    if (tripData.startCoords && tripData.endCoords) {
-      calculateDistanceRoute(tripData.startCoords, tripData.endCoords);
-    }
-  }, [tripData.startCoords, tripData.endCoords]);
-
-  const calculateDistanceRoute = async (start, end) => {
+    const requestId = ++routeRequestRef.current;
     setIsCalculatingDistance(true);
-    try {
-      // OSRM expects coordinates in lon,lat format
-      const res = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${start.lon},${start.lat};${end.lon},${end.lat}?overview=false`,
-      );
-      const data = await res.json();
+    setLocationError("");
+    setRouteError("");
+    setTripData(prev => ({ ...prev, distanceKm: "", routePath: [] }));
 
-      if (data.code === "Ok" && data.routes && data.routes.length > 0) {
-        const distanceMeters = data.routes[0].distance;
-        const distanceKm = (distanceMeters / 1000).toFixed(1);
-        setTripData((prev) => ({ ...prev, distanceKm }));
-      } else {
-        alert("Could not calculate a route between these locations.");
+    try {
+      // Geocoding via server-side API (avoids CORS)
+      const geocodeAddress = async (address) => {
+        const res = await fetch(`/api/maps?action=geocode&address=${encodeURIComponent(address.trim())}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Could not locate "${address.trim()}".`);
+        return { coords: { lat: data.lat, lng: data.lng }, formattedAddress: data.formattedAddress };
+      };
+
+      const start = tripData.startCoords
+        ? { coords: tripData.startCoords, formattedAddress: tripData.startLocation }
+        : await geocodeAddress(fromQuery);
+      const destination = await geocodeAddress(toQuery);
+      if (requestId !== routeRequestRef.current) return;
+
+      // Directions via server-side API (avoids CORS)
+      const dirRes = await fetch(`/api/maps?action=directions&origin=${start.coords.lat},${start.coords.lng}&destination=${destination.coords.lat},${destination.coords.lng}`);
+      const dirData = await dirRes.json();
+      if (!dirRes.ok) throw new Error(dirData.error || "No driving route was found. Check the start location and destination.");
+
+      const distanceMeters = dirData.distanceMeters;
+      const routePath = decodePolyline(dirData.polyline);
+      if (!(distanceMeters > 0) || routePath.length < 2) {
+        throw new Error("Google Maps returned an incomplete route. Please try again.");
       }
-    } catch (e) {
-      console.error("Routing error:", e);
-      alert("Failed to connect to routing service.");
+
+      setTripData(prev => ({
+        ...prev,
+        startLocation: start.formattedAddress,
+        endLocation: destination.formattedAddress,
+        startCoords: start.coords,
+        endCoords: destination.coords,
+        distanceKm: (distanceMeters / 1000).toFixed(1),
+        routePath,
+      }));
+      setFromQuery(start.formattedAddress);
+      setToQuery(destination.formattedAddress);
+    } catch (error) {
+      if (requestId !== routeRequestRef.current) return;
+      console.error("Google Maps route calculation failed:", error);
+      setRouteError(error.message || "Could not calculate route. Check your connection and try again.");
     } finally {
-      setIsCalculatingDistance(false);
+      if (requestId === routeRequestRef.current) setIsCalculatingDistance(false);
     }
   };
 
@@ -794,6 +896,7 @@ export default function EmployeeVehiclesPage() {
                 onClick={() => {
                   resetTripData();
                   setIsModalOpen(true);
+                  void getCurrentPickupLocation();
                 }}
                 className="btn-primary"
               >
@@ -1028,7 +1131,7 @@ export default function EmployeeVehiclesPage() {
                       trip.status === "APPROVED" ||
                       trip.status === "PAID" ||
                       trip.status === "REJECTED") &&
-                      trip.pings?.length > 0 && (
+                      (trip.pings?.length > 0 || trip.routePath || trip.startLatitude) && (
                         <button
                           onClick={() => setSelectedMapTrip(trip)}
                           style={{
@@ -1125,13 +1228,53 @@ export default function EmployeeVehiclesPage() {
             className="saas-card"
             style={{
               width: "100%",
-              maxWidth: "500px",
-              padding: "2.5rem",
+              maxWidth: "680px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              padding: "2rem",
               background: "#ffffff",
               borderRadius: "1.5rem",
               boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
             }}
           >
+            {/* Live tracking view after trip starts */}
+            {liveTrackingTrip ? (
+              <div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"1rem" }}>
+                  <div>
+                    <h2 style={{ margin:0, fontSize:"1.25rem", fontWeight:800, color:"#0f172a", display:"flex", alignItems:"center", gap:"8px" }}>
+                      <span style={{ width:10, height:10, borderRadius:"50%", background:"#16a34a", display:"inline-block", animation:"pulse 1.5s infinite" }} />
+                      Live Tracking Active
+                    </h2>
+                    <p style={{ margin:"4px 0 0", fontSize:13, color:"#64748b" }}>
+                      {liveTrackingTrip.startLocation} → {liveTrackingTrip.endLocation}
+                    </p>
+                  </div>
+                  <span style={{ background:"#dcfce7", color:"#166534", padding:"4px 10px", borderRadius:999, fontSize:12, fontWeight:700 }}>ACTIVE</span>
+                </div>
+                {/* Ola/Uber style live map */}
+                <div style={{ borderRadius:12, overflow:"hidden", marginBottom:"1rem" }}>
+                  <LiveTripMap
+                    tripId={liveTrackingTrip.id}
+                    isActive={true}
+                    startLocation={liveTrackingTrip.startLocation}
+                    endLocation={liveTrackingTrip.endLocation}
+                    startCoords={liveTrackingTrip.startLatitude ? { lat: liveTrackingTrip.startLatitude, lng: liveTrackingTrip.startLongitude } : null}
+                    endCoords={liveTrackingTrip.endLatitude ? { lat: liveTrackingTrip.endLatitude, lng: liveTrackingTrip.endLongitude } : null}
+                    plannedPath={liveTrackingTrip.routePath || []}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEndTrip}
+                  disabled={endingTrip}
+                  style={{ width:"100%", padding:"1rem", background: endingTrip ? "#94a3b8" : "#16a34a", color:"#fff", border:"none", borderRadius:12, fontSize:"1rem", fontWeight:700, cursor: endingTrip ? "not-allowed" : "pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:"8px" }}
+                >
+                  {endingTrip ? "Ending trip..." : "✅ I have Arrived — End Trip"}
+                </button>
+              </div>
+            ) : (
+              <>
             <div
               style={{
                 display: "flex",
@@ -1353,17 +1496,27 @@ export default function EmployeeVehiclesPage() {
                         color: "#374151",
                       }}
                     >
-                      Pickup Location
+                      Start Location
                     </label>
                     <input
                       type="text"
-                      placeholder="Enter pickup location..."
+                      placeholder="Getting current location..."
                       value={fromQuery}
                       onChange={(e) => {
+                        routeRequestRef.current += 1;
                         setFromQuery(e.target.value);
-                        searchLocation(e.target.value, true);
+                        setLocationError("");
+                        setRouteError("");
+                        setIsCalculatingDistance(false);
+                        setTripData(prev => ({
+                          ...prev,
+                          startLocation: e.target.value,
+                          startCoords: null,
+                          distanceKm: "",
+                          routePath: [],
+                        }));
                       }}
-                      required
+                      disabled={isLocatingPickup}
                       style={{
                         width: "100%",
                         padding: "1rem",
@@ -1380,55 +1533,28 @@ export default function EmployeeVehiclesPage() {
                       onFocus={(e) => (e.target.style.borderColor = "#10b981")}
                       onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
                     />
-                    {isSearchingFrom && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          right: "1rem",
-                          top: "2.8rem",
-                          fontSize: "0.8rem",
-                          color: "#6b7280",
-                        }}
-                      >
-                        Searching...
-                      </div>
-                    )}
-                    {fromResults.length > 0 && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          zIndex: 10,
-                          width: "100%",
-                          background: "white",
-                          borderRadius: "12px",
-                          boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                          border: "1px solid #e5e7eb",
-                          marginTop: "0.5rem",
-                          maxHeight: "200px",
-                          overflowY: "auto",
-                        }}
-                      >
-                        {fromResults.map((loc, i) => (
-                          <div
-                            key={i}
-                            onClick={() => handleSelectLocation(loc, true)}
-                            style={{
-                              padding: "0.75rem 1rem",
-                              cursor: "pointer",
-                              borderBottom:
-                                i < fromResults.length - 1
-                                  ? "1px solid #f3f4f6"
-                                  : "none",
-                              fontSize: "0.875rem",
-                              color: "#374151",
-                            }}
-                            className="hover:bg-gray-50"
-                          >
-                            {loc.display_name}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => void getCurrentPickupLocation()}
+                      disabled={isLocatingPickup}
+                      style={{
+                        marginTop: "0.5rem",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        border: "none",
+                        background: "transparent",
+                        color: "#0284c7",
+                        fontWeight: 700,
+                        cursor: isLocatingPickup ? "wait" : "pointer",
+                      }}
+                    >
+                      <Crosshair size={16} />
+                      {isLocatingPickup ? "Finding start location..." : "Use current location as start"}
+                    </button>
+                    <div style={{ marginTop: "0.4rem", color: "#64748b", fontSize: "0.8rem" }}>
+                      GPS fills this automatically; you can also type an address.
+                    </div>
                   </div>
 
                   <div style={{ position: "relative" }}>
@@ -1441,84 +1567,105 @@ export default function EmployeeVehiclesPage() {
                         color: "#374151",
                       }}
                     >
-                      Drop Location
+                      Dest Location
                     </label>
-                    <input
-                      type="text"
-                      placeholder="Enter drop location..."
-                      value={toQuery}
-                      onChange={(e) => {
-                        setToQuery(e.target.value);
-                        searchLocation(e.target.value, false);
-                      }}
-                      required
-                      style={{
-                        width: "100%",
-                        padding: "1rem",
-                        paddingLeft: "1rem",
-                        borderRadius: "12px",
-                        border: "2px solid #e5e7eb",
-                        background: "#ffffff",
-                        fontSize: "0.95rem",
-                        fontWeight: 500,
-                        boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
-                        transition: "all 0.2s",
-                        outline: "none",
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
-                      onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
-                    />
-                    {isSearchingTo && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          right: "1rem",
-                          top: "2.8rem",
-                          fontSize: "0.8rem",
-                          color: "#6b7280",
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type="text"
+                        placeholder="Search destination address..."
+                        value={toQuery}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          routeRequestRef.current += 1;
+                          setToQuery(val);
+                          setLocationError("");
+                          setRouteError("");
+                          setIsCalculatingDistance(false);
+                          setTripData(prev => ({ ...prev, endLocation: val, endCoords: null, distanceKm: "", routePath: [] }));
+                          clearTimeout(destSearchTimeout.current);
+                          if (val.trim().length > 3) {
+                            destSearchTimeout.current = setTimeout(async () => {
+                              try {
+                                const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val + ", India")}&format=json&limit=5&countrycodes=in`, { headers: { "User-Agent": "CeCubeERP/1.0" } });
+                                const data = await res.json();
+                                setDestSuggestions(Array.isArray(data) ? data : []);
+                                setShowDestSuggestions(true);
+                              } catch { setDestSuggestions([]); }
+                            }, 400);
+                          } else {
+                            setDestSuggestions([]);
+                            setShowDestSuggestions(false);
+                          }
                         }}
-                      >
-                        Searching...
-                      </div>
-                    )}
-                    {toResults.length > 0 && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          zIndex: 10,
-                          width: "100%",
-                          background: "white",
-                          borderRadius: "12px",
-                          boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                          border: "1px solid #e5e7eb",
-                          marginTop: "0.5rem",
-                          maxHeight: "200px",
-                          overflowY: "auto",
-                        }}
-                      >
-                        {toResults.map((loc, i) => (
-                          <div
-                            key={i}
-                            onClick={() => handleSelectLocation(loc, false)}
-                            style={{
-                              padding: "0.75rem 1rem",
-                              cursor: "pointer",
-                              borderBottom:
-                                i < toResults.length - 1
-                                  ? "1px solid #f3f4f6"
-                                  : "none",
-                              fontSize: "0.875rem",
-                              color: "#374151",
-                            }}
-                            className="hover:bg-gray-50"
-                          >
-                            {loc.display_name}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                        onFocus={(e) => { e.target.style.borderColor = "#3b82f6"; if (destSuggestions.length > 0) setShowDestSuggestions(true); }}
+                        onBlur={(e) => { e.target.style.borderColor = "#e5e7eb"; setTimeout(() => setShowDestSuggestions(false), 200); }}
+                        style={{ width: "100%", padding: "1rem", borderRadius: "12px", border: "2px solid #e5e7eb", background: "#ffffff", fontSize: "0.95rem", fontWeight: 500, boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", transition: "all 0.2s", outline: "none", boxSizing: "border-box" }}
+                      />
+                      {showDestSuggestions && destSuggestions.length > 0 && (
+                        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 999, maxHeight: "220px", overflowY: "auto", marginTop: "4px" }}>
+                          {destSuggestions.map((s, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onMouseDown={() => {
+                                const label = s.display_name;
+                                setToQuery(label);
+                                setTripData(prev => ({ ...prev, endLocation: label, endCoords: { lat: parseFloat(s.lat), lng: parseFloat(s.lon) }, distanceKm: "", routePath: [] }));
+                                setDestSuggestions([]);
+                                setShowDestSuggestions(false);
+                              }}
+                              style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", border: "none", borderBottom: i < destSuggestions.length - 1 ? "1px solid #f1f5f9" : "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem", color: "#0f172a", lineHeight: 1.4 }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "#f0f9ff"}
+                              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                            >
+                              📍 {s.display_name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ marginTop: "0.4rem", color: "#64748b", fontSize: "0.8rem" }}>
+                      Type to search destination — select from suggestions or type freely.
+                    </div>
                   </div>
                 </div>
+
+                {locationError && (
+                  <div role="alert" style={{ marginBottom: "1rem", padding: "0.75rem 1rem", borderRadius: 10, background: "#fff7ed", color: "#9a3412", fontSize: "0.875rem" }}>
+                    {locationError}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void calculateTripRoute()}
+                  disabled={isCalculatingDistance || isLocatingPickup || !tripData.vehicleId || !fromQuery.trim() || !toQuery.trim()}
+                  className="btn-outline"
+                  style={{ width: "100%", marginBottom: "1rem", padding: "0.75rem", display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem" }}
+                >
+                  <Navigation size={17} />
+                  {isCalculatingDistance ? "Calculating route..." : "Calculate route & expense"}
+                </button>
+                {routeError && (
+                  <div role="alert" style={{ marginBottom: "1rem", padding: "0.75rem 1rem", borderRadius: 10, background: "#fef2f2", color: "#b91c1c", fontSize: "0.875rem" }}>
+                    {routeError} If this continues, ask admin to check Google Maps JavaScript, Geocoding, and Routes API access.
+                  </div>
+                )}
+
+                {tripData.routePath.length > 1 && (
+                  <div style={{ marginBottom: "1.5rem" }}>
+                    <GoogleMapsView
+                      locations={[
+                        { ...tripData.startCoords, title: `Start: ${tripData.startLocation}` },
+                        { ...tripData.endCoords, title: `Destination: ${tripData.endLocation}` },
+                      ]}
+                      paths={[tripData.routePath]}
+                      height={280}
+                    />
+                    <div style={{ marginTop: "0.5rem", color: "#64748b", fontSize: "0.8rem" }}>
+                      Google Maps driving route · Expense is estimated from route distance × vehicle rate.
+                    </div>
+                  </div>
+                )}
 
                 <div
                   style={{
@@ -1568,7 +1715,7 @@ export default function EmployeeVehiclesPage() {
                         <>
                           {tripData.distanceKm
                             ? `${tripData.distanceKm} km`
-                            : "0.0 km"}
+                            : "Calculate route"}
                         </>
                       )}
                     </div>
@@ -1600,7 +1747,7 @@ export default function EmployeeVehiclesPage() {
                                 (v) => v.id === parseInt(tripData.vehicleId),
                               )?.ratePerKm || 0
                           ).toFixed(2)
-                        : "0.00"}
+                        : "—"}
                     </div>
                   </div>
                 </div>
@@ -1621,12 +1768,17 @@ export default function EmployeeVehiclesPage() {
                   disabled={
                     isCalculatingDistance ||
                     !tripData.distanceKm ||
+                    !tripData.startCoords ||
+                    !tripData.endCoords ||
+                    tripData.routePath.length < 2 ||
                     !tripData.vehicleId
                   }
                 >
                   <MapPin size={20} /> Request Ride & Log Expense
                 </button>
               </form>
+            )}
+            </>
             )}
           </div>
         </div>
@@ -1961,8 +2113,11 @@ export default function EmployeeVehiclesPage() {
               pings={selectedMapTrip.pings}
               startLocation={selectedMapTrip.startLocation}
               endLocation={selectedMapTrip.endLocation}
+              routePath={selectedMapTrip.routePath}
               tripId={selectedMapTrip.id}
               isActive={selectedMapTrip.status === "ACTIVE"}
+              startCoords={selectedMapTrip.startLatitude ? { lat: selectedMapTrip.startLatitude, lng: selectedMapTrip.startLongitude } : null}
+              endCoords={selectedMapTrip.endLatitude ? { lat: selectedMapTrip.endLatitude, lng: selectedMapTrip.endLongitude } : null}
             />
           </div>
         </div>

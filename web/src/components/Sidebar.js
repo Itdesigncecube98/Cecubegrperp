@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, CalendarCheck, LogOut, Shield, Settings, 
   Car, Mail, Wallet, Building2, Layers, Banknote, ClipboardList, 
   Award, FileText, ChevronRight, ChevronLeft, ChevronDown, 
-  Search, Sparkles, X, ArrowUpRight
+  Search, Sparkles, X, ArrowUpRight, MapPin
 } from 'lucide-react';
 import Dialog from './Dialog';
 import './sidebar.css';
@@ -83,6 +83,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }) {
       id: 'operations',
       label: 'Operations & Comms',
       items: [
+        { name: 'Live Tracking', path: '/dashboard/attendance/live-tracking', icon: MapPin },
         { name: 'Vehicles Expenses', path: '/dashboard/vehicles', icon: Car },
         { name: 'Email Blast', path: '/dashboard/email', icon: Mail },
         { name: 'Imprest Management', path: '/dashboard/imprest', icon: Wallet },
