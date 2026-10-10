@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import GoogleMapsView from '@/components/GoogleMapsView';
 
 export default function PunchLiveLocationMap({ active = true, refreshInterval = 15000 }) {
   const [locations, setLocations] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [authExpired, setAuthExpired] = useState(false);
   
   // Filtering state
   const [historyDate, setHistoryDate] = useState('');
@@ -33,6 +35,7 @@ export default function PunchLiveLocationMap({ active = true, refreshInterval = 
   };
 
   const refreshLocations = useCallback(async () => {
+    if (authExpired) return;
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -41,6 +44,11 @@ export default function PunchLiveLocationMap({ active = true, refreshInterval = 
       if (targetTime) params.append('targetTime', targetTime);
       
       const response = await fetch(`/api/attendance/live-location?${params.toString()}`, { cache: 'no-store' });
+      if (response.status === 401) {
+        setAuthExpired(true);
+        setError('Your session has expired. Sign in again to view live locations.');
+        return;
+      }
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not load locations.');
       setLocations(Array.isArray(data.locations) ? data.locations : []);
@@ -50,10 +58,10 @@ export default function PunchLiveLocationMap({ active = true, refreshInterval = 
     } finally {
       setLoading(false);
     }
-  }, [historyDate, filterEmployeeIds, targetTime]);
+  }, [authExpired, historyDate, filterEmployeeIds, targetTime]);
 
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active || authExpired) return undefined;
     
     // Initial fetch
     refreshLocations();
@@ -63,7 +71,7 @@ export default function PunchLiveLocationMap({ active = true, refreshInterval = 
       const intervalId = window.setInterval(refreshLocations, refreshInterval);
       return () => window.clearInterval(intervalId);
     }
-  }, [active, refreshInterval, refreshLocations, historyDate]);
+  }, [active, authExpired, refreshInterval, refreshLocations, historyDate]);
 
   if (!active) return null;
 
@@ -142,7 +150,12 @@ export default function PunchLiveLocationMap({ active = true, refreshInterval = 
       </div>
       
       {error ? (
-        <div role="alert" style={{ padding: 12, color: '#b91c1c', background: '#fef2f2', borderRadius: 8 }}>{error}</div>
+        <div role="alert" style={{ padding: 12, color: '#b91c1c', background: '#fef2f2', borderRadius: 8 }}>
+          {error}
+          {authExpired && (
+            <> <Link href="/login" style={{ color: '#1d4ed8', fontWeight: 600 }}>Sign in</Link></>
+          )}
+        </div>
       ) : locations.length ? (
         <GoogleMapsView
           locations={locations.map(location => ({

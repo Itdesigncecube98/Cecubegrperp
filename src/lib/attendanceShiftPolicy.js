@@ -30,6 +30,29 @@ export const getEffectiveEmployeeShift = (employeeShifts, employeeId, date) =>
     (!assignment.validTill || assignment.validTill >= date)
   ) || null;
 
+export const resolveNightShiftAttendanceSlots = (machinePunchTimes) => {
+  if (!Array.isArray(machinePunchTimes)) return null;
+
+  const punches = machinePunchTimes
+    .map(normalizeMachinePunch)
+    .filter((entry) => entry && entry.time)
+    .sort((a, b) => a.time.localeCompare(b.time));
+  if (!punches.length) return null;
+
+  const slots = [];
+  for (const punch of punches) {
+    const openSlot = slots.find((slot) => !slot.out);
+    if (punch.direction === 'OUT') {
+      if (openSlot) openSlot.out = punch.time;
+    } else if (punch.direction === 'IN' || !openSlot) {
+      slots.push({ in: punch.time, out: '' });
+    } else {
+      openSlot.out = punch.time;
+    }
+  }
+  return slots.length ? slots : null;
+};
+
 /**
  * Enforce the attendance cutoff consistently for machine ingest and stats.
  * - Prefer the first non-OUT pre-19:00 punch as IN

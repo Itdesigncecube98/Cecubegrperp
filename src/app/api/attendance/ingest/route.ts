@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { prisma } from "../../../../lib/prisma";
-import { getEffectiveEmployeeShift, resolveDayShiftAttendanceSlots } from "../../../../lib/attendanceShiftPolicy";
+import {
+  getEffectiveEmployeeShift,
+  getShiftKind,
+  resolveDayShiftAttendanceSlots,
+  resolveNightShiftAttendanceSlots,
+} from "../../../../lib/attendanceShiftPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -257,7 +262,9 @@ export async function POST(request: Request) {
         where: { employeeId_date: { employeeId, date } },
         select: { isApproved: true, shiftType: true, timeSlots: true },
       });
-      const shift = assignment?.shift || (existing?.shiftType === "Night" ? null : { shiftName: "Day Shift" });
+      const shift = assignment?.shift || {
+        shiftName: existing?.shiftType === "Night" ? "Night Shift" : "Day Shift",
+      };
       // Merge stored punch times with new ones so IN+OUT from separate sync runs combine.
       // Raw device punches replace matching slot times, preserving their IN/OUT direction.
       const machinePunchTimes = dayPunches.map((p) => ({
@@ -281,14 +288,17 @@ export async function POST(request: Request) {
         ...existingPunchTimes,
         ...machinePunchTimes,
       ];
-      const timeSlots = resolveDayShiftAttendanceSlots({
-        shift,
-        machinePunchTimes: allPunchTimes,
-        attendanceDate: date,
-        today: indiaNow.date,
-        currentTime: indiaNow.time,
-        existingSlots: [],
-      });
+      const isNightShift = getShiftKind(shift) === "NIGHT";
+      const timeSlots = isNightShift
+        ? resolveNightShiftAttendanceSlots(allPunchTimes)
+        : resolveDayShiftAttendanceSlots({
+          shift,
+          machinePunchTimes: allPunchTimes,
+          attendanceDate: date,
+          today: indiaNow.date,
+          currentTime: indiaNow.time,
+          existingSlots: [],
+        });
       if (!timeSlots) {
         attendanceSkippedNonDayShift++;
         continue;
@@ -301,8 +311,8 @@ export async function POST(request: Request) {
 
       await prisma.attendance.upsert({
         where: { employeeId_date: { employeeId, date } },
-        update: { status: "Present", shiftType: "Day", timeSlots: JSON.stringify(timeSlots) },
-        create: { employeeId, date, status: "Present", shiftType: "Day", timeSlots: JSON.stringify(timeSlots) },
+        update: { status: "Present", shiftType: isNightShift ? "Night" : "Day", timeSlots: JSON.stringify(timeSlots) },
+        create: { employeeId, date, status: "Present", shiftType: isNightShift ? "Night" : "Day", timeSlots: JSON.stringify(timeSlots) },
       });
       attendanceUpdated++;
     }

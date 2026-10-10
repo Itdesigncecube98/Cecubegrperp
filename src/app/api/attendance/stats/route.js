@@ -29,7 +29,7 @@ export async function GET(request) {
       }
     });
 
-    const [holidays, workWeeks, approvedLeaves, employeeShifts] = await Promise.all([
+    const [holidays, workWeeks, approvedLeaves, employeeShifts, weekoffTypes] = await Promise.all([
       prisma.holiday.findMany(),
       prisma.workWeek.findMany(),
       prisma.leaveRequest.findMany({
@@ -39,7 +39,8 @@ export async function GET(request) {
         where: { employeeId },
         include: { shift: true },
         orderBy: { effectiveFrom: 'desc' }
-      })
+      }),
+      prisma.weekoffType.findMany()
     ]);
     
     // Convert to easy lookups
@@ -49,6 +50,16 @@ export async function GET(request) {
     // Default fallback: if no work week settings exist, assume Sunday is an off day
     if (workWeeks.length === 0) {
       nonWorkingDays.add('Sunday');
+    }
+    if (employee.offDaysTemplates?.length > 0) {
+      const employeeOffDays = [];
+      for (const templateName of employee.offDaysTemplates) {
+        const weekoffType = weekoffTypes.find(type => type.name === templateName);
+        if (weekoffType?.days) {
+          employeeOffDays.push(...weekoffType.days);
+        }
+      }
+      nonWorkingDays = new Set(employeeOffDays);
     }
     
     // Calculate leave dates
@@ -209,7 +220,15 @@ export async function GET(request) {
         } else if (completedSlot && effectiveShift?.shift) {
           effStatus = calculateAttendanceStatus(effectiveShift.shift, completedSlot.in, completedSlot.out).status;
         }
-        if (dateStr < todayStr && effStatus !== 'Present' && effStatus !== 'Late' && effStatus !== 'Night Shift' && effStatus !== 'COFF') {
+        const hasPunch = slots.some(slot => slot?.in || slot?.out);
+        if (
+          isOffDay &&
+          !isLeave &&
+          !hasPunch &&
+          ['Absent', 'No Punch', 'Not Marked', 'Off'].includes(effStatus)
+        ) {
+          effStatus = 'Off';
+        } else if (dateStr < todayStr && effStatus !== 'Present' && effStatus !== 'Late' && effStatus !== 'Night Shift' && effStatus !== 'COFF') {
           if (slots.length === 0 || slots.some(s => !s.out || !s.in)) {
             effStatus = 'Absent';
           }

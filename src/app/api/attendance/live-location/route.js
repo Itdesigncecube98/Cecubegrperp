@@ -19,6 +19,32 @@ function getIndiaDate(date = new Date()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+const indiaDateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Kolkata',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+function isWithinClosedPunch(timestamp, attendanceDate, timeSlots) {
+  const parts = Object.fromEntries(
+    indiaDateTimeFormatter.formatToParts(timestamp).map(({ type, value }) => [type, value]),
+  );
+  const pointDate = `${parts.year}-${parts.month}-${parts.day}`;
+  if (pointDate !== attendanceDate) return false;
+
+  const pointTime = `${parts.hour}:${parts.minute}`;
+  return timeSlots.some(slot =>
+    typeof slot?.in === 'string' &&
+    typeof slot?.out === 'string' &&
+    slot.in <= pointTime &&
+    pointTime <= slot.out
+  );
+}
+
 function hasOpenPunch(timeSlots) {
   try {
     const slots = JSON.parse(timeSlots || '[]');
@@ -52,6 +78,34 @@ export async function GET(request) {
   const session = readAuthSession(request);
   const { searchParams } = new URL(request.url);
   const employeeId = searchParams.get('employeeId');
+
+  if (searchParams.get('trackingStatus') === '1') {
+    if (!session || session.type !== 'employee') {
+      return NextResponse.json({ error: 'Employee authentication required' }, { status: 401 });
+    }
+
+    try {
+      const today = getIndiaDate();
+      const yesterday = getIndiaDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+      const attendance = await prisma.attendance.findMany({
+        where: { employeeId: session.id, date: { gte: yesterday, lte: today } },
+        select: { date: true, timeSlots: true },
+        orderBy: { date: 'desc' },
+      });
+      const activeAttendance = attendance.find(record => hasOpenPunch(record.timeSlots));
+      if (!activeAttendance) {
+        await prisma.punchLiveLocation.deleteMany({ where: { employeeId: session.id } });
+      }
+      return NextResponse.json({
+        tracking: Boolean(activeAttendance),
+        employeeId: session.id,
+        date: activeAttendance?.date || null,
+      });
+    } catch (error) {
+      console.error('Could not check attendance tracking status:', error);
+      return NextResponse.json({ error: 'Could not check attendance tracking status' }, { status: 500 });
+    }
+  }
 
   const finalEmployeeId = session?.id || employeeId;
 
@@ -214,10 +268,124 @@ export async function POST(request) {
   
   try {
     const body = await request.json();
-    const employeeId = session?.type === 'employee' ? session.id : body.employeeId;
+    const employeeId = session?.type === 'employee' ? session.id : null;
 
     if (!employeeId) {
       return NextResponse.json({ error: 'Employee authentication required' }, { status: 401 });
+    }
+
+    if (Array.isArray(body.points)) {
+      if (body.points.length === 0 || body.points.length > 100) {
+        return NextResponse.json({ error: 'Provide between 1 and 100 queued location points.' }, { status: 400 });
+      }
+
+      const points = body.points.map(point => ({
+        id: typeof point?.id === 'string' ? point.id.trim() : '',
+        date: typeof point?.date === 'string' ? point.date : '',
+        latitude: Number(point?.latitude),
+        longitude: Number(point?.longitude),
+        accuracy: point?.accuracy == null ? null : Number(point.accuracy),
+        timestamp: new Date(point?.timestamp),
+      }));
+      const now = Date.now();
+      if (points.some(point =>
+        !point.id || point.id.length > 80 ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(point.date) ||
+        !Number.isFinite(point.latitude) || point.latitude < -90 || point.latitude > 90 ||
+        !Number.isFinite(point.longitude) || point.longitude < -180 || point.longitude > 180 ||
+        (point.accuracy !== null && (!Number.isFinite(point.accuracy) || point.accuracy < 0)) ||
+        Number.isNaN(point.timestamp.getTime()) ||
+        point.timestamp.getTime() > now + 5 * 60 * 1000 ||
+        point.timestamp.getTime() < now - 48 * 60 * 60 * 1000
+      )) {
+        return NextResponse.json({ error: 'One or more location points are invalid or too old.' }, { status: 400 });
+      }
+
+      const pointDate = points[0].date;
+      if (points.some(point => point.date !== pointDate)) {
+        return NextResponse.json({ error: 'Upload queued locations for one attendance date at a time.' }, { status: 400 });
+      }
+      const attendanceRecord = await prisma.attendance.findUnique({
+        where: { employeeId_date: { employeeId, date: pointDate } },
+        select: { date: true, timeSlots: true },
+      });
+      if (!attendanceRecord) {
+        return NextResponse.json({ error: 'No attendance record exists for queued locations.' }, { status: 409 });
+      }
+      const isActiveAttendance = hasOpenPunch(attendanceRecord.timeSlots);
+      if (!isActiveAttendance) {
+        let closedSlots = [];
+        try {
+          closedSlots = JSON.parse(attendanceRecord.timeSlots || '[]');
+        } catch (error) {
+          console.error('Could not parse closed attendance slots for queued locations:', error);
+        }
+        if (
+          !Array.isArray(closedSlots) ||
+          points.some(point =>
+            !isWithinClosedPunch(point.timestamp, attendanceRecord.date, closedSlots)
+          )
+        ) {
+          return NextResponse.json({ error: 'Queued locations do not match a completed attendance punch.' }, { status: 409 });
+        }
+
+        points.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        const accepted = await prisma.punchLocationHistory.createMany({
+          data: points.map(point => ({
+            id: point.id,
+            employeeId,
+            date: attendanceRecord.date,
+            latitude: point.latitude,
+            longitude: point.longitude,
+            accuracy: point.accuracy,
+            timestamp: point.timestamp,
+          })),
+          skipDuplicates: true,
+        });
+        return NextResponse.json({ active: false, accepted: accepted.count });
+      }
+
+      points.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      const latestPoint = points[points.length - 1];
+      const location = await prisma.$transaction(async tx => {
+        await tx.punchLocationHistory.createMany({
+          data: points.map(point => ({
+            id: point.id,
+            employeeId,
+            date: attendanceRecord.date,
+            latitude: point.latitude,
+            longitude: point.longitude,
+            accuracy: point.accuracy,
+            timestamp: point.timestamp,
+          })),
+          skipDuplicates: true,
+        });
+
+        const currentLocation = await tx.punchLiveLocation.findUnique({ where: { employeeId } });
+        if (currentLocation && currentLocation.updatedAt > latestPoint.timestamp) {
+          return currentLocation;
+        }
+
+        return tx.punchLiveLocation.upsert({
+          where: { employeeId },
+          create: {
+            employeeId,
+            date: attendanceRecord.date,
+            latitude: latestPoint.latitude,
+            longitude: latestPoint.longitude,
+            accuracy: latestPoint.accuracy,
+            updatedAt: latestPoint.timestamp,
+          },
+          update: {
+            date: attendanceRecord.date,
+            latitude: latestPoint.latitude,
+            longitude: latestPoint.longitude,
+            accuracy: latestPoint.accuracy,
+            updatedAt: latestPoint.timestamp,
+          },
+        });
+      });
+      return NextResponse.json({ active: true, location, accepted: points.length });
     }
 
     if (body.latitude == null || body.longitude == null) {
@@ -252,7 +420,7 @@ export async function POST(request) {
         where: { employeeId: employeeId },
         create: {
           employeeId: employeeId,
-          date: activeAttendance.date,
+          date: attendanceRecord.date,
           latitude,
           longitude,
           accuracy,

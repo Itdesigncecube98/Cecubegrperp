@@ -37,10 +37,12 @@ export function PermissionsProvider({ children }) {
     const savedEmp = localStorage.getItem('activeEmp');
     const savedProj = localStorage.getItem('activeProj');
     const employeeData = localStorage.getItem('employeeData');
+    let hasEmployeeSession = false;
     if (employeeData && sessionStorage.getItem('isAdmin') !== 'true') {
       try {
         const employee = JSON.parse(employeeData);
         if (employee?.id) {
+          hasEmployeeSession = true;
           setActiveEmployee(employee);
           localStorage.setItem('activeEmp', JSON.stringify(employee));
         }
@@ -54,23 +56,25 @@ export function PermissionsProvider({ children }) {
         if (!cancelled) setEmployees(Array.isArray(data) ? data : []);
       }).catch(() => {});
     }
-    fetch('/api/projects').then(res => res.json()).then(data => {
-      if (cancelled || !Array.isArray(data)) return;
-      setProjects(data);
-      const cachedProject = savedProj ? JSON.parse(savedProj) : null;
-      if (cachedProject?.id && !data.some(project => project.id === cachedProject.id)) {
-        if (employeeData && !adminSession && data.length > 0) {
+    if (adminSession || hasEmployeeSession) {
+      fetch('/api/projects').then(res => res.json()).then(data => {
+        if (cancelled || !Array.isArray(data)) return;
+        setProjects(data);
+        const cachedProject = savedProj ? JSON.parse(savedProj) : null;
+        if (cachedProject?.id && !data.some(project => project.id === cachedProject.id)) {
+          if (hasEmployeeSession && !adminSession && data.length > 0) {
+            setActiveProject(data[0]);
+            localStorage.setItem('activeProj', JSON.stringify(data[0]));
+          } else {
+            localStorage.removeItem('activeProj');
+            setActiveProject(null);
+          }
+        } else if (!cachedProject && hasEmployeeSession && data.length > 0) {
           setActiveProject(data[0]);
           localStorage.setItem('activeProj', JSON.stringify(data[0]));
-        } else {
-          localStorage.removeItem('activeProj');
-          setActiveProject(null);
         }
-      } else if (!cachedProject && employeeData && !adminSession && data.length > 0) {
-        setActiveProject(data[0]);
-        localStorage.setItem('activeProj', JSON.stringify(data[0]));
-      }
-    }).catch(() => {});
+      }).catch(() => {});
+    }
     return () => { cancelled = true; };
   }, []);
 
