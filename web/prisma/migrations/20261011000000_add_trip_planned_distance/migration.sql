@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "TripLog" ADD COLUMN IF NOT EXISTS "plannedDistanceKm" DOUBLE PRECISION DEFAULT 0.0;

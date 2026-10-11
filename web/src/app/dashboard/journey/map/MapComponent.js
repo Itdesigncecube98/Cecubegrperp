@@ -1,180 +1,90 @@
-'use client';
-import React, { useEffect, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap, Circle } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
+﻿'use client';
+import { useEffect, useRef, useState } from 'react';
+import { loadGoogleMaps } from '@/components/GoogleMapsView';
 
-// Fix leaflet default icon issue in Next.js
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899'];
 
-const startIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-});
-
-const endIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-});
-
-const liveIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-});
-
-// Fit map to bounds whenever they change
-function MapBounds({ bounds }) {
-  const map = useMap();
-  const prevBounds = useRef(null);
-  useEffect(() => {
-    if (!bounds || bounds.length === 0) return;
-    // Only refit if bounds changed meaningfully
-    const key = bounds.map(b => b.join(',')).join('|');
-    if (prevBounds.current === key) return;
-    prevBounds.current = key;
-    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
-  }, [bounds, map]);
-  return null;
-}
-
-// Smoothly pan to follow live position of selected/active trip
-function LiveFollow({ position, follow }) {
-  const map = useMap();
-  const prevPos = useRef(null);
-  useEffect(() => {
-    if (!follow || !position) return;
-    const key = position.join(',');
-    if (prevPos.current === key) return;
-    prevPos.current = key;
-    map.panTo(position, { animate: true, duration: 1 });
-  }, [position, follow, map]);
-  return null;
-}
-
-export default function MapComponent({ trips: initialTrips, selectedTripId }) {
+export default function MapComponent({ trips: initialTrips = [], selectedTripId }) {
   const [trips, setTrips] = useState(initialTrips || []);
+  const divRef = useRef(null);
+  const mapRef = useRef(null);
+  const linesRef = useRef([]);
+  const markersRef = useRef([]);
+  const liveMarkerRef = useRef(null);
+  const liveIntervalRef = useRef(null);
 
-  // Sync when parent updates trips (e.g. date change)
+  useEffect(() => { setTrips(initialTrips || []); }, [initialTrips]);
+
   useEffect(() => {
-    setTrips(initialTrips || []);
-  }, [initialTrips]);
+    let cancelled = false;
+    loadGoogleMaps().then(maps => {
+      if (cancelled || !divRef.current) return;
+      if (!mapRef.current) {
+        mapRef.current = new maps.Map(divRef.current, {
+          center: { lat: 28.6139, lng: 77.2090 }, zoom: 5,
+          mapTypeControl: false, streetViewControl: false,
+        });
+      }
+      const map = mapRef.current;
+      linesRef.current.forEach(l => l.setMap(null));
+      markersRef.current.forEach(m => m.setMap(null));
+      linesRef.current = []; markersRef.current = [];
 
-  // Poll pings for ACTIVE trips every 5 seconds
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const activeTrips = trips.filter(t => t.status === 'ACTIVE');
-      if (activeTrips.length === 0) return;
+      let allPoints = [];
+      trips.forEach((trip, idx) => {
+        const pings = trip.pings || [];
+        if (pings.length < 2) return;
+        const color = COLORS[idx % COLORS.length];
+        const path = pings.map(p => ({ lat: p.latitude, lng: p.longitude }));
+        allPoints = allPoints.concat(path);
+        const line = new maps.Polyline({ path, map, strokeColor: color, strokeWeight: 3, strokeOpacity: 0.8 });
+        linesRef.current.push(line);
+        const sm = new maps.Marker({ position: path[0], map,
+          icon: { path: maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#16a34a', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+          title: `Start: ${trip.startLocation || ''}`
+        });
+        markersRef.current.push(sm);
+        const em = new maps.Marker({ position: path[path.length-1], map,
+          icon: { path: maps.SymbolPath.CIRCLE, scale: 7, fillColor: '#ef4444', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+          title: `End: ${trip.endLocation || ''}`
+        });
+        markersRef.current.push(em);
+      });
 
-      try {
-        // Re-fetch pings for each active trip via location-requests API
-        const updated = await Promise.all(
-          activeTrips.map(t =>
-            fetch(`/api/location-requests/${t.id}`)
-              .then(r => r.ok ? r.json() : null)
-              .catch(() => null)
-          )
-        );
+      if (allPoints.length > 1) {
+        const bounds = new maps.LatLngBounds();
+        allPoints.forEach(p => bounds.extend(p));
+        map.fitBounds(bounds);
+      }
 
-        setTrips(prev => prev.map(trip => {
-          const fresh = updated.find(u => u && u.id === trip.id);
-          return fresh ? { ...trip, pings: fresh.pings || trip.pings } : trip;
-        }));
-      } catch (e) { /* silent — next tick will retry */ }
-    }, 5000);
+      clearInterval(liveIntervalRef.current);
+      if (liveMarkerRef.current) { liveMarkerRef.current.setMap(null); liveMarkerRef.current = null; }
+      const activeTrip = trips.find(t => t.status === 'ACTIVE' && (selectedTripId ? String(t.id) === String(selectedTripId) : true));
+      if (activeTrip) {
+        const poll = async () => {
+          try {
+            const res = await fetch(`/api/trips/${activeTrip.id}/pings`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!Array.isArray(data) || !data.length) return;
+            const last = data[data.length - 1];
+            const pos = { lat: last.latitude, lng: last.longitude };
+            if (liveMarkerRef.current) { liveMarkerRef.current.setPosition(pos); }
+            else {
+              liveMarkerRef.current = new maps.Marker({ position: pos, map,
+                icon: { path: maps.SymbolPath.CIRCLE, scale: 10, fillColor: '#2563eb', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 },
+                title: 'Live Position', zIndex: 999,
+              });
+            }
+            if (!cancelled) map.panTo(pos);
+          } catch {}
+        };
+        poll();
+        liveIntervalRef.current = setInterval(poll, 5000);
+      }
+    });
+    return () => { cancelled = true; clearInterval(liveIntervalRef.current); };
+  }, [trips, selectedTripId]);
 
-    return () => clearInterval(interval);
-  }, [trips]);
-
-  const displayTrips = selectedTripId
-    ? trips.filter(t => t.id == selectedTripId)
-    : trips;
-
-  const allCoords = [];
-  displayTrips.forEach(trip => {
-    if (trip.pings) {
-      trip.pings.forEach(p => allCoords.push([p.latitude, p.longitude]));
-    }
-  });
-
-  const defaultCenter = [20.5937, 78.9629];
-
-  // For live follow: the latest position of the selected/active trip
-  const liveTrip = displayTrips.find(t => t.status === 'ACTIVE');
-  const livePos = liveTrip?.pings?.length > 0
-    ? [liveTrip.pings[liveTrip.pings.length - 1].latitude, liveTrip.pings[liveTrip.pings.length - 1].longitude]
-    : null;
-
-  return (
-    <MapContainer
-      center={allCoords.length > 0 ? allCoords[0] : defaultCenter}
-      zoom={5}
-      style={{ height: '100%', width: '100%', borderRadius: '16px' }}
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-
-      {displayTrips.map(trip => {
-        if (!trip.pings || trip.pings.length === 0) return null;
-
-        const positions = trip.pings.map(p => [p.latitude, p.longitude]);
-        const start = positions[0];
-        const end = positions[positions.length - 1];
-        const isFinished = trip.status === 'COMPLETED' || trip.status === 'STOPPED';
-        const isActive = trip.status === 'ACTIVE';
-
-        return (
-          <React.Fragment key={trip.id}>
-            {/* Route polyline — all recorded GPS points */}
-            <Polyline
-              positions={positions}
-              color={isActive ? '#3b82f6' : isFinished ? '#10b981' : '#f59e0b'}
-              weight={4}
-              opacity={0.85}
-            />
-
-            {/* Start marker */}
-            <Marker position={start} icon={startIcon}>
-              <Popup>
-                <b>Start:</b> {trip.employee?.name}<br />
-                {new Date(trip.pings[0].timestamp).toLocaleTimeString()}
-              </Popup>
-            </Marker>
-
-            {/* End / live position marker */}
-            {positions.length > 1 && (
-              <Marker position={end} icon={isFinished ? endIcon : liveIcon}>
-                <Popup>
-                  <b>{isFinished ? 'End' : '🔴 Live'}:</b> {trip.employee?.name}<br />
-                  {new Date(trip.pings[trip.pings.length - 1].timestamp).toLocaleTimeString()}
-                  {isActive && <><br /><span style={{ color: '#3b82f6', fontWeight: 600 }}>Updating every 5s</span></>}
-                </Popup>
-              </Marker>
-            )}
-
-            {/* Accuracy pulse circle for live trips */}
-            {isActive && (
-              <Circle
-                center={end}
-                radius={30}
-                pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 1 }}
-              />
-            )}
-          </React.Fragment>
-        );
-      })}
-
-      {allCoords.length > 0 && <MapBounds bounds={allCoords} />}
-      {livePos && <LiveFollow position={livePos} follow={!!selectedTripId} />}
-    </MapContainer>
-  );
+  return <div ref={divRef} style={{ height: '100%', width: '100%', minHeight: '400px' }} />;
 }

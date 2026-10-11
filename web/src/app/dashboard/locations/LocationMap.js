@@ -1,65 +1,50 @@
-'use client';
+﻿'use client';
 import { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-
-// Fix default marker icon broken by webpack
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
-
-// Flies map to new center when `center` prop changes
-function FlyTo({ center }) {
-  const map = useMap();
-  const prev = useRef(null);
-  useEffect(() => {
-    if (!center) return;
-    if (prev.current?.lat === center.lat && prev.current?.lng === center.lng) return;
-    prev.current = center;
-    map.flyTo([center.lat, center.lng], 15, { animate: true, duration: 1 });
-  }, [center, map]);
-  return null;
-}
-
-// Handles map click → sets marker
-function ClickHandler({ onMapClick }) {
-  useMapEvents({
-    click(e) {
-      onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
-    }
-  });
-  return null;
-}
+import { loadGoogleMaps } from '@/components/GoogleMapsView';
 
 export default function LocationMap({ marker, radiusMeters, onMapClick, flyTo }) {
-  const defaultCenter = [20.5937, 78.9629]; // India center
+  const divRef = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const circleRef = useRef(null);
 
-  return (
-    <MapContainer
-      center={marker ? [marker.lat, marker.lng] : defaultCenter}
-      zoom={marker ? 15 : 5}
-      style={{ width: '100%', height: '100%', borderRadius: '8px' }}
-    >
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-      />
-      <ClickHandler onMapClick={onMapClick} />
-      {flyTo && <FlyTo center={flyTo} />}
-      {marker && (
-        <>
-          <Marker position={[marker.lat, marker.lng]} />
-          <Circle
-            center={[marker.lat, marker.lng]}
-            radius={radiusMeters || 100}
-            pathOptions={{ color: '#007bff', fillColor: '#007bff', fillOpacity: 0.15 }}
-          />
-        </>
-      )}
-    </MapContainer>
-  );
+  useEffect(() => {
+    let cancelled = false;
+    loadGoogleMaps().then(maps => {
+      if (cancelled || !divRef.current) return;
+      const center = marker ? { lat: marker.lat, lng: marker.lng } : { lat: 20.5937, lng: 78.9629 };
+      if (!mapRef.current) {
+        mapRef.current = new maps.Map(divRef.current, {
+          center, zoom: marker ? 15 : 5,
+          mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+        });
+        if (onMapClick) {
+          mapRef.current.addListener('click', e => {
+            onMapClick({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+          });
+        }
+      }
+      const map = mapRef.current;
+      if (markerRef.current) markerRef.current.setMap(null);
+      if (circleRef.current) circleRef.current.setMap(null);
+      if (marker) {
+        markerRef.current = new maps.Marker({ position: { lat: marker.lat, lng: marker.lng }, map, draggable: true });
+        markerRef.current.addListener('dragend', e => {
+          if (onMapClick) onMapClick({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+        });
+        if (radiusMeters > 0) {
+          circleRef.current = new maps.Circle({
+            center: { lat: marker.lat, lng: marker.lng }, radius: radiusMeters, map,
+            strokeColor: '#3b82f6', strokeOpacity: 0.8, strokeWeight: 2,
+            fillColor: '#3b82f6', fillOpacity: 0.15,
+          });
+        }
+        map.setCenter({ lat: marker.lat, lng: marker.lng });
+      }
+      if (flyTo) map.panTo({ lat: flyTo.lat, lng: flyTo.lng });
+    });
+    return () => { cancelled = true; };
+  }, [marker, radiusMeters, onMapClick, flyTo]);
+
+  return <div ref={divRef} style={{ width: '100%', height: '380px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e5e7eb' }} />;
 }
