@@ -4,16 +4,57 @@ import { useEffect, useRef } from 'react';
 
 export function loadGoogleMaps() {
   if (typeof window === 'undefined') return Promise.resolve(null);
-  if (window.google?.maps) return Promise.resolve(window.google.maps);
   if (window._googleMapsPromise) return window._googleMapsPromise;
 
   window._googleMapsPromise = new Promise((resolve, reject) => {
-    window.__initGoogleMaps = () => resolve(window.google.maps);
+    const loadLibraries = async () => {
+      try {
+        const googleMaps = window.google?.maps;
+        if (!googleMaps?.importLibrary) {
+          throw new Error('Google Maps JavaScript API did not initialize correctly.');
+        }
+        const [mapsLibrary, markerLibrary] = await Promise.all([
+          googleMaps.importLibrary('maps'),
+          googleMaps.importLibrary('marker'),
+        ]);
+        resolve({ ...mapsLibrary, marker: markerLibrary });
+      } catch (error) {
+        window._googleMapsPromise = null;
+        reject(error);
+      }
+    };
+
+    if (window.google?.maps?.importLibrary) {
+      void loadLibraries();
+      return;
+    }
+
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      window._googleMapsPromise = null;
+      reject(new Error('Google Maps API key is not configured.'));
+      return;
+    }
+
+    window.__initGoogleMaps = loadLibraries;
+    const existingScript = document.querySelector('script[data-cecube-google-maps]');
+    if (existingScript) {
+      existingScript.addEventListener('error', () => {
+        window._googleMapsPromise = null;
+        reject(new Error('Could not load the Google Maps JavaScript API.'));
+      }, { once: true });
+      return;
+    }
+
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&loading=async&libraries=marker&callback=__initGoogleMaps`;
+    script.dataset.cecubeGoogleMaps = 'true';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&loading=async&libraries=marker&callback=__initGoogleMaps`;
     script.async = true;
     script.defer = true;
-    script.onerror = reject;
+    script.onerror = () => {
+      window._googleMapsPromise = null;
+      reject(new Error('Could not load the Google Maps JavaScript API.'));
+    };
     document.head.appendChild(script);
   });
   return window._googleMapsPromise;
@@ -60,6 +101,8 @@ export default function GoogleMapsView({ locations = [], paths = [], historyMark
             const lat = e.latLng.lat();
             const lng = e.latLng.lng();
             onLocationSelect({ lat, lng });
+          }).catch(error => {
+            console.error('Could not load Google Maps:', error);
           });
         }
       }
