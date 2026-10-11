@@ -658,59 +658,6 @@ export default function EmployeeDashboard() {
     }
   };
 
-  const handleStartLiveLocation = () => {
-    if (!navigator.geolocation) {
-      showToast("Geolocation is not supported by your browser.", 'error');
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          // Create location request directly as ACTIVE — no admin approval needed
-          const res = await fetch('/api/location-requests', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ employeeId: employee.id })
-          });
-          const newReq = await res.json();
-
-          await fetch('/api/location-requests', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: newReq.id,
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              status: 'ACTIVE',
-              movementType: selectedMovementType
-            })
-          });
-
-          await fetch('/api/location-requests/ping', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestId: newReq.id, latitude: position.coords.latitude, longitude: position.coords.longitude })
-          });
-
-          showToast('Live location sharing started!');
-          loadStats(employee.id);
-        } catch (e) {
-          console.error(e);
-          showToast('Failed to start location sharing.', 'error');
-        }
-      },
-      (error) => {
-        let errorMsg = "Unable to retrieve location.";
-        if (error.code === 1) errorMsg = "Permission denied. Please allow location access.";
-        else if (error.code === 2) errorMsg = "Position unavailable. Please ensure GPS is on.";
-        else if (error.code === 3) errorMsg = "Request timed out.";
-        showToast(errorMsg, 'error');
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-  };
-
   const handleSendLocation = (reqId) => {
     if (!navigator.geolocation) {
       showToast("Geolocation is not supported by your browser.", 'error');
@@ -1552,25 +1499,6 @@ export default function EmployeeDashboard() {
             Field Journey
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {activeLocationRequests.length === 0 && (
-              <li style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <span style={{ color: '#cbd5e1' }}>•</span>
-                <select
-                  value={selectedMovementType}
-                  onChange={e => setSelectedMovementType(e.target.value)}
-                  style={{ border: '1px solid #e2e8f0', background: '#fff', outline: 'none', color: '#475569', fontSize: '12px', borderRadius: '4px', padding: '4px' }}
-                >
-                  <option value="Office to Site">Office to Site</option>
-                  <option value="Home to Site">Home to Site</option>
-                  <option value="Site to Office">Site to Office</option>
-                  <option value="Site to Site">Site to Site</option>
-                  <option value="Client Visit">Client Visit</option>
-                </select>
-                <button onClick={handleStartLiveLocation} style={{ all: 'unset', cursor: 'pointer', color: '#3b82f6', fontSize: '0.9rem', fontWeight: 600 }}>
-                  Share Location
-                </button>
-              </li>
-            )}
             <li>
               <button onClick={() => router.push('/employee/reports/location')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ color: '#cbd5e1' }}>•</span> Location Report
