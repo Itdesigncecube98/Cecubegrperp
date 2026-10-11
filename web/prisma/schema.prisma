@@ -494,6 +494,7 @@ model TripLog {
   routePath      Json?
   distanceKm    Float?     @default(0.0)
   plannedDistanceKm Float?  @default(0.0) // Google Maps planned route distance
+  plannedDistanceKm Float?  @default(0.0) // Google Maps planned route distance
   amount        Float?     @default(0.0)
   status        String     @default("REQUESTED")
   createdAt     DateTime   @default(now())
