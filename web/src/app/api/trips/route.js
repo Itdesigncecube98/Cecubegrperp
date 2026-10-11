@@ -73,6 +73,7 @@ export async function GET(request) {
         startLocation,
         endLocation,
         distanceKm: km,
+        plannedDistanceKm: km,
         amount
       };
 

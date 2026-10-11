@@ -282,7 +282,14 @@ export default function TripReportsPage() {
                   {trip.vehicle?.makeModel}<br/>
                   <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>({trip.vehicle?.plateNumber})</span>
                 </td>
-                <td style={{ padding: '0.75rem 1rem', borderRight: '1px solid #d1d5db', color: '#4b5563' }}>{trip.distanceKm} km</td>
+                <td style={{ padding: '0.75rem 1rem', borderRight: '1px solid #d1d5db', color: '#4b5563' }}>
+                  <div style={{ fontWeight: 600 }}>{trip.distanceKm} km</div>
+                  {trip.plannedDistanceKm && trip.plannedDistanceKm !== trip.distanceKm && (
+                    <div style={{ fontSize: '0.7rem', color: trip.distanceKm > trip.plannedDistanceKm ? '#dc2626' : '#16a34a' }}>
+                      Planned: {trip.plannedDistanceKm} km {trip.distanceKm > trip.plannedDistanceKm ? '▲' : '▼'}
+                    </div>
+                  )}
+                </td>
                 <td style={{ padding: '0.75rem 1rem', borderRight: '1px solid #d1d5db', fontWeight: 600, color: '#059669' }}>₹{trip.amount.toFixed(2)}</td>
                 <td style={{ padding: '0.75rem 1rem', borderRight: '1px solid #d1d5db' }}>
                   <span style={{ 
