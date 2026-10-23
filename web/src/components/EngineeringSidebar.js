@@ -34,7 +34,6 @@ const menuConfig = [
       { name: 'Library Manager',   path: '/engineering/master/library-manager',       permissionCode: 'ENGG_LIBRARY_MANAGER' },
       { name: 'Task Library',      path: '/engineering/library/task',                 permissionCode: 'ENGG_TASK_LIBRARY' },
       { name: 'Material Library',  path: '/engineering/library/material',             permissionCode: 'ENGG_MATERIAL_LIBRARY' },
-      { name: 'Equipment Library', path: '/engineering/library/equipment',            permissionCode: 'ENGG_EQUIPMENT_LIBRARY' },
       { name: 'Labour Library',    path: '/engineering/library/labour',               permissionCode: 'ENGG_LABOUR_LIBRARY' },
       { name: 'Unit Master',       path: '/engineering/master/unit-master',           permissionCode: 'ENGG_UNIT_MASTER' },
       { name: 'Project Category 1',path: '/engineering/library/project-category-1',  permissionCode: 'ENGG_PROJECT_CATEGORY_1' },

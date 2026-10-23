@@ -43,6 +43,74 @@ async function syncWorkOrderTasksIntoLibrary(libraryId) {
   if (imported.length) await prisma.taskLibraryItem.createMany({ data: imported, skipDuplicates: true });
 }
 
+function collectLabourMemberNames(group) {
+  return [
+    ...(group.materials || []).map(item => item.name),
+    ...(group.subgroups || []).flatMap(collectLabourMemberNames),
+  ].filter(Boolean);
+}
+
+function collectLabourComponents(group, path = []) {
+  const currentPath = [...path, group.name].filter(Boolean);
+  return [
+    ...(group.materials || []).map(item => ({
+      sourceId: item.id,
+      sourceGroupId: item.groupId,
+      groupPath: currentPath.join(' / '),
+      name: item.name,
+      quantity: Number(item.quantity ?? 1),
+      unit: item.unit || 'Manday',
+      rate: Number(item.rate || 0),
+      specification: item.specification || null,
+    })),
+    ...(group.subgroups || []).flatMap(subgroup => collectLabourComponents(subgroup, currentPath)),
+  ];
+}
+
+async function loadLabourGroupTree(libraryId) {
+  if (!libraryId) return new Map();
+  const groups = await prisma.materialLibraryGroup.findMany({
+    where: { libraryId, resourceType: 'Labour' },
+    select: { id: true, name: true, parentId: true, combinedRate: true, combinedUnit: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!groups.length) return new Map();
+  const items = await prisma.materialLibraryItem.findMany({
+    where: { groupId: { in: groups.map(group => group.id) }, resourceType: 'Labour' },
+    select: { id: true, groupId: true, name: true, quantity: true, unit: true, rate: true, specification: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const nodes = new Map(groups.map(group => [group.id, { ...group, materials: [], subgroups: [] }]));
+  for (const item of items) nodes.get(item.groupId)?.materials.push(item);
+  for (const group of groups) {
+    if (group.parentId && nodes.has(group.parentId)) nodes.get(group.parentId).subgroups.push(nodes.get(group.id));
+  }
+  return nodes;
+}
+
+function buildLabourSpecification(specification, memberNames) {
+  const userSpecification = String(specification || '').split('\n')
+    .filter(line => !line.trim().startsWith('Includes:'))
+    .join('\n')
+    .trim();
+  return [userSpecification || null, memberNames.length ? `Includes: ${memberNames.join(', ')}` : null]
+    .filter(Boolean)
+    .join('\n') || null;
+}
+
+function applyLabourComponentOverrides(components, overrides = []) {
+  const bySourceId = new Map((Array.isArray(overrides) ? overrides : []).map(component => [component.sourceId, component]));
+  return components.map(component => {
+    const override = bySourceId.get(component.sourceId);
+    if (!override) return component;
+    return {
+      ...component,
+      quantity: Math.max(0, Number(override.quantity ?? component.quantity) || 0),
+      unit: String(override.unit || component.unit || 'Manday').trim(),
+    };
+  });
+}
+
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -108,9 +176,6 @@ export async function GET(req) {
             },
             labours: {
               orderBy: { createdAt: 'asc' }
-            },
-            equipments: {
-              orderBy: { createdAt: 'asc' }
             }
           },
           orderBy: { createdAt: 'asc' }
@@ -118,6 +183,28 @@ export async function GET(req) {
       },
       orderBy: { createdAt: 'asc' }
     });
+
+    const tasksNeedingLabourBreakdown = groups.flatMap(group => group.tasks || []).filter(task =>
+      (task.labours || []).some(labour => !Array.isArray(labour.components) || labour.components.length === 0)
+    );
+    const libraryIds = [...new Set(tasksNeedingLabourBreakdown.map(task => task.libraryId).filter(Boolean))];
+    const labourTrees = new Map(await Promise.all(libraryIds.map(async id => [id, await loadLabourGroupTree(id)])));
+    for (const task of tasksNeedingLabourBreakdown) {
+      const labourTree = labourTrees.get(task.libraryId);
+      if (!labourTree) continue;
+      for (const labour of task.labours || []) {
+        if (Array.isArray(labour.components) && labour.components.length) continue;
+        const namedGroupIds = (labour.name || '').split(' + ').map(name => name.trim()).filter(Boolean);
+        const groupIds = labour.subgroupIds?.length
+          ? labour.subgroupIds
+          : [...labourTree.values()].filter(group => namedGroupIds.includes(group.name)).map(group => group.id);
+        const componentsById = new Map(groupIds.flatMap(id => {
+          const sourceGroup = labourTree.get(id);
+          return sourceGroup ? collectLabourComponents(sourceGroup) : [];
+        }).map(component => [component.sourceId, component]));
+        if (componentsById.size) labour.components = [...componentsById.values()];
+      }
+    }
 
     const response = NextResponse.json(groups);
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -152,43 +239,76 @@ export async function POST(req) {
       return NextResponse.json(material, { status: 201 });
     }
 
+    if (type === 'individualLabour') {
+      const { taskId, items = [] } = body;
+      if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
+      if (!Array.isArray(items) || items.length === 0) return NextResponse.json({ error: 'Select at least one individual labour item.' }, { status: 400 });
+      if (items.some(item => !item?.sourceId)) return NextResponse.json({ error: 'Each individual labour selection must have a source item.' }, { status: 400 });
+      const task = await prisma.taskLibraryItem.findUnique({ where: { id: taskId }, select: { libraryId: true } });
+      if (!task) return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
+      const sourceItems = await prisma.materialLibraryItem.findMany({
+        where: {
+          id: { in: items.map(item => item.sourceId) },
+          resourceType: 'Labour',
+          group: { libraryId: task.libraryId, resourceType: 'Labour' },
+        },
+        include: { group: { select: { name: true } } },
+      });
+      if (sourceItems.length !== new Set(items.map(item => item.sourceId)).size) return NextResponse.json({ error: 'One or more selected labour items are unavailable.' }, { status: 400 });
+      const sourceById = new Map(sourceItems.map(item => [item.id, item]));
+      const labourLines = await prisma.$transaction(items.map(input => {
+        const source = sourceById.get(input.sourceId);
+        const quantity = Math.max(0, Number(input.quantity ?? source.quantity) || 0);
+        const unit = String(input.unit || source.unit || 'Manday').trim();
+        const rate = Math.max(0, Number(input.rate ?? source.rate) || 0);
+        return prisma.taskLibraryLabour.create({
+          data: {
+            taskId,
+            name: source.name,
+            unit,
+            quantity,
+            rate,
+            subgroupIds: [],
+            components: [{ sourceId: source.id, sourceGroupId: source.groupId, groupPath: source.group.name, name: source.name, quantity, unit, rate, specification: source.specification || null }],
+            specification: source.specification || null,
+          },
+        });
+      }));
+      return NextResponse.json(labourLines, { status: 201 });
+    }
+
     // 2. Add Labour to Task
     if (type === 'labour') {
-      const { taskId, name, unit, quantity, rate, specification } = body;
+      const { taskId, name, unit, quantity, rate, specification, subgroupIds = [] } = body;
       if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
-      if (!name || !name.trim()) return NextResponse.json({ error: 'Labour role/name is required' }, { status: 400 });
-
+      if (!Array.isArray(subgroupIds) || subgroupIds.length === 0) return NextResponse.json({ error: 'Select at least one labour group.' }, { status: 400 });
+      const task = await prisma.taskLibraryItem.findUnique({ where: { id: taskId }, select: { libraryId: true } });
+      if (!task) return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
+      const labourTree = await loadLabourGroupTree(task.libraryId);
+      const selectedSubgroups = subgroupIds.map(id => labourTree.get(id)).filter(Boolean);
+      if (selectedSubgroups.length !== new Set(subgroupIds).size) return NextResponse.json({ error: 'One or more selected labour subgroups are unavailable.' }, { status: 400 });
+      const groupsById = new Map(selectedSubgroups.map(group => [group.id, group]));
+      const orderedGroups = subgroupIds.map(id => groupsById.get(id));
+      const combinedName = orderedGroups.map(group => group.name).join(' + ');
+      const memberNames = [...new Set(orderedGroups.flatMap(collectLabourMemberNames))];
+      const componentsById = new Map(orderedGroups.flatMap(group => collectLabourComponents(group)).map(component => [component.sourceId, component]));
+      const components = applyLabourComponentOverrides([...componentsById.values()], body.components);
+      const combinedRate = orderedGroups.reduce((sum, group) => sum + Number(group.combinedRate || 0), 0);
       const labour = await prisma.taskLibraryLabour.create({
         data: {
           taskId,
-          name: name.trim(),
-          unit: unit ? unit.trim() : 'Manday',
+          name: combinedName,
+          unit: unit || orderedGroups[0]?.combinedUnit || 'Manday',
           quantity: parseFloat(quantity) || 0,
-          rate: parseFloat(rate) || 0,
-          specification: specification ? specification.trim() : null
-        }
+          rate: rate === undefined || rate === null || rate === '' ? combinedRate : (parseFloat(rate) || 0),
+          subgroupIds: orderedGroups.map(group => group.id),
+          components,
+          specification: buildLabourSpecification(specification, memberNames),
+        },
       });
       return NextResponse.json(labour, { status: 201 });
     }
 
-    // 3. Add Equipment to Task
-    if (type === 'equipment') {
-      const { taskId, name, unit, quantity, rate, specification } = body;
-      if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
-      if (!name || !name.trim()) return NextResponse.json({ error: 'Equipment name is required' }, { status: 400 });
-
-      const equipment = await prisma.taskLibraryEquipment.create({
-        data: {
-          taskId,
-          name: name.trim(),
-          unit: unit ? unit.trim() : 'Hour',
-          quantity: parseFloat(quantity) || 0,
-          rate: parseFloat(rate) || 0,
-          specification: specification ? specification.trim() : null
-        }
-      });
-      return NextResponse.json(equipment, { status: 201 });
-    }
     if (type === 'task') {
       const { libraryId, groupId, projectId, name, unit, quantity, description } = body;
       if (!groupId) return NextResponse.json({ error: 'Group ID is required for task' }, { status: 400 });
@@ -226,8 +346,7 @@ export async function POST(req) {
         },
         include: {
           materials: true,
-          labours: true,
-          equipments: true
+          labours: true
         }
       });
       return NextResponse.json(task, { status: 201 });
@@ -281,31 +400,46 @@ export async function PUT(req) {
     }
 
     if (type === 'labour') {
-      const { name, unit, quantity, rate, specification } = body;
+      const { name, unit, quantity, rate, specification, subgroupIds } = body;
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (unit !== undefined) updateData.unit = unit ? unit.trim() : 'Manday';
       if (quantity !== undefined) updateData.quantity = parseFloat(quantity) || 0;
       if (rate !== undefined) updateData.rate = parseFloat(rate) || 0;
+      if (subgroupIds !== undefined) {
+        if (!Array.isArray(subgroupIds)) return NextResponse.json({ error: 'Invalid labour subgroup selection.' }, { status: 400 });
+        const existing = await prisma.taskLibraryLabour.findUnique({ where: { id }, select: { task: { select: { libraryId: true } } } });
+        if (!existing) return NextResponse.json({ error: 'Task labour entry not found.' }, { status: 404 });
+        const labourTree = subgroupIds.length ? await loadLabourGroupTree(existing.task.libraryId) : new Map();
+        const selectedSubgroups = subgroupIds.map(groupId => labourTree.get(groupId)).filter(Boolean);
+        if (selectedSubgroups.length !== new Set(subgroupIds).size) return NextResponse.json({ error: 'One or more selected labour subgroups are unavailable.' }, { status: 400 });
+        if (selectedSubgroups.length) {
+          const groupsById = new Map(selectedSubgroups.map(group => [group.id, group]));
+          const orderedGroups = subgroupIds.map(groupId => groupsById.get(groupId));
+          const combinedName = orderedGroups.map(group => group.name).join(' + ');
+          const memberNames = [...new Set(orderedGroups.flatMap(collectLabourMemberNames))];
+          const componentsById = new Map(orderedGroups.flatMap(group => collectLabourComponents(group)).map(component => [component.sourceId, component]));
+          const components = applyLabourComponentOverrides([...componentsById.values()], body.components);
+          const combinedRate = orderedGroups.reduce((sum, group) => sum + Number(group.combinedRate || 0), 0);
+          const item = await prisma.taskLibraryLabour.update({
+            where: { id },
+            data: {
+              name: combinedName,
+              unit: unit || orderedGroups[0]?.combinedUnit || 'Manday',
+              quantity: parseFloat(quantity) || 0,
+              rate: rate === undefined || rate === null || rate === '' ? combinedRate : (parseFloat(rate) || 0),
+              subgroupIds: orderedGroups.map(group => group.id),
+              components,
+              specification: buildLabourSpecification(specification, memberNames),
+            },
+          });
+          return NextResponse.json(item);
+        }
+        updateData.subgroupIds = [];
+      }
       if (specification !== undefined) updateData.specification = specification ? specification.trim() : null;
 
       const item = await prisma.taskLibraryLabour.update({
-        where: { id },
-        data: updateData
-      });
-      return NextResponse.json(item);
-    }
-
-    if (type === 'equipment') {
-      const { name, unit, quantity, rate, specification } = body;
-      const updateData = {};
-      if (name !== undefined) updateData.name = name.trim();
-      if (unit !== undefined) updateData.unit = unit ? unit.trim() : 'Hour';
-      if (quantity !== undefined) updateData.quantity = parseFloat(quantity) || 0;
-      if (rate !== undefined) updateData.rate = parseFloat(rate) || 0;
-      if (specification !== undefined) updateData.specification = specification ? specification.trim() : null;
-
-      const item = await prisma.taskLibraryEquipment.update({
         where: { id },
         data: updateData
       });
@@ -360,7 +494,7 @@ export async function PUT(req) {
       data: updateData,
       include: {
         tasks: {
-          include: { materials: true, labours: true, equipments: true }
+          include: { materials: true, labours: true }
         }
       }
     });
@@ -399,11 +533,6 @@ export async function DELETE(req) {
     if (type === 'labour') {
       await prisma.taskLibraryLabour.delete({ where: { id } });
       return NextResponse.json({ success: true, message: 'Labour deleted successfully' });
-    }
-
-    if (type === 'equipment') {
-      await prisma.taskLibraryEquipment.delete({ where: { id } });
-      return NextResponse.json({ success: true, message: 'Equipment deleted successfully' });
     }
 
     if (type === 'task') {

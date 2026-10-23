@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
+import { classifyStandardEarningHead } from '@/lib/payrollSalaryHeads';
 
 export async function GET(request, { params }) {
   try {
@@ -90,8 +91,9 @@ export async function POST(request, { params }) {
     
     newRevision.components.forEach(c => {
       const headName = c.salaryHead.description.trim().toLowerCase();
-      if (headName === 'basic' || headName === 'basic salary') basicSalary = c.amount;
-      else if (headName === 'hra' || headName === 'house rent allowance') hra = c.amount;
+      const earningCategory = classifyStandardEarningHead(headName);
+      if (earningCategory === 'basic') basicSalary = c.amount;
+      else if (earningCategory === 'hra') hra = c.amount;
       else if (headName === 'employee pf' || headName === 'pf employee' || headName === 'provident fund') pfEmployee = c.amount;
       else if (headName === 'employer pf' || headName === 'pf employer') pfEmployer = c.amount;
       else if (headName === 'special allowance') specialAllowance = c.amount;
@@ -122,29 +124,31 @@ export async function PUT(request, { params }) {
 
     if (!revisionId) return NextResponse.json({ error: 'revisionId is required' }, { status: 400 });
 
-    // Delete old components and replace with new ones
-    await prisma.salaryComponent.deleteMany({ where: { revisionId } });
-
-    const updated = await prisma.salaryRevision.update({
-      where: { id: revisionId },
-      data: {
-        effectiveFrom,
-        remark: remark || null,
-        components: {
-          create: components.map(c => ({
-            salaryHeadId: c.salaryHeadId,
-            amount: parseFloat(c.amount) || 0,
-            rule: c.rule || '(None)'
-          }))
-        }
-      },
-      include: {
-        components: {
-          include: {
-            salaryHead: { include: { headType: true } }
+    // Replace revision details atomically so a failed save cannot leave the
+    // salary revision with its old components deleted.
+    const updated = await prisma.$transaction(async tx => {
+      await tx.salaryComponent.deleteMany({ where: { revisionId } });
+      return tx.salaryRevision.update({
+        where: { id: revisionId },
+        data: {
+          effectiveFrom,
+          remark: remark || null,
+          components: {
+            create: components.map(c => ({
+              salaryHeadId: c.salaryHeadId,
+              amount: parseFloat(c.amount) || 0,
+              rule: c.rule || '(None)'
+            }))
+          }
+        },
+        include: {
+          components: {
+            include: {
+              salaryHead: { include: { headType: true } }
+            }
           }
         }
-      }
+      });
     });
 
     // Sync backward-compatible fields
@@ -159,8 +163,9 @@ export async function PUT(request, { params }) {
       let basicSalary = 0, hra = 0, pfEmployee = 0, pfEmployer = 0, specialAllowance = 0;
       updated.components.forEach(c => {
         const n = c.salaryHead.description.trim().toLowerCase();
-        if (n === 'basic' || n === 'basic salary') basicSalary = c.amount;
-        else if (n === 'hra' || n === 'house rent allowance') hra = c.amount;
+        const earningCategory = classifyStandardEarningHead(n);
+        if (earningCategory === 'basic') basicSalary = c.amount;
+        else if (earningCategory === 'hra') hra = c.amount;
         else if (n === 'employee pf' || n === 'pf employee' || n === 'provident fund') pfEmployee = c.amount;
         else if (n === 'employer pf' || n === 'pf employer') pfEmployer = c.amount;
         else if (n === 'special allowance') specialAllowance = c.amount;

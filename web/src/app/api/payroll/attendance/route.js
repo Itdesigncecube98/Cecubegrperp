@@ -76,6 +76,70 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
+
+    // Import mode adds only missing dates. Existing attendance is never
+    // overwritten, and new rows are approved from the HR attendance source.
+    if (!Array.isArray(body) && body?.mode === 'spreadsheet-import') {
+      if (!Array.isArray(body.records) || body.records.length === 0) {
+        return NextResponse.json({ error: 'records must be a non-empty array' }, { status: 400 });
+      }
+
+      const inputRecords = body.records;
+      if (inputRecords.some(record => !record.employeeId || !record.date || !record.status)) {
+        return NextResponse.json({ error: 'Every imported attendance row needs employeeId, date, and status' }, { status: 400 });
+      }
+
+      const uniqueRecords = [...new Map(inputRecords.map(record => [
+        `${record.employeeId}|${record.date}`,
+        record
+      ])).values()];
+      const existing = await prisma.attendance.findMany({
+        where: { OR: uniqueRecords.map(record => ({ employeeId: record.employeeId, date: record.date })) },
+        select: { employeeId: true, date: true, status: true }
+      });
+      const existingByKey = new Map(existing.map(record => [`${record.employeeId}|${record.date}`, record]));
+      const newRecords = uniqueRecords.filter(record => !existingByKey.has(`${record.employeeId}|${record.date}`));
+      const conflicts = uniqueRecords.flatMap(record => {
+        const prior = existingByKey.get(`${record.employeeId}|${record.date}`);
+        return prior && prior.status !== record.status
+          ? [{ employeeCode: record.employeeCode || null, date: record.date, sourceStatus: record.status, existingStatus: prior.status }]
+          : [];
+      });
+
+      if (body.dryRun === true) {
+        return NextResponse.json({
+          success: true,
+          received: inputRecords.length,
+          plannedInsert: newRecords.length,
+          skippedExisting: uniqueRecords.length - newRecords.length,
+          conflictingExisting: conflicts.length,
+          conflicts: conflicts.slice(0, 100)
+        });
+      }
+
+      const created = newRecords.length > 0
+        ? await prisma.attendance.createMany({
+            data: newRecords.map(record => ({
+              employeeId: record.employeeId,
+              date: record.date,
+              status: record.status,
+              shiftType: 'Day',
+              isApproved: true
+            })),
+            skipDuplicates: true
+          })
+        : { count: 0 };
+
+      return NextResponse.json({
+        success: true,
+        received: inputRecords.length,
+        inserted: created.count,
+        skippedExisting: uniqueRecords.length - newRecords.length,
+        conflictingExisting: conflicts.length,
+        conflicts: conflicts.slice(0, 100)
+      });
+    }
+
     
     // Check if it's a bulk update or single update
     const updates = Array.isArray(body) ? body : [body];

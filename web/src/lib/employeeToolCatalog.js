@@ -1,7 +1,7 @@
 export const PROJECT_TOOL_MODULES = {
   Contracting: [
     'Contractor View', 'Contractor Edit', 'Contractor Delete', 'Add Group', 'Register Supplier to Group',
-    'Insurance Policy Add', 'Insurance Policy Detail', 'Labour Master', 'Requisition Generation',
+    'Insurance Policy Add', 'Insurance Policy Detail', 'Requisition Generation',
     'Requisition Browse', 'Labour Requisition Approve', 'Labour Requisition wise WO Generation',
     'Raise Work Order', 'Edit Work Order', 'Browse Work Order', 'Send Work Order by Email', 'Labour Rate Master',
     'RA Bill Generation', 'RA Bill Browse', 'RA Bill Approval',
@@ -10,8 +10,7 @@ export const PROJECT_TOOL_MODULES = {
   Engineering: [
     'Project View', 'Project Edit', 'Project Delete', 'New Project', 'Contract & Scope Save', 'Lock Baseline',
     'Define WBS', 'WBS Budget / Estimate Allocation', 'Task Library Create', 'Task Library Edit', 'Task Library Delete',
-    'Material Library Create', 'Material Library Edit', 'Material Library Delete', 'Equipment Library Create',
-    'Equipment Library Edit', 'Equipment Library Delete', 'Labour Library Create', 'Labour Library Edit',
+    'Material Library Create', 'Material Library Edit', 'Material Library Delete', 'Labour Library Create', 'Labour Library Edit',
     'Labour Library Delete', 'Unit Master Create', 'Unit Master Edit', 'Unit Master Delete',
     'Project Category 1 Create/Edit/Delete', 'Project Category 2 Create/Edit/Delete',
   ],
@@ -57,7 +56,6 @@ export const LEGACY_PERMISSION_ALIASES = {
   CONTRACT_ADD_GROUP: alias('Contracting', 'Add Group'),
   CONTRACT_REG_SUPPLIERS: alias('Contracting', 'Register Supplier to Group'),
   CONTRACT_INSURANCE_POLICY: alias('Contracting', 'Insurance Policy Add', 'Insurance Policy Detail'),
-  CONTRACT_LABOUR_MASTER: alias('Contracting', 'Labour Master'),
   CONTRACT_REQ_GEN: alias('Contracting', 'Requisition Generation'),
   CONTRACT_REQ_BROWSE: alias('Contracting', 'Requisition Browse'),
   CONTRACT_REQ_APPROVE: alias('Contracting', 'Labour Requisition Approve'),
@@ -86,10 +84,9 @@ export const LEGACY_PERMISSION_ALIASES = {
   ENGG_DEFINE_WBS: alias('Engineering', 'Define WBS'),
   ENGG_WBS_BUDGET: alias('Engineering', 'WBS Budget / Estimate Allocation'),
   ENGG_BUDGET_TXN_BROWSE: alias('Engineering', 'WBS Budget / Estimate Allocation'),
-  ENGG_LIBRARY_MANAGER: alias('Engineering', 'Task Library Create', 'Material Library Create', 'Equipment Library Create', 'Labour Library Create'),
+  ENGG_LIBRARY_MANAGER: alias('Engineering', 'Task Library Create', 'Material Library Create', 'Labour Library Create'),
   ENGG_TASK_LIBRARY: alias('Engineering', 'Task Library Create', 'Task Library Edit', 'Task Library Delete'),
   ENGG_MATERIAL_LIBRARY: alias('Engineering', 'Material Library Create', 'Material Library Edit', 'Material Library Delete'),
-  ENGG_EQUIPMENT_LIBRARY: alias('Engineering', 'Equipment Library Create', 'Equipment Library Edit', 'Equipment Library Delete'),
   ENGG_LABOUR_LIBRARY: alias('Engineering', 'Labour Library Create', 'Labour Library Edit', 'Labour Library Delete'),
   ENGG_UNIT_MASTER: alias('Engineering', 'Unit Master Create', 'Unit Master Edit', 'Unit Master Delete'),
   ENGG_PROJECT_CATEGORY_1: alias('Engineering', 'Project Category 1 Create/Edit/Delete'),

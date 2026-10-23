@@ -14,7 +14,7 @@ const FormGroup = ({ label, required, children }) => (
 
 export default function LabourRequisition() {
   const [projects, setProjects] = useState([]);
-  const [taskResources, setTaskResources] = useState([]); // labour and equipment from the selected project's library
+  const [taskResources, setTaskResources] = useState([]); // labour from the selected project's library
   const [libraryTasks, setLibraryTasks] = useState([]);
   const [availableUnits, setAvailableUnits] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -80,10 +80,6 @@ export default function LabourRequisition() {
           (task.labours || []).forEach(labour => resources.push({
             id: labour.id, name: labour.name, taskId: task.id, taskName: task.name,
             resourceType: 'Labour', unit: labour.unit || 'Manday', quantity: labour.quantity || 0, rate: labour.rate || 0,
-          }));
-          (task.equipments || []).forEach(equipment => resources.push({
-            id: equipment.id, name: equipment.name, taskId: task.id, taskName: task.name,
-            resourceType: 'Equipment', unit: equipment.unit || 'Hour', quantity: equipment.quantity || 0, rate: equipment.rate || 0,
           }));
         });
         setTaskResources(resources);
@@ -155,7 +151,7 @@ export default function LabourRequisition() {
   ).values());
 
   const handleAddRow = () => {
-    setRows(prev => [...prev, { id: '', labour: '', resourceType: filters.groupBy, unit: filters.groupBy === 'Equipment' ? 'Hour' : 'Manday', qty: 1, leadTime: '', taskName: '', rate: 0 }]);
+    setRows(prev => [...prev, { id: '', labour: '', resourceType: 'Labour', unit: 'Manday', qty: 1, leadTime: '', taskName: '', rate: 0 }]);
   };
 
   const handleDeleteRow = (idx) => {
@@ -262,7 +258,6 @@ export default function LabourRequisition() {
               <FormGroup label="Resource Type">
                 <select className="contracting-input" style={{ width: '100%' }} value={filters.groupBy} onChange={e => setFilters(f => ({ ...f, groupBy: e.target.value, taskId: '', labourId: '' }))} disabled={!filters.projectId || loadingResources}>
                   <option value="Labour">Labour</option>
-                  <option value="Equipment">Equipment</option>
                 </select>
               </FormGroup>
 
@@ -290,7 +285,7 @@ export default function LabourRequisition() {
                 </select>
               </FormGroup>
 
-              {/* Labour / Equipment */}
+              {/* Labour */}
               <FormGroup label={filters.groupBy}>
                 <select
                   className="contracting-input"

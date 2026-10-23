@@ -9,7 +9,7 @@ export async function GET(request) {
       orderBy: { createdAt: 'desc' },
       include: {
         _count: {
-          select: { payrollRecords: true }
+          select: { payrollRecords: true, bonusIncentives: true }
         }
       }
     });

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Printer, Save, CheckCircle2, AlertCircle, RefreshCw, Sparkles, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { classifyStandardEarningHead, resolveSpecialAllowance } from '@/lib/payrollSalaryHeads';
 
 function numberToWords(num) {
   if (isNaN(num) || num <= 0) return 'Zero Rupees Only';
@@ -26,7 +27,8 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
 
   // Find existing bonus, incentive, arrears from bonusIncentives
   const empBonusIncentives = (bonusIncentives || []).filter(b => b.employeeId === record.employeeId);
-  const arrearsRecord = empBonusIncentives.find(b => b.type === 'arrears');
+  const salaryAdditions = empBonusIncentives.filter(b => b.status === 'ADDED_TO_SALARY');
+  const arrearsRecord = salaryAdditions.find(b => b.type === 'arrears');
   const existingArrears = arrearsRecord?.amount || 0;
   
   let initialArrearsBreakdown = null;
@@ -34,13 +36,29 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
     try { initialArrearsBreakdown = JSON.parse(arrearsRecord.message); } catch(e) {}
   }
 
-  const existingBonus = empBonusIncentives.find(b => b.type === 'bonus')?.amount || 0;
-  const existingIncentive = empBonusIncentives.find(b => b.type === 'incentive')?.amount || 0;
+  const existingBonus = salaryAdditions.find(b => b.type === 'bonus')?.amount || 0;
+  const existingIncentive = salaryAdditions.find(b => b.type === 'incentive')?.amount || 0;
 
   // Fallback if record.bonus has value but bonusIncentives is empty
   const initialBonus = existingBonus || (existingIncentive === 0 && record?.bonus ? record.bonus : 0);
   const initialIncentive = existingIncentive;
   const initialArrears = existingArrears;
+  const existingGratuity = salaryAdditions.find(b => b.type === 'gratuity')?.amount || 0;
+  const initialLeaveEncashment = Number(record?.leaveEncashment) || 0;
+  const savedBaseEarningsTotal = Math.round((
+    (Number(record?.grossPay) || 0) - initialLeaveEncashment - initialArrears - initialBonus - initialIncentive - existingGratuity
+  ) * 100) / 100;
+  const savedDeductionTotals = {
+    pf: Number(record?.pfEmployee) || 0,
+    pt: Number(record?.professionalTax) || 0,
+    tds: Number(record?.tds) || 0,
+    other: Number(record?.otherDeductions) || 0,
+  };
+  const savedDeductionFieldsTotal = Object.values(savedDeductionTotals).reduce((total, amount) => total + amount, 0);
+  const savedTotalDeductions = Number.isFinite(Number(record?.totalDeductions))
+    ? Number(record.totalDeductions)
+    : savedDeductionFieldsTotal;
+  savedDeductionTotals.other += savedTotalDeductions - savedDeductionFieldsTotal;
 
   // Attendance, shifts & offs
   const existingWOff = empBonusIncentives.find(b => b.type === 'woff')?.amount ?? record?.attendanceSummary?.wOff ?? 0;
@@ -65,33 +83,56 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
   const [bonus, setBonus] = useState(initialBonus);
   const [incentive, setIncentive] = useState(initialIncentive);
 
-  const [pfEmployee, setPfEmployee] = useState(record?.pfEmployee || 0);
-  const [professionalTax, setProfessionalTax] = useState(record?.professionalTax || 0);
-  const [tds, setTds] = useState(record?.tds || 0);
-  const [otherDeductions, setOtherDeductions] = useState(record?.otherDeductions || 0);
+  const [pfEmployee, setPfEmployee] = useState(savedDeductionTotals.pf);
+  const [professionalTax, setProfessionalTax] = useState(savedDeductionTotals.pt);
+  const [tds, setTds] = useState(savedDeductionTotals.tds);
+  const [otherDeductions, setOtherDeductions] = useState(savedDeductionTotals.other);
   const [salaryBreakdown, setSalaryBreakdown] = useState(null);
   const [salaryHeadDeductionValues, setSalaryHeadDeductionValues] = useState({});
   const [salaryHeadsLoading, setSalaryHeadsLoading] = useState(true);
   const [salaryHeadsError, setSalaryHeadsError] = useState('');
 
-  const [leaveEncashmentState, setLeaveEncashmentState] = useState(record?.leaveEncashment || 0);
-  const existingGratuity = empBonusIncentives.find(b => b.type === 'gratuity')?.amount || 0;
+  const [leaveEncashmentState, setLeaveEncashmentState] = useState(initialLeaveEncashment);
   const [gratuity, setGratuity] = useState(existingGratuity);
 
   // Dynamic heads come from the salary revision effective for this pay cycle.
   const configuredEarnings = salaryBreakdown?.earnings || [];
-  const hasConfiguredEarnings = configuredEarnings.length > 0;
-  const sumConfiguredEarnings = (names) => configuredEarnings
-    .filter(head => names.includes(String(head.name || '').trim().toLowerCase()))
+  const savedEarnings = [
+    { id: 'saved-basic', name: 'Basic Pay', amount: Number(record?.basicPay) || 0 },
+    { id: 'saved-hra', name: 'HRA', amount: Number(record?.hra) || 0 },
+    { id: 'saved-medical', name: 'Medical Allowance', amount: Number(record?.medical) || 0 },
+    { id: 'saved-conveyance', name: 'Transport / Conveyance', amount: Number(record?.conveyance) || 0 },
+    { id: 'saved-special', name: 'Special Allowance', amount: Number(record?.specialAllow) || 0 },
+  ].filter(head => head.amount !== 0);
+  const savedEarningsTotal = savedEarnings.reduce((total, head) => total + head.amount, 0);
+  const configuredEarningsTotal = configuredEarnings.reduce((total, head) => total + (Number(head.amount) || 0), 0);
+  const earningsBreakdownMatches = configuredEarnings.length > 0 &&
+    Math.abs(configuredEarningsTotal - savedBaseEarningsTotal) <= 0.01;
+  const hasConfiguredEarnings = earningsBreakdownMatches;
+  const sumConfiguredEarnings = (category) => configuredEarnings
+    .filter(head => classifyStandardEarningHead(head.name) === category)
     .reduce((total, head) => total + (Number(head.amount) || 0), 0);
-  const basicPay = hasConfiguredEarnings ? sumConfiguredEarnings(['basic', 'basic pay']) : (record?.basicPay || 0);
-  const hra = hasConfiguredEarnings ? sumConfiguredEarnings(['hra', 'house rent allowance']) : (record?.hra || 0);
-  const conveyance = hasConfiguredEarnings ? sumConfiguredEarnings(['conveyance', 'conveyance allowance', 'transport', 'transport allowance', 'transport / conveyance']) : (record?.conveyance || 0);
-  const medical = hasConfiguredEarnings ? sumConfiguredEarnings(['medical', 'medical allowance']) : (record?.medical || 0);
-  const standardHeadNames = ['basic', 'basic pay', 'hra', 'house rent allowance', 'conveyance', 'conveyance allowance', 'transport', 'transport allowance', 'transport / conveyance', 'medical', 'medical allowance'];
+  const basicPay = hasConfiguredEarnings ? sumConfiguredEarnings('basic') : (record?.basicPay || 0);
+  const hra = hasConfiguredEarnings ? sumConfiguredEarnings('hra') : (record?.hra || 0);
+  const conveyance = hasConfiguredEarnings ? sumConfiguredEarnings('conveyance') : (record?.conveyance || 0);
+  const medical = hasConfiguredEarnings ? sumConfiguredEarnings('medical') : (record?.medical || 0);
+  const nonStandardEarningNames = [...new Set(configuredEarnings
+    .filter(head => !classifyStandardEarningHead(head.name))
+    .map(head => String(head.name || '').trim())
+    .filter(Boolean))];
+  const savedSpecialAllowanceLabel = nonStandardEarningNames.length > 0
+    ? nonStandardEarningNames.join(' / ')
+    : 'Other Allowance';
+  const configuredSpecialAllowance = configuredEarnings
+    .filter(head => !classifyStandardEarningHead(head.name))
+    .reduce((total, head) => total + (Number(head.amount) || 0), 0);
+  const savedEarningsBalanceAdjustment = savedBaseEarningsTotal - savedEarningsTotal;
   const specialAllow = hasConfiguredEarnings
-    ? configuredEarnings.filter(head => !standardHeadNames.includes(String(head.name || '').trim().toLowerCase())).reduce((total, head) => total + (Number(head.amount) || 0), 0)
-    : (record?.specialAllow || 0);
+    ? configuredSpecialAllowance
+    : resolveSpecialAllowance(
+      (Number(record?.specialAllow) || 0) + savedEarningsBalanceAdjustment,
+      configuredSpecialAllowance
+    );
 
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -131,7 +172,6 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
   const numGratuity = parseFloat(gratuity) || 0;
 
   const configuredDeductions = salaryBreakdown?.deductions || [];
-  const hasConfiguredDeductions = configuredDeductions.length > 0;
   const classifyDeduction = (name) => {
     const normalized = String(name || '').toLowerCase();
     if (normalized.includes('provident') || normalized === 'pf' || normalized.includes('(pf)')) return 'pf';
@@ -143,12 +183,21 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
   const configuredDeductionTotal = category => configuredDeductions
     .filter(head => classifyDeduction(head.name) === category)
     .reduce((total, head) => total + getConfiguredDeductionAmount(head), 0);
+  const deductionCategories = ['pf', 'pt', 'tds', 'other'];
+  const deductionsBreakdownMatches = configuredDeductions.length > 0 && deductionCategories.every(category =>
+    Math.abs(configuredDeductionTotal(category) - savedDeductionTotals[category]) <= 0.01
+  );
+  const hasConfiguredDeductions = deductionsBreakdownMatches;
+  const salaryBreakdownMismatch =
+    (configuredEarnings.length > 0 && !earningsBreakdownMatches) ||
+    (configuredDeductions.length > 0 && !deductionsBreakdownMatches) ||
+    (!hasConfiguredEarnings && Math.abs(savedEarningsBalanceAdjustment) > 0.01) ||
+    (!hasConfiguredDeductions && Math.abs(savedTotalDeductions - savedDeductionFieldsTotal) > 0.01);
   const numPf = hasConfiguredDeductions ? configuredDeductionTotal('pf') : (parseFloat(pfEmployee) || 0);
   const numPt = hasConfiguredDeductions ? configuredDeductionTotal('pt') : (parseFloat(professionalTax) || 0);
   const numTds = hasConfiguredDeductions ? configuredDeductionTotal('tds') : (parseFloat(tds) || 0);
   const numOtherDed = hasConfiguredDeductions ? configuredDeductionTotal('other') : (parseFloat(otherDeductions) || 0);
 
-  const configuredEarningsTotal = configuredEarnings.reduce((total, head) => total + (Number(head.amount) || 0), 0);
   const baseEarnings = hasConfiguredEarnings ? configuredEarningsTotal : basicPay + hra + conveyance + medical + specialAllow;
   const grossPay = Math.round((baseEarnings + numLeaveEncashment + numArrears + numBonus + numIncentive + numGratuity) * 100) / 100;
   const totalDeductions = Math.round((numPf + numPt + numTds + numOtherDed) * 100) / 100;
@@ -195,13 +244,6 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
       setCalculatingArrears(false);
     }
   };
-
-  useEffect(() => {
-    // Only load if arrears haven't been manually set or loaded yet
-    if (!arrears || arrears === 0) {
-      loadApprovedArrears();
-    }
-  }, []);
 
   const handleDownloadArrearsPDF = async () => {
     const element = document.getElementById('arrears-payslip-sheet-content');
@@ -710,6 +752,11 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                 {salaryHeadsError}. Showing saved payroll amounts instead.
               </div>
             )}
+            {!salaryHeadsLoading && !salaryHeadsError && salaryBreakdownMismatch && (
+              <div style={{ marginBottom: '12px', padding: '9px 12px', borderRadius: '6px', border: '1px solid #fcd34d', background: '#fffbeb', color: '#92400e', fontSize: '0.82rem' }}>
+                The employee&apos;s current salary heads differ from this processed payroll. This slip uses the saved payroll amounts so its earnings, deductions, and net salary match the payroll record.
+              </div>
+            )}
             <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', border: '1px solid #cbd5e1', borderRadius: '6px', overflow: 'hidden', fontSize: '0.85rem', minWidth: '480px' }}>
               {/* EARNINGS COLUMN */}
@@ -736,7 +783,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                     </div>
                     {medical > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>Medical Allowance</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{medical.toFixed(2)}</div></div>}
                     {conveyance > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>Transport / Conveyance</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{conveyance.toFixed(2)}</div></div>}
-                    {specialAllow > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>Special Allowance</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{specialAllow.toFixed(2)}</div></div>}
+                    {Math.abs(specialAllow) > 0.005 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>{Math.abs(savedEarningsBalanceAdjustment) > 0.01 ? `${savedSpecialAllowanceLabel} / Saved Payroll Adjustment` : savedSpecialAllowanceLabel}</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{specialAllow.toFixed(2)}</div></div>}
                   </>}
 
                   {/* CHANGEABLE: Leave Encashment */}
@@ -775,6 +822,15 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                           placeholder="0.00"
                           disabled={record?.status === 'APPROVED'}
                         />
+                        <button
+                          type="button"
+                          onClick={loadApprovedArrears}
+                          disabled={calculatingArrears || record?.status === 'APPROVED'}
+                          className="btn-outline"
+                          style={{ whiteSpace: 'nowrap', fontSize: '0.72rem', padding: '5px 8px' }}
+                        >
+                          {calculatingArrears ? 'Loading…' : 'Load arrears'}
+                        </button>
                       </div>
                     </div>
                     {arrearsBreakdown && (

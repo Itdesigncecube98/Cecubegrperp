@@ -1,0 +1,5 @@
+ALTER TABLE "MaterialLibraryItem"
+ADD COLUMN "quantity" DOUBLE PRECISION NOT NULL DEFAULT 1;
+
+ALTER TABLE "TaskLibraryLabour"
+ADD COLUMN "components" JSONB;

@@ -198,6 +198,57 @@ export async function GET(req) {
     }
     where.resourceType = resourceType;
 
+    if (searchParams.get('subgroupsOnly') === 'true') {
+      const groups = await prisma.materialLibraryGroup.findMany({
+        where: { libraryId: where.libraryId, resourceType },
+        include: {
+          parent: { select: { name: true } },
+          materials: {
+            where: { resourceType },
+            select: { id: true, name: true, quantity: true, unit: true, rate: true, specification: true },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      const groupsByParent = new Map();
+      for (const group of groups) {
+        const children = groupsByParent.get(group.parentId) || [];
+        children.push(group);
+        groupsByParent.set(group.parentId, children);
+      }
+      const groupsById = new Map(groups.map(group => [group.id, group]));
+      const collectComponents = (groupId, path = []) => {
+        const group = groupsById.get(groupId);
+        const groupPath = [...path, group?.name].filter(Boolean);
+        return [
+        ...(group?.materials || []).map(item => ({
+          id: item.id,
+          sourceGroupId: groupId,
+          groupPath: groupPath.join(' / '),
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          rate: item.rate,
+          specification: item.specification,
+        })),
+        ...(groupsByParent.get(groupId) || []).flatMap(child => collectComponents(child.id, groupPath)),
+      ];
+      };
+      const subgroups = groups.map(group => ({
+        id: group.id,
+        name: group.name,
+        combinedRate: group.combinedRate,
+        combinedUnit: group.combinedUnit,
+        parentId: group.parentId,
+        parent: group.parent,
+        components: collectComponents(group.id),
+      }));
+      const response = NextResponse.json(subgroups);
+      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      return response;
+    }
+
     // Recursive include definition up to 5 levels deep
     const includeLevel = {
       materials: { orderBy: { createdAt: 'asc' } },
@@ -243,7 +294,7 @@ export async function POST(req) {
 
     // 1. Create Material (Leaf Item)
     if (type === 'material') {
-      const { groupId, name, unit, rate, specification, description, usedIn, resourceType = 'Material' } = body;
+      const { groupId, name, unit, quantity, rate, specification, description, usedIn, resourceType = 'Material' } = body;
       if (!groupId) return NextResponse.json({ error: 'Group/Subgroup ID is required' }, { status: 400 });
       if (!name || !name.trim()) return NextResponse.json({ error: 'Material name is required' }, { status: 400 });
 
@@ -253,6 +304,7 @@ export async function POST(req) {
           resourceType,
           name: name.trim(),
           unit: unit ? unit.trim() : 'Nos',
+          quantity: parseFloat(quantity) || 0,
           rate: parseFloat(rate) || 0,
           specification: specification ? specification.trim() : null,
           description: description ? description.trim() : null,
@@ -263,7 +315,7 @@ export async function POST(req) {
     }
 
     // 2. Create Root Group or Subgroup (Folder)
-    const { libraryId, parentId, name, description, resourceType = 'Material' } = body;
+    const { libraryId, parentId, name, description, resourceType = 'Material', combinedRate, combinedUnit } = body;
     if (!name || !name.trim()) return NextResponse.json({ error: 'Group/Subgroup name is required' }, { status: 400 });
 
     let finalLibId = libraryId;
@@ -278,7 +330,9 @@ export async function POST(req) {
         parentId: parentId || null,
         resourceType,
         name: name.trim(),
-        description: description ? description.trim() : null
+        description: description ? description.trim() : null,
+        combinedRate: resourceType === 'Labour' ? Math.max(0, Number(combinedRate) || 0) : 0,
+        combinedUnit: resourceType === 'Labour' ? (combinedUnit?.trim() || 'Manday') : null
       },
       include: {
         materials: true,
@@ -300,10 +354,11 @@ export async function PUT(req) {
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
 
     if (type === 'material') {
-      const { name, unit, rate, specification, description, usedIn } = body;
+      const { name, unit, quantity, rate, specification, description, usedIn } = body;
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (unit !== undefined) updateData.unit = unit ? unit.trim() : 'Nos';
+      if (quantity !== undefined) updateData.quantity = parseFloat(quantity) || 0;
       if (rate !== undefined) updateData.rate = parseFloat(rate) || 0;
       if (specification !== undefined) updateData.specification = specification ? specification.trim() : null;
       if (description !== undefined) updateData.description = description ? description.trim() : null;
@@ -317,10 +372,12 @@ export async function PUT(req) {
     }
 
     // Update Group / Subgroup
-    const { name, description } = body;
+    const { name, description, combinedRate, combinedUnit } = body;
     const updateData = {};
     if (name !== undefined) updateData.name = name.trim();
     if (description !== undefined) updateData.description = description ? description.trim() : null;
+    if (combinedRate !== undefined) updateData.combinedRate = Math.max(0, Number(combinedRate) || 0);
+    if (combinedUnit !== undefined) updateData.combinedUnit = combinedUnit?.trim() || 'Manday';
 
     const group = await prisma.materialLibraryGroup.update({
       where: { id },

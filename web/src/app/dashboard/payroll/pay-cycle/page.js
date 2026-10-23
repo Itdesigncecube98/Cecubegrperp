@@ -3,18 +3,15 @@ import React, { useState, useEffect } from 'react';
 import { PlusCircle, FileDown, Pencil, Trash2, Search, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import AppModal from '@/components/AppModal';
-import ActionToolbar from '@/components/ActionToolbar';
 
 const EMPTY = { cycle: '', startDate: '', endDate: '', freq: 'Monthly', employees: 'All Employees', selectedEmployeeIds: [], status: 'Open' };
 
 export default function PayCycle() {
-  const [fromDate, setFromDate] = useState('2025-08-01');
-  const [toDate, setToDate] = useState('2026-08-31');
-  const [status, setStatus] = useState('All');
   const [data, setData] = useState([]);
   const [modal, setModal] = useState({ open: false, mode: 'add' });
   const [form, setForm] = useState(EMPTY);
-  const [delModal, setDelModal] = useState({ open: false, id: null });
+  const [delModal, setDelModal] = useState({ open: false, id: null, cycle: null });
+  const [deleteError, setDeleteError] = useState('');
 
   // Employee Selection State
   const [empModalOpen, setEmpModalOpen] = useState(false);
@@ -60,7 +57,10 @@ export default function PayCycle() {
 
   const openAdd = () => { setForm(EMPTY); setModal({ open: true, mode: 'add' }); };
   const openEdit = (row) => { setForm({ ...row }); setModal({ open: true, mode: 'edit' }); };
-  const openDel = (id) => setDelModal({ open: true, id });
+  const openDel = (id) => {
+    setDeleteError('');
+    setDelModal({ open: true, id, cycle: data.find(cycle => cycle.id === id) || null });
+  };
 
   const handleSave = async () => {
     if (!form.cycle) return;
@@ -108,11 +108,18 @@ export default function PayCycle() {
   
   const handleDelete = async () => {
     try {
-      await fetch(`/api/payroll/cycles/${delModal.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/payroll/cycles/${delModal.id}`, { method: 'DELETE' });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDeleteError(result.error || `Could not delete pay cycle (${res.status}).`);
+        return;
+      }
       fetchCycles();
-      setDelModal({ open: false, id: null });
+      setDeleteError('');
+      setDelModal({ open: false, id: null, cycle: null });
     } catch (e) {
       console.error(e);
+      setDeleteError('Could not reach the server. Please try again.');
     }
   };
 
@@ -139,31 +146,8 @@ export default function PayCycle() {
   const uniqueBranches = [...new Set(empData.map(e => e.branch).filter(Boolean))];
   const uniqueLocations = [...new Set(empData.map(e => e.siteOffice).filter(Boolean))];
 
-  const filteredData = data.filter(row => {
-    let match = true;
-    
-    // Status filter
-    if (status !== 'All') {
-      // Normalize statuses for comparison (in case backend has DRAFT but frontend means Open)
-      const rowStatus = row.status?.toUpperCase() || '';
-      const filterStatus = status.toUpperCase();
-      if (filterStatus === 'OPEN' && !['OPEN', 'DRAFT'].includes(rowStatus)) match = false;
-      if (filterStatus === 'CLOSED' && rowStatus !== 'CLOSED') match = false;
-    }
-    
-    // Date filter
-    if (fromDate && row.startDate) {
-      if (new Date(row.startDate) < new Date(fromDate)) match = false;
-    }
-    if (toDate && row.endDate) {
-      if (new Date(row.endDate) > new Date(toDate)) match = false;
-    }
-    
-    return match;
-  });
-
   const exportToExcel = () => {
-    const exportData = filteredData.map(row => ({
+    const exportData = data.map(row => ({
       "Pay Cycle": row.cycle,
       "Status": row.status,
       "Period": row.period,
@@ -178,29 +162,6 @@ export default function PayCycle() {
 
   return (
     <div>
-      {/* Filters */}
-      <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: 8, border: '1px solid var(--border-color)', marginBottom: '1.25rem' }}>
-        <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748b', marginBottom: '0.75rem' }}>Filter Criteria</h3>
-        <div className="filter-bar" style={{ marginBottom: 0 }}>
-          <div className="filter-group">
-            <label>From</label>
-            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
-          </div>
-          <div className="filter-group">
-            <label>To</label>
-            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
-          </div>
-          <div className="filter-group">
-            <label>Status</label>
-            <select value={status} onChange={e => setStatus(e.target.value)}>
-              <option>All</option><option>Open</option><option>Closed</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <ActionToolbar onReset={() => { setFromDate('2025-08-01'); setToDate('2026-08-31'); setStatus('All'); }} shareTitle="Pay Cycle" />
-
       {/* Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b' }}>Pay Cycle</span>
@@ -227,7 +188,7 @@ export default function PayCycle() {
             </tr>
           </thead>
           <tbody>
-            {filteredData.map(row => (
+            {data.map(row => (
               <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                 <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0284c7' }}>{row.cycle} ({row.status})</td>
                 <td style={{ padding: '12px 16px' }}>{row.period}</td>
@@ -243,6 +204,13 @@ export default function PayCycle() {
                 </td>
               </tr>
             ))}
+            {data.length === 0 && (
+              <tr>
+                <td colSpan={5} style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
+                  No pay cycles match these filters. Clear the date range or create a pay cycle for the attendance period.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -297,9 +265,13 @@ export default function PayCycle() {
 
       {/* Delete Modal */}
       <AppModal isOpen={delModal.open} title="Delete Pay Cycle"
-        onClose={() => setDelModal({ open: false })} onConfirm={handleDelete}
+        onClose={() => { setDelModal({ open: false, id: null, cycle: null }); setDeleteError(''); }} onConfirm={handleDelete}
         confirmLabel="Delete" confirmColor="#ef4444" size="sm">
-        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Are you sure you want to delete this pay cycle? This action cannot be undone.</p>
+        <p style={{ color: '#334155', fontSize: '0.9rem', fontWeight: 600, marginTop: 0 }}>{delModal.cycle?.cycle || delModal.cycle?.name || 'this pay cycle'}</p>
+        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+          This permanently removes {delModal.cycle?.count || 0} payroll records and {delModal.cycle?._count?.bonusIncentives || 0} bonus/incentive entries. Any linked salary vouchers will be reversed in accounting first.
+        </p>
+        {deleteError && <p role="alert" style={{ marginTop: '0.75rem', color: '#b91c1c', fontSize: '0.875rem' }}>{deleteError}</p>}
       </AppModal>
 
       {/* Large Employee Select Modal */}

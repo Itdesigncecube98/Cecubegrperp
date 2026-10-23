@@ -233,7 +233,6 @@ export default function ContractingEnquiryGeneration() {
                     const selectedTask = row.selectedTaskId ? tasks.find(t => t.id === row.selectedTaskId) : null;
                     const subItems = selectedTask ? [
                       ...(selectedTask.labours || []).map(l => ({ name: `${selectedTask.name} - ${l.name}`, unit: l.unit || 'Manday', qty: l.quantity || 1 })),
-                      ...(selectedTask.equipments || []).map(e => ({ name: `${selectedTask.name} - ${e.name}`, unit: e.unit || 'Hour', qty: e.quantity || 1 }))
                     ] : [];
                     
                     return (
@@ -268,7 +267,7 @@ export default function ContractingEnquiryGeneration() {
                               }
                             }}
                           >
-                            <option value="">- Select Labour/Equipment -</option>
+                            <option value="">- Select Labour -</option>
                             {subItems.map((s, i) => (
                               <option key={i} value={s.name}>{s.name}</option>
                             ))}
