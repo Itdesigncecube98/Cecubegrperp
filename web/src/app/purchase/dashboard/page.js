@@ -283,7 +283,7 @@ export default function PurchaseDashboard() {
         </div>
         <div className="pur-grid-4" style={{ padding: '24px' }}>
           {[
-            { title: 'Supplier Reports', description: 'Supplier list, summary, rating, PO analysis, and supplier-wise reports.', href: '/purchase/reports/supplier/supplier', color: '#f59e0b' },
+            { title: 'Supplier Summary', description: 'Compare supplier purchase orders, billed amounts, payments, and outstanding balances.', href: '/purchase/reports/supplier/summary', color: '#f59e0b' },
             { title: 'Payment Summary', description: 'Review payment status and outstanding purchase liabilities.', href: '/purchase/reports/payment/summary', color: '#0ea5e9' },
             { title: 'Payment Details', description: 'Open detailed payment transactions and invoice records.', href: '/purchase/reports/payment/details', color: '#10b981' },
             { title: 'Payment Ageing', description: 'Track overdue payments by ageing buckets and due dates.', href: '/purchase/reports/payment/ageing', color: '#ef4444' },

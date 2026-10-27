@@ -54,7 +54,6 @@ export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollaps
       icon: ListOrdered,
       items: [
         { name: 'Tender Register', path: '/tender/register' },
-        { name: 'New Tender', path: '/tender/create' },
       ]
     },
     {
