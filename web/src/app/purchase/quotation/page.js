@@ -53,7 +53,7 @@ export default function QuotationPage() {
         if (active) setComparison(data);
       })
       .catch((error) => {
-        if (active) setLoadError(error.message || 'Failed to load the enquiry.');
+        if (active) setLoadError(error.message || 'Failed to load the request for quotation.');
       })
       .finally(() => {
         if (active) setDetailLoading(false);
@@ -92,7 +92,7 @@ export default function QuotationPage() {
         <div className="purchase-card">
           <div className="purchase-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FileText size={16} /> Enquiries ({enquiries.length})
+              <FileText size={16} /> Requests for Quotation ({enquiries.length})
             </span>
             <button type="button" onClick={load} title="Refresh" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex' }}>
               <RefreshCw size={14} />
@@ -103,7 +103,7 @@ export default function QuotationPage() {
               <div style={{ padding: '20px', color: '#64748b', fontSize: '0.85rem' }}>Loading enquiries...</div>
             ) : enquiries.length === 0 ? (
               <div style={{ padding: '20px', color: '#64748b', fontSize: '0.85rem' }}>
-                No enquiries yet. Create one from Enquiry Generation.
+                No requests for quotation yet. Create one using Create Request for Quotation.
               </div>
             ) : (
               enquiries.map((rfq) => {
@@ -142,7 +142,7 @@ export default function QuotationPage() {
         <div className="purchase-card">
           <div className="purchase-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#0284c7', backgroundColor: '#f0f9ff' }}>
             <span>
-              {selectedEnquiry ? `${selectedEnquiry.rfqNo} — Vendor Quotations (${quotedCount}/${vendors.length} received)` : 'Select an enquiry'}
+              {selectedEnquiry ? `${selectedEnquiry.rfqNo} — Vendor Quotations (${quotedCount}/${vendors.length} received)` : 'Select a request for quotation'}
             </span>
             {selectedId && (
               <Link
@@ -158,13 +158,13 @@ export default function QuotationPage() {
           <div className="purchase-card-body" style={{ padding: 0 }}>
             {!selectedId ? (
               <div style={{ padding: '24px', color: '#64748b', fontSize: '0.85rem' }}>
-                Pick an enquiry on the left to record vendor quotations.
+                Pick a request for quotation on the left to record vendor quotations.
               </div>
             ) : detailLoading ? (
               <div style={{ padding: '24px', color: '#64748b', fontSize: '0.85rem' }}>Loading vendors...</div>
             ) : vendors.length === 0 ? (
               <div style={{ padding: '24px', color: '#64748b', fontSize: '0.85rem' }}>
-                No vendors were invited on this enquiry.
+                No vendors were invited for this request for quotation.
               </div>
             ) : (
               <div className="purchase-table-wrapper" style={{ marginTop: 0 }}>

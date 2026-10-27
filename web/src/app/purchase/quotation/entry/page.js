@@ -68,7 +68,7 @@ function QuotationEntryInner() {
 
   const load = useCallback(async () => {
     if (!rfqId || !vendorId) {
-      setLoadError('An enquiry and a vendor must be selected.');
+      setLoadError('A request for quotation and a vendor must be selected.');
       setLoading(false);
       return;
     }
@@ -134,7 +134,7 @@ function QuotationEntryInner() {
         })
       );
     } catch (error) {
-      setLoadError(error.message || 'Failed to load the enquiry.');
+      setLoadError(error.message || 'Failed to load the request for quotation.');
     } finally {
       setLoading(false);
     }

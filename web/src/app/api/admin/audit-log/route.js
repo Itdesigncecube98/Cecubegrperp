@@ -73,6 +73,12 @@ export async function POST(request) {
   try {
     let session = readAuthSession(request);
     const body = await request.json();
+    // Module-open tracking is best-effort: the global tracker can run on a
+    // public route before login state is available. Ignore anonymous opens
+    // without weakening authentication for other audit events.
+    if (!session && body.action === 'MODULE_OPEN' && !body.employeeId) {
+      return new Response(null, { status: 204 });
+    }
     if (!session && body.employeeId) {
       session = { type: 'employee', id: body.employeeId };
     }

@@ -56,7 +56,7 @@ export default function EnquiryBrowse() {
       setDeleteTarget(null);
       await load();
     } catch (error) {
-      setLoadError(error.message || 'Failed to delete the enquiry.');
+      setLoadError(error.message || 'Failed to delete the request for quotation.');
       setDeleteTarget(null);
     } finally {
       setDeleting(false);
@@ -68,10 +68,10 @@ export default function EnquiryBrowse() {
       <div className="purchase-header">
         <div className="purchase-header-title">
           <Search size={18} />
-          Enquiry Browse (Total : {enquiries.length})
+          Requests for Quotation (RFQ) (Total: {enquiries.length})
         </div>
         <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', color: '#666', gap: '4px' }}>
-          <Home size={14} /> Home <ChevronRight size={14} /> Enquiry Browse
+          <Home size={14} /> Home <ChevronRight size={14} /> Requests for Quotation (RFQ)
         </div>
       </div>
 
@@ -81,7 +81,7 @@ export default function EnquiryBrowse() {
             <input
               type="text"
               className="purchase-input"
-              placeholder="Search Enquiry No / Project..."
+              placeholder="Search request number / project..."
               style={{ width: '280px' }}
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
@@ -106,8 +106,8 @@ export default function EnquiryBrowse() {
         <table className="purchase-table">
           <thead>
             <tr>
-              <th>Enquiry No</th>
-              <th>Enquiry Date</th>
+              <th>Request No.</th>
+              <th>Request Date</th>
               <th>Due Date</th>
               <th>Expiry Date</th>
               <th>PR No</th>
@@ -174,7 +174,7 @@ export default function EnquiryBrowse() {
             {!loading && filtered.length === 0 && (
               <tr>
                 <td colSpan={10} style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-                  No enquiries found. Create one from Enquiry Generation.
+                  No requests for quotation found. Create one using Create Request for Quotation.
                 </td>
               </tr>
             )}
@@ -185,11 +185,11 @@ export default function EnquiryBrowse() {
       <Dialog
         isOpen={Boolean(deleteTarget)}
         type="confirm"
-        title="Delete Enquiry"
+        title="Delete Request for Quotation"
         message={
           deleting
-            ? 'Deleting enquiry...'
-            : `Delete ${deleteTarget?.rfqNo || 'this enquiry'} and all vendor quotations recorded against it?`
+            ? 'Deleting request...'
+            : `Delete ${deleteTarget?.rfqNo || 'this request for quotation'} and all vendor quotations recorded against it?`
         }
         onConfirm={confirmDelete}
         onCancel={() => {
