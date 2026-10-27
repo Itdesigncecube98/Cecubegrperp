@@ -53,7 +53,6 @@ const LEGACY_ADMIN_TOOLS = {
     { name: 'Purchase Advance', code: 'PURCHASE_ADVANCE' },
     { name: 'Purchase Bills', code: 'PURCHASE_BILLS' },
     { name: 'Supplier', code: 'PURCHASE_REPORT_SUPPLIER' },
-    { name: 'Short Supplier', code: 'PURCHASE_REPORT_SHORT_SUPPLIER' },
     { name: 'Supplier Summary', code: 'PURCHASE_REPORT_SUPPLIER_SUMMARY' },
     { name: 'Supplier Rating', code: 'PURCHASE_REPORT_SUPPLIER_RATING' },
     { name: 'PO Analysis', code: 'PURCHASE_REPORT_PO_ANALYSIS' },
