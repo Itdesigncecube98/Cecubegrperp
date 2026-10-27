@@ -1,192 +1,262 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { 
-  Building2, HardHat, TrendingDown, Receipt, 
-  Clock, CheckCircle, AlertTriangle, Play
-} from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, AlertTriangle, Building2, Clock, HardHat, Receipt } from 'lucide-react';
 import Link from 'next/link';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell
+import {
+  Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
+  Tooltip, XAxis, YAxis
 } from 'recharts';
 
+const EMPTY_DASHBOARD = {
+  projects: [],
+  projectSummary: [],
+  upcomingMilestones: [],
+  financials: { contractValue: 0, certifiedValue: 0, billedValue: 0, netPayable: 0 }
+};
+
+const money = value => {
+  const amount = Number(value || 0);
+  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
+  if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
+  return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+};
+
+const crore = value => Number((Number(value || 0) / 10000000).toFixed(2));
+const shortDate = value => value ? new Date(value).toLocaleDateString('en-IN') : '-';
+const formatNumber = value => Number(value || 0).toLocaleString('en-IN');
+
 export default function EngineeringDashboard() {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(EMPTY_DASHBOARD);
+  const [selectedProjectId, setSelectedProjectId] = useState('ALL');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const res = await fetch('/api/engineering/dashboard');
-        if (res.ok) setData(await res.json());
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
+    let active = true;
+    fetch(`/api/engineering/dashboard?projectId=${encodeURIComponent(selectedProjectId)}`, { cache: 'no-store' })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to load project dashboard.');
+        return result;
+      })
+      .then(result => {
+        if (active) {
+          setData(result);
+          setError('');
+        }
+      })
+      .catch(loadError => {
+        if (active) setError(loadError.message || 'Unable to load project dashboard.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [selectedProjectId]);
 
-  const formatCurrency = (val) => {
-    if (val === undefined || val === null) return '₹0';
-    if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)} Cr`;
-    if (val >= 100000) return `₹${(val / 100000).toFixed(2)} L`;
-    return `₹${val.toLocaleString('en-IN')}`;
-  };
+  const chartData = useMemo(() => [
+    { name: 'Contract', value: crore(data.financials?.contractValue) },
+    { name: 'Certified MB', value: crore(data.financials?.certifiedValue) },
+    { name: 'RA Billed', value: crore(data.financials?.billedValue) },
+    { name: 'Net Payable', value: crore(data.financials?.netPayable) }
+  ], [data]);
 
-  const projectProgressData = [
-    { name: 'Executed', value: data?.executedValue || 0 },
-    { name: 'Remaining', value: (data?.totalContractValue || 0) - (data?.executedValue || 0) },
-  ];
-  const COLORS = ['#7c3aed', '#e2e8f0'];
+  const progressData = useMemo(() => [
+    { name: 'Completed work', value: Number(data.overallProgressPct || 0) },
+    { name: 'Remaining work', value: Math.max(0, 100 - Number(data.overallProgressPct || 0)) }
+  ], [data.overallProgressPct]);
 
-  if (loading) {
-    return (
-      <div style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
-          <div className="spinner" style={{ width: '40px', height: '40px', border: '4px solid #f3f3f3', borderTop: '4px solid #7c3aed', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-        </div>
-      </div>
-    );
-  }
+  const hasFinancialData = chartData.some(item => item.value > 0);
+  const hasProjects = data.projectSummary.length > 0;
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+    <div style={{ padding: 24, maxWidth: 1500, margin: '0 auto', color: '#1e293b' }}>
+      <style>{`
+        .engineering-dashboard-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+        .engineering-dashboard-content { display:grid; grid-template-columns:minmax(0,2fr) minmax(300px,1fr); gap:20px; margin-top:20px; }
+        .engineering-dashboard-project-table { width:100%; border-collapse:collapse; min-width:850px; }
+        @media (max-width: 900px) {
+          .engineering-dashboard-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+          .engineering-dashboard-content { grid-template-columns:1fr; }
+        }
+        @media (max-width: 560px) {
+          .engineering-dashboard-grid { grid-template-columns:1fr; }
+        }
+      `}</style>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>Execution Dashboard</h1>
-          <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '4px' }}>Project Management, Planning, Site, and Billing overview</p>
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 750, margin: 0 }}>Project Execution Dashboard</h1>
+          <p style={{ color: '#64748b', margin: '6px 0 0' }}>Live project, site progress, measurement book, and RA billing summary.</p>
         </div>
-        <Link href="/engineering/projects" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#7c3aed', color: '#fff', padding: '8px 16px', borderRadius: '6px', fontSize: '0.875rem', fontWeight: '500', textDecoration: 'none' }}>
-          <Building2 size={16} /> All Projects
-        </Link>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '24px' }}>
-        {/* KPI 1 */}
-        <div style={{ background: '#fff', borderRadius: '8px', padding: '20px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: '#f3e8ff', color: '#7c3aed', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <Building2 size={24} />
-          </div>
-          <div>
-            <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0 0 4px 0' }}>Active Projects</p>
-            <h3 style={{ color: '#0f172a', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>{data?.activeProjects} / {data?.totalProjects}</h3>
-          </div>
-        </div>
-        
-        {/* KPI 2 */}
-        <div style={{ background: '#fff', borderRadius: '8px', padding: '20px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: '#fee2e2', color: '#b91c1c', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <TrendingDown size={24} />
-          </div>
-          <div>
-            <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0 0 4px 0' }}>Planning Variance</p>
-            <h3 style={{ color: '#b91c1c', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>{data?.planningVariance}%</h3>
-          </div>
-        </div>
-
-        {/* KPI 3 */}
-        <div style={{ background: '#fff', borderRadius: '8px', padding: '20px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: '#e0f2fe', color: '#0369a1', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <HardHat size={24} />
-          </div>
-          <div>
-            <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0 0 4px 0' }}>Today's Manpower</p>
-            <h3 style={{ color: '#0f172a', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>{data?.manpowerToday} <span style={{fontSize: '0.875rem', fontWeight: 'normal', color: '#64748b'}}>across {data?.dprsToday} sites</span></h3>
-          </div>
-        </div>
-
-        {/* KPI 4 */}
-        <div style={{ background: '#fff', borderRadius: '8px', padding: '20px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '8px', background: '#dcfce7', color: '#15803d', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <Receipt size={24} />
-          </div>
-          <div>
-            <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0 0 4px 0' }}>Total RA Billed</p>
-            <h3 style={{ color: '#0f172a', fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>{formatCurrency(data?.billedValue)}</h3>
-          </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label htmlFor="engineering-dashboard-project" style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>Project</label>
+          <select
+            id="engineering-dashboard-project"
+            value={selectedProjectId}
+            onChange={event => {
+              setLoading(true);
+              setError('');
+              setSelectedProjectId(event.target.value);
+            }}
+            style={{ minWidth: 260, padding: '9px 12px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff' }}
+          >
+            <option value="ALL">All Projects</option>
+            {data.projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select>
+          <Link href="/engineering/projects" style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#7c3aed', color: '#fff', padding: '9px 14px', borderRadius: 8, fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
+            <Building2 size={16} /> Project Master
+          </Link>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
-        {/* Project Pipeline Chart */}
-        <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0' }}>
-            <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#1e293b', margin: 0 }}>Project Execution vs Billing (In Cr)</h3>
-          </div>
-          <div style={{ height: '350px', padding: '20px' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={[
-                { name: 'Contract Value', value: 4.5 },
-                { name: 'Executed (Site)', value: 1.25 },
-                { name: 'Billed (RA)', value: 0.95 },
-                { name: 'Certified', value: 0.80 },
-              ]} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#7c3aed" radius={[4, 4, 0, 0]} barSize={50} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+      {error && (
+        <div role="alert" style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 14, marginBottom: 18, border: '1px solid #fecaca', borderRadius: 8, color: '#991b1b', background: '#fef2f2' }}>
+          <AlertCircle size={18} /> {error}
         </div>
+      )}
 
-        {/* Milestones & Progress */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          
-          <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '20px' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: '600', color: '#1e293b', margin: '0 0 16px 0' }}>Overall Project Progress</h3>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <div style={{ width: '120px', height: '120px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={projectProgressData} cx="50%" cy="50%" innerRadius={40} outerRadius={55} paddingAngle={2} dataKey="value">
-                      {projectProgressData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div style={{ marginLeft: '16px' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#7c3aed' }}>
-                  {Math.round(((data?.executedValue || 0) / (data?.totalContractValue || 1)) * 100)}%
-                </div>
-                <div style={{ fontSize: '0.875rem', color: '#64748b' }}>Financial Progress</div>
-                <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <AlertTriangle size={12} /> {data?.delayedActivities} Critical Activities Delayed
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="engineering-dashboard-grid">
+        <KpiCard icon={<Building2 size={22} />} tone="#7c3aed" label="Active Projects" value={`${formatNumber(data.activeProjects)} / ${formatNumber(data.totalProjects)}`} />
+        <KpiCard icon={<AlertTriangle size={22} />} tone="#b91c1c" label="Activities Past Planned Finish" value={formatNumber(data.delayedActivities)} detail="Past plan date and below planned quantity" />
+        <KpiCard icon={<HardHat size={22} />} tone="#0369a1" label="Today's Manpower" value={formatNumber(data.manpowerToday)} detail={`Across ${formatNumber(data.dprsToday)} site reports`} />
+        <KpiCard icon={<Receipt size={22} />} tone="#15803d" label="RA Billed" value={money(data.financials?.billedValue)} detail="Current bill totals, excluding drafts" />
+      </div>
 
-          <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: '600', color: '#1e293b', margin: 0 }}>Upcoming Milestones</h3>
-            </div>
-            <div style={{ padding: '0' }}>
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {data?.upcomingMilestones?.map(ms => (
-                  <li key={ms.id} style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                    <div style={{ marginTop: '2px', color: ms.status === 'Delayed' ? '#ef4444' : '#10b981' }}>
-                      {ms.status === 'Delayed' ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.875rem', fontWeight: '500', color: '#1e293b' }}>{ms.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                        <Clock size={12} /> {new Date(ms.date).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+      {loading && <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Loading project data...</div>}
 
+      {!loading && !error && !hasProjects && (
+        <div style={{ marginTop: 20, padding: 28, textAlign: 'center', border: '1px dashed #cbd5e1', borderRadius: 10, background: '#fff', color: '#64748b' }}>
+          No Engineering projects found. Add a project in Project Master to see execution data here.
         </div>
+      )}
+
+      {!loading && !error && hasProjects && (
+        <>
+          <div className="engineering-dashboard-content">
+            <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, minWidth: 0 }}>
+              <div style={{ padding: '18px 20px', borderBottom: '1px solid #e2e8f0' }}>
+                <h2 style={{ margin: 0, fontSize: 16 }}>Contract, Certification & Billing (₹ crore)</h2>
+                <p style={{ color: '#64748b', fontSize: 13, margin: '5px 0 0' }}>Amounts are summed from project contracts, certified MBs, and submitted RA bills.</p>
+              </div>
+              <div style={{ height: 320, padding: 16 }}>
+                {hasFinancialData ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 16, right: 12, left: 12, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} />
+                      <Tooltip formatter={value => [`₹${Number(value).toLocaleString('en-IN')} Cr`, 'Amount']} />
+                      <Bar dataKey="value" fill="#7c3aed" radius={[4, 4, 0, 0]} barSize={48} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <EmptyChartMessage>No contract, certified MB, or RA billing amounts have been recorded for this selection.</EmptyChartMessage>
+                )}
+              </div>
+            </section>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 20 }}>
+                <h2 style={{ margin: '0 0 10px', fontSize: 16 }}>Physical Progress</h2>
+                {data.overallProgressPct === null ? (
+                  <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>Progress is unavailable until activities have planned quantities and site DPR quantities.</p>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <div style={{ width: 120, height: 120, flexShrink: 0 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={progressData} cx="50%" cy="50%" innerRadius={38} outerRadius={54} dataKey="value" startAngle={90} endAngle={-270}>
+                            <Cell fill="#7c3aed" />
+                            <Cell fill="#e2e8f0" />
+                          </Pie>
+                          <Tooltip formatter={value => [`${value}%`, 'Weighted progress']} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 750, fontSize: 28, color: '#7c3aed' }}>{data.overallProgressPct}%</div>
+                      <div style={{ color: '#64748b', fontSize: 13 }}>Activity progress weighted by planned importance</div>
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 16, paddingTop: 14, borderTop: '1px solid #f1f5f9', color: data.delayedActivities ? '#b91c1c' : '#475569', fontSize: 13 }}>
+                  <AlertTriangle size={15} /> {formatNumber(data.delayedActivities)} activities past planned finish
+                </div>
+              </section>
+
+              <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+                <div style={{ padding: '16px 18px', borderBottom: '1px solid #e2e8f0' }}>
+                  <h2 style={{ margin: 0, fontSize: 16 }}>Upcoming Planned Activities</h2>
+                </div>
+                {data.upcomingMilestones.length ? data.upcomingMilestones.map(activity => (
+                  <div key={activity.id} style={{ padding: '13px 18px', borderBottom: '1px solid #f1f5f9' }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{activity.name}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 5, color: '#64748b', fontSize: 12 }}>
+                      <span>{activity.projectName}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}><Clock size={12} />{shortDate(activity.date)}</span>
+                    </div>
+                  </div>
+                )) : (
+                  <p style={{ padding: '16px 18px', margin: 0, color: '#64748b', fontSize: 13 }}>No upcoming planned activities found.</p>
+                )}
+              </section>
+            </div>
+          </div>
+
+          <section style={{ marginTop: 20, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '18px 20px', borderBottom: '1px solid #e2e8f0' }}>
+              <h2 style={{ margin: 0, fontSize: 16 }}>Project Portfolio</h2>
+              <p style={{ color: '#64748b', fontSize: 13, margin: '5px 0 0' }}>Progress and financial values use recorded project activity, MB, and RA data.</p>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="engineering-dashboard-project-table">
+                <thead>
+                  <tr style={{ textAlign: 'left', background: '#f8fafc', color: '#475569', fontSize: 12 }}>
+                    {['Project', 'Status', 'Contract Value', 'Certified MB', 'RA Billed', 'Physical Progress', 'Activities', 'Past Plan'].map(label => (
+                      <th key={label} style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.projectSummary.map(project => (
+                    <tr key={project.id} style={{ borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                      <td style={{ padding: '13px 14px' }}>
+                        <div style={{ fontWeight: 650 }}>{project.name}</div>
+                        <div style={{ color: '#64748b', fontSize: 11 }}>{[project.projectId, project.location].filter(Boolean).join(' · ') || '—'}</div>
+                      </td>
+                      <td style={{ padding: '13px 14px' }}>{project.status || '—'}</td>
+                      <td style={{ padding: '13px 14px', whiteSpace: 'nowrap' }}>{money(project.contractValue)}</td>
+                      <td style={{ padding: '13px 14px', whiteSpace: 'nowrap' }}>{money(project.certifiedValue)}</td>
+                      <td style={{ padding: '13px 14px', whiteSpace: 'nowrap' }}>{money(project.billedValue)}</td>
+                      <td style={{ padding: '13px 14px' }}>{project.physicalProgressPct === null ? 'No quantity data' : `${project.physicalProgressPct}%`}</td>
+                      <td style={{ padding: '13px 14px' }}>{formatNumber(project.activityCount)}</td>
+                      <td style={{ padding: '13px 14px', color: project.delayedActivities ? '#b91c1c' : '#475569' }}>{formatNumber(project.delayedActivities)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function KpiCard({ icon, tone, label, value, detail }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 10, padding: 18, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 14, minHeight: 88 }}>
+      <div style={{ width: 46, height: 46, flexShrink: 0, borderRadius: 9, background: `${tone}16`, color: tone, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>{icon}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: '#64748b', fontSize: 13 }}>{label}</div>
+        <div style={{ color: '#0f172a', fontSize: 21, fontWeight: 750, marginTop: 3 }}>{value}</div>
+        {detail && <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 3 }}>{detail}</div>}
       </div>
     </div>
   );
+}
+
+function EmptyChartMessage({ children }) {
+  return <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center', color: '#64748b', fontSize: 14 }}>{children}</div>;
 }
