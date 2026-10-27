@@ -8,7 +8,6 @@ const ROUTE_RIGHTS = [
   ['/contracting/contractors/add-contractor', 'CONTRACT_CONTRACTOR_EDIT'],
   ['/contracting/contractors/add-group', 'CONTRACT_ADD_GROUP'],
   ['/contracting/contractors/registered-suppliers', 'CONTRACT_REG_SUPPLIERS'],
-  ['/contracting/contractors/insurance/policy-detail', 'CONTRACT_INSURANCE_POLICY'],
   ['/contracting/contractors/insurance', 'CONTRACT_INSURANCE_POLICY'],
   ['/contracting/labour/requisition', 'CONTRACT_REQ_GEN'],
   ['/contracting/labour/requisition-browse', 'CONTRACT_REQ_BROWSE'],

@@ -20,7 +20,6 @@ const menuConfig = [
       { name: 'Contractor List',        path: '/contracting/contractors/contractor-list',         permissionCode: 'CONTRACT_CONTRACTOR_LIST' },
       { name: 'Add Group',              path: '/contracting/contractors/add-group',                permissionCode: 'CONTRACT_ADD_GROUP' },
       { name: 'Registered Suppliers',   path: '/contracting/contractors/registered-suppliers',     permissionCode: 'CONTRACT_REG_SUPPLIERS' },
-      { name: 'Insurance Policy Detail',path: '/contracting/contractors/insurance/policy-detail',  permissionCode: 'CONTRACT_INSURANCE_POLICY' },
     ],
   },
   {
