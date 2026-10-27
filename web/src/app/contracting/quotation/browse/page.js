@@ -128,10 +128,10 @@ export default function QuotationBrowse() {
               </tbody>
             </table>
           </div>
+          </div>
             </>
           )}
         </div>
-      </div>
     </div>
   );
 }

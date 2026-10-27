@@ -120,8 +120,6 @@ export default function EnquiryBrowse() {
               );
             })}
           </div>
-            </>
-          )}
         </div>
 
         {/* Table */}
@@ -175,6 +173,8 @@ export default function EnquiryBrowse() {
             </tbody>
           </table>
         </div>
+          </>
+        )}
       </div>
 
       {/* View Modal */}

@@ -74,6 +74,8 @@ export default function GovtForms() {
   const [previewForm, setPreviewForm] = useState('FORM_III');
   const [showPreview, setShowPreview] = useState(false);
   const printRef = useRef(null);
+  const [historyPreview, setHistoryPreview] = useState(false);
+  const [loadingSubmissionId, setLoadingSubmissionId] = useState(null);
 
   // Submission / locking state
   const [submissions, setSubmissions] = useState([]);
@@ -153,6 +155,7 @@ export default function GovtForms() {
   const fetchData = async () => {
     setLoading(true);
     setShowPreview(false);
+    setHistoryPreview(false);
     try {
       const params = new URLSearchParams();
       if (filters.department && filters.department !== 'Select Here') params.append('department', filters.department);
@@ -205,6 +208,7 @@ export default function GovtForms() {
       return;
     }
 
+    setHistoryPreview(false);
     setShowPreview(true);
 
     // Log this generation event
@@ -224,6 +228,46 @@ export default function GovtForms() {
       } catch (err) {
         console.error('Failed to log generation', err);
       }
+    }
+  };
+
+  const handlePreviewSubmission = async (submission) => {
+    const formDef = FORMS[submission.formType];
+    if (!formDef) {
+      alert('This history entry does not identify a single supported form.');
+      return;
+    }
+
+    setLoadingSubmissionId(submission.id);
+    try {
+      const params = new URLSearchParams({
+        payCycleId: submission.payCycleId,
+        status: 'Posted'
+      });
+      const res = await fetch(`/api/payroll/post-salary?${params.toString()}`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to load submitted payroll records.');
+      }
+
+      const records = await res.json();
+      if (records.length === 0) {
+        alert('No posted payroll records are available for this pay cycle.');
+        return;
+      }
+
+      setFilters(prev => ({ ...prev, payCycleId: submission.payCycleId }));
+      setPreviewForm(submission.formType);
+      setData(records);
+      setSelectedRows(new Set(records.map(record => record.id)));
+      setHistoryPreview(true);
+      setShowPreview(true);
+      setActiveTab('forms');
+    } catch (error) {
+      console.error('Failed to preview government form submission:', error);
+      alert(error.message || 'Failed to load the submitted form.');
+    } finally {
+      setLoadingSubmissionId(null);
     }
   };
 
@@ -405,14 +449,15 @@ export default function GovtForms() {
     const pf = Number(r.pf || r.employeePf || 0);
     const esi = Number(r.esi || r.employeeEsi || 0);
     const otherDed = (Number(r.totalDeductions || 0) - pf - esi).toFixed(2);
-    const otherAllow = (Number(r.grossPay || 0) - basic - hra).toFixed(2);
-    const dailyRate = r.workingDays ? (Number(r.grossPay) / Number(r.workingDays)).toFixed(2) : '0';
+    const grossPay = Number(r.grossPay ?? r.grossSalary ?? 0);
+    const otherAllow = (grossPay - basic - hra).toFixed(2);
+    const dailyRate = r.workingDays ? (grossPay / Number(r.workingDays)).toFixed(2) : '0';
 
     return {
       FORM_XVII: [
         idx + 1, r.name, r.uan || r.uanNumber || '', fmtDate(r.joinedDate), r.designation, r.category || 'Skilled',
         r.presentDays ?? r.workingDays, r.workingDays, dailyRate, basic.toFixed(2), hra > 0 ? hra.toFixed(2) : '0', 
-        otherAllow > 0 ? otherAllow : '0', '0', '0', Number(r.grossPay || 0).toFixed(2), 
+        otherAllow > 0 ? otherAllow : '0', '0', '0', grossPay.toFixed(2),
         pf > 0 ? pf.toFixed(2) : '0', esi > 0 ? esi.toFixed(2) : '0', 
         otherDed > 0 ? otherDed : '0', '', Number(r.netPay || 0).toFixed(2), ''
       ],
@@ -455,12 +500,12 @@ export default function GovtForms() {
             location={location}
             woNo={woNo}
             theme={previewForm === 'FORM_I' ? 'blue' : 'yellow'}
-            locked={isLocked}
+            locked={isLocked || historyPreview}
             renderFooter={previewForm === 'FORM_XVI' ? (c, borderColor) => (
               <tr style={{ backgroundColor: '#ffffff', fontWeight: 'bold' }}>
                 <td colSpan="4" style={{ border: `1px solid ${borderColor}`, padding: '6px', textAlign: 'right' }}></td>
                 {Array.from({length: 31}, (_, i) => (
-                  <td key={i} contentEditable={!isLocked} suppressContentEditableWarning style={{ border: `1px solid ${borderColor}`, padding: '6px', textAlign: 'center' }}>
+                  <td key={i} contentEditable={!isLocked && !historyPreview} suppressContentEditableWarning style={{ border: `1px solid ${borderColor}`, padding: '6px', textAlign: 'center' }}>
                     {(i + 1) % 7 === 0 ? '0' : '4'}
                   </td>
                 ))}
@@ -595,7 +640,7 @@ export default function GovtForms() {
         }
         .history-entry {
           display: grid;
-          grid-template-columns: 1fr 1fr 1fr 1fr 140px;
+          grid-template-columns: 1fr 1fr 1fr 1fr 140px auto;
           gap: 0.5rem;
           padding: 0.75rem 1rem;
           align-items: center;
@@ -738,22 +783,14 @@ export default function GovtForms() {
                 {isLocked ? 'Locked' : 'Preview Editable Form'}
               </button>
 
-              {showPreview && !isLocked && (
+              {showPreview && (
                 <>
                   <button 
                     className="btn-primary" 
                     style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#0f766e' }}
                     onClick={handlePrint}
                   >
-                    <Printer size={16} /> Print Preview
-                  </button>
-
-                  <button 
-                    className="btn-primary" 
-                    style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#d97706' }}
-                    onClick={handlePrint}
-                  >
-                    <Download size={16} /> Download PDF
+                    <Printer size={16} /> Print
                   </button>
 
                   <button 
@@ -764,18 +801,19 @@ export default function GovtForms() {
                     <Download size={16} /> Export Excel
                   </button>
 
-                  {/* Mark as Sent to Govt button */}
-                  <button 
-                    style={{ 
-                      display: 'flex', gap: '0.5rem', alignItems: 'center', 
-                      backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '4px',
-                      padding: '0.45rem 1rem', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer'
-                    }}
-                    onClick={handleMarkSentToGovt}
-                    disabled={markSentLoading}
-                  >
-                    <Send size={16} /> {markSentLoading ? 'Locking...' : 'Mark as Sent to Govt 🔒'}
-                  </button>
+                  {!isLocked && !historyPreview && (
+                    <button
+                      style={{
+                        display: 'flex', gap: '0.5rem', alignItems: 'center',
+                        backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '4px',
+                        padding: '0.45rem 1rem', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer'
+                      }}
+                      onClick={handleMarkSentToGovt}
+                      disabled={markSentLoading}
+                    >
+                      <Send size={16} /> {markSentLoading ? 'Locking...' : 'Mark as Sent to Govt 🔒'}
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -836,13 +874,13 @@ export default function GovtForms() {
             </div>
           ) : (
             <div id="print-area" style={{ marginTop: '20px' }}>
-              {isLocked && (
+              {(isLocked || historyPreview) && (
                 <div style={{
                   background: '#fef3c7', border: '2px dashed #f59e0b', borderRadius: '8px',
                   padding: '0.75rem 1.2rem', marginBottom: '1rem', display: 'flex',
                   alignItems: 'center', gap: '0.5rem', color: '#92400e', fontWeight: 700
                 }} className="no-print">
-                  <Lock size={18} /> READ ONLY — These forms are locked (sent to government)
+                  <Lock size={18} /> READ ONLY — {isLocked ? 'These forms are locked (sent to government)' : 'Historical submission preview'}
                 </div>
               )}
               {renderPreviews()}
@@ -889,12 +927,13 @@ export default function GovtForms() {
                   </div>
                 </div>
                 {/* Table header */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 140px', gap: '0.5rem', padding: '0.5rem 1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 140px auto', gap: '0.5rem', padding: '0.5rem 1rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   <span>Form Type</span>
                   <span>Generated At</span>
                   <span>Sent to Govt At</span>
                   <span>Sent By</span>
                   <span>Status</span>
+                  <span>Actions</span>
                 </div>
                 {entries.map(entry => (
                   <div key={entry.id} className="history-entry">
@@ -918,6 +957,29 @@ export default function GovtForms() {
                           <AlertCircle size={12} /> Generated
                         </span>
                       )}
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => handlePreviewSubmission(entry)}
+                        disabled={loadingSubmissionId === entry.id}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.4rem 0.65rem',
+                          border: '1px solid #0f766e',
+                          borderRadius: '5px',
+                          background: '#fff',
+                          color: '#0f766e',
+                          cursor: loadingSubmissionId === entry.id ? 'wait' : 'pointer',
+                          fontSize: '0.8rem',
+                          fontWeight: 600
+                        }}
+                      >
+                        <Eye size={14} />
+                        {loadingSubmissionId === entry.id ? 'Loading...' : 'Preview'}
+                      </button>
                     </div>
                   </div>
                 ))}

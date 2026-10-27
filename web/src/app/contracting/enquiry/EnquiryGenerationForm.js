@@ -24,7 +24,7 @@ export default function EnquiryGenerationForm({ embedded = false, onSaved }) {
   const [selectedContractorIds, setSelectedContractorIds] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [enquiryTasks, setEnquiryTasks] = useState([
-    { id: Date.now(), selectedTaskId: '', taskName: '', unit: '', qty: 1 }
+    { id: 0, selectedTaskId: '', taskName: '', unit: '', qty: 1 }
   ]);
 
   const [saving, setSaving] = useState(false);

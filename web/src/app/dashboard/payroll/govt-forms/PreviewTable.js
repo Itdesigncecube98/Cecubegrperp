@@ -161,7 +161,7 @@ export default function PreviewTable({ title, rule, cols, records, dataMapper, c
               {row.map((val, cIdx) => (
                 <td
                   key={cIdx}
-                  contentEditable
+                  contentEditable={!locked}
                   suppressContentEditableWarning
                   style={{
                     border: tdBorder,
@@ -170,7 +170,7 @@ export default function PreviewTable({ title, rule, cols, records, dataMapper, c
                     minWidth: '28px',
                     fontSize: '10px',
                     outline: 'none',
-                    cursor: 'text',
+                    cursor: locked ? 'default' : 'text',
                   }}
                 >
                   {val === undefined || val === null ? '' : val}
