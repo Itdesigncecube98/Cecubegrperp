@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, UserCog, Save, X, ToggleLeft, ToggleRight, Printer } from 'lucide-react';
+import { Plus, Edit2, Trash2, UserCog, Save, X, ToggleLeft, ToggleRight } from 'lucide-react';
 import Dialog from '@/components/Dialog';
 
 export default function SalaryHeadsPage() {
@@ -11,7 +11,7 @@ export default function SalaryHeadsPage() {
   const [saving, setSaving] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState({ description: '', calculationType: 'C : Calculate By Formula', remark: '', isActive: true });
+  const [formData, setFormData] = useState({ description: '', calculationType: 'C : Calculate By Formula', fixedAmount: '', remark: '', isActive: true });
   const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, id: null });
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
@@ -44,13 +44,13 @@ export default function SalaryHeadsPage() {
   }, []);
 
   const resetForm = () => {
-    setFormData({ description: '', calculationType: 'C : Calculate By Formula', remark: '', isActive: true });
+    setFormData({ description: '', calculationType: 'C : Calculate By Formula', fixedAmount: '', remark: '', isActive: true });
     setEditingId(null);
     setIsFormOpen(false);
   };
 
   const handleEdit = (head) => {
-    setFormData({ description: head.description, calculationType: head.calculationType, remark: head.remark || '', isActive: head.isActive });
+    setFormData({ description: head.description, calculationType: head.calculationType, fixedAmount: head.fixedAmount ?? '', remark: head.remark || '', isActive: head.isActive });
     setEditingId(head.id);
     setIsFormOpen(true);
   };
@@ -59,6 +59,10 @@ export default function SalaryHeadsPage() {
     e.preventDefault();
     if (!formData.description.trim()) {
       setInfoDialog({ isOpen: true, title: 'Validation Error', message: 'Description is required' });
+      return;
+    }
+    if (String(formData.calculationType || '').includes('Fixed Amount') && (formData.fixedAmount === '' || !Number.isFinite(Number(formData.fixedAmount)) || Number(formData.fixedAmount) < 0)) {
+      setInfoDialog({ isOpen: true, title: 'Validation Error', message: 'Enter a fixed amount of 0 or more for this salary head.' });
       return;
     }
     setSaving(true);
@@ -108,7 +112,18 @@ export default function SalaryHeadsPage() {
   const lbl = { display: 'block', fontSize: '12px', fontWeight: 600, color: '#0ea5e9', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.04em' };
 
   return (
-    <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="salary-heads-page" style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
+      <style jsx global>{`
+        .salary-heads-page input[type='number'] {
+          appearance: textfield;
+          -moz-appearance: textfield;
+        }
+        .salary-heads-page input[type='number']::-webkit-inner-spin-button,
+        .salary-heads-page input[type='number']::-webkit-outer-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+      `}</style>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -122,9 +137,6 @@ export default function SalaryHeadsPage() {
         </div>
         {!isFormOpen && (
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px', background: '#f8fafc', color: '#475569', border: '1.5px solid #e2e8f0', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}>
-              <Printer size={15} /> Print
-            </button>
             <button onClick={() => { resetForm(); setIsFormOpen(true); }} disabled={!activeTab} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 20px', background: activeTab ? 'linear-gradient(135deg,#0ea5e9,#6366f1)' : '#e2e8f0', color: activeTab ? '#fff' : '#94a3b8', border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '13px', cursor: activeTab ? 'pointer' : 'not-allowed', boxShadow: activeTab ? '0 2px 8px rgba(14,165,233,0.3)' : 'none' }}>
               <Plus size={16} /> Add {activeTab} Head
             </button>
@@ -179,12 +191,42 @@ export default function SalaryHeadsPage() {
                 <input type="text" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} style={inp} placeholder="e.g. Basic Salary" autoFocus />
               </div>
               <div>
-                <label style={lbl}>Calculation Type</label>
+                <label style={lbl}>Salary Calculation Type</label>
                 <select value={formData.calculationType} onChange={e => setFormData({ ...formData, calculationType: e.target.value })} style={inp}>
-                  <option value="C : Calculate By Formula">C : Calculate By Formula</option>
-                  <option value="F : Fixed Amount">F : Fixed Amount</option>
+                  <option value="C : Calculate By Formula">Formula (calculated per employee)</option>
+                  <option value="F : Fixed Amount">Fixed Amount (default value)</option>
                 </select>
+                <small style={{ display: 'block', marginTop: '6px', color: '#64748b', fontSize: '12px' }}>
+                  {String(formData.calculationType || '').includes('Fixed Amount')
+                    ? 'Set a default amount here. You can enter a different fixed amount or choose a formula for each employee in Salary Info.'
+                    : 'Choose a formula or a fixed amount separately for each employee in Salary Info.'}
+                </small>
+                {!String(formData.calculationType || '').includes('Fixed Amount') && /\bpf\b|\bepf\b|\beps\b|provident fund/i.test(formData.description || '') && (
+                  <div style={{ marginTop: '10px', padding: '12px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', color: '#334155', fontSize: '12px', lineHeight: 1.6 }}>
+                    <strong style={{ display: 'block', color: '#075985', marginBottom: '4px' }}>Available PF formulas (choose on each employee’s Salary Info)</strong>
+                    <div>Employee PF: ROUND(MIN(Basic + DA, ceiling) × 12%, 0)</div>
+                    <div>Employer PF: ROUND(MIN(Basic + DA, ceiling) × 12%, 0)</div>
+                    <div>Employer EPS: ROUND(MIN(Basic + DA, ceiling) × 8.33%, 0)</div>
+                    <div>Employer EPF share: Employer PF − Employer EPS</div>
+                    <div style={{ marginTop: '4px', color: '#64748b' }}>Ceiling can be ₹15,000 or ₹25,000. Amounts use that employee’s Basic + DA.</div>
+                  </div>
+                )}
+                {!String(formData.calculationType || '').includes('Fixed Amount') && /\besic\b|\besi\b/i.test(formData.description || '') && (
+                  <div style={{ marginTop: '10px', padding: '12px 14px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', color: '#334155', fontSize: '12px', lineHeight: 1.6 }}>
+                    <strong style={{ display: 'block', color: '#075985', marginBottom: '4px' }}>Available ESIC formulas (choose on each employee’s Salary Info)</strong>
+                    <div>Employee ESIC: CEILING(ESI wages × 0.75%, 1), when covered wages are within ₹21,000/month</div>
+                    <div>Employer ESIC: CEILING(ESI wages × 3.25%, 1), when covered wages are within ₹21,000/month</div>
+                    <div>PWD coverage options use a ₹25,000/month wage limit. Employee share is zero at average daily wages ≤ ₹176.</div>
+                    <div style={{ marginTop: '4px', color: '#64748b' }}>ESI wages are based on Earning + Other salary heads. Confirm eligible wage components and contribution-period coverage when processing payroll.</div>
+                  </div>
+                )}
               </div>
+              {String(formData.calculationType || '').includes('Fixed Amount') && (
+                <div>
+                  <label style={lbl}>Fixed Amount <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="number" min="0" step="0.01" value={formData.fixedAmount} onChange={e => setFormData({ ...formData, fixedAmount: e.target.value })} style={inp} placeholder="Enter amount applied to every employee" />
+                </div>
+              )}
               <div>
                 <label style={lbl}>Status</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>

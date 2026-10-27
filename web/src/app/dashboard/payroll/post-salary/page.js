@@ -249,7 +249,7 @@ export default function PostSalary() {
             ) : data.length === 0 ? (
               <tr><td colSpan="10" style={{ textAlign: 'center', padding: '2rem' }}>No approved records found</td></tr>
             ) : (
-              data.map((row, index) => (
+              data.slice().sort((a, b) => String(a.empId || '').localeCompare(String(b.empId || ''), undefined, { numeric: true, sensitivity: 'base' })).map((row, index) => (
                 <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0', backgroundColor: index % 2 === 0 ? '#f8fafc' : 'white', fontSize: '0.9rem' }}>
                   <td style={{ padding: '0.75rem' }}>
                     <input 
@@ -260,7 +260,7 @@ export default function PostSalary() {
                   </td>
                   <td style={{ padding: '0.75rem', color: '#64748b' }}>
                     <div style={{ fontWeight: 600, color: '#0f172a' }}>{row.name}</div>
-                    <div style={{ fontSize: '0.75rem' }}>{row.location}</div>
+                    <div style={{ fontSize: '0.75rem' }}>{row.empId}{row.location ? ` | ${row.location}` : ''}</div>
                   </td>
                   <td style={{ padding: '0.75rem', color: '#0369a1', fontWeight: 600 }}>{row.payCycleName}</td>
                   <td style={{ padding: '0.75rem', color: '#64748b' }}>{row.arrears}</td>

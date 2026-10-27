@@ -38,7 +38,7 @@ export default function ExtraItems() {
           <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#334155', marginBottom: '8px' }}>Select Project *</label>
           <select value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
             <option value="">-- Choose Project --</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.projectId} - {p.name}</option>)}
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
 

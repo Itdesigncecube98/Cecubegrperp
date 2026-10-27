@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -14,7 +14,6 @@ import {
   XCircle,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import { loadGoogleMaps } from "@/components/GoogleMapsView";
 
 const TripMap = dynamic(() => import("@/components/TripMap"), { ssr: false });
 const LiveTripMap = dynamic(() => import("@/components/LiveTripMap"), { ssr: false });
@@ -353,26 +352,27 @@ export default function EmployeeVehiclesPage() {
     if (!liveTrackingTrip) return;
     setEndingTrip(true);
     try {
-      // Stop GPS tracking
-      if (trackingId) {
-        navigator.geolocation.clearWatch(trackingId);
-        setTrackingId(null);
-      }
-      // Mark trip as COMPLETED
-      await fetch(`/api/trips/${liveTrackingTrip.id}/stop`, {
+      if (trackingId) { navigator.geolocation.clearWatch(trackingId); setTrackingId(null); }
+      const stopRes = await fetch(`/api/trips/${liveTrackingTrip.id}/stop`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ startLocation: liveTrackingTrip.startLocation, endLocation: liveTrackingTrip.endLocation }),
       });
+      const completed = stopRes.ok ? await stopRes.json() : null;
+      const plannedKm = parseFloat(liveTrackingTrip.distanceKm || 0);
       setLiveTrackingTrip(null);
       setIsModalOpen(false);
       setTrackingMessage("");
-      fetchData(employee.id);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setEndingTrip(false);
-    }
+      await fetchData(employee.id);
+      if (completed) {
+        const actualKm = parseFloat(completed.distanceKm || 0);
+        const amt = parseFloat(completed.amount || 0);
+        const diff = actualKm - plannedKm;
+        const diffText = diff > 0.1 ? ` (+${diff.toFixed(1)} km longer)` : diff < -0.1 ? ` (${diff.toFixed(1)} km shorter)` : "";
+        showToast(`Trip ended! Actual: ${actualKm.toFixed(1)} km${diffText} · Allowance: Rs.${amt.toFixed(2)}`);
+      }
+    } catch (e) { console.error(e); }
+    finally { setEndingTrip(false); }
   };
 
   const resetTripData = () => {
@@ -531,6 +531,9 @@ export default function EmployeeVehiclesPage() {
   const pendingAmount = trips
     .filter((t) => t.status === "APPROVED" || t.status === "PENDING")
     .reduce((acc, t) => acc + t.amount, 0);
+  const liveTrackingVehicle = liveTrackingTrip
+    ? vehicles.find(vehicle => vehicle.id === liveTrackingTrip.vehicleId)
+    : null;
 
   return (
     <div
@@ -1262,6 +1265,8 @@ export default function EmployeeVehiclesPage() {
                     startCoords={liveTrackingTrip.startLatitude ? { lat: liveTrackingTrip.startLatitude, lng: liveTrackingTrip.startLongitude } : null}
                     endCoords={liveTrackingTrip.endLatitude ? { lat: liveTrackingTrip.endLatitude, lng: liveTrackingTrip.endLongitude } : null}
                     plannedPath={liveTrackingTrip.routePath || []}
+                    ratePerKm={liveTrackingTrip.vehicle?.ratePerKm || liveTrackingVehicle?.ratePerKm || 0}
+                    travelMode={liveTrackingVehicle?.vehicleType === 'Two Wheeler' ? 'TWO_WHEELER' : 'DRIVING'}
                   />
                 </div>
                 <button

@@ -20,8 +20,6 @@ const menuConfig = [
       { name: 'Contractor List',        path: '/contracting/contractors/contractor-list',         permissionCode: 'CONTRACT_CONTRACTOR_LIST' },
       { name: 'Add Group',              path: '/contracting/contractors/add-group',                permissionCode: 'CONTRACT_ADD_GROUP' },
       { name: 'Registered Suppliers',   path: '/contracting/contractors/registered-suppliers',     permissionCode: 'CONTRACT_REG_SUPPLIERS' },
-      { name: 'Insurance Policy Detail',path: '/contracting/contractors/insurance/policy-detail',  permissionCode: 'CONTRACT_INSURANCE_POLICY' },
-      { name: 'Labour Master',          path: '/contracting/contractors/labour-master',            permissionCode: 'CONTRACT_LABOUR_MASTER' },
     ],
   },
   {
@@ -29,8 +27,7 @@ const menuConfig = [
     label: 'Labour Management',
     icon: Wrench,
     items: [
-      { name: 'Requisition Generation', path: '/contracting/labour/requisition',        permissionCode: 'CONTRACT_REQ_GEN' },
-      { name: 'Requisition Browse',     path: '/contracting/labour/requisition-browse', permissionCode: 'CONTRACT_REQ_BROWSE' },
+      { name: 'Labour Requisition', path: '/contracting/labour/requisition-browse', permissionCodes: ['CONTRACT_REQ_GEN', 'CONTRACT_REQ_BROWSE'] },
     ],
   },
   {
@@ -40,7 +37,6 @@ const menuConfig = [
     items: [
       { name: 'Raise Work Order',    path: '/contracting/work-order/raise',         permissionCode: 'CONTRACT_WO_RAISE' },
       { name: 'Browse Work Order',   path: '/contracting/work-order/browse',        permissionCode: 'CONTRACT_WO_BROWSE' },
-      { name: 'Labour Rate Master',  path: '/contracting/labour/rate-master',       permissionCode: 'CONTRACT_LABOUR_RATE_MASTER' },
     ],
   },
   {
@@ -53,12 +49,19 @@ const menuConfig = [
     ],
   },
   {
+    id: 'reports',
+    label: 'Reports',
+    icon: FileSearch,
+    items: [
+      { name: 'Contracting Reports', path: '/contracting/reports', permissionCodes: ['CONTRACT_RA_GEN', 'CONTRACT_RA_BROWSE', 'CONTRACT_RA_REPORTS'] },
+    ],
+  },
+  {
     id: 'enquiry',
     label: 'Enquiry',
     icon: HelpCircle,
     items: [
-      { name: 'Enquiry Generation', path: '/contracting/enquiry/enquiry-generation', permissionCode: 'CONTRACT_ENQUIRY_GEN' },
-      { name: 'Enquiry Browse',     path: '/contracting/enquiry/browse',             permissionCode: 'CONTRACT_ENQUIRY_BROWSE' },
+      { name: 'Enquiry Browse', path: '/contracting/enquiry/browse', permissionCodes: ['CONTRACT_ENQUIRY_GEN', 'CONTRACT_ENQUIRY_BROWSE'] },
     ],
   },
   {
@@ -66,8 +69,7 @@ const menuConfig = [
     label: 'Quotation',
     icon: FileSignature,
     items: [
-      { name: 'Quotation Entry',   path: '/contracting/quotation/entry',   permissionCode: 'CONTRACT_QUOTATION_ENTRY' },
-      { name: 'Quotation Browse',  path: '/contracting/quotation/browse',  permissionCode: 'CONTRACT_QUOTATION_BROWSE' },
+      { name: 'Quotation Browse',  path: '/contracting/quotation/browse',  permissionCodes: ['CONTRACT_QUOTATION_ENTRY', 'CONTRACT_QUOTATION_BROWSE'] },
       { name: 'Quotation Compare', path: '/contracting/quotation/compare', permissionCode: 'CONTRACT_QUOTATION_COMPARE' },
     ],
   },
@@ -89,6 +91,7 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
     labour: false,
     workOrder: false,
     raBills: false,
+    reports: true,
     enquiry: false,
     quotation: false,
   });
@@ -98,7 +101,10 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
     return menuConfig
       .map(group => ({
         ...group,
-        items: group.items.filter(item => !item.permissionCode || hasRight(item.permissionCode)),
+        items: group.items.filter(item => {
+          if (item.permissionCodes) return item.permissionCodes.some(code => hasRight(code));
+          return !item.permissionCode || hasRight(item.permissionCode);
+        }),
       }))
       .filter(group => group.items.length > 0);
   }, [activeEmployee, hasRight]);

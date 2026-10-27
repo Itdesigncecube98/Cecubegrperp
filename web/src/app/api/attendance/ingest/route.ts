@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { prisma } from "../../../../lib/prisma";
-import { getEffectiveEmployeeShift, resolveDayShiftAttendanceSlots } from "../../../../lib/attendanceShiftPolicy";
+import {
+  getEffectiveEmployeeShift,
+  getShiftKind,
+  resolveDayShiftAttendanceSlots,
+  resolveNightShiftAttendanceSlots,
+} from "../../../../lib/attendanceShiftPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -255,17 +260,45 @@ export async function POST(request: Request) {
       const assignment = getEffectiveEmployeeShift(employeeShifts, employeeId, date);
       const existing = await prisma.attendance.findUnique({
         where: { employeeId_date: { employeeId, date } },
-        select: { isApproved: true, shiftType: true },
+        select: { isApproved: true, shiftType: true, timeSlots: true },
       });
-      const shift = assignment?.shift || (existing?.shiftType === "Night" ? null : { shiftName: "Day Shift" });
-      const timeSlots = resolveDayShiftAttendanceSlots({
-        shift,
-        machinePunchTimes: dayPunches.map((punch) => getIndiaDateAndTime(punch.punchTime).time),
-        attendanceDate: date,
-        today: indiaNow.date,
-        currentTime: indiaNow.time,
-        existingSlots: [],
-      });
+      const shift = assignment?.shift || {
+        shiftName: existing?.shiftType === "Night" ? "Night Shift" : "Day Shift",
+      };
+      // Merge stored punch times with new ones so IN+OUT from separate sync runs combine.
+      // Raw device punches replace matching slot times, preserving their IN/OUT direction.
+      const machinePunchTimes = dayPunches.map((p) => ({
+        time: getIndiaDateAndTime(p.punchTime).time,
+        direction: typeof p.direction === "string" ? p.direction : null,
+      }));
+      const machineTimes = new Set(machinePunchTimes.map((punch) => punch.time));
+      let existingPunchTimes: Array<{ time: string; direction: string | null }> = [];
+      if (existing?.timeSlots) {
+        try {
+          const parsed = JSON.parse(existing.timeSlots) as Array<{ in?: string; out?: string }>;
+          for (const slot of parsed) {
+            if (slot.in && !machineTimes.has(slot.in)) existingPunchTimes.push({ time: slot.in, direction: null });
+            if (slot.out && slot.out !== "19:00" && !machineTimes.has(slot.out)) {
+              existingPunchTimes.push({ time: slot.out, direction: null });
+            }
+          }
+        } catch { /* ignore */ }
+      }
+      const allPunchTimes = [
+        ...existingPunchTimes,
+        ...machinePunchTimes,
+      ];
+      const isNightShift = getShiftKind(shift) === "NIGHT";
+      const timeSlots = isNightShift
+        ? resolveNightShiftAttendanceSlots(allPunchTimes)
+        : resolveDayShiftAttendanceSlots({
+          shift,
+          machinePunchTimes: allPunchTimes,
+          attendanceDate: date,
+          today: indiaNow.date,
+          currentTime: indiaNow.time,
+          existingSlots: [],
+        });
       if (!timeSlots) {
         attendanceSkippedNonDayShift++;
         continue;
@@ -278,8 +311,8 @@ export async function POST(request: Request) {
 
       await prisma.attendance.upsert({
         where: { employeeId_date: { employeeId, date } },
-        update: { status: "Present", shiftType: "Day", timeSlots: JSON.stringify(timeSlots) },
-        create: { employeeId, date, status: "Present", shiftType: "Day", timeSlots: JSON.stringify(timeSlots) },
+        update: { status: "Present", shiftType: isNightShift ? "Night" : "Day", timeSlots: JSON.stringify(timeSlots) },
+        create: { employeeId, date, status: "Present", shiftType: isNightShift ? "Night" : "Day", timeSlots: JSON.stringify(timeSlots) },
       });
       attendanceUpdated++;
     }
@@ -290,6 +323,7 @@ export async function POST(request: Request) {
     inserted: result.count,
     duplicatesOrSkipped: punches.length - result.count,
     invalid,
+    skippedAfterCutoff: 0,
     attendanceUpdated,
     attendanceSkippedApproved,
     attendanceSkippedNonDayShift,

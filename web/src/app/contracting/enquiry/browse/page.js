@@ -1,6 +1,7 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { Home, ChevronRight, Search, MessageSquare, Eye, Trash2, X } from 'lucide-react';
+import React, { useCallback, useState, useEffect } from 'react';
+import { Home, ChevronRight, Search, MessageSquare, Eye, Trash2, X, Plus, List } from 'lucide-react';
+import EnquiryGenerationForm from '../EnquiryGenerationForm';
 import '../../contracting.css';
 
 const STATUS_COLORS = {
@@ -15,19 +16,30 @@ export default function EnquiryBrowse() {
   const [search, setSearch] = useState('');
   const [viewEnquiry, setViewEnquiry] = useState(null);
   const [toast, setToast] = useState(null);
+  const [activeTab, setActiveTab] = useState('browse');
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  useEffect(() => {
-    fetch('/api/contracting/enquiry')
-      .then(r => r.json())
-      .then(data => setEnquiries(Array.isArray(data) ? data : []))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+  const loadEnquiries = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/contracting/enquiry', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to load enquiries.');
+      setEnquiries(Array.isArray(data) ? data : []);
+    } catch (error) {
+      showToast(error.message || 'Unable to load enquiries.', 'error');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadEnquiries();
+  }, [loadEnquiries]);
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this enquiry?')) return;
@@ -66,6 +78,18 @@ export default function EnquiryBrowse() {
       </div>
 
       <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+        <div role="tablist" aria-label="Enquiry actions" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button type="button" role="tab" aria-selected={activeTab === 'browse'} className="btn-cyan" onClick={() => setActiveTab('browse')}>
+            <List size={14} /> Browse Enquiries
+          </button>
+          <button type="button" role="tab" aria-selected={activeTab === 'create'} className="btn-cyan" onClick={() => setActiveTab('create')}>
+            <Plus size={14} /> Add Enquiry
+          </button>
+        </div>
+        {activeTab === 'create' ? (
+          <EnquiryGenerationForm embedded onSaved={() => { setActiveTab('browse'); loadEnquiries(); }} />
+        ) : (
+          <>
         {toast && (
           <div style={{ background: toast.type === 'success' ? '#f0fdf4' : '#fef2f2', border: `1px solid ${toast.type === 'success' ? '#86efac' : '#fca5a5'}`, borderRadius: '8px', padding: '10px 16px', marginBottom: '16px', color: toast.type === 'success' ? '#166534' : '#991b1b', fontSize: '0.85rem' }}>
             {toast.msg}
@@ -96,6 +120,8 @@ export default function EnquiryBrowse() {
               );
             })}
           </div>
+            </>
+          )}
         </div>
 
         {/* Table */}

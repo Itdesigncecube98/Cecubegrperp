@@ -41,6 +41,7 @@ export default function MaterialLibrary() {
   // Modal form fields
   const [formName, setFormName] = useState('');
   const [formUnit, setFormUnit] = useState('Nos');
+  const [formQuantity, setFormQuantity] = useState(1);
   const [formRate, setFormRate] = useState(0);
   const [formTaxScheme, setFormTaxScheme] = useState('C+SGST 18%');
   const [formTaxAmount, setFormTaxAmount] = useState(0);
@@ -149,7 +150,8 @@ export default function MaterialLibrary() {
   const handleOpenAdd = (parentNode, defaultType = 'subgroup', e) => {
     if (e) e.stopPropagation();
     setFormName('');
-    setFormUnit('Nos');
+    setFormUnit(resourceType === 'Labour' ? 'Manday' : 'Nos');
+    setFormQuantity(1);
     setFormRate(0);
     setFormTaxScheme('C+SGST 18%');
     setFormTaxAmount(0);
@@ -170,8 +172,9 @@ export default function MaterialLibrary() {
   const handleOpenEdit = (item, type, e) => {
     if (e) e.stopPropagation();
     setFormName(item.name || '');
-    setFormUnit(item.unit || 'Nos');
-    setFormRate(item.rate || 0);
+    setFormUnit(item.combinedUnit || item.unit || (resourceType === 'Labour' ? 'Manday' : 'Nos'));
+    setFormQuantity(item.quantity ?? 1);
+    setFormRate(item.combinedRate ?? item.rate ?? 0);
     setFormTaxScheme(item.taxScheme || 'C+SGST 18%');
     setFormTaxAmount(item.taxAmount || 0);
     setFormPriceIncTax(item.priceIncTax || 0);
@@ -234,13 +237,16 @@ export default function MaterialLibrary() {
             libraryId: activeLibId || null,
             parentId: modal.parentId || null,
             name: formName.trim(),
-            description: formDescription.trim() || null
+            description: formDescription.trim() || null,
+            combinedRate: resourceType === 'Labour' ? (parseFloat(formRate) || 0) : undefined,
+            combinedUnit: resourceType === 'Labour' ? formUnit : undefined
           }
           : {
             type: 'material',
             groupId: modal.parentId,
             name: formName.trim(),
             unit: formUnit.trim() || 'Nos',
+            quantity: parseFloat(formQuantity) || 0,
             rate: parseFloat(formRate) || 0,
             specification: formSpecification.trim() || null,
             description: formDescription.trim() || null
@@ -253,7 +259,8 @@ export default function MaterialLibrary() {
         });
 
         if (res.ok) {
-          showToast(`${modal.targetType === 'subgroup' ? 'Subgroup' : 'Material'} "${formName}" created!`);
+          const createdLabel = modal.targetType === 'subgroup' ? 'Subgroup' : resourceType === 'Labour' ? 'Labour item' : 'Material';
+          showToast(`${createdLabel} "${formName}" created!`);
           setModal({ open: false, mode: 'create', parentId: null, parentName: '', targetType: 'subgroup', data: null });
           if (modal.parentId) {
             setExpandedNodes(prev => ({ ...prev, [modal.parentId]: true }));
@@ -271,6 +278,7 @@ export default function MaterialLibrary() {
             type: 'material',
             name: formName.trim(),
             unit: formUnit.trim() || 'Nos',
+            quantity: parseFloat(formQuantity) || 0,
             rate: parseFloat(formRate) || 0,
             specification: formSpecification.trim() || null,
             description: formDescription.trim() || null
@@ -279,7 +287,9 @@ export default function MaterialLibrary() {
             id: modal.data.id,
             type: 'group',
             name: formName.trim(),
-            description: formDescription.trim() || null
+            description: formDescription.trim() || null,
+            combinedRate: resourceType === 'Labour' ? (parseFloat(formRate) || 0) : undefined,
+            combinedUnit: resourceType === 'Labour' ? formUnit : undefined
           };
 
         const res = await fetch('/api/engineering/material-library', {
@@ -1152,7 +1162,7 @@ export default function MaterialLibrary() {
                         }}
                       >
                         <Box size={16} color="#0284c7" />
-                        <span>Material (Item)</span>
+                        <span>{resourceType === 'Labour' ? 'Labour (Item)' : 'Material (Item)'}</span>
                       </button>
                     </div>
                   </div>
@@ -1161,7 +1171,7 @@ export default function MaterialLibrary() {
                 {/* Name */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                    {modal.targetType === 'subgroup' ? 'Subgroup / Category Name' : 'Material Name'} <span style={{ color: '#ef4444' }}>*</span>
+                    {modal.targetType === 'subgroup' ? 'Subgroup / Category Name' : resourceType === 'Labour' ? 'Labour Item Name' : 'Material Name'} <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <input
                     type="text"
@@ -1171,15 +1181,36 @@ export default function MaterialLibrary() {
                     style={{ width: '100%', boxSizing: 'border-box' }}
                     value={formName}
                     onChange={e => setFormName(e.target.value)}
-                    placeholder={modal.targetType === 'subgroup' ? 'e.g. Wires & Cables, Switchgears, Conduits...' : 'e.g. Copper Wire 1.5mm, Modular Switch...'}
+                    placeholder={modal.targetType === 'subgroup' ? 'e.g. Cable labour, Fitting labour, Wiring labour...' : resourceType === 'Labour' ? 'e.g. Electrician, Cable jointer, Helper...' : 'e.g. Copper Wire 1.5mm, Modular Switch...'}
                   />
                 </div>
 
                 {/* Material Specific Fields */}
+                {resourceType === 'Labour' && modal.targetType === 'subgroup' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Combined Labour Rate</label>
+                      <input type="number" min="0" step="any" className="modern-input" style={{ width: '100%', boxSizing: 'border-box' }} value={formRate} onChange={e => setFormRate(e.target.value)} placeholder="Total rate for this labour group" />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Labour Unit</label>
+                      <select className="modern-input modern-select" style={{ width: '100%', boxSizing: 'border-box' }} value={formUnit} onChange={e => setFormUnit(e.target.value)}>
+                        {Array.from(new Set(['Manday', 'Hour', 'Job', ...unitList])).map(unit => <option key={unit} value={unit}>{unit}</option>)}
+                      </select>
+                      <small style={{ color: '#64748b' }}>The selected group is added using this rate and unit.</small>
+                    </div>
+                  </div>
+                )}
                 {modal.targetType === 'material' && (
                   <>
                     {/* Row 1: Unit + Price Per Unit */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: resourceType === 'Labour' ? '1fr 1fr 1fr' : '1fr 1fr', gap: '12px' }}>
+                      {resourceType === 'Labour' && (
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Quantity per group unit</label>
+                          <input type="number" min="0" step="any" className="modern-input" style={{ width: '100%', boxSizing: 'border-box' }} value={formQuantity} onChange={e => setFormQuantity(e.target.value)} placeholder="1" />
+                        </div>
+                      )}
                       <div>
                         <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>Unit *</label>
                         <select

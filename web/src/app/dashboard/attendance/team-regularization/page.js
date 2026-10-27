@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Info, Check, X, RefreshCw, MapPin } from 'lucide-react';
-import { getPunchRequests, updatePunchRequestStatus, getEmployees } from '../../../../lib/data';
+import { getPunchRequests, updatePunchRequestStatus, updatePunchRequestLocation, getEmployees, getLocations } from '../../../../lib/data';
 import { useAutoRefresh, formatRefreshTime } from '../../../../lib/useAutoRefresh';
 import Dialog from '../../../../components/Dialog';
 import '../attendance.css';
@@ -11,6 +11,9 @@ export default function TeamRegularizationRequests() {
   const [requests, setRequests] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [employees, setEmployees] = useState([]);
+  const [gpsLocations, setGpsLocations] = useState([]);
+  const [editingLocationId, setEditingLocationId] = useState(null);
+  const [locationEdits, setLocationEdits] = useState({});
   const [showCoffDialog, setShowCoffDialog] = useState(false);
   const [coffRequestId, setCoffRequestId] = useState(null);
   const [filters, setFilters] = useState({
@@ -65,8 +68,9 @@ export default function TeamRegularizationRequests() {
       setInitialLoading(true);
       try {
         await loadRequests();
-        const emps = await getEmployees();
+        const [emps, locations] = await Promise.all([getEmployees(), getLocations()]);
         setEmployees(Array.isArray(emps) ? emps : []);
+        setGpsLocations(Array.isArray(locations) ? locations.filter(location => location.isActive !== false) : []);
       } catch (error) {
         console.error(error);
       } finally {
@@ -85,6 +89,90 @@ export default function TeamRegularizationRequests() {
       console.error(err);
       alert('Failed to update status');
       refresh();
+    }
+  };
+
+  const startLocationEdit = (req) => {
+    const hasGps = req.latitude != null && req.longitude != null;
+    setLocationEdits(prev => ({
+      ...prev,
+      [req.id]: {
+        source: hasGps ? 'GPS_LOCATION' : 'SITE_OFFICE',
+        gpsLocationId: hasGps ? 'request' : '',
+        latitude: hasGps ? Number(req.latitude) : null,
+        longitude: hasGps ? Number(req.longitude) : null,
+        locationName: req.locationName || ''
+      }
+    }));
+    setEditingLocationId(req.id);
+  };
+
+  const changeLocationSource = (req, source) => {
+    const hasGps = req.latitude != null && req.longitude != null;
+    setLocationEdits(prev => ({
+      ...prev,
+      [req.id]: {
+        source,
+        gpsLocationId: source === 'GPS_LOCATION' && hasGps ? 'request' : '',
+        latitude: source === 'GPS_LOCATION' && hasGps ? Number(req.latitude) : null,
+        longitude: source === 'GPS_LOCATION' && hasGps ? Number(req.longitude) : null,
+        locationName: source === 'SITE_OFFICE'
+          ? (req.employee?.siteOffice ? `Site office: ${req.employee.siteOffice}` : '')
+          : (source === 'GPS_LOCATION' && hasGps ? req.locationName || 'GPS location' : '')
+      }
+    }));
+  };
+
+  const changeGpsLocation = (req, locationId) => {
+    const location = gpsLocations.find(item => String(item.id) === locationId);
+    const useRequestGps = locationId === 'request' && req.latitude != null && req.longitude != null;
+    setLocationEdits(prev => ({
+      ...prev,
+      [req.id]: {
+        ...prev[req.id],
+        gpsLocationId: locationId,
+        latitude: location ? Number(location.latitude) : useRequestGps ? Number(req.latitude) : null,
+        longitude: location ? Number(location.longitude) : useRequestGps ? Number(req.longitude) : null,
+        locationName: location ? `GPS location: ${location.name}` : useRequestGps ? req.locationName || 'GPS location' : ''
+      }
+    }));
+  };
+
+  const saveLocation = async (req) => {
+    const edit = locationEdits[req.id];
+    if (!edit) return;
+    if (edit.source === 'SITE_OFFICE' && !req.employee?.siteOffice?.trim()) {
+      alert('This employee does not have a site office assigned.');
+      return;
+    }
+    if (edit.source === 'GPS_LOCATION' && (
+      edit.latitude == null ||
+      edit.longitude == null ||
+      !Number.isFinite(Number(edit.latitude)) ||
+      !Number.isFinite(Number(edit.longitude))
+    )) {
+      alert('Select a GPS location before saving.');
+      return;
+    }
+
+    try {
+      const location = edit.source === 'SITE_OFFICE'
+        ? {
+            locationName: `Site office: ${req.employee.siteOffice.trim()}`,
+            latitude: null,
+            longitude: null
+          }
+        : {
+            locationName: edit.locationName || 'GPS location',
+            latitude: Number(edit.latitude),
+            longitude: Number(edit.longitude)
+          };
+      await updatePunchRequestLocation(req.id, location);
+      setEditingLocationId(null);
+      await loadRequests();
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Failed to update request location.');
     }
   };
 
@@ -274,20 +362,88 @@ export default function TeamRegularizationRequests() {
                     </td>
                     <td><span style={{ fontSize: '12px', color: '#6b7280' }}>{req.reason || '-'}</span></td>
                     <td>
-                      {(req.locationName || req.employee?.siteOffice) && <div style={{ fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '2px' }}>{req.locationName || `Site office: ${req.employee.siteOffice}`}</div>}
-                      {req.latitude != null && req.longitude != null || req.employee?.siteOffice ? (
-                        <a
-                          href={`https://maps.google.com/?q=${encodeURIComponent(req.latitude != null && req.longitude != null ? `${req.latitude},${req.longitude}` : req.employee.siteOffice)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          title={req.latitude != null && req.longitude != null ? `${Number(req.latitude).toFixed(5)}, ${Number(req.longitude).toFixed(5)}` : `Site office: ${req.employee.siteOffice}`}
-                          style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <MapPin size={12} /> {req.latitude != null && req.longitude != null ? 'Map View' : 'Site office map'}
-                        </a>
+                      {editingLocationId === req.id && req.type === 'REGULARIZE' ? (
+                        <div style={{ minWidth: '190px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <select
+                            value={locationEdits[req.id]?.source || 'SITE_OFFICE'}
+                            onChange={e => changeLocationSource(req, e.target.value)}
+                            style={{ fontSize: '12px', padding: '5px', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                          >
+                            <option value="SITE_OFFICE" disabled={!req.employee?.siteOffice?.trim()}>Site Office</option>
+                            <option value="GPS_LOCATION">GPS Location</option>
+                          </select>
+                          {locationEdits[req.id]?.source === 'GPS_LOCATION' && (
+                            <select
+                              value={locationEdits[req.id]?.gpsLocationId || ''}
+                              onChange={e => changeGpsLocation(req, e.target.value)}
+                              style={{ fontSize: '12px', padding: '5px', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                            >
+                              <option value="">Select GPS location</option>
+                              {req.latitude != null && req.longitude != null && (
+                                <option value="request">Request GPS ({Number(req.latitude).toFixed(5)}, {Number(req.longitude).toFixed(5)})</option>
+                              )}
+                              {gpsLocations.map(location => (
+                                <option key={location.id} value={String(location.id)}>
+                                  {location.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {locationEdits[req.id]?.source === 'SITE_OFFICE' && (
+                            <span style={{ fontSize: '12px', color: '#374151' }}>
+                              {req.employee?.siteOffice || 'No site office assigned'}
+                            </span>
+                          )}
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button
+                              type="button"
+                              className="btn btnPrimary"
+                              onClick={() => saveLocation(req)}
+                              style={{ padding: '4px 8px', fontSize: '11px' }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => setEditingLocationId(null)}
+                              style={{ padding: '4px 8px', fontSize: '11px' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
                       ) : (
-                        <span style={{ fontSize: '12px', color: '#9ca3af' }}>N/A</span>
+                        <>
+                          {(req.locationName || req.employee?.siteOffice) && (
+                            <div style={{ fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '2px' }}>
+                              {req.locationName || `Site office: ${req.employee.siteOffice}`}
+                            </div>
+                          )}
+                          {(req.latitude != null && req.longitude != null || req.locationName || req.employee?.siteOffice) ? (
+                            <a
+                              href={`https://maps.google.com/?q=${encodeURIComponent(req.latitude != null && req.longitude != null ? `${req.latitude},${req.longitude}` : req.locationName || req.employee.siteOffice)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              title={req.latitude != null && req.longitude != null ? `${Number(req.latitude).toFixed(5)}, ${Number(req.longitude).toFixed(5)}` : req.locationName || `Site office: ${req.employee.siteOffice}`}
+                              style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                              <MapPin size={12} /> {req.latitude != null && req.longitude != null ? 'Map View' : 'Map View'}
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: '12px', color: '#9ca3af' }}>N/A</span>
+                          )}
+                          {req.type === 'REGULARIZE' && (
+                            <button
+                              type="button"
+                              onClick={() => startLocationEdit(req)}
+                              style={{ marginTop: '4px', padding: '3px 7px', fontSize: '11px', color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '4px', cursor: 'pointer' }}
+                            >
+                              Select Location
+                            </button>
+                          )}
+                        </>
                       )}
                     </td>
                     <td>

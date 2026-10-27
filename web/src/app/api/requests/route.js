@@ -119,7 +119,46 @@ export async function POST(request) {
 
 export async function PATCH(request) {
   try {
-    const { employeeId, date, type, latitude, longitude } = await request.json();
+    const data = await request.json();
+    const { employeeId, date, type, latitude, longitude } = data;
+
+    if (data.id !== undefined && data.id !== null) {
+      const requestId = Number(data.id);
+      if (!Number.isInteger(requestId) || requestId <= 0) {
+        return NextResponse.json({ error: 'Invalid regularization request ID.' }, { status: 400 });
+      }
+      const parsedLatitude = latitude !== undefined && latitude !== null ? Number(latitude) : null;
+      const parsedLongitude = longitude !== undefined && longitude !== null ? Number(longitude) : null;
+      if (
+        (parsedLatitude === null) !== (parsedLongitude === null) ||
+        (parsedLatitude !== null && (
+          !Number.isFinite(parsedLatitude) ||
+          !Number.isFinite(parsedLongitude) ||
+          parsedLatitude < -90 || parsedLatitude > 90 ||
+          parsedLongitude < -180 || parsedLongitude > 180
+        ))
+      ) {
+        return NextResponse.json({ error: 'Provide a valid latitude and longitude pair.' }, { status: 400 });
+      }
+
+      const punchRequest = await prisma.punchRequest.findUnique({ where: { id: requestId } });
+      if (!punchRequest || punchRequest.type !== 'REGULARIZE') {
+        return NextResponse.json({ error: 'Regularization request not found.' }, { status: 404 });
+      }
+
+      const updated = await prisma.punchRequest.update({
+        where: { id: punchRequest.id },
+        data: {
+          latitude: parsedLatitude,
+          longitude: parsedLongitude,
+          locationName: typeof data.locationName === 'string' && data.locationName.trim()
+            ? data.locationName.trim()
+            : null
+        }
+      });
+      return NextResponse.json(updated);
+    }
+
     // Find the most recent punch of this type for this employee+date and update its location
     const punch = await prisma.punchRequest.findFirst({
       where: { employeeId, date, type },

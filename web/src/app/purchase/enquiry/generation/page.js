@@ -91,7 +91,7 @@ export default function EnquiryGeneration() {
     event.preventDefault();
 
     if (!selectedIndentId) {
-      setSaveError('Select a purchase indent to raise the enquiry against.');
+      setSaveError('Select a purchase indent for this enquiry.');
       return;
     }
     if (selectedVendorIds.length === 0) {
@@ -128,10 +128,10 @@ export default function EnquiryGeneration() {
       <div className="purchase-header">
         <div className="purchase-header-title">
           <MessageSquare size={18} />
-          Enquiry Generation
+          Create Enquiry
         </div>
         <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', color: '#666', gap: '4px' }}>
-          <Home size={14} /> Home <ChevronRight size={14} /> Enquiry Generation
+          <Home size={14} /> Home <ChevronRight size={14} /> Create Enquiry
         </div>
       </div>
 

@@ -127,7 +127,9 @@ export const createPunchRequest = async (data) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return await res.json();
+  const result = await res.json();
+  if (!res.ok) throw new Error(result.error || 'Failed to create attendance request.');
+  return result;
 };
 
 export const updatePunchRequestStatus = async (id, status, grantCoff = false) => {
@@ -137,6 +139,17 @@ export const updatePunchRequestStatus = async (id, status, grantCoff = false) =>
     body: JSON.stringify({ id, status, grantCoff })
   });
   return await res.json();
+};
+
+export const updatePunchRequestLocation = async (id, location) => {
+  const res = await fetch('/api/requests', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, ...location })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update regularization location.');
+  return data;
 };
 
 export const getLeaveRequests = async (supervisorId = null, employeeId = null) => {
@@ -168,8 +181,13 @@ export const updateLeaveRequestStatus = async (id, status, approvedBy = null, ro
   return await res.json();
 };
 
-export const getLeaveBalance = async (employeeId) => {
-  const res = await fetch(`/api/leaves/balance?employeeId=${employeeId}`, { cache: 'no-store' });
+export const getLeaveBalance = async (employeeId, month, year) => {
+  const params = new URLSearchParams({ employeeId });
+  if (month !== undefined && year !== undefined) {
+    params.set('month', String(month));
+    params.set('year', String(year));
+  }
+  const res = await fetch(`/api/leaves/balance?${params.toString()}`, { cache: 'no-store' });
   return await res.json();
 };
 

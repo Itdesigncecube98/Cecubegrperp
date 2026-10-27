@@ -55,7 +55,7 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params;
     const data = await request.json();
-    const { password, dependents, assignedGpsLocations, emergencyContacts, bankDetails, workExperiences, educations, _count, supervisor, leaveBalance, attendances, punchRequests, leaveRequests, locationRequests, documents, vehicles, tripLogs, createdAt, id: empDbId, orgChartNode, jobHistories, shifts, ...updateData } = data;
+    const { password, nationalityOther, leavingReason, dependents, assignedGpsLocations, emergencyContacts, bankDetails, workExperiences, educations, _count, supervisor, leaveBalance, attendances, punchRequests, leaveRequests, locationRequests, documents, vehicles, tripLogs, createdAt, id: empDbId, orgChartNode, jobHistories, shifts, ...updateData } = data;
 
     // Persist password updates. `password` is deliberately excluded from the
     // spread above so it is never overwritten with null/undefined, but it must

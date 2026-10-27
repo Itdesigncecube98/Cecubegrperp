@@ -8,18 +8,28 @@ export async function POST(request, { params }) {
   try {
     const { id: paramId } = await params;
     const tripId = parseInt(paramId);
+    if (!Number.isInteger(tripId) || tripId <= 0) {
+      return NextResponse.json({ error: 'Invalid trip id' }, { status: 400 });
+    }
     const data = await request.json();
-    const { latitude, longitude } = data;
+    const latitude = Number(data?.latitude);
+    const longitude = Number(data?.longitude);
 
-    if (latitude === undefined || longitude === undefined) {
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+        !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
       return NextResponse.json({ error: 'Missing coordinates' }, { status: 400 });
     }
+
+    const trip = await prisma.tripLog.findUnique({ where: { id: tripId }, select: { id: true, status: true } });
+    if (!trip) return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
+    if (trip.status !== 'ACTIVE') return NextResponse.json({ error: 'Trip is not active' }, { status: 409 });
 
     const ping = await prisma.tripPing.create({
       data: {
         tripId,
         latitude,
-        longitude
+        longitude,
+        timestamp: new Date(),
       }
     });
 

@@ -350,18 +350,7 @@ export default function RaiseWorkOrder() {
         ),
         gstPercent: 18
       }));
-      const taskEquipments = (task.equipments || []).map((e, itemIndex) => ({
-        id: `eq-${taskIndex}-${itemIndex}`,
-        description: `${task.name} - ${e.name}`,
-        qty: e.quantity || 1.00,
-        unit: e.unit || 'Hour',
-        rate: findSelectedQuotationRate(e.name, selectedQuotation)?.rate
-          ?? findQuotationRate(e.name)?.rate
-          ?? e.rate
-          ?? 0,
-        gstPercent: 18
-      }));
-      return [...taskLabours, ...taskEquipments];
+      return taskLabours;
     });
 
     if (newItems.length === 0) {

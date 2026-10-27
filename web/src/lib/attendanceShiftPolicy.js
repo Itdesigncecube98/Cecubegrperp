@@ -30,6 +30,29 @@ export const getEffectiveEmployeeShift = (employeeShifts, employeeId, date) =>
     (!assignment.validTill || assignment.validTill >= date)
   ) || null;
 
+export const resolveNightShiftAttendanceSlots = (machinePunchTimes) => {
+  if (!Array.isArray(machinePunchTimes)) return null;
+
+  const punches = machinePunchTimes
+    .map(normalizeMachinePunch)
+    .filter((entry) => entry && entry.time)
+    .sort((a, b) => a.time.localeCompare(b.time));
+  if (!punches.length) return null;
+
+  const slots = [];
+  for (const punch of punches) {
+    const openSlot = slots.find((slot) => !slot.out);
+    if (punch.direction === 'OUT') {
+      if (openSlot) openSlot.out = punch.time;
+    } else if (punch.direction === 'IN' || !openSlot) {
+      slots.push({ in: punch.time, out: '' });
+    } else {
+      openSlot.out = punch.time;
+    }
+  }
+  return slots.length ? slots : null;
+};
+
 /**
  * Enforce the attendance cutoff consistently for machine ingest and stats.
  * - Prefer the first non-OUT pre-19:00 punch as IN
@@ -49,31 +72,24 @@ export const resolveDayShiftAttendanceSlots = ({
   if (getShiftKind(shift) !== 'DAY') return null;
 
   if (Array.isArray(machinePunchTimes)) {
-    const toMinutes = (t) => {
-      const [h, m] = t.split(':');
-      return Number(h) * 60 + Number(m);
-    };
-
-    const times = machinePunchTimes
+    const punches = machinePunchTimes
       .map(normalizeMachinePunch)
       .filter((entry) => entry && entry.time && entry.time < AUTO_OUT_TIME)
-      .map((entry) => entry.time)
-      .sort();
-
-    // 2 minute ke andar duplicate punch ko ek maano
-    const punches = [];
-    for (const t of times) {
-      const prev = punches[punches.length - 1];
-      if (prev && toMinutes(t) - toMinutes(prev) < 2) continue;
-      punches.push(t);
-    }
+      .sort((a, b) => a.time.localeCompare(b.time));
     if (!punches.length) return null;
 
-    // 1st = IN, 2nd = OUT, 3rd = IN, 4th = OUT ...
     const slots = [];
-    for (let i = 0; i < punches.length; i += 2) {
-      slots.push({ in: punches[i], out: punches[i + 1] || '' });
+    for (const punch of punches) {
+      const openSlot = slots.find((slot) => !slot.out);
+      if (punch.direction === 'OUT') {
+        if (openSlot) openSlot.out = punch.time;
+      } else if (punch.direction === 'IN' || !openSlot) {
+        slots.push({ in: punch.time, out: '' });
+      } else {
+        openSlot.out = punch.time;
+      }
     }
+    if (!slots.length) return null;
 
     const shouldClose = attendanceDate < today || (attendanceDate === today && currentTime >= AUTO_OUT_TIME);
     const last = slots[slots.length - 1];

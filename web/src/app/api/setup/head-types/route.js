@@ -2,6 +2,8 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 
+const ALLOWED_HEAD_TYPES = new Set(['CTC', 'Earning', 'Deduction', 'Other']);
+
 export async function GET(request) {
   try {
     const headTypes = await prisma.headType.findMany({
@@ -19,8 +21,8 @@ export async function POST(request) {
     const body = await request.json();
     const { name, isActive, description } = body;
 
-    if (!name) {
-      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    if (!ALLOWED_HEAD_TYPES.has(String(name || '').trim())) {
+      return NextResponse.json({ error: 'Only CTC, Earning, Deduction, and Other head types are supported' }, { status: 400 });
     }
 
     const newHeadType = await prisma.headType.create({
@@ -47,6 +49,10 @@ export async function PUT(request) {
       return NextResponse.json({ error: 'Id is required' }, { status: 400 });
     }
 
+    if (name !== undefined && !ALLOWED_HEAD_TYPES.has(String(name).trim())) {
+      return NextResponse.json({ error: 'Only CTC, Earning, Deduction, and Other head types are supported' }, { status: 400 });
+    }
+
     const updated = await prisma.headType.update({
       where: { id },
       data: {
@@ -70,6 +76,11 @@ export async function DELETE(request) {
 
     if (!id) return NextResponse.json({ error: 'Id is required' }, { status: 400 });
 
+    const headType = await prisma.headType.findUnique({ where: { id }, select: { name: true } });
+    if (!headType) return NextResponse.json({ error: 'Head type not found' }, { status: 404 });
+    if (ALLOWED_HEAD_TYPES.has(headType.name)) {
+      return NextResponse.json({ error: 'The four payroll head types are required and cannot be deleted' }, { status: 400 });
+    }
     await prisma.headType.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {

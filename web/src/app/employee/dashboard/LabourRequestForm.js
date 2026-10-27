@@ -55,14 +55,14 @@ export default function LabourRequestForm() {
       const tasks = (Array.isArray(groups) ? groups : []).flatMap(group => group.tasks || []);
       setLibraryTasks(tasks.map(task => ({ id: task.id, name: task.name })));
       tasks.forEach(task => {
-        const source = filters.resourceType === 'Equipment' ? task.equipments : task.labours;
+        const source = task.labours;
         (source || []).forEach(resource => flattened.push({
           key: `${task.id}::${resource.id}`,
           id: resource.id,
           name: resource.name,
           taskId: task.id,
           taskName: task.name,
-          unit: resource.unit || (filters.resourceType === 'Equipment' ? 'Hour' : 'Manday'),
+          unit: resource.unit || 'Manday',
           quantity: resource.quantity || 1,
           rate: resource.rate || 0,
         }));
@@ -100,7 +100,7 @@ export default function LabourRequestForm() {
   };
 
   const addRow = () => setRows(previous => [...previous, {
-    key: `manual-${Date.now()}-${previous.length}`, id: '', name: '', taskId: '', taskName: '', unit: filters.resourceType === 'Equipment' ? 'Hour' : 'Manday', qty: 1, rate: 0, leadTime: ''
+    key: `manual-${Date.now()}-${previous.length}`, id: '', name: '', taskId: '', taskName: '', unit: 'Manday', qty: 1, rate: 0, leadTime: ''
   }]);
   const updateRow = (index, field, value) => setRows(previous => previous.map((row, rowIndex) => {
     if (rowIndex !== index) return row;
@@ -171,14 +171,14 @@ export default function LabourRequestForm() {
         <section style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 8px 28px rgba(30, 64, 100, 0.10)', overflow: 'hidden' }}>
           <header style={{ padding: '24px 28px', borderBottom: '1px solid #e7edf4', display: 'flex', alignItems: 'center', gap: '14px' }}>
             <span style={{ width: '46px', height: '46px', borderRadius: '12px', display: 'grid', placeItems: 'center', background: '#e7f2ff', color: '#2563eb' }}><Users size={22} /></span>
-            <div><h1 style={{ margin: 0, color: '#172b4d', fontSize: '1.35rem' }}>Labour Requisition</h1><p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '0.9rem' }}>Choose a project to load its task library labour and equipment.</p></div>
+            <div><h1 style={{ margin: 0, color: '#172b4d', fontSize: '1.35rem' }}>Labour Requisition</h1><p style={{ margin: '5px 0 0', color: '#64748b', fontSize: '0.9rem' }}>Choose a project to load labour from its task library.</p></div>
           </header>
           <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <section style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
               <div style={{ padding: '12px 16px', background: '#f1f5f9', color: '#334155', fontWeight: 700 }}>Filters</div>
               <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {input('Project *', filters.projectId, value => setFilters(previous => ({ ...previous, projectId: value, taskId: '', resourceId: '' })), { select: [{ value: '', label: loadingProjects ? 'Loading projects…' : '-- Select Project --' }, ...projects.map(project => ({ value: project.id, label: project.name }))] })}
-                {input('Resource Type', filters.resourceType, value => setFilters(previous => ({ ...previous, resourceType: value, taskId: '', resourceId: '' })), { select: [{ value: 'Labour', label: 'Labour' }, { value: 'Equipment', label: 'Equipment' }] })}
+                {input('Resource Type', filters.resourceType, value => setFilters(previous => ({ ...previous, resourceType: value, taskId: '', resourceId: '' })), { select: [{ value: 'Labour', label: 'Labour' }] })}
                 {input('Task', filters.taskId, value => setFilters(previous => ({ ...previous, taskId: value, resourceId: '' })), { select: [{ value: '', label: libraryTasks.length ? '-- All Tasks --' : loadingResources ? 'Loading tasks…' : 'No tasks found' }, ...libraryTasks.map(task => ({ value: task.id, label: task.name }))] })}
                 {input(filters.resourceType, filters.resourceId, value => setFilters(previous => ({ ...previous, resourceId: value })), { select: [{ value: '', label: resourceOptions.length ? `-- All ${filters.resourceType} --` : `No ${filters.resourceType.toLowerCase()} found` }, ...resourceOptions.map(resource => ({ value: resource.id, label: resource.name }))] })}
                 {input('From Date', filters.fromDate, value => setFilters(previous => ({ ...previous, fromDate: value })), { type: 'date' })}

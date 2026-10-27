@@ -35,7 +35,7 @@ export default function EmployeeLeavePage() {
       return;
     }
     const parsed = JSON.parse(empData);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEmployeeId(parsed.id);
     fetchData(parsed.id);
 
@@ -47,29 +47,17 @@ export default function EmployeeLeavePage() {
 
   async function fetchData(id) {
     try {
-      const bal = await getLeaveBalance(id);
-      
       const currMonth = new Date().getMonth() + 1;
       const currYear = new Date().getFullYear();
-      let netDaysLwp = 0;
-      let explicitLwp = 0;
-      
-      const finalBal = bal || { casualLeaves: 0, leaveWithoutPay: 0, earnedLeaves: 0, compensatoryLeaves: 0 };
-      
-      try {
-        const monthRes = await fetch(`/api/leaves/balance?employeeId=${id}&month=${currMonth}&year=${currYear}`);
-        if (monthRes.ok) {
-          const monthBal = await monthRes.json();
-          netDaysLwp = -(monthBal.netDaysLwp || 0);
-          explicitLwp = monthBal.explicitLwp || 0;
-        }
-      } catch (e) {
-        console.error('Failed to load net lwp', e);
-      }
-
-      finalBal.netDaysLwp = netDaysLwp;
-      finalBal.explicitLwp = explicitLwp;
-      setBalance(finalBal);
+      const currentBalance = await getLeaveBalance(id, currMonth, currYear);
+      setBalance({
+        ...(currentBalance || {}),
+        casualLeaves: currentBalance?.casualLeaves ?? 0,
+        earnedLeaves: currentBalance?.earnedLeaves ?? 0,
+        compensatoryLeaves: currentBalance?.compensatoryLeaves ?? 0,
+        netDaysLwp: -(currentBalance?.netDaysLwp || 0),
+        explicitLwp: currentBalance?.explicitLwp || 0
+      });
       
       const [reqs, typesData] = await Promise.all([
         getLeaveRequests(null, id),

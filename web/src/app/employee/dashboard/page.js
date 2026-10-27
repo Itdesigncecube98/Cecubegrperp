@@ -62,7 +62,17 @@ export default function EmployeeDashboard() {
   const [isCoffModalOpen, setIsCoffModalOpen] = useState(false);
   const [coffData, setCoffData] = useState({ month: '', numCoffs: 1 });
   const [availableNightShifts, setAvailableNightShifts] = useState(0);
-  const [regularizeData, setRegularizeData] = useState({ date: '', reason: '', inTime: '', outTime: '', latitude: null, longitude: null, locationName: '' });
+  const [regularizeData, setRegularizeData] = useState({
+    date: '',
+    reason: '',
+    inTime: '',
+    outTime: '',
+    locationSource: 'SITE_OFFICE',
+    selectedGpsLocationId: '',
+    latitude: null,
+    longitude: null,
+    locationName: ''
+  });
 
   // Imprest Modal State
   const [isImprestModalOpen, setIsImprestModalOpen] = useState(false);
@@ -160,6 +170,7 @@ export default function EmployeeDashboard() {
       }
       setAnnouncements(Array.isArray(anns) ? anns : []);
       setHolidays(Array.isArray(hols) ? hols : []);
+      setGpsLocations(Array.isArray(locs) ? locs.filter(location => location.isActive !== false) : []);
       setIsSupervisor(!!supervisorFlag?.isSupervisor);
       
       if (Array.isArray(wfConfig) && wfConfig.length > 0) {
@@ -265,7 +276,7 @@ export default function EmployeeDashboard() {
         await sendPunchLiveLocation(initialPosition);
       }
       if (window.AndroidPunchTracking?.startPunchTracking) {
-        window.AndroidPunchTracking.startPunchTracking();
+        window.AndroidPunchTracking.startPunchTracking(employee?.id, window.location.origin);
         return;
       }
 
@@ -307,7 +318,9 @@ export default function EmployeeDashboard() {
       window.clearInterval(punchLocationHeartbeatRef.current);
       punchLocationHeartbeatRef.current = null;
     }
-    window.AndroidPunchTracking?.stopPunchTracking?.();
+    // Keep the native monitor alive long enough to upload queued GPS points
+    // from the final punch interval. It stops location updates after the API
+    // confirms there is no open punch.
     try {
       const response = await fetch(`/api/attendance/live-location${employee ? `?employeeId=${employee.id}` : ''}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Could not clear the live location.');
@@ -543,6 +556,21 @@ export default function EmployeeDashboard() {
     return () => window.clearTimeout(syncTimer);
   }, [employee, loading, statsData, startPunchLiveTracking, stopPunchLiveTracking]);
 
+  useEffect(() => {
+    if (!employee?.id) return;
+
+    const startNativePunchMonitor = () => {
+      window.AndroidPunchTracking?.startPunchTracking?.(employee.id, window.location.origin);
+    };
+    startNativePunchMonitor();
+    window.addEventListener('focus', startNativePunchMonitor);
+    document.addEventListener('visibilitychange', startNativePunchMonitor);
+    return () => {
+      window.removeEventListener('focus', startNativePunchMonitor);
+      document.removeEventListener('visibilitychange', startNativePunchMonitor);
+    };
+  }, [employee?.id]);
+
   // Profile Handlers
   const openProfileModal = async () => {
     // Fetch fresh employee data to get the current password
@@ -658,59 +686,6 @@ export default function EmployeeDashboard() {
     }
   };
 
-  const handleStartLiveLocation = () => {
-    if (!navigator.geolocation) {
-      showToast("Geolocation is not supported by your browser.", 'error');
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          // Create location request directly as ACTIVE — no admin approval needed
-          const res = await fetch('/api/location-requests', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ employeeId: employee.id })
-          });
-          const newReq = await res.json();
-
-          await fetch('/api/location-requests', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: newReq.id,
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              status: 'ACTIVE',
-              movementType: selectedMovementType
-            })
-          });
-
-          await fetch('/api/location-requests/ping', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestId: newReq.id, latitude: position.coords.latitude, longitude: position.coords.longitude })
-          });
-
-          showToast('Live location sharing started!');
-          loadStats(employee.id);
-        } catch (e) {
-          console.error(e);
-          showToast('Failed to start location sharing.', 'error');
-        }
-      },
-      (error) => {
-        let errorMsg = "Unable to retrieve location.";
-        if (error.code === 1) errorMsg = "Permission denied. Please allow location access.";
-        else if (error.code === 2) errorMsg = "Position unavailable. Please ensure GPS is on.";
-        else if (error.code === 3) errorMsg = "Request timed out.";
-        showToast(errorMsg, 'error');
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-  };
-
   const handleSendLocation = (reqId) => {
     if (!navigator.geolocation) {
       showToast("Geolocation is not supported by your browser.", 'error');
@@ -823,10 +798,80 @@ export default function EmployeeDashboard() {
     setIsCoffModalOpen(true);
   };
 
+  const openRegularizeModal = (date) => {
+    const siteOffice = employee?.siteOffice?.trim() || '';
+    setRegularizeData({
+      date,
+      reason: '',
+      inTime: '',
+      outTime: '',
+      locationSource: siteOffice ? 'SITE_OFFICE' : 'GPS_LOCATION',
+      selectedGpsLocationId: '',
+      latitude: null,
+      longitude: null,
+      locationName: siteOffice ? `Site office: ${siteOffice}` : ''
+    });
+    setIsRegularizeModalOpen(true);
+  };
+
+  const handleRegularizeLocationSourceChange = (locationSource) => {
+    const siteOffice = employee?.siteOffice?.trim() || '';
+    setRegularizeData(prev => ({
+      ...prev,
+      locationSource,
+      selectedGpsLocationId: '',
+      latitude: null,
+      longitude: null,
+      locationName: locationSource === 'SITE_OFFICE' && siteOffice
+        ? `Site office: ${siteOffice}`
+        : ''
+    }));
+  };
+
+  const handleRegularizeGpsLocationChange = (locationId) => {
+    const location = gpsLocations.find(item => String(item.id) === locationId);
+    setRegularizeData(prev => ({
+      ...prev,
+      selectedGpsLocationId: locationId,
+      latitude: location ? Number(location.latitude) : null,
+      longitude: location ? Number(location.longitude) : null,
+      locationName: location ? `GPS location: ${location.name}` : ''
+    }));
+  };
+
+  const captureRegularizeGpsLocation = async () => {
+    try {
+      const coords = await getPunchCoords();
+      setRegularizeData(prev => ({
+        ...prev,
+        selectedGpsLocationId: 'current',
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        locationName: `GPS location (${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)})`
+      }));
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  };
+
   const handleRegularizeSubmit = async (e) => {
     e.preventDefault();
     if (!regularizeData.reason || (!regularizeData.inTime && !regularizeData.outTime)) {
       showToast("Please provide a reason and at least one time (In or Out).", 'error');
+      return;
+    }
+    if (regularizeData.locationSource === 'SITE_OFFICE' && !employee?.siteOffice?.trim()) {
+      showToast('No site office is assigned to your profile. Select GPS Location instead.', 'error');
+      return;
+    }
+    if (
+      regularizeData.locationSource === 'GPS_LOCATION' &&
+      (regularizeData.latitude == null ||
+        regularizeData.longitude == null ||
+        !Number.isFinite(Number(regularizeData.latitude)) ||
+        !Number.isFinite(Number(regularizeData.longitude)))
+    ) {
+      showToast('Select a GPS location or capture your current location before submitting.', 'error');
       return;
     }
 
@@ -884,12 +929,25 @@ export default function EmployeeDashboard() {
         type: 'REGULARIZE',
         time: timeData,
         reason: regularizeData.reason,
-        latitude: regularizeData.latitude,
-        longitude: regularizeData.longitude
+        latitude: regularizeData.locationSource === 'GPS_LOCATION' ? regularizeData.latitude : null,
+        longitude: regularizeData.locationSource === 'GPS_LOCATION' ? regularizeData.longitude : null,
+        locationName: regularizeData.locationSource === 'SITE_OFFICE'
+          ? `Site office: ${employee.siteOffice.trim()}`
+          : regularizeData.locationName
       });
       showToast("Regularization request submitted");
       setIsRegularizeModalOpen(false);
-      setRegularizeData({ date: '', reason: '', inTime: '', outTime: '', latitude: null, longitude: null });
+      setRegularizeData({
+        date: '',
+        reason: '',
+        inTime: '',
+        outTime: '',
+        locationSource: 'SITE_OFFICE',
+        selectedGpsLocationId: '',
+        latitude: null,
+        longitude: null,
+        locationName: ''
+      });
       loadStats(employee.id); // reload stats
     } catch (e) {
       console.error(e);
@@ -1413,7 +1471,7 @@ export default function EmployeeDashboard() {
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <li>
-              <button onClick={() => { setRegularizeData({ date: new Date().toISOString().split('T')[0], reason: '', inTime: '', outTime: '' }); setIsRegularizeModalOpen(true); }} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'color 0.2s' }}>
+              <button onClick={() => openRegularizeModal(getTodayDate())} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'color 0.2s' }}>
                 <span style={{ color: '#cbd5e1' }}>•</span> Regularize Attendance
               </button>
             </li>
@@ -1552,30 +1610,6 @@ export default function EmployeeDashboard() {
             Field Journey
           </h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {activeLocationRequests.length === 0 && (
-              <li style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <span style={{ color: '#cbd5e1' }}>•</span>
-                <select
-                  value={selectedMovementType}
-                  onChange={e => setSelectedMovementType(e.target.value)}
-                  style={{ border: '1px solid #e2e8f0', background: '#fff', outline: 'none', color: '#475569', fontSize: '12px', borderRadius: '4px', padding: '4px' }}
-                >
-                  <option value="Office to Site">Office to Site</option>
-                  <option value="Home to Site">Home to Site</option>
-                  <option value="Site to Office">Site to Office</option>
-                  <option value="Site to Site">Site to Site</option>
-                  <option value="Client Visit">Client Visit</option>
-                </select>
-                <button onClick={handleStartLiveLocation} style={{ all: 'unset', cursor: 'pointer', color: '#3b82f6', fontSize: '0.9rem', fontWeight: 600 }}>
-                  Share Location
-                </button>
-              </li>
-            )}
-            <li>
-              <button onClick={() => router.push('/employee/reports/location')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: '#cbd5e1' }}>•</span> Location Report
-              </button>
-            </li>
             <li>
               <button onClick={() => router.push('/employee/vehicles')} style={{ all: 'unset', cursor: 'pointer', color: '#475569', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ color: '#cbd5e1' }}>•</span> My Vehicles
@@ -1879,16 +1913,7 @@ export default function EmployeeDashboard() {
                                         <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 'bold' }}>Pending Approval</span>
                                       ) : (d.status === 'Absent' || d.status === 'Holiday') ? (
                                         <button
-                                          onClick={() => {
-                                            const newRegData = { date: d.date, reason: '', inTime: '', outTime: '', latitude: 28.6139, longitude: 77.2090 };
-                                            if (navigator.geolocation) {
-                                              navigator.geolocation.getCurrentPosition((pos) => {
-                                                setRegularizeData(prev => ({ ...prev, latitude: pos.coords.latitude, longitude: pos.coords.longitude }));
-                                              });
-                                            }
-                                            setRegularizeData(newRegData);
-                                            setIsRegularizeModalOpen(true);
-                                          }}
+                                          onClick={() => openRegularizeModal(d.date)}
                                           style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
                                         >
                                           Regularize
@@ -2034,23 +2059,64 @@ export default function EmployeeDashboard() {
               </div>
 
               <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-                <label>Location Name (Where were you present?)</label>
-                <input
-                  type="text"
-                  value={regularizeData.locationName || ''}
-                  onChange={e => setRegularizeData({ ...regularizeData, locationName: e.target.value })}
-                  placeholder="E.g., Client Office (ABC Corp), Delhi"
+                <label>Attendance Location</label>
+                <select
+                  value={regularizeData.locationSource}
+                  onChange={e => handleRegularizeLocationSourceChange(e.target.value)}
                   style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%' }}
-                />
+                >
+                  <option value="SITE_OFFICE" disabled={!employee?.siteOffice?.trim()}>Site Office</option>
+                  <option value="GPS_LOCATION">GPS Location</option>
+                </select>
               </div>
 
-              <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-                <label>Location (Pin on map)</label>
-                <LocationPicker
-                  defaultPosition={regularizeData.latitude ? { lat: regularizeData.latitude, lng: regularizeData.longitude } : null}
-                  onChange={(pos) => setRegularizeData({ ...regularizeData, latitude: pos.lat, longitude: pos.lng })}
-                />
-              </div>
+              {regularizeData.locationSource === 'SITE_OFFICE' ? (
+                <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                  <label>Assigned Site Office</label>
+                  <input
+                    type="text"
+                    value={employee?.siteOffice || ''}
+                    readOnly
+                    placeholder="No site office assigned"
+                    style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%', background: '#f8fafc' }}
+                  />
+                </div>
+              ) : (
+                <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                  <label>GPS Location</label>
+                  <select
+                    value={regularizeData.selectedGpsLocationId}
+                    onChange={e => handleRegularizeGpsLocationChange(e.target.value)}
+                    style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100%', marginBottom: '0.5rem' }}
+                  >
+                    <option value="">Select a saved GPS location</option>
+                    {gpsLocations.map(location => (
+                      <option key={location.id} value={String(location.id)}>
+                        {location.name}{location.address ? ` — ${location.address}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn-outline" onClick={captureRegularizeGpsLocation}>
+                    <MapPin size={16} /> Use Current GPS Location
+                  </button>
+                  {regularizeData.latitude != null && regularizeData.longitude != null && (
+                    <>
+                      <p style={{ fontSize: '12px', color: '#64748b', margin: '0.5rem 0' }}>
+                        {regularizeData.locationName} · {Number(regularizeData.latitude).toFixed(5)}, {Number(regularizeData.longitude).toFixed(5)}
+                      </p>
+                      <LocationPicker
+                        defaultPosition={{ lat: Number(regularizeData.latitude), lng: Number(regularizeData.longitude) }}
+                        onChange={pos => setRegularizeData(prev => ({
+                          ...prev,
+                          latitude: pos.lat,
+                          longitude: pos.lng,
+                          locationName: `GPS location (${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)})`
+                        }))}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
 
               <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
                 <button type="button" className="btn-outline" onClick={() => setIsRegularizeModalOpen(false)}>Cancel</button>

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
+import { classifyStandardEarningHead } from '@/lib/payrollSalaryHeads';
+import { findApplicableSalaryRevision } from '@/lib/payrollDates';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,8 +21,13 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Cannot reprocess a completed pay cycle' }, { status: 400 });
     }
 
-    // Clear existing records
-    await prisma.payrollRecord.deleteMany({ where: { payCycleId: id } });
+    const existingRecords = await prisma.payrollRecord.findMany({
+      where: { payCycleId: id },
+      select: { id: true, employeeId: true, status: true }
+    });
+    if (existingRecords.some(record => record.status !== 'PENDING')) {
+      return NextResponse.json({ error: 'This cycle contains approved or paid payroll records and cannot be reprocessed.' }, { status: 409 });
+    }
 
     // Build date columns
     const start = new Date(cycle.startDate);
@@ -65,8 +72,7 @@ export async function POST(request, { params }) {
     const employeeIds = employees.map(e => e.id);
     const allRevisions = await prisma.salaryRevision.findMany({
       where: {
-        employeeId: { in: employeeIds },
-        effectiveFrom: { lte: cycle.endDate }
+        employeeId: { in: employeeIds }
       },
       include: {
         components: {
@@ -78,27 +84,44 @@ export async function POST(request, { params }) {
       orderBy: { effectiveFrom: 'desc' }
     });
 
-    // Group revisions by employeeId → take the latest per employee
+    // Compare effective dates as dates; the stored day-first strings are not lexically sortable.
     const revisionMap = {};
     for (const rev of allRevisions) {
-      if (!revisionMap[rev.employeeId]) {
-        revisionMap[rev.employeeId] = rev; // first = latest due to orderBy desc
-      }
+      (revisionMap[rev.employeeId] ||= []).push(rev);
+    }
+    for (const employeeId of employeeIds) {
+      revisionMap[employeeId] = findApplicableSalaryRevision(revisionMap[employeeId] || [], cycle.endDate);
     }
 
     console.log(`[PAYROLL] Processing ${employees.length} employees, ${allRevisions.length} revisions found`);
 
+    const attendanceIssues = employees.filter(emp =>
+      emp.attendances.length === 0 || emp.attendances.some(att => !att.isApproved)
+    );
+    if (attendanceIssues.length > 0) {
+      return NextResponse.json({
+        error: 'Payroll was not processed because attendance is missing or not approved for every selected employee.',
+        employeesNeedingAttendanceReview: attendanceIssues.map(emp => emp.empId || emp.id),
+        count: attendanceIssues.length
+      }, { status: 409 });
+    }
+
+    const employeesWithoutSalary = employees.filter(emp => {
+      const revision = revisionMap[emp.id];
+      return !revision && ![emp.basicSalary, emp.hra, emp.specialAllowance, emp.conveyance, emp.medical]
+        .some(value => Number.parseFloat(value) > 0);
+    });
+    if (employeesWithoutSalary.length > 0) {
+      return NextResponse.json({
+        error: 'Payroll was not processed because salary data is missing for one or more selected employees.',
+        employeesNeedingSalary: employeesWithoutSalary.map(emp => emp.empId || emp.id),
+        count: employeesWithoutSalary.length
+      }, { status: 409 });
+    }
+
     const payrollRecordsData = [];
 
     for (const emp of employees) {
-      // Check if attendance is approved for this cycle
-      // If none of the records are approved, skip this employee
-      const hasApprovedRecord = emp.attendances.some(a => a.isApproved);
-      if (emp.attendances.length > 0 && !hasApprovedRecord) {
-        console.log(`[PAYROLL] Skipping ${emp.empId} because attendance is not approved.`);
-        continue;
-      }
-
       // ── Attendance ──────────────────────────────────────────────
       let unpaidDays = 0, pCount = 0, aCount = 0, halfDayCount = 0;
       dateCols.forEach(col => {
@@ -170,10 +193,11 @@ export async function POST(request, { params }) {
             if (['employer pf', 'employer provident fund'].includes(headName)) return;
             const prorated = amount * prorationFactor;
             totalEarnings += prorated;
-            if (['basic', 'basic pay'].includes(headName)) basicPay += prorated;
-            else if (['hra', 'house rent allowance'].includes(headName)) hra += prorated;
-            else if (['medical', 'medical allowance'].includes(headName)) medical += prorated;
-            else if (['conveyance', 'conveyance allowance', 'transport', 'transport allowance', 'transport / conveyance'].includes(headName)) conveyance += prorated;
+            const earningCategory = classifyStandardEarningHead(headName);
+            if (earningCategory === 'basic') basicPay += prorated;
+            else if (earningCategory === 'hra') hra += prorated;
+            else if (earningCategory === 'medical') medical += prorated;
+            else if (earningCategory === 'conveyance') conveyance += prorated;
             else specialAllow += prorated;
           } else if (typeName === 'deduction') {
             totalDeductions += amount;
@@ -243,9 +267,35 @@ export async function POST(request, { params }) {
       });
     }
 
-    await prisma.payrollRecord.createMany({ data: payrollRecordsData });
+    if (payrollRecordsData.length === 0) {
+      return NextResponse.json({ error: 'No payroll records were produced. Check the selected employees and their salary and attendance data.' }, { status: 409 });
+    }
 
-    await prisma.payCycle.update({ where: { id }, data: { status: 'PROCESSING' } });
+    const existingByEmployee = new Map();
+    for (const record of existingRecords) {
+      if (existingByEmployee.has(record.employeeId)) {
+        return NextResponse.json({ error: 'This cycle has duplicate payroll records for an employee. Resolve the duplicates before reprocessing.' }, { status: 409 });
+      }
+      existingByEmployee.set(record.employeeId, record);
+    }
+    const calculatedEmployeeIds = new Set(payrollRecordsData.map(record => record.employeeId));
+    if (existingRecords.some(record => !calculatedEmployeeIds.has(record.employeeId))) {
+      return NextResponse.json({ error: 'The employee selection differs from existing payroll records. Create a new cycle to avoid dropping existing records.' }, { status: 409 });
+    }
+
+    // Save only after every record has been calculated successfully. Existing records are
+    // updated in place; the endpoint never deletes payroll records during reprocessing.
+    await prisma.$transaction(async tx => {
+      for (const record of payrollRecordsData) {
+        const existing = existingByEmployee.get(record.employeeId);
+        if (existing) {
+          await tx.payrollRecord.update({ where: { id: existing.id }, data: record });
+        } else {
+          await tx.payrollRecord.create({ data: record });
+        }
+      }
+      await tx.payCycle.update({ where: { id }, data: { status: 'PROCESSING' } });
+    });
 
     console.log(`[PAYROLL] Done. Created ${payrollRecordsData.length} records`);
 

@@ -1344,22 +1344,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Field Journey */}
-          <div className="card" style={{ gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,#10b981,#059669)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Map size={18} color="#fff" />
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Field Journey</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Link href="/dashboard/attendance/live-tracking" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#ecfdf5';e.currentTarget.style.color='#059669'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#a7f3d0', flexShrink: 0 }} />
-                Live Tracking
-              </Link>
-            </div>
-          </div>
-
           {/* Documents */}
           <div className="card" style={{ gap: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>

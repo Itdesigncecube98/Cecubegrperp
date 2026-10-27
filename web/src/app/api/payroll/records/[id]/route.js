@@ -1,22 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-
-function parsePayrollDate(value) {
-  if (!value) return null;
-  const text = String(value).trim();
-  // Parse day-first UI formats before Date's locale-dependent parser.
-  const match = text.match(/^(\d{1,2})[-/ ]([A-Za-z]{3,}|\d{1,2})[-/ ](\d{4})$/);
-  if (match) {
-    const [, day, monthPart, year] = match;
-    const month = /^\d+$/.test(monthPart)
-      ? Number(monthPart) - 1
-      : new Date(`${monthPart.slice(0, 3)} 1, 2000`).getMonth();
-    if (month >= 0 && month <= 11) return new Date(Number(year), month, Number(day));
-  }
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
+import { findApplicableSalaryRevision } from '@/lib/payrollDates';
 
 export async function GET(request, { params }) {
   try {
@@ -69,17 +54,7 @@ export async function GET(request, { params }) {
       },
       orderBy: { createdAt: 'desc' }
     });
-    const cycleEnd = parsePayrollDate(record.payCycle?.endDate);
-    const applicableRevision = revisions
-      .filter(revision => {
-        const effectiveFrom = parsePayrollDate(revision.effectiveFrom);
-        return !cycleEnd || !effectiveFrom || effectiveFrom <= cycleEnd;
-      })
-      .sort((a, b) => {
-        const dateA = parsePayrollDate(a.effectiveFrom)?.getTime() ?? 0;
-        const dateB = parsePayrollDate(b.effectiveFrom)?.getTime() ?? 0;
-        return dateB - dateA || b.createdAt.getTime() - a.createdAt.getTime();
-      })[0] || revisions[0];
+    const applicableRevision = findApplicableSalaryRevision(revisions, record.payCycle?.endDate);
     const periodDays = (record.workingDays || 0) + (record.absentDays || 0);
     const prorationFactor = periodDays > 0 ? (record.workingDays || 0) / periodDays : 0;
     const salaryBreakdown = { earnings: [], deductions: [] };

@@ -70,52 +70,67 @@ export async function POST(request) {
       } 
       else if (action === 'ADD_TO_SALARY') {
         if (!item.amount || item.amount <= 0) continue;
-
-        // Upsert into BonusIncentive with status ADDED_TO_SALARY
-        await prisma.bonusIncentive.upsert({
-          where: {
+        const nextAmount = parseFloat(item.amount) || 0;
+        const result = await prisma.$transaction(async tx => {
+          const key = {
             employeeId_payCycleId_type: {
               employeeId: item.employeeId,
               payCycleId: cycleId,
-              type: type
+              type
             }
-          },
-          update: {
-            basis: parseFloat(item.basis) || 0,
-            percent: parseFloat(item.percent) || 0,
-            amount: parseFloat(item.amount) || 0,
-            message: item.message || null,
-            status: 'ADDED_TO_SALARY'
-          },
-          create: {
-            employeeId: item.employeeId,
-            payCycleId: cycleId,
-            type: type,
-            basis: parseFloat(item.basis) || 0,
-            percent: parseFloat(item.percent) || 0,
-            amount: parseFloat(item.amount) || 0,
-            message: item.message || null,
-            status: 'ADDED_TO_SALARY'
-          }
-        });
+          };
+          const [previous, record] = await Promise.all([
+            tx.bonusIncentive.findUnique({ where: key }),
+            tx.payrollRecord.findFirst({ where: { payCycleId: cycleId, employeeId: item.employeeId } })
+          ]);
 
-        // Add to PayrollRecord
-        const record = await prisma.payrollRecord.findFirst({
-          where: {
-            payCycleId: cycleId,
-            employeeId: item.employeeId
+          if (record && ['APPROVED', 'POSTED'].includes(String(record.status || '').toUpperCase())) {
+            return { error: `Cannot change ${type} for ${item.employeeId}; payroll is ${record.status}.` };
           }
-        });
 
-        if (record) {
-          await prisma.payrollRecord.update({
-            where: { id: record.id },
-            data: {
-              bonus: record.bonus + parseFloat(item.amount)
+          const previousSalaryAmount = previous?.status === 'ADDED_TO_SALARY'
+            ? Number(previous.amount) || 0
+            : 0;
+          await tx.bonusIncentive.upsert({
+            where: key,
+            update: {
+              basis: parseFloat(item.basis) || 0,
+              percent: parseFloat(item.percent) || 0,
+              amount: nextAmount,
+              message: item.message || null,
+              status: 'ADDED_TO_SALARY'
+            },
+            create: {
+              employeeId: item.employeeId,
+              payCycleId: cycleId,
+              type,
+              basis: parseFloat(item.basis) || 0,
+              percent: parseFloat(item.percent) || 0,
+              amount: nextAmount,
+              message: item.message || null,
+              status: 'ADDED_TO_SALARY'
             }
           });
-          updatedCount++;
+
+          if (!record) return { updated: false };
+          const delta = Math.round((nextAmount - previousSalaryAmount) * 100) / 100;
+          if (delta !== 0) {
+            await tx.payrollRecord.update({
+              where: { id: record.id },
+              data: {
+                bonus: Math.round(((Number(record.bonus) || 0) + delta) * 100) / 100,
+                grossPay: Math.round(((Number(record.grossPay) || 0) + delta) * 100) / 100,
+                netPay: Math.round(((Number(record.netPay) || 0) + delta) * 100) / 100,
+              }
+            });
+          }
+          return { updated: true };
+        });
+
+        if (result.error) {
+          return NextResponse.json({ error: result.error }, { status: 409 });
         }
+        if (result.updated) updatedCount++;
       }
     }
 

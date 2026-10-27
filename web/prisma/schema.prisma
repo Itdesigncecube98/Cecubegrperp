@@ -19,146 +19,146 @@ model Admin {
 }
 
 model Employee {
-  id                     String                    @id @default(cuid())
-  empId                  String?
-  name                   String
-  email                  String                    @unique
-  password               String
-  department             String
-  role                   String                    @default("EMPLOYEE")
-  supervisorId           String?
-  phone                  String?
-  designation            String?
-  branch                 String?
-  organisation           String?
-  gender                 String?
-  maritalStatus          String?
-  nationality            String?
-  joinedDate             String?
-  address                String?
-  emergencyContact       String?
-  emergencyPhone         String?
-  createdAt              DateTime                  @default(now())
-  addressStreet1         String?
-  addressStreet2         String?
-  city                   String?
-  country                String?
-  cpn                    String?
-  dateOfBirth            String?
-  employmentStatus       String?
-  extension              String?
-  otherEmail             String?
-  state                  String?
-  workTelephone          String?
-  workWeekMapping        String?
-  zipCode                String?
-  marriageAnniversary    String?
-  pan                    String?
-  uan                    String?
-  basicSalary            String?
-  bonus                  String?
-  conveyance             String?
-  deductions             String?
-  hra                    String?
-  medical                String?
-  pfEmployee             String?
-  pfEmployer             String?
-  professionalTax        String?
-  specialAllowance       String?
-  tds                    String?
-  aadharNo               String?
-  bankAccountNo          String?
-  bankName               String?
-  ifscCode               String?
-  esicNo                 String?
-  bloodGroup             String?
-  chargeType             String?
-  employmentToDate       String?
-  grade                  String?
-  langRead               String?
-  langSpeak              String?
-  langWrite              String?
-  annualCtc              String?
-  employeeType           String?
-  fatherName             String?
-  identificationMark     String?
-  passportNo             String?
-  ndaNo                  String?
-  siteOffice             String?
-  position               String?
-  assignedModules        String[]                  @default([])
-  photoUrl               String?
-  title                  String?
-  confirmationDate       String?
-  creditAccount          String?
-  debitAccount           String?
-  probationPeriod        String?
-  leavingReasonId        String?
-  terminationDate        String?
-  religion               String?
-  offDaysTemplates       String[]                  @default([])
-  monthlyCtc             String?
-  appraisalsAsAppraiser  AppraisalAssignment[]     @relation("AppraisalAppraiser")
-  appraisalsAsEmployee   AppraisalAssignment[]     @relation("AppraisalEmployee")
-  appraisalsAsReviewer   AppraisalAssignment[]     @relation("AppraisalReviewer")
-  assignedGpsLocations   AssignedGpsLocation[]
-  attendances            Attendance[]
-  bankDetails            BankDetail[]
-  bonusIncentives        BonusIncentive[]
-  dependents             Dependent[]
-  accountsDocMappings    DocWorkflowMapping[]      @relation("AccountsDocRelation")
-  docWorkflowMapping     DocWorkflowMapping?
-  hodMappings            DocWorkflowMapping[]      @relation("HodRelation")
-  hrMappings             DocWorkflowMapping[]      @relation("HrRelation")
-  educations             Education[]
-  emergencyContacts      EmergencyContact[]
-  leavingReason          LeavingReason?            @relation(fields: [leavingReasonId], references: [id])
-  supervisor             Employee?                 @relation("SupervisorRelation", fields: [supervisorId], references: [id])
-  subordinates           Employee[]                @relation("SupervisorRelation")
-  documents              EmployeeDocument[]
-  shifts                 EmployeeShift[]
-  generatedDocuments     GeneratedDocument[]
-  imprestRequests        ImprestRequest[]
-  accountsWorkflows      ImprestWorkflowConfig[]   @relation("AccountsRel")
-  adminWorkflows         ImprestWorkflowConfig[]   @relation("AdminRel")
-  projectsHeadWorkflows  ImprestWorkflowConfig[]   @relation("ProjectsHeadRel")
-  jobHistories           JobHistory[]
-  leaveBalance           LeaveBalance?
-  leaveEncashments       LeaveEncashment[]
-  leaveRequests          LeaveRequest[]
-  ltaApplications        LeaveTravelAllowance[]
-  locationRequests       LocationRequest[]
-  marketingFollowups     MarketingFollowup[]
-  marketingLeads         MarketingLead[]           @relation("LeadOwner")
-  marketingOpportunities MarketingOpportunity[]    @relation("OpportunityOwner")
-  orgChartNode           OrgChartNode?
-  overtimeAssignments    OvertimeAssignment[]
-  payrollRecords         PayrollRecord[]
-  activitiesResponsible  ProjectActivity[]         @relation("ActivityResponsible")
-  mbsCertified           ProjectMB[]               @relation("MBCertifier")
-  projectManaged         ProjectMaster[]           @relation("ProjectManager")
-  projectTeamsMember     ProjectTeam[]             @relation("ProjectTeamMember")
-  punchRequests          PunchRequest[]
-  punchLiveLocation      PunchLiveLocation?
-  punchHistories         PunchLocationHistory[]    @relation("PunchHistory")
-  approvedIndents        PurchaseApproval[]
-  purchaseIndents        PurchaseIndent[]
-  ncrsRaised             QualityNCR[]              @relation("NCRRaiser")
-  safetyLogsLogged       SafetyLog[]               @relation("SafetyLogger")
-  salaryRevisions        SalaryRevision[]
+  id                       String                        @id @default(cuid())
+  empId                    String?
+  name                     String
+  email                    String                        @unique
+  password                 String
+  department               String
+  role                     String                        @default("EMPLOYEE")
+  supervisorId             String?
+  phone                    String?
+  designation              String?
+  branch                   String?
+  organisation             String?
+  gender                   String?
+  maritalStatus            String?
+  nationality              String?
+  joinedDate               String?
+  address                  String?
+  emergencyContact         String?
+  emergencyPhone           String?
+  createdAt                DateTime                      @default(now())
+  addressStreet1           String?
+  addressStreet2           String?
+  city                     String?
+  country                  String?
+  cpn                      String?
+  dateOfBirth              String?
+  employmentStatus         String?
+  extension                String?
+  otherEmail               String?
+  state                    String?
+  workTelephone            String?
+  workWeekMapping          String?
+  zipCode                  String?
+  marriageAnniversary      String?
+  pan                      String?
+  uan                      String?
+  basicSalary              String?
+  bonus                    String?
+  conveyance               String?
+  deductions               String?
+  hra                      String?
+  medical                  String?
+  pfEmployee               String?
+  pfEmployer               String?
+  professionalTax          String?
+  specialAllowance         String?
+  tds                      String?
+  aadharNo                 String?
+  bankAccountNo            String?
+  bankName                 String?
+  ifscCode                 String?
+  esicNo                   String?
+  bloodGroup               String?
+  chargeType               String?
+  employmentToDate         String?
+  grade                    String?
+  langRead                 String?
+  langSpeak                String?
+  langWrite                String?
+  annualCtc                String?
+  employeeType             String?
+  fatherName               String?
+  identificationMark       String?
+  passportNo               String?
+  ndaNo                    String?
+  siteOffice               String?
+  position                 String?
+  assignedModules          String[]                      @default([])
+  photoUrl                 String?
+  title                    String?
+  confirmationDate         String?
+  creditAccount            String?
+  debitAccount             String?
+  probationPeriod          String?
+  leavingReasonId          String?
+  terminationDate          String?
+  religion                 String?
+  offDaysTemplates         String[]                      @default([])
+  monthlyCtc               String?
+  appraisalsAsAppraiser    AppraisalAssignment[]         @relation("AppraisalAppraiser")
+  appraisalsAsEmployee     AppraisalAssignment[]         @relation("AppraisalEmployee")
+  appraisalsAsReviewer     AppraisalAssignment[]         @relation("AppraisalReviewer")
+  assignedGpsLocations     AssignedGpsLocation[]
+  attendances              Attendance[]
+  bankDetails              BankDetail[]
+  bonusIncentives          BonusIncentive[]
+  dependents               Dependent[]
+  accountsDocMappings      DocWorkflowMapping[]          @relation("AccountsDocRelation")
+  docWorkflowMapping       DocWorkflowMapping?
+  hodMappings              DocWorkflowMapping[]          @relation("HodRelation")
+  hrMappings               DocWorkflowMapping[]          @relation("HrRelation")
+  educations               Education[]
+  emergencyContacts        EmergencyContact[]
+  leavingReason            LeavingReason?                @relation(fields: [leavingReasonId], references: [id])
+  supervisor               Employee?                     @relation("SupervisorRelation", fields: [supervisorId], references: [id])
+  subordinates             Employee[]                    @relation("SupervisorRelation")
+  documents                EmployeeDocument[]
+  shifts                   EmployeeShift[]
+  generatedDocuments       GeneratedDocument[]
+  imprestRequests          ImprestRequest[]
+  accountsWorkflows        ImprestWorkflowConfig[]       @relation("AccountsRel")
+  adminWorkflows           ImprestWorkflowConfig[]       @relation("AdminRel")
+  projectsHeadWorkflows    ImprestWorkflowConfig[]       @relation("ProjectsHeadRel")
+  jobHistories             JobHistory[]
+  leaveBalance             LeaveBalance?
+  leaveEncashments         LeaveEncashment[]
+  leaveRequests            LeaveRequest[]
+  ltaApplications          LeaveTravelAllowance[]
+  locationRequests         LocationRequest[]
+  marketingFollowups       MarketingFollowup[]
+  marketingLeads           MarketingLead[]               @relation("LeadOwner")
+  marketingOpportunities   MarketingOpportunity[]        @relation("OpportunityOwner")
+  orgChartNode             OrgChartNode?
+  overtimeAssignments      OvertimeAssignment[]
+  payrollRecords           PayrollRecord[]
+  activitiesResponsible    ProjectActivity[]             @relation("ActivityResponsible")
+  mbsCertified             ProjectMB[]                   @relation("MBCertifier")
+  projectManaged           ProjectMaster[]               @relation("ProjectManager")
+  projectTeamsMember       ProjectTeam[]                 @relation("ProjectTeamMember")
+  punchRequests            PunchRequest[]
+  punchLiveLocation        PunchLiveLocation?
+  punchHistories           PunchLocationHistory[]        @relation("PunchHistory")
+  approvedIndents          PurchaseApproval[]
+  purchaseIndents          PurchaseIndent[]
+  ncrsRaised               QualityNCR[]                  @relation("NCRRaiser")
+  safetyLogsLogged         SafetyLog[]                   @relation("SafetyLogger")
+  salaryRevisions          SalaryRevision[]
   attendanceDeviceMappings AttendanceDeviceEmployeeMap[]
-  dprsPrepared           SiteDPR[]                 @relation("DPRPreparer")
-  materialRequesters     SiteMaterialRequisition[] @relation("MaterialRequester")
-  tdsFilings             TdsFiling[]
-  tenderOwner            Tender[]                  @relation("TenderOwner")
-  tenderApprover         TenderApproval[]          @relation("TenderApprover")
-  tenderAuditor          TenderAuditLog[]          @relation("TenderAuditor")
-  tenderDocUploader      TenderDocument[]          @relation("TenderDocUploader")
-  tenderSubmitter        TenderSubmission[]        @relation("TenderSubmitter")
-  tripLogs               TripLog[]
-  vehicles               Vehicle[]
-  vendorCreator          VendorMaster[]
-  workExperiences        WorkExperience[]
+  dprsPrepared             SiteDPR[]                     @relation("DPRPreparer")
+  materialRequesters       SiteMaterialRequisition[]     @relation("MaterialRequester")
+  tdsFilings               TdsFiling[]
+  tenderOwner              Tender[]                      @relation("TenderOwner")
+  tenderApprover           TenderApproval[]              @relation("TenderApprover")
+  tenderAuditor            TenderAuditLog[]              @relation("TenderAuditor")
+  tenderDocUploader        TenderDocument[]              @relation("TenderDocUploader")
+  tenderSubmitter          TenderSubmission[]            @relation("TenderSubmitter")
+  tripLogs                 TripLog[]
+  vehicles                 Vehicle[]
+  vendorCreator            VendorMaster[]
+  workExperiences          WorkExperience[]
 
   @@index([role])
   @@index([supervisorId])
@@ -481,25 +481,26 @@ model Vehicle {
 }
 
 model TripLog {
-  id            Int        @id @default(autoincrement())
-  employeeId    String
-  vehicleId     Int
-  date          String?
-  startLocation String?
-  endLocation   String?
-  startLatitude  Float?
-  startLongitude Float?
-  endLatitude    Float?
-  endLongitude   Float?
-  routePath      Json?
-  distanceKm    Float?     @default(0.0)
-  amount        Float?     @default(0.0)
-  status        String     @default("REQUESTED")
-  createdAt     DateTime   @default(now())
-  reason        String?
-  employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  vehicle       Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  pings         TripPing[]
+  id                Int        @id @default(autoincrement())
+  employeeId        String
+  vehicleId         Int
+  date              String?
+  startLocation     String?
+  endLocation       String?
+  startLatitude     Float?
+  startLongitude    Float?
+  endLatitude       Float?
+  endLongitude      Float?
+  routePath         Json?
+  distanceKm        Float?     @default(0.0)
+  plannedDistanceKm Float?     @default(0.0) // Google Maps planned route distance
+  amount            Float?     @default(0.0)
+  status            String     @default("REQUESTED")
+  createdAt         DateTime   @default(now())
+  reason            String?
+  employee          Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  vehicle           Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  pings             TripPing[]
 
   @@index([status])
   @@index([employeeId])
@@ -979,17 +980,35 @@ model DeclarationItem {
 }
 
 model PayCycle {
-  id                String           @id @default(cuid())
-  name              String
-  startDate         String
-  endDate           String
-  paymentDate       String?
-  status            String           @default("DRAFT")
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  selectedEmployees String[]         @default([])
-  bonusIncentives   BonusIncentive[]
-  payrollRecords    PayrollRecord[]
+  id                  String                @id @default(cuid())
+  name                String
+  startDate           String
+  endDate             String
+  paymentDate         String?
+  status              String                @default("DRAFT")
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  selectedEmployees   String[]              @default([])
+  bonusIncentives     BonusIncentive[]
+  payrollRecords      PayrollRecord[]
+  govtFormSubmissions GovtFormSubmission[]
+}
+
+model GovtFormSubmission {
+  id            String    @id @default(cuid())
+  payCycleId    String
+  formType      String    // e.g. FORM_XVII, FORM_XIII, ALL
+  generatedAt   DateTime  @default(now())
+  sentToGovtAt  DateTime?
+  sentBy        String?   // employee name or email who marked it as sent
+  status        String    @default("GENERATED") // GENERATED | SENT_TO_GOVT
+  recordCount   Int       @default(0)
+  organisation  String?
+  notes         String?
+  payCycle      PayCycle  @relation(fields: [payCycleId], references: [id], onDelete: Cascade)
+
+  @@index([payCycleId])
+  @@index([status])
 }
 
 model PayrollRecord {
@@ -1033,6 +1052,7 @@ model SalaryHead {
   id              String            @id @default(cuid())
   description     String
   calculationType String
+  fixedAmount     Float?
   remark          String?
   isActive        Boolean           @default(true)
   headTypeId      String
@@ -1475,19 +1495,18 @@ model TaskLibraryGroup {
 }
 
 model TaskLibraryItem {
-  id          String                 @id @default(cuid())
+  id          String                @id @default(cuid())
   groupId     String
   libraryId   String
   name        String
   unit        String?
-  quantity    Float                  @default(1)
+  quantity    Float                 @default(1)
   description String?
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
   projectId   String?
-  equipments  TaskLibraryEquipment[]
-  group       TaskLibraryGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  project     ProjectMaster?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  group       TaskLibraryGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  project     ProjectMaster?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   labours     TaskLibraryLabour[]
   materials   TaskLibraryMaterial[]
 
@@ -1521,21 +1540,8 @@ model TaskLibraryLabour {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   rate          Float           @default(0)
-  task          TaskLibraryItem @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@index([taskId])
-}
-
-model TaskLibraryEquipment {
-  id            String          @id @default(cuid())
-  taskId        String
-  name          String
-  unit          String?         @default("Hour")
-  quantity      Float           @default(0)
-  specification String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  rate          Float           @default(0)
+  subgroupIds   String[]        @default([])
+  components    Json?
   task          TaskLibraryItem @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
@@ -1550,6 +1556,8 @@ model MaterialLibraryGroup {
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
   resourceType String                 @default("Material")
+  combinedRate Float                  @default(0)
+  combinedUnit String?
   library      Library?               @relation(fields: [libraryId], references: [id], onDelete: Cascade)
   parent       MaterialLibraryGroup?  @relation("MaterialSubgroups", fields: [parentId], references: [id], onDelete: Cascade)
   subgroups    MaterialLibraryGroup[] @relation("MaterialSubgroups")
@@ -1570,6 +1578,7 @@ model MaterialLibraryItem {
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
   resourceType  String               @default("Material")
+  quantity      Float                @default(1)
   rate          Float                @default(0)
   group         MaterialLibraryGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
@@ -2382,62 +2391,62 @@ model AccountsAccountGroup {
 }
 
 model AccountsLedgerMaster {
-  id             String                  @id @default(cuid())
-  ledgerCode     String?                 @unique
-  name           String
-  groupId        String
-  company        String?
-  legalChequeName String?
-  branch         String?
-  contactPerson  String?
-  address        String?
-  buildingNo     String?
-  street         String?
-  city            String?
-  district        String?
-  state           String?
-  country         String?
-  pinCode         String?
-  mobile         String?
-  phone           String?
-  email          String?
-  nature          String?
-  vatNo           String?
-  corporateIdNo   String?
-  panStatus       String?
-  panRefNo        String?
+  id                  String                  @id @default(cuid())
+  ledgerCode          String?                 @unique
+  name                String
+  groupId             String
+  company             String?
+  legalChequeName     String?
+  branch              String?
+  contactPerson       String?
+  address             String?
+  buildingNo          String?
+  street              String?
+  city                String?
+  district            String?
+  state               String?
+  country             String?
+  pinCode             String?
+  mobile              String?
+  phone               String?
+  email               String?
+  nature              String?
+  vatNo               String?
+  corporateIdNo       String?
+  panStatus           String?
+  panRefNo            String?
   itDeclarationStatus String?
-  taxMasterCode   String?
-  msmeCategory    String?
-  msmeRegistrationNo String?
-  msmeType        String?
-  msmeActivity    String?
-  acCategory1     String?
-  acCategory2     String?
-  acCategory3     String?
-  interestRate    Float                   @default(0)
-  minBalance      Float                   @default(0)
-  remarks         String?
-  serviceTaxNo    String?
-  tinNo           String?
-  cstNo           String?
-  localBodyTaxNo  String?
-  bankDetails     Json?
-  additionalNames Json?
-  documents       Json?
-  gstApplicable  Boolean                 @default(false)
-  gstin          String?
-  pan            String?
-  tdsApplicable  Boolean                 @default(false)
-  tdsSection     String?
-  openingBalance Float                   @default(0)
-  balanceType    String                  @default("Dr")
-  status         String                  @default("Active")
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  journalEntries AccountsJournalDetail[]
-  group          AccountsAccountGroup    @relation(fields: [groupId], references: [id])
-  tdsAdjustments TdsAdjustment[]
+  taxMasterCode       String?
+  msmeCategory        String?
+  msmeRegistrationNo  String?
+  msmeType            String?
+  msmeActivity        String?
+  acCategory1         String?
+  acCategory2         String?
+  acCategory3         String?
+  interestRate        Float                   @default(0)
+  minBalance          Float                   @default(0)
+  remarks             String?
+  serviceTaxNo        String?
+  tinNo               String?
+  cstNo               String?
+  localBodyTaxNo      String?
+  bankDetails         Json?
+  additionalNames     Json?
+  documents           Json?
+  gstApplicable       Boolean                 @default(false)
+  gstin               String?
+  pan                 String?
+  tdsApplicable       Boolean                 @default(false)
+  tdsSection          String?
+  openingBalance      Float                   @default(0)
+  balanceType         String                  @default("Dr")
+  status              String                  @default("Active")
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  journalEntries      AccountsJournalDetail[]
+  group               AccountsAccountGroup    @relation(fields: [groupId], references: [id])
+  tdsAdjustments      TdsAdjustment[]
 }
 
 model AccountsJournal {
