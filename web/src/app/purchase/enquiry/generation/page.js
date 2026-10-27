@@ -91,11 +91,11 @@ export default function EnquiryGeneration() {
     event.preventDefault();
 
     if (!selectedIndentId) {
-      setSaveError('Select a purchase indent for this request for quotation.');
+      setSaveError('Select a purchase indent for this enquiry.');
       return;
     }
     if (selectedVendorIds.length === 0) {
-      setSaveError('Select at least one vendor to send this request for quotation to.');
+      setSaveError('Select at least one vendor to send this enquiry to.');
       return;
     }
 
@@ -115,7 +115,7 @@ export default function EnquiryGeneration() {
       setSelectedVendorIds([]);
       setForm((prev) => ({ ...EMPTY_FORM, rfqDate: prev.rfqDate }));
     } catch (error) {
-      setSaveError(error.message || 'Failed to save the request for quotation.');
+      setSaveError(error.message || 'Failed to save the enquiry.');
     } finally {
       setSaving(false);
     }
@@ -128,10 +128,10 @@ export default function EnquiryGeneration() {
       <div className="purchase-header">
         <div className="purchase-header-title">
           <MessageSquare size={18} />
-          Create Request for Quotation (RFQ)
+          Create Enquiry
         </div>
         <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', color: '#666', gap: '4px' }}>
-          <Home size={14} /> Home <ChevronRight size={14} /> Create Request for Quotation (RFQ)
+          <Home size={14} /> Home <ChevronRight size={14} /> Create Enquiry
         </div>
       </div>
 
@@ -147,7 +147,7 @@ export default function EnquiryGeneration() {
         <div className="purchase-card" style={{ borderLeft: '3px solid #10b981' }}>
           <div className="purchase-card-body" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#047857' }}>
             <CheckCircle2 size={16} />
-            Request for Quotation <strong>{savedRfq.rfqNo}</strong> created and sent to {savedRfq.vendors?.length || 0} vendor(s).
+            Enquiry <strong>{savedRfq.rfqNo}</strong> created and sent to {savedRfq.vendors?.length || 0} vendor(s).
           </div>
         </div>
       )}
@@ -200,16 +200,16 @@ export default function EnquiryGeneration() {
 
         <div className="purchase-card" style={{ marginBottom: '24px' }}>
           <div className="purchase-card-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0284c7', backgroundColor: '#f0f9ff' }}>
-            <MessageSquare size={16} /> Request Details
+            <MessageSquare size={16} /> Enquiry Details
           </div>
           <div className="purchase-card-body">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '20px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>Request No.</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>Enquiry No.</label>
                 <input type="text" className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} value="Auto Generated" readOnly disabled />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>Request Date</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>Enquiry Date</label>
                 <input type="date" name="rfqDate" className="purchase-input" style={{ width: '100%', boxSizing: 'border-box' }} value={form.rfqDate} onChange={handleChange} />
               </div>
               <div>
@@ -288,7 +288,7 @@ export default function EnquiryGeneration() {
 
         <div className="purchase-card">
           <div className="purchase-card-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0284c7', backgroundColor: '#f0f9ff' }}>
-            <MessageSquare size={16} /> Send Request To ({selectedVendorIds.length} selected)
+            <MessageSquare size={16} /> Send Enquiry To ({selectedVendorIds.length} selected)
           </div>
           <div className="purchase-card-body">
             {vendors.length === 0 ? (
@@ -351,7 +351,7 @@ export default function EnquiryGeneration() {
                 <RefreshCw size={14} /> Reset
               </button>
               <button type="submit" className="btn-cyan" disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 24px' }}>
-                <Save size={16} /> {saving ? 'Saving...' : 'Save Request'}
+                <Save size={16} /> {saving ? 'Saving...' : 'Save Enquiry'}
               </button>
             </div>
           </div>

@@ -1,31 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AlertCircle, ChevronRight, Download, Filter, RefreshCw } from 'lucide-react';
 
 const REPORTS = {
   supplier: {
-    supplier: {
-      title: 'Supplier Register',
-      description: 'Supplier contact, category, rating, and purchasing history.',
-      columns: [['vendorCode', 'Code'], ['vendor', 'Supplier'], ['contact', 'Contact'], ['phone', 'Phone'], ['email', 'Email'], ['city', 'City'], ['category', 'Category'], ['rating', 'Rating'], ['status', 'Status']]
-    },
-    'short-supplier': {
-      title: 'Active Suppliers',
-      description: 'Active suppliers from the supplier master and their order history.',
-      columns: [['vendorCode', 'Code'], ['vendor', 'Supplier'], ['category', 'Category'], ['city', 'City'], ['rating', 'Rating'], ['poCount', 'Purchase Orders'], ['value', 'PO Value'], ['status', 'Status']]
-    },
     summary: {
       title: 'Supplier Summary',
-      description: 'Purchase orders and supplier bills summarized by supplier.',
-      columns: [['vendorCode', 'Code'], ['vendor', 'Supplier'], ['poCount', 'POs'], ['poValue', 'PO Value'], ['billCount', 'Bills'], ['billedValue', 'Net Billed'], ['paidValue', 'Paid'], ['outstanding', 'Outstanding'], ['status', 'Status']]
-    },
-    rating: {
-      title: 'Supplier Rating',
-      description: 'Supplier ratings maintained in the supplier master.',
-      columns: [['vendorCode', 'Code'], ['vendor', 'Supplier'], ['category', 'Category'], ['rating', 'Rating'], ['poCount', 'Purchase Orders'], ['value', 'PO Value'], ['status', 'Status']]
+      description: 'Purchase orders, supplier bills, payments, and outstanding balances by supplier.',
+      columns: [['vendorCode', 'Code'], ['vendor', 'Supplier'], ['poCount', 'Purchase Orders'], ['poValue', 'PO Value'], ['billCount', 'Supplier Bills'], ['billedValue', 'Net Billed'], ['paidValue', 'Paid'], ['outstanding', 'Outstanding'], ['status', 'Status']]
     },
     'po-analysis': {
       title: 'PO Analysis',
@@ -82,22 +67,29 @@ function displayValue(key, value) {
 }
 
 export default function PurchaseReportPage() {
-  const { family = 'supplier', view = 'supplier' } = useParams();
+  const { family = 'supplier', view = 'summary' } = useParams();
+  const router = useRouter();
   const [data, setData] = useState(initialData);
   const [filters, setFilters] = useState({ from: '', to: '', vendorId: '' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const report = REPORTS[family]?.[view] || REPORTS.supplier.supplier;
+  const report = REPORTS[family]?.[view] ?? REPORTS.supplier.summary;
+  const currentView = REPORTS[family]?.[view] ? view : 'summary';
 
   const buildReportUrl = useCallback((activeFilters) => {
-    const query = new URLSearchParams({ family, view });
+    const query = new URLSearchParams({ family, view: currentView });
     Object.entries(activeFilters).forEach(([key, value]) => {
       if (value) query.set(key, value);
     });
     return `/api/purchase/reports?${query}`;
-  }, [family, view]);
+  }, [family, currentView]);
 
   useEffect(() => {
+    if (!REPORTS[family]?.[view]) {
+      router.replace(family === 'supplier' ? '/purchase/reports/supplier/summary' : '/purchase/dashboard');
+      return;
+    }
+
     let active = true;
     fetch(buildReportUrl({ from: '', to: '', vendorId: '' }))
       .then(async response => {
@@ -118,7 +110,7 @@ export default function PurchaseReportPage() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [buildReportUrl]);
+  }, [buildReportUrl, family, router, view]);
 
   const applyFilters = async () => {
     setLoading(true);
@@ -136,7 +128,7 @@ export default function PurchaseReportPage() {
     }
   };
 
-  const columns = report.columns;
+  const columns = report?.columns || REPORTS.supplier.summary.columns;
   const stats = data.stats;
 
   const exportCsv = () => {
@@ -156,13 +148,27 @@ export default function PurchaseReportPage() {
 
   const summaryCards = useMemo(() => {
     if (!stats) return [];
+    if (family === 'supplier' && view === 'summary') {
+      return [
+        ['Suppliers with Activity', count(stats.records)],
+        ['Purchase Orders', count(stats.purchaseOrders)],
+        ['Purchase Order Value', money(stats.purchaseValue)],
+        ['Net Billed', money(stats.billedValue)],
+        ['Paid to Suppliers', money(stats.paidValue)],
+        ['Outstanding', money(stats.outstanding)]
+      ];
+    }
     return [
       [family === 'payment' ? 'Supplier Bills' : 'Records', count(stats.records)],
       [family === 'payment' ? 'Bill Gross Amount' : 'Purchase Order Value', money(stats.purchaseValue)],
       ['Supplier Bills Paid', money(stats.paidValue)],
       ['Outstanding balance', money(stats.outstanding)]
     ];
-  }, [family, stats]);
+  }, [family, stats, view]);
+
+  if (!report) {
+    return <div className="pur-page-container"><p className="pur-text-muted">Redirecting to the available report...</p></div>;
+  }
 
   return (
     <div className="pur-page-container">
@@ -179,16 +185,25 @@ export default function PurchaseReportPage() {
         </button>
       </div>
 
-      <div className="pur-card" style={{ padding: '18px 20px' }}>
-        <div className="pur-flex pur-items-center pur-gap-2" style={{ flexWrap: 'wrap' }}>
-          <Filter size={17} color="#f59e0b" />
-          <select className="pur-select" value={filters.vendorId} onChange={event => setFilters({ ...filters, vendorId: event.target.value })} aria-label="Supplier">
-            <option value="">All suppliers</option>
-            {data.vendors.map(vendor => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
-          </select>
-          <input className="pur-input" type="date" value={filters.from} onChange={event => setFilters({ ...filters, from: event.target.value })} aria-label="From date" />
-          <input className="pur-input" type="date" value={filters.to} onChange={event => setFilters({ ...filters, to: event.target.value })} aria-label="To date" />
-          <button type="button" className="pur-btn pur-btn-primary" style={{ backgroundColor: '#f59e0b' }} onClick={applyFilters} disabled={loading}>
+      <div className="pur-card purchase-report-filter-card">
+        <div className="purchase-report-filter-grid">
+          <Filter className="purchase-report-filter-icon" size={18} color="#f59e0b" aria-hidden="true" />
+          <label className="purchase-report-filter-field">
+            <span>Supplier</span>
+            <select className="pur-select" value={filters.vendorId} onChange={event => setFilters({ ...filters, vendorId: event.target.value })}>
+              <option value="">All suppliers</option>
+              {data.vendors.map(vendor => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+            </select>
+          </label>
+          <label className="purchase-report-filter-field">
+            <span>From date</span>
+            <input className="pur-input" type="date" value={filters.from} onChange={event => setFilters({ ...filters, from: event.target.value })} />
+          </label>
+          <label className="purchase-report-filter-field">
+            <span>To date</span>
+            <input className="pur-input" type="date" value={filters.to} onChange={event => setFilters({ ...filters, to: event.target.value })} />
+          </label>
+          <button type="button" className="pur-btn pur-btn-primary purchase-report-apply-button" onClick={applyFilters} disabled={loading}>
             <RefreshCw size={15} /> {loading ? 'Loading...' : 'Apply Filters'}
           </button>
         </div>

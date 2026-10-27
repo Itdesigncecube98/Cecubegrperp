@@ -25,7 +25,7 @@ function CompareInner() {
 
   const load = useCallback(async () => {
     if (!rfqId) {
-      setLoadError('A request for quotation must be selected.');
+      setLoadError('An enquiry must be selected.');
       setLoading(false);
       return;
     }
@@ -196,7 +196,7 @@ function CompareInner() {
       ) : vendorColumns.length === 0 ? (
         <div className="purchase-card">
           <div className="purchase-card-body" style={{ color: '#64748b', fontSize: '0.85rem' }}>
-            No vendors were invited for this request for quotation.
+            No vendors were invited for this enquiry.
           </div>
         </div>
       ) : (
