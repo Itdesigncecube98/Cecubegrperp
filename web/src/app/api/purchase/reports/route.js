@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 const REPORT_VIEWS = {
-  supplier: ['supplier', 'short-supplier', 'summary', 'rating', 'po-analysis', 'supplier-wise-transaction', 'supplier-wise-po'],
+  supplier: ['summary', 'po-analysis', 'supplier-wise-transaction', 'supplier-wise-po'],
   payment: ['summary', 'details', 'date-tracking', 'ageing']
 };
 
@@ -61,12 +61,6 @@ export async function GET(request) {
         id: true,
         vendorCode: true,
         name: true,
-        contactPerson: true,
-        mobile: true,
-        email: true,
-        city: true,
-        category: true,
-        rating: true,
         creditDays: true,
         status: true
       },
@@ -175,25 +169,9 @@ export async function GET(request) {
           paidValue: metricsByVendor.get(vendor.id)?.paidValue || 0,
           outstanding: metricsByVendor.get(vendor.id)?.outstanding || 0,
           status: vendor.status
-        })).filter(row => row.poCount || row.billCount);
-      } else {
-        const reportVendors = view === 'short-supplier'
-          ? selectedVendors.filter(vendor => vendor.status?.toLowerCase() === 'active')
-          : selectedVendors;
-        rows = reportVendors.map(vendor => ({
-          id: vendor.id,
-          vendorCode: vendor.vendorCode || '-',
-          vendor: vendor.name,
-          contact: vendor.contactPerson || '-',
-          phone: vendor.mobile || '-',
-          email: vendor.email || '-',
-          city: vendor.city || '-',
-          category: vendor.category || '-',
-          rating: amount(vendor.rating),
-          poCount: metricsByVendor.get(vendor.id)?.poCount || 0,
-          value: metricsByVendor.get(vendor.id)?.poValue || 0,
-          status: vendor.status
-        }));
+        }))
+          .filter(row => row.poCount || row.billCount)
+          .sort((a, b) => b.poValue - a.poValue || b.billedValue - a.billedValue);
       }
 
       return NextResponse.json({
@@ -201,6 +179,7 @@ export async function GET(request) {
         vendors: vendors.map(({ id, name }) => ({ id, name })),
         stats: {
           records: rows.length,
+          purchaseOrders: purchaseOrders.length,
           purchaseValue: purchaseOrders.reduce((sum, po) => sum + amount(po.totalAmount), 0),
           billedValue: bills.reduce((sum, bill) => sum + amount(bill.netAmount), 0),
           paidValue: bills.reduce((sum, bill) => sum + amount(bill.paidAmount), 0),
