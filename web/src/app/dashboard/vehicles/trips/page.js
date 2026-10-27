@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import React, { useState, useEffect } from 'react';
 import { Search, MapPin, CheckCircle, XCircle, ArrowLeft, Map as MapIcon, Download } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -515,6 +515,8 @@ export default function TripReportsPage() {
               isActive={selectedMapTrip.status === 'ACTIVE'}
               startCoords={selectedMapTrip.startLatitude ? { lat: selectedMapTrip.startLatitude, lng: selectedMapTrip.startLongitude } : null}
               endCoords={selectedMapTrip.endLatitude ? { lat: selectedMapTrip.endLatitude, lng: selectedMapTrip.endLongitude } : null}
+              ratePerKm={selectedMapTrip.vehicle?.ratePerKm || 0}
+              travelMode={selectedMapTrip.vehicle?.vehicleType === 'Two Wheeler' ? 'TWO_WHEELER' : 'DRIVING'}
             />
           </div>
         </div>

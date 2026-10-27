@@ -105,6 +105,7 @@ export const LEGACY_PERMISSION_ALIASES = {
   PURCHASE_VENDOR_APPROVE: alias('Purchase', 'Vendor Master Approve'),
   PURCHASE_VENDOR_EMAIL: alias('Purchase', 'Send Vendor Master by Email'),
   PURCHASE_BRAND_MASTER: [],
+  PURCHASE_ENQUIRY: alias('Purchase', 'Enquiry Generation', 'Enquiry Browse'),
   PURCHASE_ENQUIRY_GENERATION: alias('Purchase', 'Enquiry Generation'),
   PURCHASE_ENQUIRY_BROWSE: alias('Purchase', 'Enquiry Browse'),
   PURCHASE_QUOTATION: alias('Purchase', 'Quotation Entry', 'Quotation Browse', 'Quotation Compare'),

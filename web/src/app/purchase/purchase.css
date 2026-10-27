@@ -498,6 +498,61 @@
 .pur-font-medium { font-weight: 500; }
 .pur-font-semibold { font-weight: 600; }
 
+.purchase-report-filter-card {
+  padding: 18px 20px;
+}
+.purchase-report-filter-grid {
+  display: grid;
+  grid-template-columns: 24px minmax(220px, 1.5fr) repeat(2, minmax(160px, 0.8fr)) auto;
+  align-items: end;
+  gap: 14px;
+}
+.purchase-report-filter-icon {
+  margin-bottom: 11px;
+}
+.purchase-report-filter-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.purchase-report-filter-field .pur-input,
+.purchase-report-filter-field .pur-select {
+  width: 100%;
+  min-width: 0;
+}
+.purchase-report-apply-button {
+  min-height: 40px;
+  justify-content: center;
+  background-color: #f59e0b;
+  white-space: nowrap;
+}
+.purchase-report-apply-button:hover {
+  background-color: #d97706;
+}
+@media (max-width: 850px) {
+  .purchase-report-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .purchase-report-filter-icon {
+    display: none;
+  }
+  .purchase-report-apply-button {
+    justify-self: start;
+  }
+}
+@media (max-width: 520px) {
+  .purchase-report-filter-card {
+    padding: 14px;
+  }
+  .purchase-report-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Card header / title used by dashboard */
 .pur-card-header {
   padding: 20px 24px;

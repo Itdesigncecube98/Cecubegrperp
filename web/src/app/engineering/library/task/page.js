@@ -806,7 +806,7 @@ export default function TaskLibrary() {
               style={{ fontWeight: 600, color: '#0f172a', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1' }}
             >
               <option value="">All / Reusable Tasks</option>
-              {projects.map(project => <option key={project.id} value={project.id}>{project.projectId || project.id} - {project.name}</option>)}
+              {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
           </div>
 
