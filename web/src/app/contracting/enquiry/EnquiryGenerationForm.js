@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Home, ChevronRight, MessageSquare, Save, RefreshCw, AlertCircle, CheckCircle2, Search, Plus, Trash2 } from 'lucide-react';
-import '../../contracting.css';
+import '../contracting.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
 

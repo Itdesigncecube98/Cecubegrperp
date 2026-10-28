@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { Home, ChevronRight, FileText, Save, RefreshCw, AlertCircle, CheckCircle2, Upload, X, Paperclip } from 'lucide-react';
-import '../../contracting.css';
+import '../contracting.css';
 
 const Section = ({ title, color = '#1d4ed8', bg = '#eff6ff', border = '#dbeafe', children }) => (
   <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '16px', overflow: 'hidden' }}>
