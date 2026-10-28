@@ -12,7 +12,7 @@ function ensureStorageDir() {
   }
 }
 
-export function getEstimateChangesPath(projectId) {
+function getEstimateChangesPath(projectId) {
   ensureStorageDir();
   return path.join(STORAGE_DIR, `estimate_changes_${projectId}.json`);
 }

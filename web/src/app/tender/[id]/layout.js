@@ -10,7 +10,8 @@ import {
   CheckSquare, 
   Send, 
   Award,
-  ArrowLeft
+  ArrowLeft,
+  Info
 } from 'lucide-react';
 
 export default function TenderDetailLayout({ children, params }) {
@@ -33,6 +34,7 @@ export default function TenderDetailLayout({ children, params }) {
   }, [tenderId]);
 
   const tabs = [
+    { name: 'Details', path: `/tender/${tenderId}/details`, icon: Info },
     { name: 'Evaluation', path: `/tender/${tenderId}/evaluation`, icon: ClipboardList },
     { name: 'Documents', path: `/tender/${tenderId}/documents`, icon: FileText },
     { name: 'BOQ & Costing', path: `/tender/${tenderId}/boq`, icon: Calculator },

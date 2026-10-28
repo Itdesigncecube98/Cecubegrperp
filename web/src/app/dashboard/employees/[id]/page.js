@@ -97,10 +97,10 @@ const calculateRevisionCtc = (revision) => {
     : null;
 };
 
-export default function EmployeeProfilePage({ initialId }) {
+export default function EmployeeProfilePage() {
   const router = useRouter();
   const routeParams = useParams();
-  const id = initialId || routeParams?.id;
+  const id = routeParams?.id || 'new';
   const [activeTab, setActiveTab] = useState(id === 'new' ? 'contact' : 'basic');
   const [showSidebar, setShowSidebar] = useState(true);
   const [showPassword, setShowPassword] = useState(false);

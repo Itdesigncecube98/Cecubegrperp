@@ -4,14 +4,14 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 // All 12 standard actions across the ERP
-export const STANDARD_ACTIONS = [
+const STANDARD_ACTIONS = [
   'View', 'Add', 'Edit', 'Delete',
   'Approve', 'Reject', 'Export', 'Print',
   'Download', 'Import', 'Submit', 'Cancel',
 ];
 
 // All ERP modules and their sub-modules
-export const MODULE_MAP = {
+const MODULE_MAP = {
   HR: [
     'Employee Master', 'Attendance', 'Leave Management', 'Shift Management',
     'Payroll', 'Appraisal', 'Recruitment', 'Imprest', 'Documents',

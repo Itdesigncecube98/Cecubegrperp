@@ -37,27 +37,92 @@ export async function PUT(req, { params }) {
     const currentTender = await prisma.tender.findUnique({ where: { id } });
     if (!currentTender) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const tender = await prisma.tender.update({
-      where: { id },
-      data: {
-        status: body.status !== undefined ? body.status : undefined,
-        tenderValue: body.tenderValue !== undefined ? parseFloat(body.tenderValue) : undefined,
+    const data = {};
+    const stringFields = [
+      'tenderNo',
+      'referenceNo',
+      'title',
+      'source',
+      'authority',
+      'clientName',
+      'projectName',
+      'projectLocation',
+      'tenderType',
+      'currency',
+      'status',
+      'ownerId'
+    ];
+    for (const field of stringFields) {
+      if (body[field] !== undefined) {
+        data[field] = body[field] === '' ? null : String(body[field]);
       }
-    });
-
-    // Log the change
-    if (body.status && body.status !== currentTender.status) {
-        await prisma.tenderAuditLog.create({
-            data: {
-                tenderId: id,
-                action: 'StatusChanged',
-                oldValue: currentTender.status,
-                newValue: body.status,
-                remarks: body.remarks || 'Status updated via API',
-                userId: body.userId
-            }
-        });
     }
+
+    const dateFields = [
+      'tenderDate',
+      'publishedDate',
+      'docDownloadStart',
+      'preBidMeeting',
+      'querySubLastDate',
+      'bidSubStart',
+      'bidSubLastDate',
+      'techOpeningDate',
+      'finOpeningDate',
+      'expectedResultDate'
+    ];
+    for (const field of dateFields) {
+      if (body[field] !== undefined) {
+        data[field] = body[field] ? new Date(body[field]) : null;
+        if (data[field] && Number.isNaN(data[field].getTime())) {
+          return NextResponse.json({ error: `Invalid date for ${field}` }, { status: 400 });
+        }
+      }
+    }
+
+    if (body.tenderValue !== undefined) {
+      const tenderValue = body.tenderValue === '' ? null : Number(body.tenderValue);
+      if (tenderValue !== null && !Number.isFinite(tenderValue)) {
+        return NextResponse.json({ error: 'Tender value must be a valid number' }, { status: 400 });
+      }
+      data.tenderValue = tenderValue;
+    }
+    if (body.details !== undefined) {
+      if (!body.details || typeof body.details !== 'object' || Array.isArray(body.details)) {
+        return NextResponse.json({ error: 'Tender details must be an object' }, { status: 400 });
+      }
+      data.details = body.details;
+    }
+
+    const tender = await prisma.$transaction(async (transaction) => {
+      const updatedTender = await transaction.tender.update({
+        where: { id },
+        data
+      });
+
+      if (body.status && body.status !== currentTender.status) {
+        await transaction.tenderAuditLog.create({
+          data: {
+            tenderId: id,
+            action: 'StatusChanged',
+            oldValue: currentTender.status,
+            newValue: body.status,
+            remarks: body.remarks || 'Status updated via API',
+            userId: body.userId
+          }
+        });
+      }
+      if (body.details !== undefined) {
+        await transaction.tenderAuditLog.create({
+          data: {
+            tenderId: id,
+            action: 'DetailsUpdated',
+            remarks: 'Tender details saved',
+            userId: body.ownerId || currentTender.ownerId
+          }
+        });
+      }
+      return updatedTender;
+    });
 
     return NextResponse.json(tender);
   } catch (error) {

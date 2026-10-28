@@ -5,7 +5,7 @@ import ActionToolbar from '@/components/ActionToolbar';
 import MultiSelect from '@/components/MultiSelect';
 import Dialog from '@/components/Dialog';
 
-export function getLeaveAbbreviation(leaveType) {
+function getLeaveAbbreviation(leaveType) {
   if (!leaveType) return 'CL';
   const lt = leaveType.toLowerCase().trim();
   if (lt.includes('casual') || lt === 'cl') return 'CL';
@@ -16,7 +16,7 @@ export function getLeaveAbbreviation(leaveType) {
   return 'CL';
 }
 
-export function resolveDayAttendance(emp, col, approvedLeaves = []) {
+function resolveDayAttendance(emp, col, approvedLeaves = []) {
   const att = emp?.attendances?.find(a => a.date === col.fullDate);
   const rawStatus = att?.status;
 

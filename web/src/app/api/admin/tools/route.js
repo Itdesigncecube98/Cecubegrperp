@@ -87,7 +87,7 @@ const LEGACY_ADMIN_TOOLS = {
 
 // Employee Tools is the source of truth for project-wise module permissions.
 // Marketing keeps its independent, non-project role permissions.
-export const ALL_ADMIN_TOOLS = {
+const ALL_ADMIN_TOOLS = {
   ...PROJECT_EMPLOYEE_TOOLS,
   Marketing: [...new Map([...LEGACY_ADMIN_TOOLS.Marketing, ...(PROJECT_EMPLOYEE_TOOLS.Marketing || [])].map(tool => [tool.name, tool])).values()],
 };

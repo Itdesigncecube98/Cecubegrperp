@@ -58,7 +58,7 @@ export default function CreateTender() {
       });
       if (res.ok) {
         const newTender = await res.json();
-        router.push(`/tender/${newTender.id}/evaluation`);
+        router.push(`/tender/${newTender.id}/details`);
       } else {
         const data = await res.json();
         alert(data.error || 'Failed to create tender');

@@ -55,7 +55,6 @@ export async function POST(request) {
     const mergeRow = (row, segments) => {
       let col = 1;
       for (const { text, bg, fg, bold } of segments) {
-        const endCol = col + (segments.indexOf({ text, bg, fg, bold }) < 0 ? 0 : segments[segments.indexOf(s => s === { text, bg, fg, bold })]?.span || 1) - 1;
         // just use next segment
         const nextSpan = segments[segments.findIndex(s => s.text === text)]?.span || 1;
         if (nextSpan > 1) sheet.mergeCells(row, col, row, col + nextSpan - 1);

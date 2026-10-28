@@ -123,7 +123,7 @@ export default function TenderRegister() {
                       </span>
                     </td>
                     <td className="tnd-text-right">
-                      <Link href={`/tender/${t.id}/evaluation`} className="tnd-btn tnd-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
+                      <Link href={`/tender/${t.id}/details`} className="tnd-btn tnd-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
                         Manage
                       </Link>
                     </td>
