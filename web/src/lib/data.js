@@ -127,7 +127,9 @@ export const createPunchRequest = async (data) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   });
-  return await res.json();
+  const result = await res.json();
+  if (!res.ok) throw new Error(result.error || 'Failed to create attendance request.');
+  return result;
 };
 
 export const updatePunchRequestStatus = async (id, status, grantCoff = false) => {
@@ -137,6 +139,17 @@ export const updatePunchRequestStatus = async (id, status, grantCoff = false) =>
     body: JSON.stringify({ id, status, grantCoff })
   });
   return await res.json();
+};
+
+export const updatePunchRequestLocation = async (id, location) => {
+  const res = await fetch('/api/requests', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, ...location })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update regularization location.');
+  return data;
 };
 
 export const getLeaveRequests = async (supervisorId = null, employeeId = null) => {
