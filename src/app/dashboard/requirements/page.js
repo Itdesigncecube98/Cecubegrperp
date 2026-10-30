@@ -1,19 +1,7 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, FileSpreadsheet, Calendar } from 'lucide-react';
-import ActionToolbar from '@/components/ActionToolbar';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Plus } from 'lucide-react';
 import AppModal from '@/components/AppModal';
-
-const INITIAL_FILTERS = {
-  company: 'Select All',
-  branch: 'Select All',
-  position: 'Engineer',
-  raiseBy: 'Select',
-  raiseFrom: '2026-07-27',
-  raiseTo: '2026-08-27',
-  status: 'All',
-  type: 'All'
-};
 
 const EMPTY_FORM = {
   positionName: '',
@@ -27,11 +15,20 @@ const EMPTY_FORM = {
   replacementFor: ''
 };
 
+const POSITION_STATUSES = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'in progress', label: 'In Progress' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
+const uniqueOptions = options => [...new Set(options.filter(option => option != null).map(option => String(option)))];
+
 export default function PositionIndent() {
-  const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   
   const [options, setOptions] = useState({
@@ -43,12 +40,7 @@ export default function PositionIndent() {
     grades: []
   });
 
-  useEffect(() => {
-    fetchData();
-    fetchSyncData();
-  }, []);
-
-  const fetchSyncData = async () => {
+  const fetchSyncData = useCallback(async () => {
     try {
       const res = await fetch('/api/recruitment/position-indent/sync-data');
       if (res.ok) {
@@ -65,19 +57,12 @@ export default function PositionIndent() {
     } catch (error) {
       console.error('Failed to fetch sync data', error);
     }
-  };
+  }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (filters.company) params.append('company', filters.company);
-      if (filters.branch) params.append('branch', filters.branch);
-      if (filters.position) params.append('position', filters.position);
-      if (filters.status) params.append('status', filters.status);
-      if (filters.raiseBy) params.append('raiseBy', filters.raiseBy);
-
-      const res = await fetch(`/api/recruitment/position-indent?${params.toString()}`);
+      const res = await fetch('/api/recruitment/position-indent');
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -87,11 +72,12 @@ export default function PositionIndent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleSearch = () => {
-    fetchData();
-  };
+  useEffect(() => {
+    void fetchData();
+    void fetchSyncData();
+  }, [fetchData, fetchSyncData]);
 
   const handleAddSubmit = async () => {
     if (!form.positionName || !form.department || !form.raisedBy) {
@@ -122,54 +108,38 @@ export default function PositionIndent() {
     setModalOpen(true);
   };
 
+  const handleStatusChange = async (row, status) => {
+    if (String(row.status).trim().toLowerCase() === 'approved') return;
+    if (status === row.status) return;
+    setUpdatingStatusId(row.id);
+    try {
+      const response = await fetch('/api/recruitment/position-indent', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id, status }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to update requirement status.');
+      setData(previous => previous.map(item => item.id === row.id ? { ...item, status: result.status } : item));
+    } catch (error) {
+      alert(error.message || 'Failed to update requirement status.');
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
   return (
     <div>
-      <ActionToolbar onReset={() => setFilters(INITIAL_FILTERS)} shareTitle="Position Indent" />
-
-      {/* Filter Criteria */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+      {/* Requirement table */}
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h2 style={{ fontSize: '0.9rem', fontWeight: '600', color: '#475569', margin: 0 }}>Filter Criteria</h2>
+          <div>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>Position Requirements</h2>
+            <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '4px 0 0' }}>Review requests and update their status.</p>
+          </div>
           <button className="btn-primary" onClick={openAddModal}>
             <Plus size={14} /> Add
           </button>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-          <FilterSelect label="Company *" value={filters.company} onChange={v => setFilters({ ...filters, company: v })} options={options.companies.length ? options.companies : ['Select All']} />
-          <FilterSelect label="Branch *" value={filters.branch} onChange={v => setFilters({ ...filters, branch: v })} options={options.branches.length ? options.branches : ['Select All']} />
-          <FilterSelect label="Designation" value={filters.position} onChange={v => setFilters({ ...filters, position: v })} options={options.positions.length ? options.positions : ['Select']} />
-          <FilterSelect label="Raise By" value={filters.raiseBy} onChange={v => setFilters({ ...filters, raiseBy: v })} options={options.employees.length ? options.employees : ['Select']} />
-          
-          <FilterInput label="Raise From" type="date" value={filters.raiseFrom} onChange={v => setFilters({ ...filters, raiseFrom: v })} />
-          <FilterInput label="Raise To" type="date" value={filters.raiseTo} onChange={v => setFilters({ ...filters, raiseTo: v })} />
-          
-          <FilterSelect label="Status" value={filters.status} onChange={v => setFilters({ ...filters, status: v })} options={['All', 'approved', 'non approved', 'pending', 'accepeted', 'not accepted', 'rejected']} />
-          <FilterSelect label="Type" value={filters.type} onChange={v => setFilters({ ...filters, type: v })} options={['All', 'Internal', 'External']} />
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-          <button className="btn-primary" style={{ background: '#0ea5e9' }} onClick={handleSearch}>
-            <Search size={14} /> Search
-          </button>
-        </div>
-      </div>
-
-      {/* Data Table Area */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <button className="btn-primary" style={{ background: '#0ea5e9', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <FileSpreadsheet size={14} /> Export To excel
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#64748b' }}>
-            <span>Show Rows:</span>
-            <select style={{ padding: '0.2rem', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-              <option>40</option>
-              <option>100</option>
-            </select>
-            <span>Page: 1 of 1</span>
-            <button className="btn-primary" style={{ background: '#0ea5e9', padding: '0.2rem 0.5rem' }}>Go</button>
-          </div>
         </div>
 
         <div style={{ overflowX: 'auto', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
@@ -195,8 +165,10 @@ export default function PositionIndent() {
               ) : data.length === 0 ? (
                 <tr><td colSpan="11" style={{ textAlign: 'center', padding: '1rem', color: '#64748b', background: '#f8fafc' }}>No Details Found</td></tr>
               ) : (
-                data.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
+                data.map(row => {
+                  const isApproved = String(row.status).trim().toLowerCase() === 'approved';
+                  return (
+                  <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
                     <td style={{ padding: '0.75rem' }}>{row.positionName}</td>
                     <td style={{ padding: '0.75rem' }}>{row.department}</td>
                     <td style={{ padding: '0.75rem' }}>{row.raisedBy}</td>
@@ -206,10 +178,24 @@ export default function PositionIndent() {
                     <td style={{ padding: '0.75rem' }}>{row.reqFromDate || '-'}</td>
                     <td style={{ padding: '0.75rem' }}>{row.approvedBy || '-'}</td>
                     <td style={{ padding: '0.75rem' }}>{row.handledBy || '-'}</td>
-                    <td style={{ padding: '0.75rem' }}>{row.status}</td>
+                    <td style={{ padding: '0.75rem' }}>
+                      <select
+                        aria-label={`Change status for ${row.positionName}`}
+                        value={row.status || 'pending'}
+                        disabled={isApproved || updatingStatusId === row.id}
+                        onChange={event => handleStatusChange(row, event.target.value)}
+                        style={{ padding: '0.4rem 0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: isApproved || updatingStatusId === row.id ? '#f1f5f9' : '#fff', color: '#334155', fontSize: '0.82rem', cursor: isApproved ? 'not-allowed' : updatingStatusId === row.id ? 'wait' : 'pointer' }}
+                      >
+                        {!POSITION_STATUSES.some(status => status.value === row.status) && (
+                          <option value={row.status}>{row.status}</option>
+                        )}
+                        {POSITION_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                      </select>
+                    </td>
                     <td style={{ padding: '0.75rem' }}>-</td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -236,30 +222,12 @@ export default function PositionIndent() {
   );
 }
 
-const FilterSelect = ({ label, value, onChange, options }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-    <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#0ea5e9' }}>{label}</label>
-    <select value={value} onChange={e => onChange(e.target.value)} style={{ padding: '0.4rem', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.85rem' }}>
-      {options.map(o => <option key={o}>{o}</option>)}
-    </select>
-  </div>
-);
-
-const FilterInput = ({ label, type, value, onChange }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-    <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#0ea5e9' }}>{label}</label>
-    <div style={{ position: 'relative' }}>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} style={{ padding: '0.4rem', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }} />
-    </div>
-  </div>
-);
-
 const F = ({ label, field, type = 'text', options, form, setForm }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
     <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>{label}</label>
     {options
       ? <select value={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))} style={{ padding: '0.4rem 0.6rem', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.82rem' }}>
-          {options.map(o => <option key={o}>{o}</option>)}
+          {uniqueOptions(options).map((option, index) => <option key={`${option}-${index}`} value={option}>{option}</option>)}
         </select>
       : <input type={type} value={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))} style={{ padding: '0.4rem 0.6rem', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.82rem' }} />
     }

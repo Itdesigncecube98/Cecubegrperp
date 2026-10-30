@@ -121,11 +121,13 @@ export default function PositionIndent() {
   };
 
   const handleEdit = (row) => {
+    if (String(row.status).trim().toLowerCase() === 'approved') return;
     setForm(row);
     setModalOpen(true);
   };
 
   const handleStatusChange = async (row, status) => {
+    if (String(row.status).trim().toLowerCase() === 'approved') return;
     if (status === row.status) return;
     setUpdatingStatusId(row.id);
     try {
@@ -145,13 +147,16 @@ export default function PositionIndent() {
   };
 
   const handleDelete = async (id) => {
+    const row = data.find(item => item.id === id);
+    if (row && String(row.status).trim().toLowerCase() === 'approved') return;
     if (!confirm('Are you sure you want to delete this indent?')) return;
     try {
       const res = await fetch(`/api/recruitment/position-indent?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         fetchData();
       } else {
-        alert('Failed to delete indent');
+        const result = await res.json();
+        alert(result.error || 'Failed to delete indent');
       }
     } catch (error) {
       console.error(error);
@@ -205,8 +210,10 @@ export default function PositionIndent() {
               ) : data.length === 0 ? (
                 <tr><td colSpan="11" style={{ textAlign: 'center', padding: '1rem', color: '#64748b', background: '#f8fafc' }}>No Details Found</td></tr>
               ) : (
-                data.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
+                data.map(row => {
+                  const isApproved = String(row.status).trim().toLowerCase() === 'approved';
+                  return (
+                  <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
                     <td style={{ padding: '0.75rem' }}>{row.positionName}</td>
                     <td style={{ padding: '0.75rem' }}>{row.department}</td>
                     <td style={{ padding: '0.75rem' }}>{row.raisedBy}</td>
@@ -220,9 +227,9 @@ export default function PositionIndent() {
                       <select
                         aria-label={`Change status for ${row.positionName}`}
                         value={row.status || 'pending'}
-                        disabled={updatingStatusId === row.id}
+                        disabled={isApproved || updatingStatusId === row.id}
                         onChange={event => handleStatusChange(row, event.target.value)}
-                        style={{ padding: '0.4rem 0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: updatingStatusId === row.id ? '#f1f5f9' : '#fff', color: '#334155', fontSize: '0.82rem', cursor: updatingStatusId === row.id ? 'wait' : 'pointer' }}
+                        style={{ padding: '0.4rem 0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: isApproved || updatingStatusId === row.id ? '#f1f5f9' : '#fff', color: '#334155', fontSize: '0.82rem', cursor: isApproved ? 'not-allowed' : updatingStatusId === row.id ? 'wait' : 'pointer' }}
                       >
                         {!POSITION_STATUSES.some(status => status.value === row.status) && (
                           <option value={row.status}>{row.status}</option>
@@ -232,12 +239,17 @@ export default function PositionIndent() {
                     </td>
                     <td style={{ padding: '0.75rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => handleEdit(row)} style={{ background: 'none', border: 'none', color: '#0ea5e9', cursor: 'pointer' }} title="Edit"><Edit2 size={16} /></button>
-                        <button onClick={() => handleDelete(row.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }} title="Delete"><Trash2 size={16} /></button>
+                        {!isApproved ? (
+                          <>
+                            <button onClick={() => handleEdit(row)} style={{ background: 'none', border: 'none', color: '#0ea5e9', cursor: 'pointer' }} title="Edit"><Edit2 size={16} /></button>
+                            <button onClick={() => handleDelete(row.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }} title="Delete"><Trash2 size={16} /></button>
+                          </>
+                        ) : <span style={{ color: '#64748b', fontSize: '0.78rem' }}>Locked</span>}
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

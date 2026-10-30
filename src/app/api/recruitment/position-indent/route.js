@@ -69,22 +69,16 @@ export async function PUT(request) {
     
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
 
+    let updateFields;
     if (updateData.status !== undefined) {
       const allowedStatuses = ['pending', 'in progress', 'approved', 'rejected'];
       const status = String(updateData.status).trim().toLowerCase();
       if (!allowedStatuses.includes(status)) {
         return NextResponse.json({ error: 'Invalid requirement status' }, { status: 400 });
       }
-      const updatedIndent = await prisma.positionIndent.update({
-        where: { id },
-        data: { status },
-      });
-      return NextResponse.json(updatedIndent);
-    }
-
-    const updatedIndent = await prisma.positionIndent.update({
-      where: { id },
-      data: {
+      updateFields = { status };
+    } else {
+      updateFields = {
         positionName: updateData.positionName,
         department: updateData.department,
         raisedBy: updateData.raisedBy,
@@ -93,9 +87,35 @@ export async function PUT(request) {
         indentType: updateData.indentType,
         replacementFor: updateData.indentType === 'Replacement' && updateData.replacementFor !== 'Select' ? updateData.replacementFor : null,
         reqFromDate: updateData.reqFromDate,
-      },
+      };
+    }
+
+    const outcome = await prisma.$transaction(async transaction => {
+      const current = await transaction.positionIndent.findUnique({ where: { id } });
+      if (!current) return { kind: 'not-found' };
+      if (String(current.status).trim().toLowerCase() === 'approved') return { kind: 'approved' };
+
+      const result = await transaction.positionIndent.updateMany({
+        where: { id, status: current.status },
+        data: updateFields,
+      });
+      if (result.count !== 1) {
+        const latest = await transaction.positionIndent.findUnique({ where: { id } });
+        return {
+          kind: latest && String(latest.status).trim().toLowerCase() === 'approved' ? 'approved' : 'conflict',
+        };
+      }
+
+      return {
+        kind: 'updated',
+        indent: await transaction.positionIndent.findUnique({ where: { id } }),
+      };
     });
-    return NextResponse.json(updatedIndent);
+
+    if (outcome.kind === 'not-found') return NextResponse.json({ error: 'Requirement not found' }, { status: 404 });
+    if (outcome.kind === 'approved') return NextResponse.json({ error: 'Approved requirements cannot be changed' }, { status: 409 });
+    if (outcome.kind === 'conflict') return NextResponse.json({ error: 'Requirement changed while saving. Refresh and try again.' }, { status: 409 });
+    return NextResponse.json(outcome.indent);
   } catch (error) {
     console.error('Error updating position indent:', error);
     return NextResponse.json({ error: 'Failed to update position indent' }, { status: 500 });
@@ -107,8 +127,24 @@ export async function DELETE(request) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
-    
-    await prisma.positionIndent.delete({ where: { id } });
+
+    const outcome = await prisma.$transaction(async transaction => {
+      const current = await transaction.positionIndent.findUnique({ where: { id } });
+      if (!current) return 'not-found';
+      if (String(current.status).trim().toLowerCase() === 'approved') return 'approved';
+
+      const result = await transaction.positionIndent.deleteMany({
+        where: { id, status: current.status },
+      });
+      if (result.count === 1) return 'deleted';
+
+      const latest = await transaction.positionIndent.findUnique({ where: { id } });
+      return latest && String(latest.status).trim().toLowerCase() === 'approved' ? 'approved' : 'conflict';
+    });
+
+    if (outcome === 'not-found') return NextResponse.json({ error: 'Requirement not found' }, { status: 404 });
+    if (outcome === 'approved') return NextResponse.json({ error: 'Approved requirements cannot be deleted' }, { status: 409 });
+    if (outcome === 'conflict') return NextResponse.json({ error: 'Requirement changed while deleting. Refresh and try again.' }, { status: 409 });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting position indent:', error);

@@ -133,12 +133,40 @@ export default function EmployeeDocGenerator() {
     fetchEmps();
   }, []);
 
-  const loadSubmissions = () => {
+  const loadSubmissions = async () => {
     const empData = localStorage.getItem('employeeData');
     if (!empData) return;
     const emp = JSON.parse(empData);
     const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    setSubmissions(saved.filter(s => s.employeeId === emp.id));
+    const localSubmissions = saved.filter(submission => submission.employeeId === emp.id);
+    try {
+      const response = await fetch('/api/generated-documents', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Could not load document history.');
+      let remoteSubmissions = await response.json();
+      const knownClientIds = new Set(remoteSubmissions.map(submission => submission.clientId).filter(Boolean));
+      for (const submission of localSubmissions) {
+        const clientId = String(submission.clientId || submission.id);
+        if (knownClientIds.has(clientId)) continue;
+        const migrationResponse = await fetch('/api/generated-documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...submission, clientId }),
+        });
+        if (!migrationResponse.ok) continue;
+        const migrated = await migrationResponse.json();
+        remoteSubmissions = [migrated, ...remoteSubmissions.filter(item => item.id !== migrated.id)];
+        knownClientIds.add(clientId);
+      }
+      const remoteIds = new Set(remoteSubmissions.map(submission => String(submission.id)));
+      const unsyncedLocal = localSubmissions.filter(submission =>
+        !remoteIds.has(String(submission.id)) &&
+        !knownClientIds.has(String(submission.clientId || submission.id))
+      );
+      setSubmissions([...remoteSubmissions, ...unsyncedLocal]);
+    } catch (error) {
+      console.error('Failed to load document history:', error);
+      setSubmissions(localSubmissions);
+    }
   };
 
   const emptyRow = (template) => {
@@ -196,15 +224,31 @@ export default function EmployeeDocGenerator() {
     setTableRows(sub.tableRows || [emptyRow(tmpl)]);
   };
 
-  const deleteDraft = (id) => {
+  const deleteDraft = async (id) => {
     if (!confirm('Delete this draft?')) return;
-    const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    localStorage.setItem('docgen_submissions', JSON.stringify(saved.filter(s => s.id !== id)));
-    loadSubmissions();
+    try {
+      const draft = submissions.find(submission => String(submission.id) === String(id));
+      if (draft?.databaseRecord) {
+        const response = await fetch(`/api/generated-documents?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!response.ok) {
+          const result = await response.json();
+          throw new Error(result.error || 'Failed to delete draft.');
+        }
+      }
+      const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+      localStorage.setItem('docgen_submissions', JSON.stringify(saved.filter(submission => String(submission.id) !== String(id))));
+      await loadSubmissions();
+    } catch (error) {
+      alert(error.message || 'Failed to delete draft.');
+    }
   };
 
-  const buildSub = (status) => ({
-    id: editingId || Date.now().toString(),
+  const buildSub = (status) => {
+    const existing = submissions.find(submission => String(submission.id) === String(editingId));
+    const clientId = existing?.clientId || (editingId ? undefined : Date.now().toString());
+    return ({
+    id: editingId || clientId,
+    clientId,
     employeeId: employee?.id,
     employeeName: empName,
     templateId: selectedTemplate.id,
@@ -216,6 +260,7 @@ export default function EmployeeDocGenerator() {
     tableRows,
     supportingDocs,
   });
+  };
 
   const handleSupportingDocs = (e) => {
     const files = Array.from(e.target.files);
@@ -232,26 +277,47 @@ export default function EmployeeDocGenerator() {
 
   const removeDoc = (idx) => setSupportingDocs(prev => prev.filter((_, i) => i !== idx));
 
-  const handleSaveDraft = () => {
-    const sub = buildSub('DRAFT');
+  const persistSubmission = async submission => {
+    const isExistingDatabaseRecord = submissions.some(item =>
+      String(item.id) === String(editingId) && item.databaseRecord
+    );
+    const response = await fetch('/api/generated-documents', {
+      method: isExistingDatabaseRecord ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(submission),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Failed to save document.');
     const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    const updated = editingId ? saved.map(s => (s.id === editingId ? sub : s)) : [...saved, sub];
-    localStorage.setItem('docgen_submissions', JSON.stringify(updated));
-    alert('Draft saved!');
-    setIsEditing(false);
-    loadSubmissions();
+    localStorage.setItem('docgen_submissions', JSON.stringify([
+      result,
+      ...saved.filter(item => String(item.id) !== String(result.id) && item.clientId !== result.clientId),
+    ]));
+    await loadSubmissions();
   };
 
-  const handleSubmit = () => {
+  const handleSaveDraft = async () => {
+    const sub = buildSub('DRAFT');
+    try {
+      await persistSubmission(sub);
+      alert('Draft saved!');
+      setIsEditing(false);
+    } catch (error) {
+      alert(error.message || 'Failed to save draft.');
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!certified) return alert('Please check the Employee Declaration box before submitting.');
     if (!confirm('Submit this form for approval? It will go to your Supervisor first.')) return;
     const sub = buildSub('PENDING_SUPERVISOR');
-    const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    const updated = editingId ? saved.map(s => (s.id === editingId ? sub : s)) : [...saved, sub];
-    localStorage.setItem('docgen_submissions', JSON.stringify(updated));
-    alert('Form submitted successfully! Your supervisor will review it.');
-    setIsEditing(false);
-    loadSubmissions();
+    try {
+      await persistSubmission(sub);
+      alert('Form submitted successfully! Your supervisor will review it.');
+      setIsEditing(false);
+    } catch (error) {
+      alert(error.message || 'Failed to submit form.');
+    }
   };
 
   const handleAddRow = () => setTableRows([...tableRows, emptyRow(selectedTemplate)]);
@@ -783,7 +849,7 @@ export default function EmployeeDocGenerator() {
               {submissions.length === 0 && (
                 <tr>
                   <td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-                    You haven't submitted any applications yet. Select a form from the left to begin.
+                    You haven&apos;t submitted any applications yet. Select a form from the left to begin.
                   </td>
                 </tr>
               )}

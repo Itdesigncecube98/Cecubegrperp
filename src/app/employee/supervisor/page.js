@@ -58,12 +58,22 @@ export default function SupervisorDashboard() {
     setLeaveRequests(Array.isArray(data) ? data : []);
   }, [employee]);
 
-  const loadDocCount = useCallback(() => {
+  const loadDocCount = useCallback(async () => {
     try {
-      const all = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+      const response = await fetch('/api/generated-documents?role=SUPERVISOR', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Could not load pending document approvals.');
+      const all = await response.json();
       const pending = all.filter(s => s.status === 'PENDING_SUPERVISOR');
       setPendingDocCount(pending.length);
-    } catch {}
+    } catch (error) {
+      console.error('Failed to load pending document approvals:', error);
+      try {
+        const all = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+        setPendingDocCount(all.filter(s => s.status === 'PENDING_SUPERVISOR').length);
+      } catch {
+        setPendingDocCount(0);
+      }
+    }
   }, []);
 
   const refreshAll = useCallback(async () => {

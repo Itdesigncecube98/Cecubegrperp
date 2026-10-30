@@ -87,16 +87,29 @@ export default function DocApprovalsPanel({ role, currentEmployee }) {
       }
     } catch { /* DB may be offline – fallback to empty */ }
     finally { setHodCheckDone(true); }
-  }, [currentEmployee?.id]);
+  }, [currentEmployee]);
 
   // ── Load submissions from localStorage ────────────────────────────────────
-  const load = useCallback(() => {
-    const all = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    setSubmissions(all);
-  }, []);
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/generated-documents?role=${encodeURIComponent(role)}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Could not load generated documents.');
+      const persisted = await response.json();
+      const persistedIds = new Set(persisted.map(submission => String(submission.id)));
+      const local = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+      setSubmissions([
+        ...persisted,
+        ...local.filter(submission => !persistedIds.has(String(submission.id))),
+      ]);
+    } catch (error) {
+      console.error('Failed to load generated documents:', error);
+      const local = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+      setSubmissions(local);
+    }
+  }, [role]);
 
   useEffect(() => {
-    load();
+    void load();
     loadHodMappings();
   }, [load, loadHodMappings]);
 
@@ -124,83 +137,83 @@ export default function DocApprovalsPanel({ role, currentEmployee }) {
   };
 
   // ── Approve (supervisor / HR / accounts / explicit HOD) ───────────────────
-  const handleApprove = () => {
-    if (!confirm('Approve this document?')) return;
+  const saveApprovalAction = async (target, action, roleName, approval) => {
+    if (target.databaseRecord) {
+      const response = await fetch('/api/generated-documents', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: target.id,
+          action,
+          role: roleName,
+          approvalData: approval,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not update document approval.');
+      setSubmissions(previous => previous.map(submission =>
+        submission.id === result.id ? result : submission
+      ));
+      setSelected(null);
+      return;
+    }
+
     const all = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    const updated = all.map(s => {
-      if (s.id !== selected.id) return s;
-      return {
-        ...s,
-        status: STATUS_NEXT[role],
-        [`${role.toLowerCase()}Approval`]: { ...approvalData, approved: true, date: new Date().toLocaleDateString() },
-      };
-    });
+    const updated = all.map(submission => submission.id !== target.id
+      ? submission
+      : {
+          ...submission,
+          status: action === 'approve' ? STATUS_NEXT[roleName] : 'REJECTED',
+          [`${roleName.toLowerCase()}Approval`]: {
+            ...approval,
+            approved: action === 'approve',
+            date: new Date().toLocaleDateString(),
+          },
+        });
     localStorage.setItem('docgen_submissions', JSON.stringify(updated));
-    alert('Approved successfully!');
     setSelected(null);
-    load();
+    await load();
   };
 
-  const handleReject = () => {
+  const handleApprove = async () => {
+    if (!confirm('Approve this document?')) return;
+    try {
+      await saveApprovalAction(selected, 'approve', role, approvalData);
+      alert('Approved successfully!');
+    } catch (error) {
+      alert(error.message || 'Could not approve this document.');
+    }
+  };
+
+  const handleReject = async () => {
     if (!confirm('Reject this document?')) return;
-    const all = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    const updated = all.map(s => {
-      if (s.id !== selected.id) return s;
-      return {
-        ...s,
-        status: 'REJECTED',
-        [`${role.toLowerCase()}Approval`]: { ...approvalData, approved: false, date: new Date().toLocaleDateString() },
-      };
-    });
-    localStorage.setItem('docgen_submissions', JSON.stringify(updated));
-    alert('Rejected.');
-    setSelected(null);
-    load();
+    try {
+      await saveApprovalAction(selected, 'reject', role, approvalData);
+      alert('Rejected.');
+    } catch (error) {
+      alert(error.message || 'Could not reject this document.');
+    }
   };
 
   // ── HOD Approve (inline from SUPERVISOR dashboard) ────────────────────────
-  const handleHodApprove = () => {
+  const handleHodApprove = async () => {
     if (!confirm('Approve as HOD? This will mark the document as APPROVED.')) return;
-    const all = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    const updated = all.map(s => {
-      if (s.id !== selected.id) return s;
-      return {
-        ...s,
-        status: 'APPROVED',
-        hodApproval: {
-          ...hodApprovalData,
-          approved: true,
-          approvedBy: currentEmployee?.name || 'HOD',
-          date: new Date().toLocaleDateString(),
-        },
-      };
-    });
-    localStorage.setItem('docgen_submissions', JSON.stringify(updated));
-    alert('HOD Approval done! Document marked APPROVED.');
-    setSelected(null);
-    load();
+    try {
+      await saveApprovalAction(selected, 'approve', 'HOD', hodApprovalData);
+      alert('HOD Approval done! Document marked APPROVED.');
+    } catch (error) {
+      alert(error.message || 'Could not approve this document as HOD.');
+    }
   };
 
-  const handleHodReject = () => {
+  const handleHodReject = async () => {
     if (!confirm('Reject as HOD?')) return;
-    const all = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    const updated = all.map(s => {
-      if (s.id !== selected.id) return s;
-      return {
-        ...s,
-        status: 'REJECTED',
-        hodApproval: {
-          ...hodApprovalData,
-          approved: false,
-          approvedBy: currentEmployee?.name || 'HOD',
-          date: new Date().toLocaleDateString(),
-        },
-      };
-    });
-    localStorage.setItem('docgen_submissions', JSON.stringify(updated));
-    alert('Rejected as HOD.');
-    setSelected(null);
-    load();
+    try {
+      await saveApprovalAction(selected, 'reject', 'HOD', hodApprovalData);
+      alert('Rejected as HOD.');
+    } catch (error) {
+      alert(error.message || 'Could not reject this document as HOD.');
+    }
   };
 
   // ── Print ─────────────────────────────────────────────────────────────────
