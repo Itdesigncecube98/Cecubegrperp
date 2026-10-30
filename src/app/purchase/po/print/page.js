@@ -65,13 +65,16 @@ function POPrintContent() {
       <style>{`
         @media print {
           @page { size: A4; margin: 0; }
-          body { background: white; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          html, body, body > div { width: 100% !important; min-width: 0 !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
+          html, body { width: 100% !important; min-width: 0 !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body * { visibility: hidden !important; }
+          .po-print-root, .po-print-root * { visibility: visible !important; }
+          .purchase-layout, .purchase-main, .custom-horizontal-scrollbar { display: block !important; height: auto !important; min-height: 0 !important; margin: 0 !important; overflow: visible !important; }
           html::-webkit-scrollbar, body::-webkit-scrollbar, .po-print-root::-webkit-scrollbar { display: none !important; width: 0 !important; }
           html, body, .po-print-root { scrollbar-width: none !important; -ms-overflow-style: none !important; }
-          .po-print-root { max-width: 100% !important; width: 100% !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
-          .no-print { display: none; }
-          .page-break { page-break-before: always; }
+          .po-print-root { position: absolute !important; top: 0 !important; left: 0 !important; max-width: 210mm !important; width: 210mm !important; margin: 0 !important; padding: 8mm !important; overflow: visible !important; }
+          .no-print { display: none !important; }
+          .po-table thead { display: table-header-group; }
+          .po-table tr, .po-grid-table tr { break-inside: avoid; page-break-inside: avoid; }
         }
         .po-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .po-table th, .po-table td { border: 1px solid #000; padding: 4px; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
@@ -102,9 +105,7 @@ function POPrintContent() {
             <div className="header-sub">Phone No-0124-4946490, contact@cecubeindia.com</div>
             <div className="header-sub">GST No.-06AAJCC2203M1ZT, PAN No.-AAJCC2203M</div>
           </div>
-          <div style={{ width: '80px', textAlign: 'right', fontSize: '9px' }}>
-            Page 1 of 1
-          </div>
+          <div style={{ width: '80px' }} />
         </div>
 
         {/* Title */}
@@ -308,7 +309,7 @@ function POPrintContent() {
             <div style={{ fontWeight: 'bold', fontSize: '11px' }}>{po.approvedByName || 'Director'}</div>
           </div>
           <div style={{ textAlign: 'right', fontSize: '10px', color: '#4b5563', alignSelf: 'flex-end' }}>
-            {new Date().toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true })} Page 1 of 1
+            {new Date().toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true })}
           </div>
         </div>
 

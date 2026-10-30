@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Save, Trash2 } from 'lucide-react';
 
 const CORE_DEFAULTS = {
   tenderNo: '',
@@ -398,6 +398,11 @@ export default function TenderDetailsForm({ id, isNew = false }) {
         </div>
         <div className="tnd-detail-save">
           {savedMessage && <span role="status" className="tnd-detail-success">{savedMessage}</span>}
+          {isNew && (
+            <Link href="/tender/register" className="tnd-btn tnd-btn-outline">
+              <ArrowLeft size={16} /> Back to Register
+            </Link>
+          )}
           <button className="tnd-btn tnd-btn-primary" type="submit" disabled={saving}>
             <Save size={16} />{saving ? 'Saving...' : isNew ? 'Register Tender' : 'Save Details'}
           </button>

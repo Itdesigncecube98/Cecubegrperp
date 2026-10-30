@@ -13,6 +13,28 @@ function moduleForPath(pathname) {
   return MODULE_ROUTES.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1] || null;
 }
 
+function submitAuditEvent(payload, fallbackFetch) {
+  const body = JSON.stringify(payload);
+  if (typeof navigator.sendBeacon === 'function' &&
+      navigator.sendBeacon('/api/admin/audit-log', new Blob([body], { type: 'application/json' }))) {
+    return;
+  }
+
+  fallbackFetch('/api/admin/audit-log', {
+    method: 'POST',
+    credentials: 'same-origin',
+    keepalive: true,
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  }).then(response => {
+    if (!response.ok && document.visibilityState === 'visible') {
+      console.error(`Activity audit request failed (${response.status}).`);
+    }
+  }).catch(error => {
+    if (document.visibilityState === 'visible') console.error('Activity audit request failed.', error);
+  });
+}
+
 export default function ModuleAccessTracker() {
   const pathname = usePathname();
   const lastModule = useRef(null);
@@ -80,10 +102,7 @@ export default function ModuleAccessTracker() {
           if (emp) employeeId = JSON.parse(emp).id;
         } catch (e) {}
 
-        nativeFetch('/api/admin/audit-log', {
-          method: 'POST', credentials: 'same-origin', keepalive: true,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        submitAuditEvent({
             pagePath: currentPath.current,
             apiPath: url.pathname,
             action,
@@ -92,8 +111,7 @@ export default function ModuleAccessTracker() {
             entityId: id && !String(id).startsWith('api') ? String(id) : undefined,
             details,
             employeeId,
-          }),
-        }).catch(error => console.error('Activity audit request failed.', error));
+          }, nativeFetch);
       } catch (error) {
         console.error('Could not capture activity audit event.', error);
       }
@@ -121,15 +139,10 @@ export default function ModuleAccessTracker() {
       if (emp) employeeId = JSON.parse(emp).id;
     } catch (e) {}
 
-    fetch('/api/admin/audit-log', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      keepalive: true,
-      body: JSON.stringify({ pagePath: pathname, action: 'MODULE_OPEN', employeeId }),
-    }).then(response => {
-      if (!response.ok) console.error(`Module access log failed (${response.status}) for ${module}.`);
-    }).catch(error => console.error('Module access log request failed.', error));
+    submitAuditEvent(
+      { pagePath: pathname, action: 'MODULE_OPEN', employeeId },
+      window.fetch.bind(window)
+    );
   }, [pathname]);
 
   return null;

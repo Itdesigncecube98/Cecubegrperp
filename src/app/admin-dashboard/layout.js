@@ -4,11 +4,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Shield, LayoutDashboard, LogOut, Users, Building2, Key,
-  ClipboardList, Settings, FileText, ShoppingCart, Warehouse,
-  Calendar, HardHat, DollarSign, Megaphone, FileCheck,
-  Star, AlertTriangle, Receipt, Wrench, ChevronRight,
+  ClipboardList, Settings, FileText, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import TopHeader from '../../components/TopHeader';
+import './admin-dashboard.css';
 
 const NAV_SECTIONS = [
   {
@@ -43,63 +42,50 @@ function AdminDashboardContent({ children }) {
       : pathname.startsWith(href);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', background: '#f1f5f9', fontFamily: '"Inter", sans-serif' }}>
+    <div className="adm-shell">
 
       {/* ── Sidebar ─────────────────────────────────────────────── */}
-      <aside style={{
-        width: collapsed ? 64 : 240,
-        minWidth: collapsed ? 64 : 240,
-        background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
-        display: 'flex', flexDirection: 'column',
-        transition: 'width 0.25s ease', overflow: 'hidden',
-        boxShadow: '4px 0 32px rgba(0,0,0,0.15)', zIndex: 20,
-      }}>
-
+      <aside className={`adm-sidebar${collapsed ? ' is-collapsed' : ''}`}>
         {/* Brand */}
-        <div style={{ padding: '18px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }} onClick={() => setCollapsed(c => !c)}>
-          <div style={{ minWidth: 32, width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#6366f1,#4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(99,102,241,0.4)' }}>
-            <Shield size={16} color="#fff" />
+        <div className="adm-brand">
+          <div className="adm-brand-mark">
+            <Shield size={18} />
           </div>
-          {!collapsed && <span style={{ fontWeight: 700, fontSize: 14, color: '#f8fafc', letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}>System Admin</span>}
-          {!collapsed && <ChevronRight size={14} color="#64748b" style={{ marginLeft: 'auto', transform: 'rotate(180deg)' }} />}
+          {!collapsed && <div className="adm-brand-copy"><strong>CeCube</strong><span>ADMIN CONSOLE</span></div>}
+          <button
+            type="button"
+            className="adm-collapse-button"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={() => setCollapsed(value => !value)}
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 8px', scrollbarWidth: 'none' }}>
-          <Link href="/portal" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, color: '#94a3b8', textDecoration: 'none', fontSize: 13, fontWeight: 500, justifyContent: collapsed ? 'center' : 'flex-start', marginBottom: 8 }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}>
-            <LayoutDashboard size={15} style={{ minWidth: 15 }} />
-            {!collapsed && 'Back to Portal'}
+        <nav className="adm-nav">
+          <Link href="/portal" className="adm-portal-link" title={collapsed ? 'Back to Portal' : undefined}>
+            <LayoutDashboard size={17} />
+            {!collapsed && <span>Back to Portal</span>}
           </Link>
           {NAV_SECTIONS.map(section => (
-            <div key={section.group} style={{ marginBottom: 4 }}>
-              {!collapsed && (
-                <div style={{ padding: '12px 8px 4px', fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                  {section.group}
-                </div>
-              )}
+            <div key={section.group} className="adm-nav-section">
+              {!collapsed && <div className="adm-section-label">{section.group}</div>}
               {section.items.map(item => {
                 const active = isActive(item.href);
                 const Icon = item.icon;
                 return (
-                  <Link key={item.id} href={item.href} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: collapsed ? '10px 16px' : '9px 10px',
-                    borderRadius: 8, textDecoration: 'none',
-                    color: active ? '#fff' : '#94a3b8',
-                    fontWeight: active ? 600 : 500, fontSize: 13,
-                    background: active ? 'rgba(99,102,241,0.25)' : 'transparent',
-                    borderLeft: active ? '3px solid #6366f1' : '3px solid transparent',
-                    transition: 'all 0.15s', marginBottom: 2,
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                  }}
-                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#f1f5f9'; }}
-                    onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; } }}
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className={`adm-nav-link${active ? ' is-active' : ''}`}
+                    title={collapsed ? item.label : undefined}
+                    aria-current={active ? 'page' : undefined}
                   >
-                    <Icon size={15} style={{ minWidth: 15 }} />
-                    {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>}
-                    {!collapsed && active && <div style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: 3, background: '#6366f1' }} />}
+                    <Icon size={17} />
+                    {!collapsed && <span>{item.label}</span>}
+                    {!collapsed && active && <span className="adm-active-indicator" />}
                   </Link>
                 );
               })}
@@ -108,21 +94,29 @@ function AdminDashboardContent({ children }) {
         </nav>
 
         {/* Logout */}
-        <div style={{ padding: '12px 8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <button onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); sessionStorage.clear(); localStorage.removeItem('employeeData'); localStorage.removeItem('activeEmp'); localStorage.removeItem('activeProj'); router.push('/login'); }}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13, fontWeight: 500, justifyContent: collapsed ? 'center' : 'flex-start' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; }}>
-            <LogOut size={15} style={{ minWidth: 15 }} />
-            {!collapsed && 'Logout'}
+        <div className="adm-sidebar-footer">
+          {!collapsed && (
+            <div className="adm-account-card">
+              <div className="adm-account-avatar"><Shield size={16} /></div>
+              <div className="adm-account-copy"><strong>Administrator</strong><span>System access</span></div>
+            </div>
+          )}
+          <button
+            type="button"
+            className="adm-logout-button"
+            title={collapsed ? 'Logout' : undefined}
+            onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); sessionStorage.clear(); localStorage.removeItem('employeeData'); localStorage.removeItem('activeEmp'); localStorage.removeItem('activeProj'); router.push('/login'); }}
+          >
+            <LogOut size={17} />
+            {!collapsed && <span>Logout</span>}
           </button>
         </div>
       </aside>
 
       {/* ── Main ────────────────────────────────────────────────── */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-        <TopHeader title="Admin Workspace" />
-        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+      <main className="adm-main">
+        <div className="adm-topbar"><TopHeader title="Admin Workspace" /></div>
+        <div className="adm-content">
           {children}
         </div>
       </main>

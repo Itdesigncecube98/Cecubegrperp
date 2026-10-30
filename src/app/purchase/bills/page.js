@@ -554,7 +554,7 @@ export default function PurchaseBillsPage() {
 
       {/* ─── Bill WYSIWYG Form Modal ─── */}
       {showBillForm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.8)', display: 'flex', flexDirection: 'column', alignItems: 'center', overflowY: 'auto', zIndex: 9999, padding: '20px 0' }}>
+        <div id="bill-print-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.8)', display: 'flex', flexDirection: 'column', alignItems: 'center', overflowY: 'auto', zIndex: 9999, padding: '20px 0' }}>
 
           <style>{`
             .inv-doc-input { border: 1px solid transparent; background: transparent; padding: 2px 4px; font-family: inherit; font-size: inherit; width: 100%; transition: all 0.2s; outline: none; }
@@ -579,10 +579,29 @@ export default function PurchaseBillsPage() {
             @media print {
               @page { size: A4 portrait; margin: 8mm; }
               html, body { width: 100%; margin: 0 !important; padding: 0 !important; }
+              .purchase-layout { display: block !important; min-height: 0 !important; height: auto !important; }
+              .purchase-layout > :not(.purchase-main) { display: none !important; }
+              .purchase-main { display: block !important; height: auto !important; min-height: 0 !important; margin: 0 !important; overflow: visible !important; }
+              .purchase-main > :first-child { display: none !important; }
+              .purchase-main > .custom-horizontal-scrollbar { display: block !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
+              .pur-page-container { display: block !important; min-height: 0 !important; padding: 0 !important; gap: 0 !important; background: #fff !important; }
+              .pur-page-container > :not(#bill-print-overlay) { display: none !important; }
               body * { visibility: hidden; }
-              #invoice-document, #invoice-document * { visibility: visible; }
-              #invoice-document { position: absolute; left: 0; top: 0; box-sizing: border-box !important; box-shadow: none !important; margin: 0 !important; width: 194mm !important; min-height: 281mm !important; padding: 8mm !important; overflow: visible !important; }
-              #invoice-document > table { page-break-inside: avoid; }
+              #bill-print-overlay, #bill-print-overlay * { visibility: visible; }
+              #bill-print-overlay { position: static !important; inset: auto !important; display: block !important; width: 100% !important; height: auto !important; overflow: visible !important; background: transparent !important; padding: 0 !important; z-index: auto !important; }
+              #invoice-document { position: static !important; box-sizing: border-box !important; box-shadow: none !important; margin: 0 !important; width: 100% !important; height: auto !important; min-height: 0 !important; padding: 0 !important; overflow: visible !important; }
+              #invoice-document > table { break-inside: auto; page-break-inside: auto; }
+              #invoice-document .inv-table thead { display: table-header-group; }
+              #invoice-document .inv-table tr { break-inside: avoid; page-break-inside: avoid; }
+              #invoice-document .invoice-spacer-row { display: none !important; }
+              #invoice-document .invoice-footer { min-height: 0 !important; grid-template-columns: 58% 42% !important; break-inside: avoid; page-break-inside: avoid; }
+              #invoice-document .invoice-footer-left { gap: 4px !important; padding: 4px !important; }
+              #invoice-document .invoice-footer-right { padding: 4px !important; }
+              #invoice-document .invoice-signature { margin-top: 4px !important; }
+              #invoice-document .invoice-signature-space { height: 16px !important; }
+              #invoice-document .invoice-declaration { font-size: 8px !important; }
+              #invoice-document .invoice-footer .inv-doc-input { padding-top: 0 !important; padding-bottom: 0 !important; }
+              #invoice-document input, #invoice-document textarea { border: 0 !important; box-shadow: none !important; background: transparent !important; color: #000 !important; }
               .no-print { display: none !important; }
             }
           `}</style>
@@ -715,7 +734,7 @@ export default function PurchaseBillsPage() {
                   </tr>
                 ))}
                 {/* Empty padding rows to stretch the table a bit */}
-                <tr><td style={{ borderTop: 'none', borderBottom: 'none', height: '40px' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td></tr>
+                <tr className="invoice-spacer-row"><td style={{ borderTop: 'none', borderBottom: 'none', height: '40px' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td><td style={{ borderTop: 'none', borderBottom: 'none' }}></td></tr>
 
                 {/* Manual Editable Rows for Freight/Roundoff */}
                 <tr>
@@ -845,7 +864,7 @@ export default function PurchaseBillsPage() {
 
                 <div className="invoice-signature">
                   <div style={{ fontWeight: 'bold' }}>for {showBillForm.supplierName}</div>
-                  <div style={{ height: '40px' }}></div>
+                  <div className="invoice-signature-space" style={{ height: '40px' }}></div>
                   <div>Authorised Signatory</div>
                 </div>
               </div>
