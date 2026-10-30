@@ -69,6 +69,19 @@ export async function PUT(request) {
     
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
 
+    if (updateData.status !== undefined) {
+      const allowedStatuses = ['pending', 'in progress', 'approved', 'rejected'];
+      const status = String(updateData.status).trim().toLowerCase();
+      if (!allowedStatuses.includes(status)) {
+        return NextResponse.json({ error: 'Invalid requirement status' }, { status: 400 });
+      }
+      const updatedIndent = await prisma.positionIndent.update({
+        where: { id },
+        data: { status },
+      });
+      return NextResponse.json(updatedIndent);
+    }
+
     const updatedIndent = await prisma.positionIndent.update({
       where: { id },
       data: {

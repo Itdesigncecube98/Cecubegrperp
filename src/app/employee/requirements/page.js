@@ -1,20 +1,15 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, FileSpreadsheet, Calendar, Edit2, Trash2, ArrowLeft } from 'lucide-react';
-import ActionToolbar from '@/components/ActionToolbar';
+import { Plus, Edit2, Trash2, ArrowLeft } from 'lucide-react';
 import AppModal from '@/components/AppModal';
 
-const INITIAL_FILTERS = {
-  company: 'Select All',
-  branch: 'Select All',
-  position: 'Select',
-  raiseBy: 'Select',
-  raiseFrom: '2026-07-27',
-  raiseTo: '2026-08-27',
-  status: 'All',
-  type: 'All'
-};
+const POSITION_STATUSES = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'in progress', label: 'In Progress' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+];
 
 const EMPTY_FORM = {
   positionName: '',
@@ -28,12 +23,20 @@ const EMPTY_FORM = {
   replacementFor: ''
 };
 
+function getEmpName() {
+  if (typeof window !== 'undefined') {
+    const empData = localStorage.getItem('employeeData');
+    if (empData) return JSON.parse(empData).name;
+  }
+  return '';
+}
+
 export default function PositionIndent() {
   const router = useRouter();
-  const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   
   const [options, setOptions] = useState({
@@ -45,12 +48,7 @@ export default function PositionIndent() {
     grades: []
   });
 
-  useEffect(() => {
-    fetchData();
-    fetchSyncData();
-  }, []);
-
-  const fetchSyncData = async () => {
+  const fetchSyncData = useCallback(async () => {
     try {
       const res = await fetch('/api/recruitment/position-indent/sync-data');
       if (res.ok) {
@@ -67,17 +65,9 @@ export default function PositionIndent() {
     } catch (error) {
       console.error('Failed to fetch sync data', error);
     }
-  };
+  }, []);
 
-  const getEmpName = () => {
-    if (typeof window !== 'undefined') {
-      const empData = localStorage.getItem('employeeData');
-      if (empData) return JSON.parse(empData).name;
-    }
-    return '';
-  };
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const empName = getEmpName();
@@ -93,11 +83,12 @@ export default function PositionIndent() {
       console.error('Failed to fetch indents', error);
     }
     setLoading(false);
-  };
+  }, []);
 
-  const handleSearch = () => {
+  useEffect(() => {
     fetchData();
-  };
+    fetchSyncData();
+  }, [fetchData, fetchSyncData]);
 
   const handleAddSubmit = async () => {
     if (!form.positionName) {
@@ -132,6 +123,25 @@ export default function PositionIndent() {
   const handleEdit = (row) => {
     setForm(row);
     setModalOpen(true);
+  };
+
+  const handleStatusChange = async (row, status) => {
+    if (status === row.status) return;
+    setUpdatingStatusId(row.id);
+    try {
+      const res = await fetch('/api/recruitment/position-indent', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id, status }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to update requirement status.');
+      setData(previous => previous.map(item => item.id === row.id ? { ...item, status: result.status } : item));
+    } catch (error) {
+      alert(error.message || 'Failed to update requirement status.');
+    } finally {
+      setUpdatingStatusId(null);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -206,7 +216,20 @@ export default function PositionIndent() {
                     <td style={{ padding: '0.75rem' }}>{row.reqFromDate || '-'}</td>
                     <td style={{ padding: '0.75rem' }}>{row.approvedBy || '-'}</td>
                     <td style={{ padding: '0.75rem' }}>{row.handledBy || '-'}</td>
-                    <td style={{ padding: '0.75rem' }}>{row.status}</td>
+                    <td style={{ padding: '0.75rem' }}>
+                      <select
+                        aria-label={`Change status for ${row.positionName}`}
+                        value={row.status || 'pending'}
+                        disabled={updatingStatusId === row.id}
+                        onChange={event => handleStatusChange(row, event.target.value)}
+                        style={{ padding: '0.4rem 0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: updatingStatusId === row.id ? '#f1f5f9' : '#fff', color: '#334155', fontSize: '0.82rem', cursor: updatingStatusId === row.id ? 'wait' : 'pointer' }}
+                      >
+                        {!POSITION_STATUSES.some(status => status.value === row.status) && (
+                          <option value={row.status}>{row.status}</option>
+                        )}
+                        {POSITION_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                      </select>
+                    </td>
                     <td style={{ padding: '0.75rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button onClick={() => handleEdit(row)} style={{ background: 'none', border: 'none', color: '#0ea5e9', cursor: 'pointer' }} title="Edit"><Edit2 size={16} /></button>
@@ -239,24 +262,6 @@ export default function PositionIndent() {
     </div>
   );
 }
-
-const FilterSelect = ({ label, value, onChange, options }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-    <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#0ea5e9' }}>{label}</label>
-    <select value={value} onChange={e => onChange(e.target.value)} style={{ padding: '0.4rem', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.85rem' }}>
-      {options.map(o => <option key={o}>{o}</option>)}
-    </select>
-  </div>
-);
-
-const FilterInput = ({ label, type, value, onChange }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-    <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#0ea5e9' }}>{label}</label>
-    <div style={{ position: 'relative' }}>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} style={{ padding: '0.4rem', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }} />
-    </div>
-  </div>
-);
 
 const F = ({ label, field, type = 'text', options, form, setForm }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
