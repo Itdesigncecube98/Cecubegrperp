@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Save, User, Eye, EyeOff, CalendarCheck, Plus, Edit2, Trash2, X, PanelLeft, PanelLeftClose, ChevronLeft, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, Save, User, Eye, EyeOff, CalendarCheck, Plus, Edit2, Trash2, X, PanelLeft, PanelLeftClose, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { createWorker } from 'tesseract.js';
 
@@ -20,79 +20,64 @@ const TABS = [
   { key: 'salary', label: 'Salary Info' }
 ];
 
-const EMPLOYEE_EXCEL_FIELDS = {
-  empId: ['emp code', 'employee code', 'emp id', 'employee id', 'employee no', 'emp no'],
-  name: ['emp name', 'employee name', 'full name', 'name'],
-  title: ['title', 'salutation'],
-  email: ['company email', 'official email', 'email address', 'email id', 'email'],
-  otherEmail: ['personal email', 'other email'],
-  phone: ['personal phone', 'mobile no', 'mobile number', 'mobile', 'phone number', 'phone'],
-  workTelephone: ['work telephone', 'office phone', 'telephone'],
-  organisation: ['company', 'company name', 'organisation', 'organization'],
-  department: ['department', 'dept'],
-  designation: ['designation'],
-  position: ['position', 'job title'],
-  branch: ['branch'],
-  siteOffice: ['site office', 'office location', 'work location', 'location'],
-  employeeType: ['employment type', 'employee type', 'employment category'],
-  employmentStatus: ['employment status', 'employee status', 'status'],
-  gender: ['gender', 'sex'],
-  maritalStatus: ['marital status'],
-  dateOfBirth: ['date of birth', 'dob', 'birth date'],
-  joinedDate: ['date of joining', 'joining date', 'joined date'],
-  employmentToDate: ['employment to date', 'last working date', 'relieving date', 'termination date'],
-  fatherName: ['father name', "father's name"],
-  nationality: ['nationality'],
-  bloodGroup: ['blood group'],
-  address: ['address', 'permanent address'],
-  addressStreet1: ['communication address', 'street address', 'address line 1'],
-  city: ['city'],
-  state: ['state'],
-  country: ['country'],
-  zipCode: ['zip code', 'postal code', 'pincode', 'pin code'],
-  pan: ['pan', 'pan number', 'pan no', 'pan paye'],
-  aadharNo: ['aadhaar', 'aadhaar no', 'aadhar', 'aadhar no'],
-  uan: ['uan', 'uan no'],
-  esicNo: ['esic', 'esic no', 'esic number'],
-  passportNo: ['passport', 'passport no', 'passport number'],
-  bankName: ['bank name'],
-  bankAccountNo: ['bank account no', 'bank account number', 'account number'],
-  ifscCode: ['ifsc code', 'ifsc'],
-  identificationMark: ['identification mark'],
-  chargeType: ['charge type'],
-  grade: ['grade'],
-  annualCtc: ['annual ctc'],
-  basicSalary: ['basic salary'],
-  hra: ['hra'],
-  conveyance: ['conveyance'],
-  medical: ['medical'],
-  specialAllowance: ['special allowance'],
-  bonus: ['bonus'],
-  deductions: ['deductions'],
-  pfEmployee: ['pf employee'],
-  pfEmployer: ['pf employer'],
-  professionalTax: ['professional tax'],
-  tds: ['tds', 'tds income tax'],
+const FIXED_SALARY_RULE = 'FIXED_AMOUNT';
+const PF_SALARY_RULES = [
+  { value: 'PF_EMPLOYEE_12_15000', label: 'Employee PF: ROUND(MIN(Basic + DA, ₹15,000) × 12%, 0)' },
+  { value: 'PF_EMPLOYEE_12_25000', label: 'Employee PF: ROUND(MIN(Basic + DA, ₹25,000) × 12%, 0)' },
+  { value: 'PF_EMPLOYER_12_15000', label: 'Employer PF: ROUND(MIN(Basic + DA, ₹15,000) × 12%, 0)' },
+  { value: 'PF_EMPLOYER_12_25000', label: 'Employer PF: ROUND(MIN(Basic + DA, ₹25,000) × 12%, 0)' },
+  { value: 'PF_EPS_8_33_15000', label: 'Employer EPS: ROUND(MIN(Basic + DA, ₹15,000) × 8.33%, 0)' },
+  { value: 'PF_EPS_8_33_25000', label: 'Employer EPS: ROUND(MIN(Basic + DA, ₹25,000) × 8.33%, 0)' },
+  { value: 'PF_EPF_SHARE_15000', label: 'Employer EPF share: Employer PF − EPS (₹15,000 ceiling)' },
+  { value: 'PF_EPF_SHARE_25000', label: 'Employer EPF share: Employer PF − EPS (₹25,000 ceiling)' },
+];
+const ESIC_SALARY_RULES = [
+  { value: 'ESIC_EMPLOYEE_075_21000', label: 'Employee ESIC: CEILING(ESI wages × 0.75%, 1), if wages ≤ ₹21,000' },
+  { value: 'ESIC_EMPLOYER_325_21000', label: 'Employer ESIC: CEILING(ESI wages × 3.25%, 1), if wages ≤ ₹21,000' },
+  { value: 'ESIC_EMPLOYEE_075_25000', label: 'Employee ESIC (PWD ceiling): CEILING(ESI wages × 0.75%, 1), if wages ≤ ₹25,000' },
+  { value: 'ESIC_EMPLOYER_325_25000', label: 'Employer ESIC (PWD ceiling): CEILING(ESI wages × 3.25%, 1), if wages ≤ ₹25,000' },
+];
+const SALARY_FORMULA_RULES = [...PF_SALARY_RULES, ...ESIC_SALARY_RULES];
+
+const salaryRuleLabel = (rule) => {
+  if (rule === FIXED_SALARY_RULE || rule === '(None)' || !rule) return 'Fixed Amount';
+  return SALARY_FORMULA_RULES.find(option => option.value === rule)?.label || rule;
 };
 
-const normalizeExcelHeader = (value) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-const EMPLOYEE_EXCEL_FIELD_BY_HEADER = Object.entries(EMPLOYEE_EXCEL_FIELDS).reduce((lookup, [field, aliases]) => {
-  aliases.forEach(alias => { lookup[normalizeExcelHeader(alias)] = field; });
-  return lookup;
-}, {});
+const isPfSalaryHead = (head) => /\bpf\b|\bepf\b|provident fund|\beps\b/i.test(head?.description || '');
+const isEsicSalaryHead = (head) => /\besic\b|\besi\b/i.test(head?.description || '');
+const salaryRulesForHead = (head) => isEsicSalaryHead(head) ? ESIC_SALARY_RULES : isPfSalaryHead(head) ? PF_SALARY_RULES : [];
 
-function normalizeExcelDate(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+const calculateSalaryRuleAmount = (rule, components, salaryHeads) => {
+  if (!rule || rule === FIXED_SALARY_RULE || rule === '(None)') return null;
+  if (rule.startsWith('ESIC_')) {
+    const esiWages = salaryHeads
+      .filter(head => head.isActive && ['Earning', 'Other'].includes(head.category) && !/\b(?:pf|epf|eps|esi|esic)\b|provident fund/i.test(head.description || ''))
+      .reduce((sum, head) => sum + (Number(components[head.id]) || 0), 0);
+    const ceiling = rule.endsWith('25000') ? 25000 : 21000;
+    if (esiWages > ceiling) return 0;
+    if (rule.startsWith('ESIC_EMPLOYEE_075_')) {
+      if (esiWages / 26 <= 176) return 0;
+      return Math.ceil(esiWages * 0.0075);
+    }
+    if (rule.startsWith('ESIC_EMPLOYER_325_')) return Math.ceil(esiWages * 0.0325);
+    return null;
   }
-  const text = String(value ?? '').trim();
-  if (!text) return '';
-  const iso = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
-  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
-  const local = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  if (local) return `${local[3]}-${local[2].padStart(2, '0')}-${local[1].padStart(2, '0')}`;
-  return text;
-}
+  const findBaseAmount = (matches) => {
+    const head = salaryHeads.find(item => matches.test(item.description || ''));
+    return Number(components[head?.id]) || 0;
+  };
+  const pfWages = findBaseAmount(/^basic(?: salary| pay)?$/i) + findBaseAmount(/^da$|^dearness allowance$/i);
+  const ceiling = rule.endsWith('25000') ? 25000 : 15000;
+  const cappedWages = Math.min(pfWages, ceiling);
+  const roundRupee = value => Math.round(value);
+
+  if (rule.startsWith('PF_EMPLOYEE_12_')) return roundRupee(cappedWages * 0.12);
+  if (rule.startsWith('PF_EMPLOYER_12_')) return roundRupee(cappedWages * 0.12);
+  if (rule.startsWith('PF_EPS_8_33_')) return roundRupee(cappedWages * 0.0833);
+  if (rule.startsWith('PF_EPF_SHARE_')) return roundRupee(cappedWages * 0.12) - roundRupee(cappedWages * 0.0833);
+  return null;
+};
 
 const calculateRevisionCtc = (revision) => {
   if (!revision?.components?.length) return null;
@@ -126,20 +111,14 @@ export default function EmployeeProfilePage({ initialId }) {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [form, setForm] = useState({});
-  const savedFormSnapshotRef = useRef(null);
+  const [savedFormSnapshot, setSavedFormSnapshot] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [ocrStatus, setOcrStatus] = useState('');
   const [departments, setDepartments] = useState([]);
   const [branches, setBranches] = useState([]);
   const [siteOffices, setSiteOffices] = useState([]);
   const [organizations, setOrganizations] = useState([]);
-  const [generatedEmpCode, setGeneratedEmpCode] = useState('');
-  const [excelImportRows, setExcelImportRows] = useState([]);
-  const [selectedExcelRow, setSelectedExcelRow] = useState('');
-  const [excelImportStatus, setExcelImportStatus] = useState('');
-  const excelFileInputRef = useRef(null);
-  const excelImportBaseFormRef = useRef(null);
-  const excelImportedFieldsRef = useRef([]);
+  const [generatedEmpCode, setGeneratedEmpCode] = useState({ organisation: '', code: '' });
   const [grades, setGrades] = useState([]);
   const [designations, setDesignations] = useState([]);
   const [showAddSalaryModal, setShowAddSalaryModal] = useState(false);
@@ -147,7 +126,7 @@ export default function EmployeeProfilePage({ initialId }) {
   const [availableShifts, setAvailableShifts] = useState([]);
   const [salaryRevisions, setSalaryRevisions] = useState([]);
   const [activeRevisionIndex, setActiveRevisionIndex] = useState(0);
-  const [newRevisionForm, setNewRevisionForm] = useState({ effectiveFrom: '', remark: '', components: {} });
+  const [newRevisionForm, setNewRevisionForm] = useState({ effectiveFrom: '', remark: '', components: {}, rules: {} });
   const [editingRevisionId, setEditingRevisionId] = useState(null);
   const [salaryHeads, setSalaryHeads] = useState([]);
   const [headTypes, setHeadTypes] = useState([]);
@@ -260,6 +239,7 @@ export default function EmployeeProfilePage({ initialId }) {
         const newEmp = { employmentStatus: 'Working', role: 'EMPLOYEE' };
         setEmployee(newEmp);
         setForm(newEmp);
+        setSavedFormSnapshot(JSON.stringify(newEmp));
       } else {
         const empRes = await fetch(`/api/employees/${id}`);
         const emp = await empRes.json();
@@ -270,7 +250,7 @@ export default function EmployeeProfilePage({ initialId }) {
         }
         
         setEmployee(emp);
-        setForm({
+        const initialForm = {
           ...emp,
           monthlyCtc: emp.monthlyCtc || (emp.annualCtc ? (Number(emp.annualCtc) / 12).toFixed(2) : ''),
           dependents: emp.dependents || [],
@@ -279,7 +259,9 @@ export default function EmployeeProfilePage({ initialId }) {
           educations: emp.educations || [],
           assignedGpsLocations: emp.assignedGpsLocations || []
           ,emergencyContacts: emp.emergencyContacts?.length ? emp.emergencyContacts : (emp.emergencyContact || emp.emergencyPhone ? [{ name: emp.emergencyContact || '', phone: emp.emergencyPhone || '', relationship: '' }] : [])
-        });
+        };
+        setForm(initialForm);
+        setSavedFormSnapshot(JSON.stringify(initialForm));
 
         // Fetch salary revisions
         try {
@@ -290,11 +272,13 @@ export default function EmployeeProfilePage({ initialId }) {
               setSalaryRevisions(revsData);
               const calculatedCtc = calculateRevisionCtc(revsData[0]);
               if (calculatedCtc) {
-                setForm(prev => ({
-                  ...prev,
+                const formWithCalculatedCtc = {
+                  ...initialForm,
                   monthlyCtc: calculatedCtc.monthlyCtc,
                   annualCtc: calculatedCtc.annualCtc
-                }));
+                };
+                setForm(formWithCalculatedCtc);
+                setSavedFormSnapshot(JSON.stringify(formWithCalculatedCtc));
               }
             }
           }
@@ -320,127 +304,18 @@ export default function EmployeeProfilePage({ initialId }) {
   }, [router, fetchData]);
 
   useEffect(() => {
-    if (id !== 'new' || !form.organisation) {
-      setGeneratedEmpCode('');
-      return;
-    }
+    if (id !== 'new' || !form.organisation) return;
     let active = true;
     fetch(`/api/employees?nextEmployeeCode=${encodeURIComponent(form.organisation)}`)
       .then(response => response.ok ? response.json() : null)
-      .then(data => { if (active) setGeneratedEmpCode(data?.employeeCode || ''); })
-      .catch(() => { if (active) setGeneratedEmpCode(''); });
+      .then(data => { if (active) setGeneratedEmpCode({ organisation: form.organisation, code: data?.employeeCode || '' }); })
+      .catch(() => { if (active) setGeneratedEmpCode({ organisation: form.organisation, code: '' }); });
     return () => { active = false; };
   }, [id, form.organisation]);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
-  };
-
-  const applyExcelEmployeeRow = (rowIndex, rows = excelImportRows) => {
-    const importedRow = rows[rowIndex];
-    if (!importedRow) return;
-    const baseForm = excelImportBaseFormRef.current || {};
-    const previouslyImportedFields = [...excelImportedFieldsRef.current];
-    const nextImportedFields = Object.keys(importedRow.values);
-    setForm(previous => {
-      const next = { ...previous };
-      previouslyImportedFields.forEach(field => {
-        next[field] = baseForm[field] ?? '';
-      });
-      Object.assign(next, importedRow.values);
-      return next;
-    });
-    excelImportedFieldsRef.current = nextImportedFields;
-    setEmployee(previous => ({ ...(previous || {}), ...importedRow.values }));
-    setSelectedExcelRow(String(rowIndex));
-    setActiveTab('basic');
-    setExcelImportStatus(`Filled ${Object.keys(importedRow.values).length} fields from ${importedRow.values.name || importedRow.values.empId || `Excel row ${importedRow.rowNumber}`}. Review the form and save when ready.`);
-    showToast('Employee form filled from Excel. Review and save when ready.');
-  };
-
-  const handleEmployeeExcelImport = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      showToast('Excel file must be 10 MB or smaller.', 'error');
-      return;
-    }
-
-    try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
-      const sheetName = workbook.SheetNames[0];
-      if (!sheetName) throw new Error('The workbook has no worksheets.');
-      const sheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', raw: false });
-      const fieldValueHeaderIndex = sheetRows.slice(0, 50).findIndex(row => {
-        const headers = row.map(normalizeExcelHeader);
-        return headers.includes('field') && headers.includes('value');
-      });
-      const dateFields = new Set(['dateOfBirth', 'joinedDate', 'employmentToDate']);
-      const normalizeImportedValue = (field, cellValue) => {
-        if (cellValue === null || cellValue === undefined || String(cellValue).trim() === '') return '';
-        let value = dateFields.has(field) ? normalizeExcelDate(cellValue) : String(cellValue).trim();
-        if (field === 'siteOffice' && /^h\.o\.?$/i.test(value)) value = 'Head Office';
-        return value;
-      };
-      let importedRows = [];
-
-      if (fieldValueHeaderIndex >= 0) {
-        const keyValueHeaders = sheetRows[fieldValueHeaderIndex].map(normalizeExcelHeader);
-        const fieldColumn = keyValueHeaders.indexOf('field');
-        const valueColumn = keyValueHeaders.indexOf('value');
-        const values = {};
-        sheetRows.slice(fieldValueHeaderIndex + 1).forEach(cells => {
-          const field = EMPLOYEE_EXCEL_FIELD_BY_HEADER[normalizeExcelHeader(cells[fieldColumn])];
-          const value = normalizeImportedValue(field, cells[valueColumn]);
-          if (field && value && values[field] === undefined) values[field] = value;
-        });
-        if (values.name || values.empId) importedRows = [{ values, rowNumber: fieldValueHeaderIndex + 2 }];
-      } else {
-        const headerRowIndex = sheetRows.slice(0, 50).findIndex(row => {
-          const detectedFields = row.map(cell => EMPLOYEE_EXCEL_FIELD_BY_HEADER[normalizeExcelHeader(cell)]).filter(Boolean);
-          return detectedFields.includes('name') || detectedFields.includes('empId');
-        });
-        if (headerRowIndex < 0) {
-          throw new Error('Could not find employee name or employee code headers in the first worksheet.');
-        }
-        const headers = sheetRows[headerRowIndex];
-        const columnFields = headers.map(header => EMPLOYEE_EXCEL_FIELD_BY_HEADER[normalizeExcelHeader(header)] || null);
-        importedRows = sheetRows.slice(headerRowIndex + 1).map((cells, index) => {
-          const values = {};
-          columnFields.forEach((field, columnIndex) => {
-            if (!field || values[field] !== undefined) return;
-            const value = normalizeImportedValue(field, cells[columnIndex]);
-            if (value) values[field] = value;
-          });
-          return Object.keys(values).length && (values.name || values.empId)
-            ? { values, rowNumber: headerRowIndex + index + 2 }
-            : null;
-        }).filter(Boolean);
-      }
-
-      if (!importedRows.length) throw new Error('No employee rows were found below the header row.');
-      const baseForm = { ...form };
-      excelImportedFieldsRef.current.forEach(field => {
-        baseForm[field] = excelImportBaseFormRef.current?.[field] ?? '';
-      });
-      excelImportBaseFormRef.current = baseForm;
-      excelImportedFieldsRef.current = [];
-      setExcelImportRows(importedRows);
-      setSelectedExcelRow('');
-      if (importedRows.length === 1) {
-        applyExcelEmployeeRow(0, importedRows);
-      } else {
-        setExcelImportStatus(`${importedRows.length} employees found in ${file.name}. Choose a row to fill the form.`);
-        showToast(`${importedRows.length} employees found. Choose one to fill the form.`);
-      }
-    } catch (error) {
-      setExcelImportRows([]);
-      setSelectedExcelRow('');
-      setExcelImportStatus('');
-      showToast(error.message || 'Could not read the Excel file.', 'error');
-    }
   };
 
   const hasCompanyEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.email || '').trim());
@@ -748,7 +623,8 @@ export default function EmployeeProfilePage({ initialId }) {
 
   const isEmpCodeDuplicate = Boolean(duplicateEmpCodeOwner);
   const currentFormSnapshot = JSON.stringify(form);
-  const hasUnsavedChanges = savedFormSnapshotRef.current !== currentFormSnapshot;
+  const hasUnsavedChanges = savedFormSnapshot !== currentFormSnapshot;
+  const currentGeneratedEmpCode = generatedEmpCode.organisation === form.organisation ? generatedEmpCode.code : '';
 
   const handleSave = async () => {
     if (id === 'new' && !String(form.organisation || '').trim()) {
@@ -761,7 +637,7 @@ export default function EmployeeProfilePage({ initialId }) {
       showToast('Enter a valid company email in Contact Details before saving. This email is the employee app login ID.', 'error');
       return;
     }
-    if (!hasPortalPassword) {
+    if (id === 'new' && !hasPortalPassword) {
       setActiveTab('contact');
       showToast('Enter a portal login password in Contact Details before saving.', 'error');
       return;
@@ -788,9 +664,12 @@ export default function EmployeeProfilePage({ initialId }) {
         body: JSON.stringify(payload)
       });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save profile.');
+      }
       if (data.id) {
         setEmployee(data);
-        savedFormSnapshotRef.current = currentFormSnapshot;
+        setSavedFormSnapshot(currentFormSnapshot);
         showToast(id === 'new' ? 'Employee added successfully!' : 'Profile updated successfully!');
         if (id === 'new') {
           setTimeout(() => router.push(`/dashboard/employees/${data.id}`), 1000);
@@ -799,7 +678,7 @@ export default function EmployeeProfilePage({ initialId }) {
         showToast(data.error || 'Failed to save', 'error');
       }
     } catch (e) {
-      showToast('Error saving profile.', 'error');
+      showToast(e.message || 'Error saving profile.', 'error');
     }
     setSaving(false);
   };
@@ -832,6 +711,22 @@ export default function EmployeeProfilePage({ initialId }) {
   useEffect(() => () => {
     if (ctcSaveTimerRef.current) clearTimeout(ctcSaveTimerRef.current);
   }, []);
+
+  const getSalaryRule = (head, rules = newRevisionForm.rules || {}) => {
+    if (rules[head.id] !== undefined) return rules[head.id];
+    return String(head.calculationType || '').includes('Fixed Amount') ? FIXED_SALARY_RULE : '';
+  };
+
+  const getSalaryAmount = (head, components = newRevisionForm.components || {}, rules = newRevisionForm.rules || {}) => {
+    const rule = getSalaryRule(head, rules);
+    const computed = calculateSalaryRuleAmount(rule, components, salaryHeads);
+    if (computed !== null) return computed;
+    if (rule === FIXED_SALARY_RULE) {
+      const amount = components[head.id] ?? head.fixedAmount;
+      return Number(amount) || 0;
+    }
+    return Number(components[head.id]) || 0;
+  };
 
   const f = (field) => form[field] || '';
   const set = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
@@ -867,12 +762,21 @@ export default function EmployeeProfilePage({ initialId }) {
 
   const handleSaveRevision = async () => {
     try {
+      const visibleHeadTypes = new Set(headTypes.filter(type => type.isActive).map(type => type.name));
+      const missingSalaryRules = salaryHeads.filter(head => head.isActive && visibleHeadTypes.has(head.category) && !getSalaryRule(head));
+      if (missingSalaryRules.length > 0) {
+        showToast(`Choose a formula or fixed amount for ${missingSalaryRules[0].description}.`, 'error');
+        return;
+      }
       setSaving(true);
-      const components = Object.entries(newRevisionForm.components).map(([salaryHeadId, amount]) => ({
-        salaryHeadId,
-        amount,
-        rule: '(None)'
-      }));
+      const components = salaryHeads.filter(head => head.isActive && visibleHeadTypes.has(head.category)).map(head => {
+        const rule = getSalaryRule(head);
+        return {
+          salaryHeadId: head.id,
+          amount: getSalaryAmount(head),
+          rule: rule || '(None)'
+        };
+      });
       const payload = {
         effectiveFrom: newRevisionForm.effectiveFrom,
         remark: newRevisionForm.remark,
@@ -913,13 +817,16 @@ export default function EmployeeProfilePage({ initialId }) {
   const handleEditRevision = (rev) => {
     // Pre-fill the form with existing revision data
     const comps = {};
+    const rules = {};
     rev.components.forEach(c => {
       comps[c.salaryHeadId] = c.amount;
+      rules[c.salaryHeadId] = c.rule || FIXED_SALARY_RULE;
     });
     setNewRevisionForm({
       effectiveFrom: rev.effectiveFrom || '',
       remark: rev.remark || '',
-      components: comps
+      components: comps,
+      rules
     });
     setEditingRevisionId(rev.id);
     setShowAddSalaryModal(true);
@@ -1127,22 +1034,6 @@ export default function EmployeeProfilePage({ initialId }) {
           </button>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={() => excelFileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
-            <FileSpreadsheet size={16} /> Auto Fill from Excel
-          </button>
-          <input ref={excelFileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleEmployeeExcelImport} style={{ display: 'none' }} />
-          {excelImportRows.length > 1 && (
-            <select value={selectedExcelRow} onChange={event => {
-              if (event.target.value !== '') applyExcelEmployeeRow(Number(event.target.value));
-            }} aria-label="Choose employee row from Excel" style={{ maxWidth: '220px', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white' }}>
-              <option value="">Choose employee row…</option>
-              {excelImportRows.map((row, index) => (
-                <option key={`${row.values.empId || row.values.name}-${row.rowNumber}`} value={index}>
-                  {[row.values.empId, row.values.name].filter(Boolean).join(' — ') || `Excel row ${row.rowNumber}`}
-                </option>
-              ))}
-            </select>
-          )}
           <button onClick={() => window.open(`/employee-card/${employee.id}`, '_blank')} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', background: 'none', border: '1px solid #d1d5db', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
             🪪 View Card
           </button>
@@ -1159,12 +1050,6 @@ export default function EmployeeProfilePage({ initialId }) {
           </button>
         </div>
       </div>
-      {excelImportStatus && (
-        <div role="status" style={{ maxWidth: '1200px', margin: '12px auto 0', padding: '10px 16px', borderRadius: '6px', background: '#eff6ff', color: '#1e40af', fontSize: '13px' }}>
-          {excelImportStatus}
-        </div>
-      )}
-
       {/* Header Card */}
       <div style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: '20px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -1379,7 +1264,7 @@ export default function EmployeeProfilePage({ initialId }) {
                       )}
                     </div>
                     <input 
-                      value={id === 'new' ? generatedEmpCode : (f('empId') || '')} 
+                      value={id === 'new' ? currentGeneratedEmpCode : (f('empId') || '')}
                       onChange={e => set('empId', e.target.value)}
                       readOnly={id === 'new'}
                       style={{
@@ -1709,7 +1594,7 @@ export default function EmployeeProfilePage({ initialId }) {
                     <option value="">-- Select Organisation --</option>
                     {organizations.map(org => <option key={org.id} value={org.name}>{org.name}{org.code ? ` (${org.code})` : ''}</option>)}
                   </select>
-                  {f('organisation') && <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: '13px' }}>Next employee code: <strong>{generatedEmpCode || 'Calculating…'}</strong>. It follows the highest saved code for {f('organisation')}.</p>}
+                  {f('organisation') && <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: '13px' }}>Next employee code: <strong>{currentGeneratedEmpCode || 'Calculating…'}</strong>. It follows the highest saved code for {f('organisation')}.</p>}
                 </div>
               )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '16px' }}>
@@ -2711,7 +2596,7 @@ export default function EmployeeProfilePage({ initialId }) {
                                 <tr key={comp.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
                                   <td style={{ padding: '10px 16px', fontSize: '13px', color: '#1e293b', fontWeight: 500 }}>{comp.salaryHead?.description}</td>
                                   <td style={{ padding: '6px 16px' }}>
-                                    <input type="text" readOnly value={comp.rule || '(None)'} style={{ width: '100%', padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: '5px', fontSize: '13px', background: '#f8fafc', color: '#64748b' }} />
+                                    <input type="text" readOnly value={salaryRuleLabel(comp.rule)} style={{ width: '100%', padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: '5px', fontSize: '13px', background: '#f8fafc', color: '#64748b' }} />
                                   </td>
                                   <td style={{ padding: '6px 16px', textAlign: 'right' }}>
                                     <input type="text" readOnly value={parseFloat(comp.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} style={{ width: '100%', padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: '5px', fontSize: '13px', textAlign: 'right', background: '#f8fafc', color: '#1e293b', fontWeight: 600 }} />
@@ -2826,7 +2711,7 @@ export default function EmployeeProfilePage({ initialId }) {
                       <span>^</span> {ht.name} Details
                     </div>
                     <div style={{ color: '#6366f1', fontWeight: 600 }}>Amount: {
-                      salaryHeads.filter(h => h.category === ht.name && h.isActive).reduce((sum, h) => sum + (parseFloat(newRevisionForm.components[h.id]) || 0), 0).toFixed(2)
+                      salaryHeads.filter(h => h.category === ht.name && h.isActive).reduce((sum, h) => sum + getSalaryAmount(h), 0).toFixed(2)
                     }</div>
                   </div>
                   {salaryHeads.filter(h => h.category === ht.name && h.isActive).length > 0 && (
@@ -2834,7 +2719,7 @@ export default function EmployeeProfilePage({ initialId }) {
                       <thead style={{ background: '#17a2b8', color: 'white', fontSize: '14px' }}>
                         <tr>
                           <th style={{ padding: '8px 16px', textAlign: 'left', fontWeight: 500 }}>Heads</th>
-                          <th style={{ padding: '8px 16px', textAlign: 'left', fontWeight: 500, width: '30%' }}>Rule</th>
+                          <th style={{ padding: '8px 16px', textAlign: 'left', fontWeight: 500, width: '45%' }}>Calculation Rule</th>
                           <th style={{ padding: '8px 16px', textAlign: 'right', fontWeight: 500, width: '20%' }}>Amount</th>
                         </tr>
                       </thead>
@@ -2844,18 +2729,40 @@ export default function EmployeeProfilePage({ initialId }) {
                           return (
                           <tr key={headObj.id} style={{ borderBottom: '1px solid #f3f4f6', background: i%2===1 ? '#f8fafc' : 'white' }}>
                             <td style={{ padding: '8px 16px', fontSize: '13px', color: '#4b5563' }}>{head}</td>
-                            <td style={{ padding: '4px 16px' }}><input type="text" disabled defaultValue={headObj.calculationType === 'Fixed Amount' ? '(None)' : '(Not Applicable)'} style={{ width: '100%', padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '13px' }} /></td>
                             <td style={{ padding: '4px 16px' }}>
-                              <input 
+                              {salaryRulesForHead(headObj).length > 0 ? (
+                                <select value={getSalaryRule(headObj)} onChange={event => setNewRevisionForm(previous => ({ ...previous, rules: { ...(previous.rules || {}), [headObj.id]: event.target.value } }))} style={{ width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '5px', fontSize: '12px', background: '#fff' }}>
+                                  <option value="">-- Choose fixed amount or formula --</option>
+                                  <option value={FIXED_SALARY_RULE}>Fixed Amount (this employee)</option>
+                                  <optgroup label={isEsicSalaryHead(headObj) ? 'ESIC formulas' : 'PF formulas from PF_Calculator.xlsx'}>{salaryRulesForHead(headObj).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>
+                                </select>
+                              ) : (
+                                <select value={getSalaryRule(headObj)} onChange={event => setNewRevisionForm(previous => ({ ...previous, rules: { ...(previous.rules || {}), [headObj.id]: event.target.value } }))} style={{ width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '5px', fontSize: '12px', background: '#fff' }}>
+                                  <option value="">-- Choose fixed amount --</option>
+                                  <option value={FIXED_SALARY_RULE}>Fixed Amount (this employee)</option>
+                                </select>
+                              )}
+                              {isEsicSalaryHead(headObj) && <small style={{ display: 'block', marginTop: 4, color: '#64748b' }}>ESI wages use active Earning + Other heads, excluding PF/ESIC contribution heads. Verify wage components and coverage for payroll.</small>}
+                            </td>
+                            <td style={{ padding: '4px 16px' }}>
+                              {(() => {
+                                const rule = getSalaryRule(headObj);
+                                const calculated = calculateSalaryRuleAmount(rule, newRevisionForm.components, salaryHeads);
+                                const fixedSelected = rule === FIXED_SALARY_RULE;
+                                const formulaSelected = calculated !== null;
+                                return <input
                                 type="number" 
-                                value={newRevisionForm.components[headObj.id] || ''} 
+                                min="0"
+                                step="0.01"
+                                value={formulaSelected ? calculated : (newRevisionForm.components[headObj.id] ?? (fixedSelected ? headObj.fixedAmount ?? '' : ''))}
+                                readOnly={formulaSelected || !fixedSelected}
                                 onChange={(e) => {
                                   const val = e.target.value;
                                   let comps = { ...newRevisionForm.components, [headObj.id]: val };
                                   
-                                  const earningTotal = salaryHeads.filter(h => h.category === 'Earning' && h.isActive).reduce((sum, h) => sum + (parseFloat(comps[h.id]) || 0), 0);
-                                  const otherTotal = salaryHeads.filter(h => h.category === 'Other' && h.isActive).reduce((sum, h) => sum + (parseFloat(comps[h.id]) || 0), 0);
-                                  const deductionTotal = salaryHeads.filter(h => h.category === 'Deduction' && h.isActive).reduce((sum, h) => sum + (parseFloat(comps[h.id]) || 0), 0);
+                                  const earningTotal = salaryHeads.filter(h => h.category === 'Earning' && h.isActive).reduce((sum, h) => sum + getSalaryAmount(h, comps), 0);
+                                  const otherTotal = salaryHeads.filter(h => h.category === 'Other' && h.isActive).reduce((sum, h) => sum + getSalaryAmount(h, comps), 0);
+                                  const deductionTotal = salaryHeads.filter(h => h.category === 'Deduction' && h.isActive).reduce((sum, h) => sum + getSalaryAmount(h, comps), 0);
                                   
                                   const grossHead = salaryHeads.find(h => h.category === 'CTC' && h.isActive && h.description.toLowerCase().includes('gross'));
                                   const empPfHead = salaryHeads.find(h => h.category === 'CTC' && h.isActive && (h.description.toLowerCase().includes('employer pf') || h.description.toLowerCase() === 'pf'));
@@ -2865,8 +2772,9 @@ export default function EmployeeProfilePage({ initialId }) {
                                   
                                   setNewRevisionForm({ ...newRevisionForm, components: comps });
                                 }}
-                                style={{ width: '100%', padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '13px', textAlign: 'right' }} 
-                              />
+                                style={{ width: '100%', padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '13px', textAlign: 'right', background: formulaSelected || !fixedSelected ? '#f3f4f6' : '#fff' }}
+                              />;
+                              })()}
                             </td>
                           </tr>
                         )})}

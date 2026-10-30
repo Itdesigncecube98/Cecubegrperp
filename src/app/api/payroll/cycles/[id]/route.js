@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
+import { amount, postJournal } from '../../../../../lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,20 +143,67 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
-    
-    const cycle = await prisma.payCycle.findUnique({ where: { id } });
+
+    const cycle = await prisma.payCycle.findUnique({
+      where: { id },
+      include: { payrollRecords: true }
+    });
     if (!cycle) {
       return NextResponse.json({ error: 'Pay cycle not found' }, { status: 404 });
     }
-    
-    if (cycle.status !== 'DRAFT') {
-      return NextResponse.json({ error: 'Cannot delete a cycle that is not in DRAFT status' }, { status: 400 });
-    }
 
-    await prisma.payCycle.delete({ where: { id } });
-    return NextResponse.json({ success: true });
+    const result = await prisma.$transaction(async tx => {
+      const records = await tx.payrollRecord.findMany({ where: { payCycleId: id } });
+      const journalsToReverse = [];
+
+      for (const record of records) {
+        const journal = await tx.accountsJournal.findUnique({
+          where: { voucherNo: `SALARY-${record.payCycleId}-${record.employeeId}` },
+          include: { details: { include: { ledger: { include: { group: true } } } } }
+        });
+        if (journal) {
+          if (journal.status === 'Reversed') continue;
+          if (!journal.details.length) {
+            throw new Error(`Salary voucher ${journal.voucherNo} has no entries, so the cycle cannot be safely deleted.`);
+          }
+          journalsToReverse.push(journal);
+        } else if (['APPROVED', 'POSTED'].includes(String(record.status).toUpperCase())) {
+          throw new Error(`Posted salary record for employee ${record.employeeId} has no accounting voucher. The cycle was not deleted.`);
+        }
+      }
+
+      for (const journal of journalsToReverse) {
+        const reverseVoucherNo = `SALARY-REVERSAL-${journal.voucherNo.replace(/^SALARY-/, '')}`;
+        const existingReversal = await tx.accountsJournal.findUnique({ where: { voucherNo: reverseVoucherNo } });
+        if (!existingReversal) {
+          await postJournal(tx, {
+            voucherNo: reverseVoucherNo,
+            type: 'JV',
+            narration: `Reversal of ${journal.voucherNo} because payroll cycle ${cycle.name} was deleted`,
+            company: journal.company,
+            branch: journal.branch,
+            project: journal.project,
+            entries: journal.details.map(detail => ({
+              ledger: detail.ledger.name,
+              ledgerType: detail.ledger.group.type,
+              type: detail.type === 'Dr' ? 'Cr' : 'Dr',
+              amount: amount(detail.amount)
+            }))
+          });
+        }
+        if (journal.status !== 'Reversed') {
+          await tx.accountsJournal.update({ where: { id: journal.id }, data: { status: 'Reversed' } });
+        }
+      }
+
+      await tx.payCycle.delete({ where: { id } });
+      return { reversedVouchers: journalsToReverse.length, deletedPayrollRecords: records.length };
+    }, { timeout: 30000 });
+
+    return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error('Error deleting pay cycle:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const isSafeBlock = /no entries|no accounting voucher/i.test(error.message || '');
+    return NextResponse.json({ error: error.message }, { status: isSafeBlock ? 409 : 500 });
   }
 }

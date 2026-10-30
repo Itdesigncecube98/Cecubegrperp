@@ -103,7 +103,7 @@ export default function QuotationPage() {
               <div style={{ padding: '20px', color: '#64748b', fontSize: '0.85rem' }}>Loading enquiries...</div>
             ) : enquiries.length === 0 ? (
               <div style={{ padding: '20px', color: '#64748b', fontSize: '0.85rem' }}>
-                No enquiries yet. Create one from Enquiry Generation.
+                No enquiries yet. Open Enquiry to create one.
               </div>
             ) : (
               enquiries.map((rfq) => {
@@ -164,7 +164,7 @@ export default function QuotationPage() {
               <div style={{ padding: '24px', color: '#64748b', fontSize: '0.85rem' }}>Loading vendors...</div>
             ) : vendors.length === 0 ? (
               <div style={{ padding: '24px', color: '#64748b', fontSize: '0.85rem' }}>
-                No vendors were invited on this enquiry.
+                No vendors were invited for this enquiry.
               </div>
             ) : (
               <div className="purchase-table-wrapper" style={{ marginTop: 0 }}>

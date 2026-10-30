@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Home, ChevronRight, Search, RefreshCw, List, Printer, Check, Loader2 } from 'lucide-react';
+import { Home, ChevronRight, Search, RefreshCw, List, FileSpreadsheet, FileDown, Check, Loader2, Plus } from 'lucide-react';
+import LabourRequisitionForm from '../requisition/LabourRequisitionForm';
 import '../../contracting.css';
 
 const FormGroup = ({ label, required, children }) => (
@@ -14,23 +15,19 @@ const FormGroup = ({ label, required, children }) => (
 
 export default function LabourRequisitionBrowse() {
   const [projects, setProjects] = useState([]);
-  const [taskLabours, setTaskLabours] = useState([]);
+  const [projectTasks, setProjectTasks] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingLabours, setLoadingLabours] = useState(false);
   const [requisitions, setRequisitions] = useState([]);
   const [loadingReqs, setLoadingReqs] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [activeTab, setActiveTab] = useState('browse');
 
   const [filters, setFilters] = useState({
     projectId: '',
     taskId: '',
-    labourId: '',
-    reqType: 'Requisition',
-    fromDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
-    toDate: new Date().toISOString().split('T')[0],
     reqStatus: '',
-    pendingStatus: '',
   });
 
   // Fetch all projects on mount
@@ -44,87 +41,70 @@ export default function LabourRequisitionBrowse() {
 
   // Fetch labours from master task library when project changes
   useEffect(() => {
-    if (!filters.projectId) {
-      setTaskLabours([]);
-      return;
-    }
-    setLoadingLabours(true);
-    fetch('/api/engineering/task-library')
-      .then(r => r.json())
-      .then(groups => {
-        if (!Array.isArray(groups)) { setTaskLabours([]); return; }
-        const labourMap = new Map();
-        groups.forEach(group => {
-          (group.tasks || []).forEach(task => {
-            (task.labours || []).forEach(labour => {
-              const key = `${task.id}-${labour.name}`;
-              if (!labourMap.has(key)) {
-                labourMap.set(key, {
-                  id: labour.id,
-                  name: labour.name,
-                  taskId: task.id,
-                  taskName: task.name,
-                });
-              }
-            });
-          });
-        });
-        setTaskLabours(Array.from(labourMap.values()));
+    if (!filters.projectId) return undefined;
+    let cancelled = false;
+    fetch(`/api/engineering/task-library?projectId=${encodeURIComponent(filters.projectId)}`, { cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to load project tasks.');
+        return data;
       })
-      .catch(console.error)
-      .finally(() => setLoadingLabours(false));
+      .then(groups => {
+        if (!cancelled) {
+          setProjectTasks(Array.isArray(groups)
+            ? groups.flatMap(group => (group.tasks || []).map(task => ({ id: task.id, name: task.name })))
+            : []);
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          console.error(error);
+          setProjectTasks([]);
+          alert(error.message || 'Unable to load project tasks.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingLabours(false);
+      });
+    return () => { cancelled = true; };
   }, [filters.projectId]);
 
   const handleReset = () => {
     setFilters({
       projectId: '',
       taskId: '',
-      labourId: '',
-      reqType: 'Requisition',
-      fromDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
-      toDate: new Date().toISOString().split('T')[0],
       reqStatus: '',
-      pendingStatus: '',
     });
-    setTaskLabours([]);
+    setProjectTasks([]);
     setRequisitions([]);
     setSelectedIds([]);
     setSelectedStatus('');
   };
 
-  const handleSearch = async () => {
-    if (!filters.projectId) {
+  const handleSearch = async (projectId = filters.projectId, searchFilters = filters) => {
+    if (!projectId) {
       alert("Please select a project to search");
       return;
     }
     setLoadingReqs(true);
     try {
-      const res = await fetch(`/api/contracting/labour/requisitions?projectId=${filters.projectId}`);
+      const res = await fetch(`/api/contracting/labour/requisitions?projectId=${encodeURIComponent(projectId)}`, { cache: 'no-store' });
+      if (!res.ok) {
+        const result = await res.json().catch(() => ({}));
+        throw new Error(result.error || 'Unable to load requisitions.');
+      }
       const data = await res.json();
       if (Array.isArray(data)) {
-        // Filter by date range (simple client-side filter for demo)
         const filtered = data.filter(r => {
-          const requisitionDate = r.requiredDate || r.date || r.createdAt;
-          const rDate = new Date(requisitionDate);
-          const fDate = new Date(`${filters.fromDate}T00:00:00`);
-          const tDate = new Date(`${filters.toDate}T23:59:59.999`);
-          
-          let valid = rDate >= fDate && rDate <= tDate;
+          let valid = true;
 
-          if (filters.reqStatus && String(r.status || '').toUpperCase() !== filters.reqStatus) {
+          if (searchFilters.reqStatus && String(r.status || '').toUpperCase() !== searchFilters.reqStatus) {
             valid = false;
           }
           
-          // If task filter selected, we check if purpose matches task name (since we saved taskName in purpose)
-          if (filters.taskId && valid) {
-            const task = taskLabours.find(t => t.taskId === filters.taskId);
-            if (task && r.purpose !== task.taskName) valid = false;
-          }
-          
-          // If labour filter selected, we check if designation matches labour name
-          if (filters.labourId && valid) {
-            const lab = taskLabours.find(l => l.id === filters.labourId);
-            if (lab && r.designation !== lab.name) valid = false;
+          if (searchFilters.taskId && valid) {
+            const task = projectTasks.find(item => item.id === searchFilters.taskId);
+            if (task && r.purpose !== task.name) valid = false;
           }
 
           return valid;
@@ -135,7 +115,7 @@ export default function LabourRequisitionBrowse() {
         setRequisitions([]);
       }
     } catch (err) {
-      console.error(err);
+      alert(err.message || 'Unable to load requisitions.');
       setRequisitions([]);
     } finally {
       setLoadingReqs(false);
@@ -152,6 +132,142 @@ export default function LabourRequisitionBrowse() {
 
   const toggleAllPending = () => {
     setSelectedIds(allPendingSelected ? [] : pendingRequisitions.map(req => req.id));
+  };
+
+  const handleSubmissionComplete = ({ projectId }) => {
+    setActiveTab('browse');
+    setProjectTasks([]);
+    setLoadingLabours(Boolean(projectId));
+    const searchFilters = {
+      ...filters,
+      projectId,
+      reqStatus: '',
+    };
+    setFilters(searchFilters);
+    if (projectId) handleSearch(projectId, searchFilters);
+  };
+
+  const getExportRows = () => requisitions.map((req, index) => ({
+    No: index + 1,
+    'Requisition No.': req.reqNo || '',
+    Date: (req.requiredDate || req.date || req.createdAt)
+      ? new Date(req.requiredDate || req.date || req.createdAt).toLocaleDateString('en-GB', { timeZone: 'UTC' })
+      : '',
+    Task: req.purpose || '',
+    Labour: req.designation || '',
+    Quantity: Number(req.quantity) || 0,
+    Rate: Number(req.rate) || 0,
+    Amount: (Number(req.quantity) || 0) * (Number(req.rate) || 0),
+    Status: req.status || '',
+  }));
+
+  const getExportFilename = extension => {
+    const projectName = projects.find(project => project.id === filters.projectId)?.name || 'Labour-Requisitions';
+    const safeName = projectName.trim().replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'Labour-Requisitions';
+    return `${safeName}-requisitions.${extension}`;
+  };
+
+  const exportExcel = async () => {
+    if (!requisitions.length) {
+      alert('Search for requisitions before exporting.');
+      return;
+    }
+
+    try {
+      const excelModule = await import('exceljs');
+      const ExcelJS = excelModule.default || excelModule;
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Labour Requisitions');
+      const rows = getExportRows();
+      sheet.columns = Object.keys(rows[0]).map(key => ({ header: key, key, width: Math.max(14, key.length + 3) }));
+      rows.forEach(row => sheet.addRow(row));
+      sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } };
+      sheet.views = [{ state: 'frozen', ySplit: 1 }];
+      sheet.autoFilter = { from: 'A1', to: `${sheet.getColumn(sheet.columnCount).letter}1` };
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = getExportFilename('xlsx');
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export labour requisitions to Excel:', error);
+      alert('Could not export the requisitions to Excel.');
+    }
+  };
+
+  const exportPdf = async () => {
+    if (!requisitions.length) {
+      alert('Search for requisitions before exporting.');
+      return;
+    }
+
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const rows = getExportRows();
+      const columns = [
+        { key: 'No', label: '#', width: 9 },
+        { key: 'Requisition No.', label: 'Req. No.', width: 27 },
+        { key: 'Date', label: 'Date', width: 22 },
+        { key: 'Task', label: 'Task', width: 40 },
+        { key: 'Labour', label: 'Labour', width: 42 },
+        { key: 'Quantity', label: 'Qty', width: 20 },
+        { key: 'Rate', label: 'Rate (INR)', width: 25 },
+        { key: 'Amount', label: 'Amount (INR)', width: 29 },
+        { key: 'Status', label: 'Status', width: 25 },
+      ];
+      const left = 8;
+      const bottom = doc.internal.pageSize.getHeight() - 8;
+      const projectName = projects.find(project => project.id === filters.projectId)?.name || 'All Projects';
+
+      const drawHeader = () => {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Labour Requisitions', left, 12);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Project: ${projectName}`, left, 18);
+        let x = left;
+        const y = 23;
+        doc.setFont('helvetica', 'bold');
+        doc.setFillColor(15, 118, 110);
+        doc.setTextColor(255, 255, 255);
+        columns.forEach(column => {
+          doc.rect(x, y, column.width, 7, 'F');
+          doc.text(column.label, x + 1, y + 4.7, { maxWidth: column.width - 2 });
+          x += column.width;
+        });
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'normal');
+        return y + 7;
+      };
+
+      let y = drawHeader();
+      rows.forEach(row => {
+        const cellLines = columns.map(column => doc.splitTextToSize(String(row[column.key] ?? ''), column.width - 2));
+        const rowHeight = Math.max(7, ...cellLines.map(lines => lines.length * 3.5 + 2));
+        if (y + rowHeight > bottom) {
+          doc.addPage();
+          y = drawHeader();
+        }
+        let x = left;
+        columns.forEach((column, index) => {
+          doc.rect(x, y, column.width, rowHeight);
+          doc.text(cellLines[index], x + 1, y + 4, { maxWidth: column.width - 2 });
+          x += column.width;
+        });
+        y += rowHeight;
+      });
+
+      doc.save(getExportFilename('pdf'));
+    } catch (error) {
+      console.error('Failed to export labour requisitions to PDF:', error);
+      alert('Could not export the requisitions to PDF.');
+    }
   };
 
   const applyStatus = async () => {
@@ -191,19 +307,44 @@ export default function LabourRequisitionBrowse() {
       <div className="contracting-header">
         <div className="contracting-header-title">
           <List size={18} />
-          Labour Requisition Browse
+          Labour Requisition
         </div>
         <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', color: '#666', gap: '4px' }}>
-          <Home size={14} /> Home <ChevronRight size={14} /> Labour Requisition Browse
+          <Home size={14} /> Home <ChevronRight size={14} /> Labour Requisition
         </div>
       </div>
 
       <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+        <div role="tablist" aria-label="Labour requisition actions" style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'browse'}
+            onClick={() => setActiveTab('browse')}
+            className="btn-cyan"
+          >
+            <List size={14} /> Browse Requisitions
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'create'}
+            onClick={() => setActiveTab('create')}
+            className="btn-cyan"
+          >
+            <Plus size={14} /> Generate Requisition
+          </button>
+        </div>
+
+        {activeTab === 'create' ? (
+          <LabourRequisitionForm embedded onSubmitted={handleSubmissionComplete} />
+        ) : (
+          <>
         
         {/* Filter Section */}
         <div style={{ marginBottom: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
           <div style={{ padding: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
               
               {/* Project */}
               <FormGroup label="Project" required>
@@ -211,7 +352,13 @@ export default function LabourRequisitionBrowse() {
                   className="contracting-input"
                   style={{ width: '100%' }}
                   value={filters.projectId}
-                  onChange={e => setFilters(f => ({ ...f, projectId: e.target.value, taskId: '', labourId: '' }))}
+                  onChange={e => {
+                    const projectId = e.target.value;
+                    setProjectTasks([]);
+                    setLoadingLabours(Boolean(projectId));
+                    setRequisitions([]);
+                    setFilters(f => ({ ...f, projectId, taskId: '' }));
+                  }}
                   disabled={loadingProjects}
                 >
                   <option value="">{loadingProjects ? 'Loading...' : '-Select-'}</option>
@@ -227,7 +374,7 @@ export default function LabourRequisitionBrowse() {
                   className="contracting-input"
                   style={{ width: '100%' }}
                   value={filters.taskId}
-                  onChange={e => setFilters(f => ({ ...f, taskId: e.target.value, labourId: '' }))}
+                  onChange={e => setFilters(f => ({ ...f, taskId: e.target.value }))}
                   disabled={!filters.projectId || loadingLabours}
                 >
                   <option value="">
@@ -235,86 +382,12 @@ export default function LabourRequisitionBrowse() {
                       ? 'Select Project'
                       : loadingLabours
                       ? 'Loading...'
-                      : taskLabours.length === 0
+                      : projectTasks.length === 0
                       ? 'No tasks found'
                       : '-- All Tasks --'}
                   </option>
-                  {Array.from(new Map(taskLabours.map(l => [l.taskId, l.taskName])).entries()).map(([id, name]) => (
-                    <option key={id} value={id}>{name}</option>
-                  ))}
+                  {projectTasks.map(task => <option key={task.id} value={task.id}>{task.name}</option>)}
                 </select>
-              </FormGroup>
-              
-              {/* Labour */}
-              <FormGroup label="Labour">
-                <select
-                  className="contracting-input"
-                  style={{ width: '100%' }}
-                  value={filters.labourId}
-                  onChange={e => setFilters(f => ({ ...f, labourId: e.target.value }))}
-                  disabled={!filters.projectId || loadingLabours}
-                >
-                  <option value="">
-                    {!filters.projectId
-                      ? 'Select Project'
-                      : loadingLabours
-                      ? 'Loading...'
-                      : taskLabours.length === 0
-                      ? 'No labours found'
-                      : '-- All Labours --'}
-                  </option>
-                  {Array.from(
-                    new Map(
-                      taskLabours
-                        .filter(l => !filters.taskId || l.taskId === filters.taskId)
-                        .map(l => [l.name, l])
-                    ).values()
-                  ).map((l, i) => (
-                    <option key={i} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-              </FormGroup>
-
-              {/* Req Type */}
-              <FormGroup label="">
-                <div style={{ display: 'flex', gap: '16px', marginTop: '24px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#17a2b8', fontWeight: 600 }}>
-                    <input 
-                      type="radio" name="reqType" 
-                      checked={filters.reqType === 'Requisition'} 
-                      onChange={() => setFilters(f => ({ ...f, reqType: 'Requisition' }))}
-                    /> Requisition
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#17a2b8', fontWeight: 600 }}>
-                    <input 
-                      type="radio" name="reqType" 
-                      checked={filters.reqType === 'Requirement'} 
-                      onChange={() => setFilters(f => ({ ...f, reqType: 'Requirement' }))}
-                    /> Requirement
-                  </label>
-                </div>
-              </FormGroup>
-
-              {/* From Date */}
-              <FormGroup label="From Date" required>
-                <input
-                  type="date"
-                  className="contracting-input"
-                  style={{ width: '100%' }}
-                  value={filters.fromDate}
-                  onChange={e => setFilters(f => ({ ...f, fromDate: e.target.value }))}
-                />
-              </FormGroup>
-
-              {/* To Date */}
-              <FormGroup label="To Date" required>
-                <input
-                  type="date"
-                  className="contracting-input"
-                  style={{ width: '100%' }}
-                  value={filters.toDate}
-                  onChange={e => setFilters(f => ({ ...f, toDate: e.target.value }))}
-                />
               </FormGroup>
 
               {/* Req Status */}
@@ -328,21 +401,8 @@ export default function LabourRequisitionBrowse() {
                   <option value="">-- All --</option>
                   <option value="PENDING">PENDING</option>
                   <option value="APPROVED">APPROVED</option>
-                  <option value="REJECTED">REJECTED</option>
-                </select>
-              </FormGroup>
-              
-              {/* Pending Status */}
-              <FormGroup label="Pending Status">
-                <select
-                  className="contracting-input"
-                  style={{ width: '100%' }}
-                  value={filters.pendingStatus}
-                  onChange={e => setFilters(f => ({ ...f, pendingStatus: e.target.value }))}
-                >
-                  <option value="">-- All --</option>
-                  <option value="HIGH">High Priority</option>
-                  <option value="NORMAL">Normal Priority</option>
+                  <option value="FULFILLED">FULFILLED</option>
+                  <option value="CANCELLED">CANCELLED</option>
                 </select>
               </FormGroup>
             </div>
@@ -360,12 +420,6 @@ export default function LabourRequisitionBrowse() {
             </div>
           </div>
 
-          <div style={{ background: '#f8fafc', padding: '10px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '16px', fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '12px', height: '12px', background: '#ef4444' }}></div> Urgent</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '12px', height: '12px', background: '#22c55e' }}></div> High</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '12px', height: '12px', background: '#f97316' }}></div> Normal</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: '12px', height: '12px', background: '#eab308' }}></div> Low</div>
-          </div>
         </div>
 
         {/* Results Area */}
@@ -414,7 +468,7 @@ export default function LabourRequisitionBrowse() {
                     </td>
                     <td style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600 }}>{idx + 1}</td>
                     <td style={{ padding: '8px 12px', fontWeight: 600, color: '#334155' }}>{req.reqNo}</td>
-                    <td style={{ padding: '8px 12px' }}>{new Date(req.requiredDate || req.date || req.createdAt).toLocaleDateString('en-GB')}</td>
+                    <td style={{ padding: '8px 12px' }}>{(req.requiredDate || req.date || req.createdAt) ? new Date(req.requiredDate || req.date || req.createdAt).toLocaleDateString('en-GB', { timeZone: 'UTC' }) : '—'}</td>
                     <td style={{ padding: '8px 12px', color: '#64748b' }}>{req.purpose || '—'}</td>
                     <td style={{ padding: '8px 12px' }}>{req.designation}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>{req.quantity} {req.unit}</td>
@@ -423,8 +477,8 @@ export default function LabourRequisitionBrowse() {
                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                       <span style={{ 
                         padding: '3px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 700,
-                        background: String(req.status || '').toLowerCase() === 'approved' ? '#dcfce7' : String(req.status || '').toLowerCase() === 'rejected' ? '#fee2e2' : '#fef9c3',
-                        color: String(req.status || '').toLowerCase() === 'approved' ? '#16a34a' : String(req.status || '').toLowerCase() === 'rejected' ? '#dc2626' : '#ca8a04' 
+                        background: String(req.status || '').toLowerCase() === 'approved' || String(req.status || '').toLowerCase() === 'fulfilled' ? '#dcfce7' : String(req.status || '').toLowerCase() === 'cancelled' ? '#fee2e2' : '#fef9c3',
+                        color: String(req.status || '').toLowerCase() === 'approved' || String(req.status || '').toLowerCase() === 'fulfilled' ? '#16a34a' : String(req.status || '').toLowerCase() === 'cancelled' ? '#dc2626' : '#ca8a04'
                       }}>
                         {req.status}
                       </span>
@@ -442,7 +496,14 @@ export default function LabourRequisitionBrowse() {
           background: 'white', borderTop: '1px solid #e2e8f0', 
           padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
-          <button className="btn-cyan"><Printer size={14} /> Print <ChevronRight size={14} /></button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn-cyan" onClick={exportExcel} disabled={requisitions.length === 0}>
+              <FileSpreadsheet size={14} /> Export Excel
+            </button>
+            <button className="btn-cyan" onClick={exportPdf} disabled={requisitions.length === 0}>
+              <FileDown size={14} /> Export PDF
+            </button>
+          </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.85rem', color: '#17a2b8', fontWeight: 600 }}>
             <span>Total Record: {requisitions.length}</span>
@@ -451,7 +512,7 @@ export default function LabourRequisitionBrowse() {
               <select className="contracting-input" style={{ width: '150px' }} value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)}>
                 <option value="">Select Status</option>
                 <option value="Approved">APPROVE</option>
-                <option value="Cancelled">REJECT</option>
+                <option value="Cancelled">CANCEL</option>
               </select>
             </div>
             <button className="btn-cyan" onClick={applyStatus} disabled={loadingReqs || selectedIds.length === 0}>
@@ -460,6 +521,8 @@ export default function LabourRequisitionBrowse() {
           </div>
         </div>
 
+          </>
+        )}
       </div>
     </div>
   );

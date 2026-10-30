@@ -202,9 +202,9 @@ public class PunchTrackingService extends Service {
         locationListener = location -> executor.execute(() -> recordLocation(location));
         try {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 15000L, 10f, locationListener);
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 60000L, 0f, locationListener);
             }
-            locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 20000L, 25f, locationListener);
+            locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 60000L, 0f, locationListener);
             PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
             if (powerManager != null && (wakeLock == null || !wakeLock.isHeld())) {
                 wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CeCube:AttendanceLocation");

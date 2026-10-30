@@ -250,10 +250,6 @@ export default function TeamAttendanceRecords() {
         </button>
         <Link href="/dashboard" className="backLink"><ChevronLeft size={16} /> Back to Dashboard</Link>
         <h1 className="pageTitle">Attendance Records</h1>
-        <div className="tabsContainer">
-          <Link href="/dashboard/attendance/my-records" className="tab">My Attendance Records</Link>
-          <Link href="/dashboard/attendance/team-records" className="tab active">Team Attendance Records</Link>
-        </div>
 
         {/* Employee Info Banner */}
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1.2rem 1.5rem', marginBottom: '1rem', background: 'linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%)', color: '#fff' }}>
@@ -361,7 +357,7 @@ export default function TeamAttendanceRecords() {
                         const isNightTime = (t) => t ? (t > '19:00' || t <= '08:00') : false;
                         let hasDay = false;
                         let hasNight = false;
-                        // For team-records and my-records, r.timeSlots might be a string or undefined
+                        // API responses may contain timeSlots as a string or undefined.
                         let slots = [];
                         try {
                           if (r.timeSlots) {
@@ -426,10 +422,6 @@ export default function TeamAttendanceRecords() {
     <div className="pageContainer">
       <Link href="/dashboard" className="backLink"><ChevronLeft size={16} /> Back to Dashboard</Link>
       <h1 className="pageTitle">Attendance Records</h1>
-      <div className="tabsContainer">
-        <Link href="/dashboard/attendance/my-records" className="tab">My Attendance Records</Link>
-        <Link href="/dashboard/attendance/team-records" className="tab active">Team Attendance Records</Link>
-      </div>
 
       <div className="card">
         <div className="tableHeaderRow">

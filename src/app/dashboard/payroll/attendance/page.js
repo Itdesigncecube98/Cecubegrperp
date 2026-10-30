@@ -36,6 +36,8 @@ export function resolveDayAttendance(emp, col, approvedLeaves = []) {
     return getLeaveAbbreviation(leave.leaveType);
   }
 
+  if (rawStatus === 'Not Marked' || rawStatus === '-') return '-';
+
   // 3. Normalize raw status from database
   if (rawStatus) {
     if (rawStatus === 'Present') return 'P';
@@ -52,7 +54,7 @@ export function resolveDayAttendance(emp, col, approvedLeaves = []) {
   // 4. Default rules based on calendar day
   if (col.isHoliday) return 'H';
   if (col.isSunday) return 'W-off';
-  return 'A';
+  return '-';
 }
 
 export default function PayrollAttendance() {
@@ -203,11 +205,12 @@ export default function PayrollAttendance() {
     if (!isApprovedMode && isEmpApproved) return false;
 
     return true;
-  });
+  }).sort((a, b) => String(a.empId || '').localeCompare(String(b.empId || ''), undefined, { numeric: true, sensitivity: 'base' }));
 
   const calculateAggregates = (emp) => {
-    const counts = { P: 0, A: 0, L: 0, H: 0, W: 0 };
+    const counts = { P: 0, A: 0, L: 0, H: 0, W: 0, U: 0 };
     let unpaidDays = 0;
+    let unmarkedDays = 0;
 
     dateCols.forEach(col => {
       const s = resolveDayAttendance(emp, col, data?.approvedLeaves || []);
@@ -218,15 +221,16 @@ export default function PayrollAttendance() {
       else if (s === 'H' || s === 'Holiday') counts.H++;
       else if (s === 'W-off' || s === 'W') counts.W++;
       else if (['CL', 'SL', 'EL', 'C-off', 'Leave', 'L'].includes(s)) counts.L++;
+      else if (s === '-') unmarkedDays++;
     });
     
-    const wageDays = totalDays - unpaidDays; 
+    const wageDays = totalDays - unpaidDays - unmarkedDays;
     return { ...counts, wageDays };
   };
 
   const handleExportExcel = () => {
     if (!data || !filteredEmployees) return;
-    const headers = ['Pay Cycle', 'Employee Name', 'Emp ID', 'Department', 'Branch', 'Total Days', 'Wage Days', 'P', 'A', 'L', 'H', 'W', ...dateCols.map(c => c.dayLabel)];
+    const headers = ['Pay Cycle', 'Employee Name', 'Emp ID', 'Department', 'Branch', 'Total Days', 'Wage Days', 'P', 'A', 'L', 'H', 'W', 'Not Marked', ...dateCols.map(c => c.dayLabel)];
     
     const rows = filteredEmployees.map(emp => {
       const agg = calculateAggregates(emp);
@@ -238,7 +242,7 @@ export default function PayrollAttendance() {
         `"${emp.branch || ''}"`,
         totalDays,
         agg.wageDays,
-        agg.P, agg.A, agg.L, agg.H, agg.W
+        agg.P, agg.A, agg.L, agg.H, agg.W, agg.U
       ];
       
       dateCols.forEach(col => {
@@ -341,6 +345,7 @@ export default function PayrollAttendance() {
           if (!emp) return;
           dateCols.forEach(col => {
              const status = resolveDayAttendance(emp, col, data?.approvedLeaves || []);
+             if (status === '-') return;
 
              updates.push({
                employeeId: empId,
@@ -476,7 +481,7 @@ export default function PayrollAttendance() {
                 <th rowSpan={2} style={{ padding: '8px 12px', textAlign: 'left', minWidth: 200, position: 'sticky', left: 35, background: '#0284c7', zIndex: 30, borderRight: '1px solid #0369a1' }}>Employee Details</th>
                 <th rowSpan={2} style={{ padding: '8px', background: '#10b981', borderRight: '1px solid #059669', width: 60 }}>Total Days</th>
                 <th rowSpan={2} style={{ padding: '8px', background: '#10b981', borderRight: '1px solid #059669', width: 60 }}>Wage Days</th>
-                <th colSpan={5} style={{ padding: '8px', background: '#9333ea', borderRight: '1px solid #7e22ce' }}>Summary</th>
+                <th colSpan={6} style={{ padding: '8px', background: '#9333ea', borderRight: '1px solid #7e22ce' }}>Summary</th>
                 <th colSpan={dateCols.length} style={{ padding: '8px', background: '#334155' }}>Date-wise Attendance</th>
               </tr>
               {/* Header Row 2 */}
@@ -485,7 +490,8 @@ export default function PayrollAttendance() {
                 <th style={{ padding: '6px', background: '#a855f7', width: 35 }}>A</th>
                 <th style={{ padding: '6px', background: '#a855f7', width: 35 }}>L</th>
                 <th style={{ padding: '6px', background: '#a855f7', width: 35 }}>H</th>
-                <th style={{ padding: '6px', background: '#a855f7', width: 35, borderRight: '1px solid #7e22ce' }}>W</th>
+                <th style={{ padding: '6px', background: '#a855f7', width: 35 }}>W</th>
+                <th style={{ padding: '6px', background: '#a855f7', width: 75, borderRight: '1px solid #7e22ce' }}>Not Marked</th>
                 {dateCols.map(col => (
                   <th key={col.fullDate} style={{ padding: '6px', width: 45, background: '#475569', borderRight: '1px solid #334155', borderBottom: '1px solid #334155' }}>{col.dayLabel}</th>
                 ))}
@@ -517,7 +523,8 @@ export default function PayrollAttendance() {
                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#dc2626' }}>{agg.A}</td>
                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#d97706' }}>{agg.L}</td>
                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#0284c7' }}>{agg.H}</td>
-                    <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#4f46e5', borderRight: '2px solid #cbd5e1' }}>{agg.W}</td>
+                    <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#4f46e5' }}>{agg.W}</td>
+                    <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#64748b', borderRight: '2px solid #cbd5e1' }}>{agg.U}</td>
                     
                     {/* Dynamic Date Cells */}
                     {dateCols.map(col => {

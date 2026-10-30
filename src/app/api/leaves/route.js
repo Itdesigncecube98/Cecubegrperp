@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
+import { getEarnedLeaveEligibilityDate, toDateKey } from '../../../lib/leaveEntitlements';
 
 export async function GET(request) {
   try {
@@ -83,14 +84,6 @@ export async function POST(request) {
     let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     if (data.isHalfDay) diffDays = 0.5;
 
-    let tenureMonths = 0;
-    if (employee.joinedDate) {
-      const joinDate = new Date(employee.joinedDate);
-      if (!isNaN(joinDate)) {
-        tenureMonths = (new Date().getTime() - joinDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
-      }
-    }
-
     const type = data.leaveType;
     if (type === 'Casual Leave') {
       if (diffDays > 4) {
@@ -100,8 +93,13 @@ export async function POST(request) {
       if (data.isHalfDay) {
         return NextResponse.json({ error: 'Half day is not allowed for Earned Leave.' }, { status: 400 });
       }
-      if (employee.joinedDate && tenureMonths < 8) {
-        return NextResponse.json({ error: 'Earned Leave can only be availed after completion of 8 months of service (240 days).' }, { status: 400 });
+      const eligibleFrom = getEarnedLeaveEligibilityDate(employee);
+      const leaveStart = toDateKey(data.startDate);
+      if (employee.joinedDate && !eligibleFrom) {
+        return NextResponse.json({ error: 'Employee joining date is invalid. Please contact HR.' }, { status: 400 });
+      }
+      if (eligibleFrom && leaveStart && leaveStart < eligibleFrom) {
+        return NextResponse.json({ error: `Earned Leave can only be availed from ${eligibleFrom}, after completion of 8 months of service.` }, { status: 400 });
       }
     } else if (type === 'Maternity Leave') {
       if (employee.gender && employee.gender.toLowerCase() !== 'female') {

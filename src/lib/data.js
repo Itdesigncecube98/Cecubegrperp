@@ -181,8 +181,13 @@ export const updateLeaveRequestStatus = async (id, status, approvedBy = null, ro
   return await res.json();
 };
 
-export const getLeaveBalance = async (employeeId) => {
-  const res = await fetch(`/api/leaves/balance?employeeId=${employeeId}`, { cache: 'no-store' });
+export const getLeaveBalance = async (employeeId, month, year) => {
+  const params = new URLSearchParams({ employeeId });
+  if (month !== undefined && year !== undefined) {
+    params.set('month', String(month));
+    params.set('year', String(year));
+  }
+  const res = await fetch(`/api/leaves/balance?${params.toString()}`, { cache: 'no-store' });
   return await res.json();
 };
 

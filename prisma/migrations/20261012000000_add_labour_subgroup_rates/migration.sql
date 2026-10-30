@@ -1,0 +1,6 @@
+ALTER TABLE "MaterialLibraryGroup"
+ADD COLUMN "combinedRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN "combinedUnit" TEXT;
+
+ALTER TABLE "TaskLibraryLabour"
+ADD COLUMN "subgroupIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

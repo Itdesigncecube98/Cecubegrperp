@@ -66,6 +66,12 @@ function AdminDashboardContent({ children }) {
 
         {/* Nav */}
         <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 8px', scrollbarWidth: 'none' }}>
+          <Link href="/portal" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, color: '#94a3b8', textDecoration: 'none', fontSize: 13, fontWeight: 500, justifyContent: collapsed ? 'center' : 'flex-start', marginBottom: 8 }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}>
+            <LayoutDashboard size={15} style={{ minWidth: 15 }} />
+            {!collapsed && 'Back to Portal'}
+          </Link>
           {NAV_SECTIONS.map(section => (
             <div key={section.group} style={{ marginBottom: 4 }}>
               {!collapsed && (
@@ -101,14 +107,8 @@ function AdminDashboardContent({ children }) {
           ))}
         </nav>
 
-        {/* Back to Portal + Logout */}
+        {/* Logout */}
         <div style={{ padding: '12px 8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <Link href="/portal" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, color: '#64748b', textDecoration: 'none', fontSize: 13, fontWeight: 500, justifyContent: collapsed ? 'center' : 'flex-start', marginBottom: 4 }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'transparent'; }}>
-            <LayoutDashboard size={15} style={{ minWidth: 15 }} />
-            {!collapsed && 'Back to Portal'}
-          </Link>
           <button onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); sessionStorage.clear(); localStorage.removeItem('employeeData'); localStorage.removeItem('activeEmp'); localStorage.removeItem('activeProj'); router.push('/login'); }}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 13, fontWeight: 500, justifyContent: collapsed ? 'center' : 'flex-start' }}
             onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}

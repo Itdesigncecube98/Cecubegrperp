@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, RefreshCw, Calculator, Printer, FileDown, FileText } from 'lucide-react';
 import MultiSelect from '@/components/MultiSelect';
 import SalarySlipModal from './SalarySlipModal';
@@ -13,6 +13,9 @@ export default function SalaryCalculation() {
   const [selectedRecordForSlip, setSelectedRecordForSlip] = useState(null);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [selectedRecordIds, setSelectedRecordIds] = useState([]);
+  const [approvingSelected, setApprovingSelected] = useState(false);
+  const selectAllRef = useRef(null);
   
   // Dialog state
   const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null, onCancel: null });
@@ -46,6 +49,7 @@ export default function SalaryCalculation() {
       const data = await res.json();
       const recs = data.payrollRecords || [];
       setRecords(recs);
+      setSelectedRecordIds([]);
       setCycleBonusIncentives(data.bonusIncentives || []);
       
       const uniqueDepts = [...new Set(recs.map(r => r.employee?.department).filter(Boolean))];
@@ -139,10 +143,67 @@ export default function SalaryCalculation() {
     const empMatch = isAllEmps || (empLabel && selectedEmps.includes(empLabel));
 
     return deptMatch && branchMatch && empMatch;
-  });
+  }).sort((a, b) => String(a.employee?.empId || '').localeCompare(String(b.employee?.empId || ''), undefined, { numeric: true, sensitivity: 'base' }));
 
   const totalProcessed = filteredRecords.filter(r => r.status === 'PROCESSED').length;
   const totalNetPay = filteredRecords.reduce((sum, r) => sum + (r.netPay || 0), 0).toFixed(2);
+  const visibleRecordIds = filteredRecords.map(record => record.id);
+  const selectedVisibleCount = visibleRecordIds.filter(id => selectedRecordIds.includes(id)).length;
+  const selectedPendingRecords = records.filter(record => selectedRecordIds.includes(record.id) && record.status === 'PENDING');
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleRecordIds.length;
+    }
+  }, [selectedVisibleCount, visibleRecordIds.length]);
+
+  const toggleRecordSelection = (id, checked) => {
+    setSelectedRecordIds(previous => checked
+      ? (previous.includes(id) ? previous : [...previous, id])
+      : previous.filter(recordId => recordId !== id));
+  };
+
+  const handleApproveSelected = () => {
+    const pending = selectedPendingRecords;
+    if (!pending.length) return;
+    setDialogConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'Approve Selected Salaries',
+      message: `Approve ${pending.length} selected pending salary record${pending.length === 1 ? '' : 's'}? Approved records can no longer be edited.`,
+      onCancel: () => setDialogConfig(previous => ({ ...previous, isOpen: false })),
+      onConfirm: async () => {
+        setDialogConfig(previous => ({ ...previous, isOpen: false }));
+        setApprovingSelected(true);
+        const succeeded = [];
+        const failed = [];
+        for (const record of pending) {
+          try {
+            const response = await fetch(`/api/payroll/records/${record.id}/toggle-status`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'APPROVED' })
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || 'Approval failed');
+            succeeded.push(record.id);
+          } catch (error) {
+            failed.push({ id: record.id, error: error.message });
+          }
+        }
+        if (succeeded.length) {
+          setRecords(previous => previous.map(record => succeeded.includes(record.id) ? { ...record, status: 'APPROVED' } : record));
+          setSelectedRecordIds(previous => previous.filter(id => !succeeded.includes(id)));
+        }
+        setApprovingSelected(false);
+        if (failed.length) {
+          alert(`${succeeded.length} approved. ${failed.length} failed: ${failed.map(item => item.error).join('; ')}`);
+        } else {
+          alert(`${succeeded.length} salary record${succeeded.length === 1 ? '' : 's'} approved.`);
+        }
+      }
+    });
+  };
 
   const handleSlipSaveSuccess = (updatedRecord, updatedBonusIncentives) => {
     setRecords(prev => prev.map(r => r.id === updatedRecord.id ? { ...r, ...updatedRecord } : r));
@@ -196,13 +257,22 @@ export default function SalaryCalculation() {
         <div className="summary-badge" style={{ backgroundColor: '#f1f5f9', color: '#64748b' }}>{filteredRecords.length} Employees</div>
         <div className="summary-badge green">Salary Processed : {totalProcessed}</div>
         <div className="summary-badge blue">Pending: {filteredRecords.length - totalProcessed}</div>
+        {selectedRecordIds.length > 0 && <div className="summary-badge" style={{ backgroundColor: '#eff6ff', color: '#1d4ed8' }}>{selectedRecordIds.length} selected</div>}
+        <button className="btn-primary" onClick={handleApproveSelected} disabled={approvingSelected || selectedPendingRecords.length === 0} style={{ marginLeft: 'auto', backgroundColor: approvingSelected || selectedPendingRecords.length === 0 ? '#94a3b8' : '#10b981' }}>
+          {approvingSelected ? 'Approving...' : `Approve selected${selectedPendingRecords.length ? ` (${selectedPendingRecords.length})` : ''}`}
+        </button>
       </div>
 
       <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px 8px 0 0', minHeight: 300 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#f8fafc', textAlign: 'left', borderBottom: '1px solid #e2e8f0', fontSize: '0.8rem' }}>
-              <th style={{ padding: '10px', width: '40px' }}><input type="checkbox" /></th>
+              <th style={{ padding: '10px', width: '40px' }}><input ref={selectAllRef} type="checkbox" aria-label="Select all visible payroll records" checked={visibleRecordIds.length > 0 && selectedVisibleCount === visibleRecordIds.length} onChange={event => {
+                const visible = new Set(visibleRecordIds);
+                setSelectedRecordIds(previous => event.target.checked
+                  ? [...new Set([...previous, ...visibleRecordIds])]
+                  : previous.filter(id => !visible.has(id)));
+              }} /></th>
               <th style={{ padding: '10px' }}>EMP NO</th>
               <th style={{ padding: '10px' }}>NAME</th>
               <th style={{ padding: '10px' }}>POSITION</th>
@@ -224,7 +294,7 @@ export default function SalaryCalculation() {
               <tr><td colSpan={13} style={{ textAlign: 'center', padding: '2rem' }}>No records found. Click Calculate to process.</td></tr>
             ) : filteredRecords.map((row, idx) => (
               <tr key={row.id} style={{ background: idx % 2 === 0 ? 'white' : '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.8rem' }}>
-                <td style={{ padding: '8px' }}><input type="checkbox" /></td>
+                <td style={{ padding: '8px' }}><input type="checkbox" aria-label={`Select ${row.employee?.name || 'employee'} payroll record`} checked={selectedRecordIds.includes(row.id)} onChange={event => toggleRecordSelection(row.id, event.target.checked)} /></td>
                 <td style={{ padding: '8px', color: '#0284c7', fontWeight: 600 }}>{row.employee?.empId}</td>
                 <td style={{ padding: '8px' }}>
                   <button

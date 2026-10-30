@@ -26,6 +26,9 @@ export async function PUT(request, { params }) {
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
+    if (trip.status !== 'ACTIVE') {
+      return NextResponse.json({ error: 'Trip is not active' }, { status: 409 });
+    }
 
     const { distanceKm: measuredDistanceKm } = cleanTripTrack(trip.pings);
 

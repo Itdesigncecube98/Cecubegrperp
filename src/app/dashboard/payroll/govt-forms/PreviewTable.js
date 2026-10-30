@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function PreviewTable({ title, rule, cols, records, dataMapper, contractorName, contractorAddress, monthStr, location, woNo, blankRows = 3, theme = 'yellow', renderFooter }) {
+export default function PreviewTable({ title, rule, cols, records, dataMapper, contractorName, contractorAddress, monthStr, location, woNo, blankRows = 3, theme = 'yellow', renderFooter, locked = false }) {
   const c = cols.length;
   const span1 = Math.floor(c * 0.2) || 1;
   const span2 = Math.floor(c * 0.5) || 1;
@@ -67,15 +67,15 @@ export default function PreviewTable({ title, rule, cols, records, dataMapper, c
             <th colSpan={span1} style={cellStyle({ textAlign: 'left', fontWeight: 'bold', color: labelTxt, background: '#ffffff' })}>
               Name and address of Contractor &gt;
             </th>
-            <th colSpan={span2} contentEditable suppressContentEditableWarning
-              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: '#FFE4E1' })}>
+            <th colSpan={span2} contentEditable={!locked} suppressContentEditableWarning
+              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: locked ? '#fef9c3' : '#FFE4E1', cursor: locked ? 'default' : 'text' })}>
               {contractorName}<br />{contractorAddress}
             </th>
             <th colSpan={span3} style={cellStyle({ textAlign: 'left', fontWeight: 'bold', color: labelTxt, background: '#ffffff' })}>
               For the month of :&gt;
             </th>
-            <th colSpan={span4} contentEditable suppressContentEditableWarning
-              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: '#FFE4E1' })}>
+            <th colSpan={span4} contentEditable={!locked} suppressContentEditableWarning
+              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: locked ? '#fef9c3' : '#FFE4E1', cursor: locked ? 'default' : 'text' })}>
               {monthStr}
             </th>
           </tr>
@@ -85,8 +85,8 @@ export default function PreviewTable({ title, rule, cols, records, dataMapper, c
             <th colSpan={span1} style={cellStyle({ textAlign: 'left', fontWeight: 'bold', color: labelTxt, background: '#ffffff' })}>
               Name &amp; Address of Principal Employer &gt;
             </th>
-            <th colSpan={c - span1} contentEditable suppressContentEditableWarning
-              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: '#FFE4E1' })}>
+            <th colSpan={c - span1} contentEditable={!locked} suppressContentEditableWarning
+              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: locked ? '#fef9c3' : '#FFE4E1', cursor: locked ? 'default' : 'text' })}>
             </th>
           </tr>
 
@@ -95,15 +95,15 @@ export default function PreviewTable({ title, rule, cols, records, dataMapper, c
             <th colSpan={span1} style={cellStyle({ textAlign: 'left', fontWeight: 'bold', color: labelTxt, background: '#ffffff' })}>
               Nature and Location Of Work &gt;
             </th>
-            <th colSpan={span2} contentEditable suppressContentEditableWarning
-              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: '#FFE4E1' })}>
+            <th colSpan={span2} contentEditable={!locked} suppressContentEditableWarning
+              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: locked ? '#fef9c3' : '#FFE4E1', cursor: locked ? 'default' : 'text' })}>
               {location}
             </th>
             <th colSpan={span3} style={cellStyle({ textAlign: 'left', fontWeight: 'bold', color: labelTxt, background: '#ffffff' })}>
               Work order No.:&gt;
             </th>
-            <th colSpan={span4} contentEditable suppressContentEditableWarning
-              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: '#FFE4E1' })}>
+            <th colSpan={span4} contentEditable={!locked} suppressContentEditableWarning
+              style={editableStyle({ textAlign: 'left', color: '#cc0000', fontWeight: 'bold', background: locked ? '#fef9c3' : '#FFE4E1', cursor: locked ? 'default' : 'text' })}>
               {woNo}
             </th>
           </tr>
@@ -134,19 +134,19 @@ export default function PreviewTable({ title, rule, cols, records, dataMapper, c
               {row.map((val, cIdx) => (
                 <td
                   key={cIdx}
-                  contentEditable
+                  contentEditable={!locked}
                   suppressContentEditableWarning
                   style={{
                     border: tdBorder,
                     padding: '5px 4px',
                     textAlign: 'center',
                     minWidth: '28px',
-                    backgroundColor: val === 'W/O' ? '#f59e0b' : 'transparent',
+                    backgroundColor: val === 'W/O' ? '#f59e0b' : (locked ? '#fafafa' : 'transparent'),
                     color: val === 'W/O' ? '#fff' : '#000',
                     fontWeight: val === 'W/O' ? 'bold' : 'normal',
                     fontSize: '10px',
                     outline: 'none',
-                    cursor: 'text',
+                    cursor: locked ? 'default' : 'text',
                   }}
                 >
                   {val === undefined || val === null ? '' : val}
@@ -161,7 +161,7 @@ export default function PreviewTable({ title, rule, cols, records, dataMapper, c
               {row.map((val, cIdx) => (
                 <td
                   key={cIdx}
-                  contentEditable
+                  contentEditable={!locked}
                   suppressContentEditableWarning
                   style={{
                     border: tdBorder,
@@ -170,7 +170,7 @@ export default function PreviewTable({ title, rule, cols, records, dataMapper, c
                     minWidth: '28px',
                     fontSize: '10px',
                     outline: 'none',
-                    cursor: 'text',
+                    cursor: locked ? 'default' : 'text',
                   }}
                 >
                   {val === undefined || val === null ? '' : val}
@@ -182,27 +182,29 @@ export default function PreviewTable({ title, rule, cols, records, dataMapper, c
         </tbody>
       </table>
 
-      {/* Add Row button — only shown on screen, hidden on print */}
-      <div className="no-print" style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-start' }}>
-        <button
-          onClick={addRow}
-          style={{
-            padding: '6px 16px',
-            backgroundColor: '#0f766e',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-        >
-          + Add Row
-        </button>
-      </div>
+      {/* Add Row button — only shown on screen, hidden on print, hidden when locked */}
+      {!locked && (
+        <div className="no-print" style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-start' }}>
+          <button
+            onClick={addRow}
+            style={{
+              padding: '6px 16px',
+              backgroundColor: '#0f766e',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            + Add Row
+          </button>
+        </div>
+      )}
 
       {/* Blank space at bottom for signing */}
       <div style={{ height: '80px' }}></div>

@@ -1,180 +1,165 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import 'leaflet/dist/leaflet.css';
+import { useEffect, useRef, useState } from 'react';
+
+const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+let mapsLoadPromise = null;
 
 export function loadGoogleMaps() {
   if (typeof window === 'undefined') return Promise.resolve(null);
   if (window.google?.maps) return Promise.resolve(window.google.maps);
-  if (window._googleMapsPromise) return window._googleMapsPromise;
+  if (mapsLoadPromise) return mapsLoadPromise;
 
-  window._googleMapsPromise = new Promise((resolve, reject) => {
-    window.__initGoogleMaps = () => resolve(window.google.maps);
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&loading=async&libraries=marker&callback=__initGoogleMaps`;
-    script.async = true;
-    script.defer = true;
-    script.onerror = reject;
-    document.head.appendChild(script);
+  mapsLoadPromise = new Promise((resolve, reject) => {
+    if (!MAPS_KEY) { reject(new Error('Maps API key missing')); return; }
+    window.__gmCallback = () => resolve(window.google.maps);
+    window.gm_authFailure = () => {
+      window.__gmAuthFailed = true;
+      window.dispatchEvent(new CustomEvent('gm_auth_failure'));
+    };
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&loading=async&libraries=marker&callback=__gmCallback`;
+    s.async = true; s.defer = true;
+    s.onerror = () => { mapsLoadPromise = null; reject(new Error('Failed to load Google Maps')); };
+    document.head.appendChild(s);
   });
-  return window._googleMapsPromise;
+  return mapsLoadPromise;
 }
 
-export default function GoogleMapsView({ locations = [], paths = [], historyMarkers = [], height = 400, onLocationSelect = null, defaultCenter = null }) {
+export default function GoogleMapsView({
+  locations = [],
+  paths = [],
+  historyMarkers = [],
+  height = 400,
+  onLocationSelect = null,
+  defaultCenter = null,
+}) {
+  const divRef = useRef(null);
   const mapRef = useRef(null);
-  const instanceRef = useRef(null);
-  const markersRef = useRef([]);
-  const polylinesRef = useRef([]);
-  const pickerMarkerRef = useRef(null);
+  const leafletRef = useRef(null);
+  const layerGroupRef = useRef(null);
+  const onLocationSelectRef = useRef(onLocationSelect);
+  const [mapReady, setMapReady] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!mapRef.current || typeof window === 'undefined') return;
+    onLocationSelectRef.current = onLocationSelect;
+  }, [onLocationSelect]);
 
-    loadGoogleMaps().then((maps) => {
-      if (!maps) return;
-      
-      const allPoints = [
-        ...locations.map(l => ({ lat: l.latitude ?? l.lat, lng: l.longitude ?? l.lng })),
-        ...paths.flat().map(p => ({ lat: p.lat, lng: p.lng }))
-      ].filter(p => p.lat != null && p.lng != null);
+  useEffect(() => {
+    let cancelled = false;
+    import('leaflet').then(({ default: L }) => {
+      if (cancelled || !divRef.current) return;
 
-      if (!instanceRef.current) {
-        instanceRef.current = new maps.Map(mapRef.current, {
-          center: defaultCenter || (allPoints.length > 0 ? allPoints[0] : { lat: 20.5937, lng: 78.9629 }),
-          zoom: 13,
-          mapId: 'DEMO_MAP_ID',
-          mapTypeId: 'roadmap',
-          zoomControl: true,
-          streetViewControl: false,
-          fullscreenControl: true,
-          styles: [
-            {
-              featureType: "poi",
-              elementType: "labels",
-              stylers: [{ visibility: "off" }]
-            }
-          ]
-        });
-
-        if (onLocationSelect) {
-          instanceRef.current.addListener('click', (e) => {
-            const lat = e.latLng.lat();
-            const lng = e.latLng.lng();
-            onLocationSelect({ lat, lng });
-          });
-        }
-      }
-
-      const map = instanceRef.current;
-
-      // Clear old markers/polylines
-      markersRef.current.forEach(m => {
-        if (m.setMap) m.setMap(null);
-        else m.map = null;
+      const map = L.map(divRef.current, { zoomControl: true }).setView([28.6139, 77.2090], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(map);
+      leafletRef.current = L;
+      mapRef.current = map;
+      layerGroupRef.current = L.layerGroup().addTo(map);
+      map.on('click', event => {
+        onLocationSelectRef.current?.({ lat: event.latlng.lat, lng: event.latlng.lng });
       });
-      polylinesRef.current.forEach(p => {
-        if (p.setMap) p.setMap(null);
-        else p.map = null;
-      });
-      markersRef.current = [];
-      polylinesRef.current = [];
-
-      // Add markers
-      locations.forEach(loc => {
-        const lat = loc.latitude ?? loc.lat;
-        const lng = loc.longitude ?? loc.lng;
-        if (lat == null || lng == null) return;
-        
-        const marker = new maps.marker.AdvancedMarkerElement({
-          position: { lat, lng },
-          map,
-          title: loc.title || loc.label || loc.name || ''
-        });
-        
-        if (loc.name || loc.title || loc.label) {
-          const infoWindow = new maps.InfoWindow({ content: `<div style="padding:4px; font-weight:600; font-family:sans-serif;">${loc.name || loc.title || loc.label}</div>` });
-          marker.addListener('click', () => infoWindow.open(map, marker));
-        }
-        markersRef.current.push(marker);
-      });
-
-      // (paths loop moved below)
-
-      // Handle picker marker
-      if (onLocationSelect && defaultCenter) {
-        if (!pickerMarkerRef.current) {
-          pickerMarkerRef.current = new maps.marker.AdvancedMarkerElement({
-            position: defaultCenter,
-            map,
-            gmpDraggable: true
-          });
-          pickerMarkerRef.current.addListener('dragend', (e) => {
-            const lat = e.latLng.lat();
-            const lng = e.latLng.lng();
-            onLocationSelect({ lat, lng });
-          });
-        } else {
-          pickerMarkerRef.current.position = defaultCenter;
-        }
-      }
-      paths.forEach(path => {
-        if (path.length < 2) return;
-        const polyline = new maps.Polyline({
-          path: path.map(p => ({ lat: p.lat, lng: p.lng })),
-          geodesic: true,
-          strokeColor: '#3b82f6',
-          strokeOpacity: 1.0,
-          strokeWeight: 4,
-          map
-        });
-        polylinesRef.current.push(polyline);
-      });
-
-      // Add history markers (small dots)
-      historyMarkers.forEach(loc => {
-        if (loc.lat == null || loc.lng == null) return;
-        
-        const div = document.createElement('div');
-        div.style.width = '8px';
-        div.style.height = '8px';
-        div.style.backgroundColor = '#94a3b8';
-        div.style.borderRadius = '50%';
-        div.style.border = '1px solid #fff';
-        div.style.boxShadow = '0 1px 2px rgba(0,0,0,0.3)';
-        
-        const marker = new maps.marker.AdvancedMarkerElement({
-          position: { lat: loc.lat, lng: loc.lng },
-          map,
-          content: div,
-          title: loc.title || ''
-        });
-        
-        if (loc.title) {
-          const infoWindow = new maps.InfoWindow({ content: `<div style="padding:2px 4px; font-size:12px; font-weight:500; font-family:sans-serif; color:#475569">${loc.title}</div>` });
-          marker.addListener('click', () => infoWindow.open(map, marker));
-        }
-        markersRef.current.push(marker);
-      });
-
-      if (allPoints.length > 1) {
-        const bounds = new maps.LatLngBounds();
-        allPoints.forEach(p => bounds.extend(p));
-        map.fitBounds(bounds);
-      } else if (allPoints.length === 1) {
-        map.setCenter(allPoints[0]);
-        map.setZoom(15);
-      }
+      setMapReady(true);
+    }).catch(loadError => {
+      if (!cancelled) setError(`Could not load the map: ${loadError.message}`);
     });
 
     return () => {
-      // Cleanup happens on next effect run or unmount
-      markersRef.current.forEach(m => m.setMap(null));
-      polylinesRef.current.forEach(p => p.setMap(null));
+      cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        leafletRef.current = null;
+        layerGroupRef.current = null;
+      }
     };
-  }, [locations, paths]);
+  }, []);
 
-  return (
-    <div style={{ position: 'relative', height, borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-      <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
-    </div>
-  );
+  useEffect(() => {
+    if (!mapReady || !leafletRef.current || !mapRef.current || !layerGroupRef.current) return;
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    const layerGroup = layerGroupRef.current;
+    layerGroup.clearLayers();
+
+    const allPoints = [
+      ...locations.map(location => ({
+        lat: Number(location.latitude ?? location.lat),
+        lng: Number(location.longitude ?? location.lng),
+      })),
+      ...paths.flat().map(point => ({ lat: Number(point.lat), lng: Number(point.lng) })),
+    ].filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+
+    locations.forEach(location => {
+      const lat = Number(location.latitude ?? location.lat);
+      const lng = Number(location.longitude ?? location.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      const isLive = Boolean(location.path?.length && location.source !== 'Office / App User');
+      const color = isLive ? '#2563eb' : '#059669';
+      const name = location.employee?.name || location.name || 'Employee';
+      const marker = L.circleMarker([lat, lng], {
+        radius: isLive ? 9 : 8,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 1,
+        pane: 'markerPane',
+      });
+      const popup = document.createElement('div');
+      const employeeName = document.createElement('strong');
+      employeeName.textContent = name;
+      popup.appendChild(employeeName);
+      const details = document.createElement('div');
+      details.textContent = `${location.employee?.empId || ''} · ${location.employee?.department || 'Staff'}`;
+      popup.appendChild(details);
+      const status = document.createElement('div');
+      status.textContent = `${isLive ? 'Live GPS' : 'In Office'}${location.punchTime ? ` · ${location.punchTime}` : ''}`;
+      popup.appendChild(status);
+      const tooltip = document.createElement('span');
+      tooltip.textContent = name;
+      marker.bindTooltip(tooltip).bindPopup(popup).addTo(layerGroup);
+    });
+
+    paths.forEach(path => {
+      const points = path
+        .map(point => [Number(point.lat), Number(point.lng)])
+        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+      if (points.length > 1) {
+        L.polyline(points, { color: '#3b82f6', weight: 4, opacity: 0.85 }).addTo(layerGroup);
+      }
+    });
+
+    historyMarkers.forEach(loc => {
+      const lat = Number(loc.lat);
+      const lng = Number(loc.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const marker = L.circleMarker([lat, lng], {
+        radius: 4,
+        color: '#ffffff',
+        weight: 1,
+        fillColor: '#94a3b8',
+        fillOpacity: 1,
+      });
+      if (loc.title) marker.bindPopup(document.createTextNode(String(loc.title)));
+      marker.addTo(layerGroup);
+    });
+
+    if (allPoints.length > 1) {
+      map.fitBounds(L.latLngBounds(allPoints.map(point => [point.lat, point.lng])), { padding: [24, 24] });
+    } else if (allPoints.length === 1) {
+      map.setView([allPoints[0].lat, allPoints[0].lng], 15);
+    } else if (defaultCenter) {
+      map.setView([defaultCenter.lat, defaultCenter.lng], 13);
+    }
+  }, [mapReady, locations, paths, historyMarkers, defaultCenter]);
+
+  if (error) return <div role="alert" style={{ height, display: 'grid', placeItems: 'center', color: '#b91c1c' }}>{error}</div>;
+
+  return <div ref={divRef} style={{ height, width: '100%', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }} />;
 }

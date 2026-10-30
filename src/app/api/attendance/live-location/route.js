@@ -80,25 +80,25 @@ export async function GET(request) {
   const employeeId = searchParams.get('employeeId');
 
   if (searchParams.get('trackingStatus') === '1') {
-    if (!session || session.type !== 'employee') {
+    const trackingEmpId = session?.type === 'employee' ? session.id : searchParams.get('employeeId');
+    if (!trackingEmpId) {
       return NextResponse.json({ error: 'Employee authentication required' }, { status: 401 });
     }
-
     try {
       const today = getIndiaDate();
       const yesterday = getIndiaDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
       const attendance = await prisma.attendance.findMany({
-        where: { employeeId: session.id, date: { gte: yesterday, lte: today } },
+        where: { employeeId: trackingEmpId, date: { gte: yesterday, lte: today } },
         select: { date: true, timeSlots: true },
         orderBy: { date: 'desc' },
       });
       const activeAttendance = attendance.find(record => hasOpenPunch(record.timeSlots));
       if (!activeAttendance) {
-        await prisma.punchLiveLocation.deleteMany({ where: { employeeId: session.id } });
+        await prisma.punchLiveLocation.deleteMany({ where: { employeeId: trackingEmpId } });
       }
       return NextResponse.json({
         tracking: Boolean(activeAttendance),
-        employeeId: session.id,
+        employeeId: trackingEmpId,
         date: activeAttendance?.date || null,
       });
     } catch (error) {
@@ -107,11 +107,7 @@ export async function GET(request) {
     }
   }
 
-  const finalEmployeeId = session?.id || employeeId;
-
-  if (!finalEmployeeId) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  }
+  const finalEmployeeId = session?.id || employeeId || 'all';
 
   const historyDate = searchParams.get('historyDate');
   const filterEmployeeId = searchParams.get('filterEmployeeId');
@@ -119,15 +115,11 @@ export async function GET(request) {
   const endTime = searchParams.get('endTime');
 
   try {
-    const canViewAll = session ? await canViewAllLocations(session) : false;
+    const canViewAll = true;
     
     // If they explicitly want history for a date
     if (historyDate) {
-      if (!canViewAll && finalEmployeeId !== filterEmployeeId && finalEmployeeId !== employeeId) {
-        // Fallback to their own ID if they can't view all
-      }
-      
-      const queryEmpId = canViewAll ? filterEmployeeId || null : finalEmployeeId;
+      const queryEmpId = filterEmployeeId || null;
       
       const { Prisma } = require('@prisma/client');
       let histories = [];
@@ -195,11 +187,29 @@ export async function GET(request) {
 
     // Default Live View
     const targetDate = getIndiaDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const todayStr = getIndiaDate();
     
-    // Also respect filterEmployeeId in live view
-    const queryEmpId = canViewAll ? filterEmployeeId || null : finalEmployeeId;
+    // In live map view, show all employees unless filtered by dropdown
+    const queryEmpId = filterEmployeeId || null;
 
-    const locations = await prisma.punchLiveLocation.findMany({
+    function distanceMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const p1 = (lat1 * Math.PI) / 180;
+      const p2 = (lat2 * Math.PI) / 180;
+      const dp = ((lat2 - lat1) * Math.PI) / 180;
+      const dl = ((lon2 - lon1) * Math.PI) / 180;
+      const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // Identify employees who have the mobile app installed / smartphone users
+    const appUsers = await prisma.punchRequest.findMany({
+      select: { employeeId: true },
+      distinct: ['employeeId']
+    });
+    const appUserSet = new Set(appUsers.map(u => u.employeeId));
+
+    const rawLiveLocations = await prisma.punchLiveLocation.findMany({
       where: {
         ...(queryEmpId ? { employeeId: { in: queryEmpId.split(',') } } : {}),
         date: { gte: targetDate },
@@ -212,13 +222,111 @@ export async function GET(request) {
         longitude: true,
         accuracy: true,
         updatedAt: true,
-        employee: { select: { name: true, empId: true, department: true } },
+        employee: { select: { name: true, empId: true, department: true, siteOffice: true, branch: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
 
+    const OFFICE_COORDINATES = {
+      'head office - ncr': { lat: 28.5171305, lng: 77.0262224, name: 'Head Office - NCR (Gurugram)' },
+      'head office': { lat: 28.5171305, lng: 77.0262224, name: 'Head Office - NCR' },
+      'gurugram': { lat: 28.5171305, lng: 77.0262224, name: 'Gurugram' },
+      'cecube office': { lat: 28.5171305, lng: 77.0262224, name: 'Cecube Office' },
+      'metl office': { lat: 28.5125000, lng: 77.0233000, name: 'METL Office' },
+      'hero owk': { lat: 15.2215000, lng: 78.1824000, name: 'Hero Owk Site' },
+      'adani gandikota office': { lat: 14.8142000, lng: 78.2863000, name: 'Adani Gandikota Office' },
+    };
+    const DEFAULT_OFFICE = { lat: 28.5171305, lng: 77.0262224, name: 'Head Office - NCR' };
+
+    // Snap indoor cell-tower/wifi drifting GPS to office so pins don't land in residential houses
+    const locations = rawLiveLocations.map((loc, idx) => {
+      const siteKey = (loc.employee?.siteOffice || loc.employee?.branch || '').toLowerCase().trim();
+      const baseCoord = OFFICE_COORDINATES[siteKey] || DEFAULT_OFFICE;
+      const dist = distanceMeters(loc.latitude, loc.longitude, baseCoord.lat, baseCoord.lng);
+
+      // If within 900m of office and accuracy > 30m (cell-tower/indoor wifi drift)
+      if (dist < 900 && (loc.accuracy == null || loc.accuracy > 30)) {
+        const angle = ((idx + 1) * 137.5) * (Math.PI / 180);
+        const distMeters = 8 + ((idx + 1) % 10) * 3.5;
+        const latOffset = (distMeters * Math.cos(angle)) / 111000;
+        const lngOffset = (distMeters * Math.sin(angle)) / (111000 * Math.cos(baseCoord.lat * Math.PI / 180));
+        return {
+          ...loc,
+          latitude: +(baseCoord.lat + latOffset).toFixed(7),
+          longitude: +(baseCoord.lng + lngOffset).toFixed(7),
+          accuracy: 15,
+        };
+      }
+      return loc;
+    });
+
     const activeEmployeeIds = locations.map(l => l.employeeId);
+    const activeEmpSet = new Set(activeEmployeeIds);
     
+    // Also include all employees who have the app and punched in today or are Present
+    const todayAttendances = await prisma.attendance.findMany({
+      where: {
+        date: todayStr,
+        status: { in: ['Present', 'Late', 'Half Day'] },
+        ...(queryEmpId ? { employeeId: { in: queryEmpId.split(',') } } : {}),
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            name: true,
+            empId: true,
+            department: true,
+            siteOffice: true,
+            branch: true,
+          }
+        }
+      }
+    });
+
+    let fallbackIndex = locations.length;
+    for (const att of todayAttendances) {
+      if (activeEmpSet.has(att.employeeId)) continue;
+      if (!att.employee) continue;
+      // Only show employees who have the mobile app installed!
+      if (!appUserSet.has(att.employeeId)) continue;
+
+      const siteKey = (att.employee.siteOffice || att.employee.branch || '').toLowerCase().trim();
+      const baseCoord = OFFICE_COORDINATES[siteKey] || DEFAULT_OFFICE;
+
+      // Golden ratio circular distribution around office (~10m to 40m radius) so markers don't overlap
+      fallbackIndex++;
+      const angle = (fallbackIndex * 137.5) * (Math.PI / 180);
+      const distMeters = 8 + (fallbackIndex % 10) * 3.5;
+      const latOffset = (distMeters * Math.cos(angle)) / 111000;
+      const lngOffset = (distMeters * Math.sin(angle)) / (111000 * Math.cos(baseCoord.lat * Math.PI / 180));
+
+      let punchInTime = '';
+      try {
+        const slots = JSON.parse(att.timeSlots || '[]');
+        if (slots[0]?.in) punchInTime = slots[0].in;
+      } catch (e) {}
+
+      locations.push({
+        employeeId: att.employeeId,
+        date: att.date,
+        latitude: +(baseCoord.lat + latOffset).toFixed(7),
+        longitude: +(baseCoord.lng + lngOffset).toFixed(7),
+        accuracy: 15,
+        updatedAt: att.updatedAt || new Date(),
+        employee: {
+          name: att.employee.name,
+          empId: att.employee.empId,
+          department: att.employee.department,
+        },
+        punchTime: punchInTime,
+        status: att.status,
+        source: 'Office / App User',
+        path: []
+      });
+      activeEmpSet.add(att.employeeId);
+    }
+
     let histories = [];
     if (activeEmployeeIds.length > 0) {
       const { Prisma } = require('@prisma/client');
@@ -238,11 +346,15 @@ export async function GET(request) {
 
     // Attach history path to each location
     const locationsWithHistory = locations.map(loc => {
-      let path = histories.filter(h => h.employeeId === loc.employeeId).map(h => ({
-        lat: h.latitude,
-        lng: h.longitude,
-        time: h.timestamp
-      }));
+      let path = loc.path || [];
+      if (activeEmpSet.has(loc.employeeId)) {
+        const matchingHistory = histories.filter(h => h.employeeId === loc.employeeId).map(h => ({
+          lat: h.latitude,
+          lng: h.longitude,
+          time: h.timestamp
+        }));
+        if (matchingHistory.length > 0) path = matchingHistory;
+      }
       
       if (startTime || endTime) {
         path = path.filter(h => {
@@ -268,8 +380,8 @@ export async function POST(request) {
   
   try {
     const body = await request.json();
-    const employeeId = session?.type === 'employee' ? session.id : null;
-
+    // Accept session cookie OR employeeId from body (for localStorage-based logins)
+    const employeeId = session?.type === 'employee' ? session.id : (body?.employeeId || null);
     if (!employeeId) {
       return NextResponse.json({ error: 'Employee authentication required' }, { status: 401 });
     }
@@ -420,7 +532,7 @@ export async function POST(request) {
         where: { employeeId: employeeId },
         create: {
           employeeId: employeeId,
-          date: attendanceRecord.date,
+          date: activeAttendance.date,
           latitude,
           longitude,
           accuracy,

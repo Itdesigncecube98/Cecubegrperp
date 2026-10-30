@@ -16,7 +16,6 @@ const LEGACY_ADMIN_TOOLS = {
     { name: 'Labour Requisition wise WO Generation', code: 'CONTRACT_REQ_WO_GEN' },
     { name: 'Raise Work Order', code: 'CONTRACT_WO_RAISE' },
     { name: 'Browse Work Order', code: 'CONTRACT_WO_BROWSE' },
-    { name: 'Labour Rate Master', code: 'CONTRACT_LABOUR_RATE_MASTER' },
     { name: 'RA Bill Generation', code: 'CONTRACT_RA_GEN' },
     { name: 'RA Bill Advance', code: 'CONTRACT_RA_ADVANCE' },
     { name: 'Enquiry Generation', code: 'CONTRACT_ENQUIRY_GEN' },

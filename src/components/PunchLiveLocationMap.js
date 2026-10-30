@@ -160,7 +160,7 @@ export default function PunchLiveLocationMap({ active = true, refreshInterval = 
         <GoogleMapsView
           locations={locations.map(location => ({
             ...location,
-            name: `${location.employee?.name || location.employeeId}${location.employee?.empId ? ` (${location.employee.empId})` : ''}`,
+            name: `${location.employee?.name || location.employeeId}${location.employee?.empId ? ` (${location.employee.empId})` : ''}${location.punchTime ? ` • In: ${location.punchTime}` : location.source ? ` • ${location.source}` : ' • Live GPS'}`,
           }))}
           paths={locations.filter(l => l.path && l.path.length > 1).map(l => l.path)}
           historyMarkers={locations.flatMap(l => 

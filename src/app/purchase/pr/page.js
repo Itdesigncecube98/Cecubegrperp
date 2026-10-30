@@ -201,11 +201,6 @@ export default function PRRegister() {
                       </select>
                     </td>
                     <td className="pur-text-right">
-                      {pr.status === 'Approved' && (
-                        <Link href={`/purchase/enquiry/generation?indentId=${pr.id}`} className="pur-btn pur-btn-primary" style={{ padding: '4px 8px', fontSize: '0.75rem', marginRight: '8px', backgroundColor: '#10b981', color: 'white' }}>
-                          Generate Enquiry
-                        </Link>
-                      )}
                       {(can('Purchase Indent View') || can('Purchase Indent Edit')) && <button type="button" onClick={() => setSelectedPr(pr)} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>{can('Purchase Indent Edit') ? 'View / Edit' : 'View'}</button>}
                       {can('Send Purchase Indent by Email') && <button type="button" className="pur-icon-btn" title="Email purchase indent to requester" disabled={sendingId === pr.id} onClick={() => sendPrEmail(pr)}><Mail size={15} /></button>}
                     </td>

@@ -1,0 +1,2 @@
+ALTER TABLE "SalaryHead"
+ADD COLUMN "fixedAmount" DOUBLE PRECISION;

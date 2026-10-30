@@ -1,23 +1,14 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
+import { getEarnedLeaveEligibilityDate } from '../../../../lib/leaveEntitlements';
 
 const EARNED_LEAVES_PER_YEAR = 18;
-const EARNED_ELIGIBILITY_MONTHS = 8;
 
 const pad = (n) => String(n).padStart(2, '0');
 const toKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-// First date (YYYY-MM-DD) on which the employee may use earned leave.
-// NOTE: rename the joining-date field here if your Employee model uses a different name.
-function getEligibleFrom(emp) {
-  const raw = emp?.joiningDate ?? emp?.dateOfJoining ?? emp?.doj ?? null;
-  if (!raw) return null;
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return null;
-  d.setMonth(d.getMonth() + EARNED_ELIGIBILITY_MONTHS);
-  return toKey(d);
-}
+const normalizeLeaveType = (value) => String(value || '').trim().toLowerCase();
 
 export async function GET(request) {
   try {
@@ -29,6 +20,10 @@ export async function GET(request) {
     if (month && year) {
       const targetMonth = parseInt(month, 10);
       const targetYear = parseInt(year, 10);
+      if (!Number.isInteger(targetMonth) || targetMonth < 1 || targetMonth > 12 ||
+          !Number.isInteger(targetYear) || targetYear < 2000 || targetYear > 9999) {
+        return NextResponse.json({ error: 'A valid month and year are required.' }, { status: 400 });
+      }
       const monthPrefix = `${targetYear}-${pad(targetMonth)}`;
       const yearStart = `${targetYear}-01-01`;
       const monthEnd = toKey(new Date(targetYear, targetMonth, 0)); // last day of target month
@@ -55,21 +50,25 @@ export async function GET(request) {
       const usageByEmp = {};
       const eligibleFromByEmp = {};
       const earnedDaysByEmp = {};
+      const savedBalances = await prisma.leaveBalance.findMany({
+        where: employeeId ? { employeeId } : {}
+      });
+      const compOffByEmp = new Map(savedBalances.map((balance) => [balance.employeeId, balance.compensatoryLeaves]));
 
       for (const emp of allEmployees) {
         usageByEmp[emp.id] = {
           employeeId: emp.id,
-          casualLeaves: 0,
+          casualLeaves: 1,
           earnedLeaves: 0,        // remaining earned balance at end of month
           earnedEntitlement: 0,   // 18 once eligible, else 0
           earnedUsed: 0,          // earned days used in the target month
           leaveWithoutPay: 0,
           explicitLwp: 0,
           netDaysLwp: 0,
-          compensatoryLeaves: 0,
+          compensatoryLeaves: compOffByEmp.get(emp.id) || 0,
           joiningDateMissing: false
         };
-        const eligibleFrom = getEligibleFrom(emp);
+        const eligibleFrom = getEarnedLeaveEligibilityDate(emp);
         eligibleFromByEmp[emp.id] = eligibleFrom;
         if (!eligibleFrom) usageByEmp[emp.id].joiningDateMissing = true;
         earnedDaysByEmp[emp.id] = [];
@@ -93,28 +92,29 @@ export async function GET(request) {
           const dateStr = toKey(curr);
           const inYearSoFar = dateStr >= yearStart && dateStr <= monthEnd;
           const inTargetMonth = dateStr.startsWith(monthPrefix);
+          const type = normalizeLeaveType(req.leaveType);
 
           if (inYearSoFar && !presentSet.has(`${req.employeeId}_${dateStr}`)) {
-            if (req.leaveType === 'Earned') {
+            if (type.includes('earned') || type === 'paid leave') {
               // Collected now, applied against the yearly pool below
               earnedDaysByEmp[req.employeeId].push({ dateStr, days: dayValue });
             } else if (inTargetMonth) {
-              if (req.leaveType === 'Casual') {
+              if (type.includes('casual')) {
                 u.casualLeaves -= dayValue;
                 if (u.casualLeaves < 0) {
                   addLwp(u, Math.abs(u.casualLeaves));
                   u.casualLeaves = 0;
                 }
-              } else if (req.leaveType === 'COFF') {
+              } else if (type === 'coff' || type.includes('compensatory')) {
                 u.compensatoryLeaves -= dayValue;
                 if (u.compensatoryLeaves < 0) {
                   addLwp(u, Math.abs(u.compensatoryLeaves));
                   u.compensatoryLeaves = 0;
                 }
               } else if (
-                req.leaveType === 'Unpaid' ||
-                req.leaveType === 'Leave Without Pay' ||
-                req.leaveType === 'Sick'
+                type === 'unpaid' ||
+                type.includes('leave without pay') ||
+                type === 'sick'
               ) {
                 addLwp(u, dayValue, true);
               }

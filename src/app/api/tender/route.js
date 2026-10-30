@@ -30,15 +30,15 @@ export async function POST(req) {
     const tender = await prisma.tender.create({
       data: {
         tenderNo,
-        referenceNo: body.referenceNo,
+        referenceNo: body.referenceNo || null,
         title: body.title,
         tenderDate: body.tenderDate ? new Date(body.tenderDate) : null,
-        source: body.source,
-        authority: body.authority,
-        clientName: body.clientName,
-        projectName: body.projectName,
-        projectLocation: body.projectLocation,
-        tenderType: body.tenderType,
+        source: body.source || null,
+        authority: body.authority || null,
+        clientName: body.clientName || null,
+        projectName: body.projectName || null,
+        projectLocation: body.projectLocation || null,
+        tenderType: body.tenderType || null,
         tenderValue: body.tenderValue ? parseFloat(body.tenderValue) : null,
         currency: body.currency || 'INR',
         publishedDate: body.publishedDate ? new Date(body.publishedDate) : null,
@@ -47,7 +47,10 @@ export async function POST(req) {
         querySubLastDate: body.querySubLastDate ? new Date(body.querySubLastDate) : null,
         bidSubStart: body.bidSubStart ? new Date(body.bidSubStart) : null,
         bidSubLastDate: body.bidSubLastDate ? new Date(body.bidSubLastDate) : null,
-        ownerId: body.ownerId,
+        techOpeningDate: body.techOpeningDate ? new Date(body.techOpeningDate) : null,
+        finOpeningDate: body.finOpeningDate ? new Date(body.finOpeningDate) : null,
+        ownerId: body.ownerId || null,
+        details: body.details || undefined,
         status: 'Evaluation' // default starting status
       }
     });
