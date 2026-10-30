@@ -46,7 +46,7 @@ async function canApprove(session, role, employeeId) {
       where: { id: session.id },
       select: { role: true },
     });
-    if (employee?.role?.toUpperCase() === 'HR') return true;
+    if (employee?.role?.trim().toUpperCase() === 'HR') return true;
   }
   if (role === 'SUPERVISOR') {
     const employee = await prisma.employee.findUnique({
@@ -68,7 +68,7 @@ export async function GET(request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const role = String(searchParams.get('role') || '').toUpperCase();
+    const role = String(searchParams.get('role') || '').trim().toUpperCase();
     let employeeIds;
 
     if (session.type === 'admin') {
@@ -86,14 +86,14 @@ export async function GET(request) {
         where: { id: session.id },
         select: { role: true },
       });
-      if (role === 'HR' && actor?.role?.toUpperCase() === 'HR') {
+      if (role === 'HR' && actor?.role?.trim().toUpperCase() === 'HR') {
         employeeIds = undefined;
       } else {
       const mappings = await prisma.docWorkflowMapping.findMany({
         where: { [APPROVAL_ROLES[role].mapping]: session.id },
         select: { employeeId: true },
       });
-      if (mappings.length === 0 && actor?.role?.toUpperCase() !== role) {
+      if (mappings.length === 0 && actor?.role?.trim().toUpperCase() !== role) {
         return NextResponse.json({ error: 'You are not assigned to this document role.' }, { status: 403 });
       }
       employeeIds = mappings.map(mapping => mapping.employeeId);
@@ -140,7 +140,7 @@ export async function POST(request) {
           select: { hrId: true },
         }),
       ]);
-      if (actor?.role?.toUpperCase() !== 'HR' && workflow?.hrId !== session.id) {
+      if (actor?.role?.trim().toUpperCase() !== 'HR' && workflow?.hrId !== session.id) {
         return NextResponse.json({ error: 'You are not allowed to create documents for this employee.' }, { status: 403 });
       }
       employeeId = requestedEmployeeId;

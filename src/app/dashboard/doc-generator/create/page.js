@@ -86,6 +86,7 @@ export default function EmployeeDocGenerator() {
   const [employee, setEmployee] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [submissions, setSubmissions] = useState([]);
+  const [historyError, setHistoryError] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -134,14 +135,19 @@ export default function EmployeeDocGenerator() {
   const loadSubmissions = async () => {
     const empData = localStorage.getItem('employeeData');
     if (!empData) return;
-    const emp = JSON.parse(empData);
-    const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
-    const localSubmissions = saved.filter(submission => submission.employeeId === emp.id);
+    let localSubmissions = [];
+    setHistoryError('');
     try {
+      const saved = JSON.parse(localStorage.getItem('docgen_submissions') || '[]');
+      localSubmissions = Array.isArray(saved) ? saved : [];
       const response = await fetch('/api/generated-documents?role=HR', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Could not load generated document history.');
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || `Could not load generated document history (${response.status}).`);
+      }
       let remoteSubmissions = await response.json();
       const knownClientIds = new Set(remoteSubmissions.map(submission => submission.clientId).filter(Boolean));
+      let failedMigrations = 0;
       for (const submission of localSubmissions) {
         const clientId = String(submission.clientId || submission.id);
         if (knownClientIds.has(clientId)) continue;
@@ -150,7 +156,10 @@ export default function EmployeeDocGenerator() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...submission, clientId }),
         });
-        if (!migrationResponse.ok) continue;
+        if (!migrationResponse.ok) {
+          failedMigrations += 1;
+          continue;
+        }
         const migrated = await migrationResponse.json();
         remoteSubmissions = [migrated, ...remoteSubmissions.filter(item => item.id !== migrated.id)];
         knownClientIds.add(clientId);
@@ -161,9 +170,13 @@ export default function EmployeeDocGenerator() {
         !knownClientIds.has(String(submission.clientId || submission.id))
       );
       setSubmissions([...remoteSubmissions, ...unsyncedLocal]);
+      if (failedMigrations > 0) {
+        setHistoryError(`${failedMigrations} older document(s) could not be synced; they remain visible from this browser.`);
+      }
     } catch (error) {
       console.error('Failed to load generated document history:', error);
       setSubmissions(localSubmissions);
+      setHistoryError(`${error.message} Showing documents saved in this browser only.`);
     }
   };
 
@@ -782,6 +795,11 @@ export default function EmployeeDocGenerator() {
 
         {/* Submissions List */}
         <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          {historyError && (
+            <div role="alert" style={{ padding: '10px 16px', background: '#fff7ed', color: '#9a3412', borderBottom: '1px solid #fed7aa', fontSize: '13px' }}>
+              {historyError}
+            </div>
+          )}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
