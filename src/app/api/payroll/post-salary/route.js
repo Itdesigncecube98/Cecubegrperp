@@ -133,6 +133,14 @@ export async function POST(request) {
             throw new Error(`Salary record ${record.id} must be approved by HR/admin before posting to Accounts`);
           }
           await tx.payrollRecord.update({ where: { id: update.id }, data: { status: 'POSTED' } });
+          await tx.leaveEncashment.updateMany({
+            where: {
+              employeeId: record.employeeId,
+              payCycleId: record.payCycleId,
+              isProcessed: false,
+            },
+            data: { isProcessed: true },
+          });
           await postJournal(tx, {
             voucherNo: `SALARY-${record.payCycleId}-${record.employeeId}`,
             type: 'Payment',

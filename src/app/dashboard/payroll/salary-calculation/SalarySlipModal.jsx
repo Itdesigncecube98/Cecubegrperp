@@ -317,6 +317,29 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
     }
   };
 
+  const handleCancelLeaveEncashment = async () => {
+    if (!confirm('Cancel leave encashment from this salary slip and restore the leave balance?')) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/payroll/records/${record.id}/leave-encashment`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to cancel leave encashment.');
+      }
+
+      setLeaveEncashmentState(0);
+      setSaveSuccess(true);
+      if (onSaveSuccess) onSaveSuccess(result.record);
+    } catch (cancelError) {
+      setError(cancelError.message || 'Failed to cancel leave encashment.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="salary-slip-modal-overlay">
       <style>{`
@@ -792,7 +815,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                       <span>Leave Encashment</span>
                       <span className="changeable-badge">Changeable</span>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px' }}>
                       <input
                         type="number"
                         step="any"
@@ -802,6 +825,30 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         placeholder="0.00"
                         disabled={record?.status === 'APPROVED'}
                       />
+                      {numLeaveEncashment > 0 && record?.status === 'PENDING' && (
+                        <button
+                          type="button"
+                          aria-label="Cancel leave encashment"
+                          title="Cancel leave encashment and restore leave balance"
+                          data-html2canvas-ignore="true"
+                          onClick={handleCancelLeaveEncashment}
+                          disabled={saving}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            border: '1px solid #fecaca',
+                            borderRadius: 6,
+                            background: saving ? '#f1f5f9' : '#fef2f2',
+                            color: '#dc2626',
+                            cursor: saving ? 'wait' : 'pointer',
+                          }}
+                        >
+                          <X size={15} />
+                        </button>
+                      )}
                     </div>
                   </div>
 

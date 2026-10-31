@@ -5,12 +5,29 @@ import { findApplicableSalaryRevision } from '@/lib/payrollDates';
 
 export const dynamic = 'force-dynamic';
 
+function grossSalaryForCycle(employee, revision) {
+  const grossSalaryHead = revision?.components?.find(component => {
+    const headName = String(component.salaryHead?.description || '').trim().toLowerCase();
+    const headType = String(component.salaryHead?.headType?.name || '').trim().toLowerCase();
+    return headName === 'gross salary' || (headType === 'ctc' && headName.includes('gross'));
+  });
+  const explicitGrossSalary = Number(grossSalaryHead?.amount) || 0;
+  if (explicitGrossSalary > 0) return explicitGrossSalary;
+
+  const revisionGross = revision?.components?.reduce((sum, component) => {
+    const headType = String(component.salaryHead?.headType?.name || '').trim().toLowerCase();
+    return headType === 'earning' ? sum + (Number(component.amount) || 0) : sum;
+  }, 0) || 0;
+
+  return revisionGross || Number.parseFloat(employee.basicSalary) || 0;
+}
+
 export async function POST(request, { params }) {
   try {
     const { id } = await params;
 
     const body = await request.json().catch(() => ({}));
-    const { considerBonus = false, considerLeaveEncash = false, considerTds = true } = body;
+    const { considerBonus = false, considerLeaveEncash = true, considerTds = true } = body;
 
     const cycle = await prisma.payCycle.findUnique({ where: { id } });
     if (!cycle) {
@@ -19,6 +36,10 @@ export async function POST(request, { params }) {
 
     if (cycle.status === 'COMPLETED') {
       return NextResponse.json({ error: 'Cannot reprocess a completed pay cycle' }, { status: 400 });
+    }
+    const cycleMonth = String(cycle.endDate).slice(0, 7);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(cycleMonth)) {
+      return NextResponse.json({ error: 'Pay cycle end date must be a valid ISO date.' }, { status: 400 });
     }
 
     const existingRecords = await prisma.payrollRecord.findMany({
@@ -59,17 +80,45 @@ export async function POST(request, { params }) {
     const employees = await prisma.employee.findMany({
       where: whereClause,
       include: {
-        attendances: { where: { date: { gte: cycle.startDate, lte: cycle.endDate } } },
-        leaveEncashments: {
-          where: {
-            isProcessed: false
-          }
-        }
+        attendances: { where: { date: { gte: cycle.startDate, lte: cycle.endDate } } }
       }
     });
 
     // Fetch ALL salary revisions for these employees separately
     const employeeIds = employees.map(e => e.id);
+    const cycleEncashments = considerLeaveEncash && employeeIds.length > 0
+      ? await prisma.leaveEncashment.findMany({
+          where: {
+            employeeId: { in: employeeIds },
+            asOnDate: cycleMonth,
+            isProcessed: false,
+            cancelledAt: null,
+            OR: [{ payCycleId: null }, { payCycleId: id }],
+          },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
+    const cancelledCycleEncashments = considerLeaveEncash && employeeIds.length > 0
+      ? await prisma.leaveEncashment.findMany({
+          where: {
+            employeeId: { in: employeeIds },
+            asOnDate: cycleMonth,
+            payCycleId: id,
+            cancelledAt: { not: null },
+          },
+          select: { employeeId: true },
+        })
+      : [];
+    const employeesWithCancelledEncashment = new Set(
+      cancelledCycleEncashments.map(encashment => encashment.employeeId)
+    );
+    const encashmentsByEmployee = new Map();
+    for (const encashment of cycleEncashments) {
+      const current = encashmentsByEmployee.get(encashment.employeeId) || [];
+      current.push(encashment);
+      encashmentsByEmployee.set(encashment.employeeId, current);
+    }
+
     const allRevisions = await prisma.salaryRevision.findMany({
       where: {
         employeeId: { in: employeeIds }
@@ -172,8 +221,13 @@ export async function POST(request, { params }) {
 
       // Sum any unprocessed leave encashments
       let leaveEncashment = 0;
-      if (considerLeaveEncash && emp.leaveEncashments && emp.leaveEncashments.length > 0) {
-        leaveEncashment = emp.leaveEncashments.reduce((sum, enc) => sum + (enc.totalAmount || 0), 0);
+      const employeeEncashments = encashmentsByEmployee.get(emp.id) || [];
+      const encashmentRate = Math.round((grossSalaryForCycle(emp, revision) / 26) * 100) / 100;
+      if (considerLeaveEncash && employeeEncashments.length > 0) {
+        leaveEncashment = employeeEncashments.reduce(
+          (sum, encashment) => sum + Math.round(encashmentRate * encashment.encashedDays * 100) / 100,
+          0
+        );
       }
 
       let totalEarnings = 0, totalDeductions = 0;
@@ -210,7 +264,14 @@ export async function POST(request, { params }) {
             else otherDeductions += amount;
           } else if (typeName === 'other') {
             if (headName === 'bonus' && considerBonus) bonus += amount * prorationFactor;
-            else if (headName === 'leave encashment' && considerLeaveEncash) leaveEncashment += amount;
+            else if (
+              headName === 'leave encashment' &&
+              considerLeaveEncash &&
+              employeeEncashments.length === 0 &&
+              !employeesWithCancelledEncashment.has(emp.id)
+            ) {
+              leaveEncashment += amount;
+            }
           }
         });
 
@@ -286,6 +347,44 @@ export async function POST(request, { params }) {
     // Save only after every record has been calculated successfully. Existing records are
     // updated in place; the endpoint never deletes payroll records during reprocessing.
     await prisma.$transaction(async tx => {
+      if (considerLeaveEncash) {
+        const unassignedEncashmentIds = cycleEncashments
+          .filter(encashment => !encashment.payCycleId)
+          .map(encashment => encashment.id);
+        if (unassignedEncashmentIds.length > 0) {
+          const reservation = await tx.leaveEncashment.updateMany({
+            where: {
+              id: { in: unassignedEncashmentIds },
+              isProcessed: false,
+              payCycleId: null,
+            },
+            data: { payCycleId: id },
+          });
+          if (reservation.count !== unassignedEncashmentIds.length) {
+            throw new Error('Some leave encashments were assigned to another payroll cycle. Refresh and retry.');
+          }
+        }
+        for (const encashment of cycleEncashments) {
+          const salaryEmployee = employees.find(employee => employee.id === encashment.employeeId);
+          const amountPerDay = salaryEmployee
+            ? Math.round((grossSalaryForCycle(salaryEmployee, revisionMap[salaryEmployee.id]) / 26) * 100) / 100
+            : 0;
+          await tx.leaveEncashment.update({
+            where: { id: encashment.id },
+            data: {
+              payCycleId: id,
+              amountPerDay,
+              totalAmount: Math.round(amountPerDay * encashment.encashedDays * 100) / 100,
+            },
+          });
+        }
+      } else {
+        await tx.leaveEncashment.updateMany({
+          where: { payCycleId: id, isProcessed: false },
+          data: { payCycleId: null },
+        });
+      }
+
       for (const record of payrollRecordsData) {
         const existing = existingByEmployee.get(record.employeeId);
         if (existing) {
@@ -303,6 +402,9 @@ export async function POST(request, { params }) {
 
   } catch (error) {
     console.error('[PAYROLL ERROR]', error);
+    if (error.message?.includes('assigned to another payroll cycle')) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

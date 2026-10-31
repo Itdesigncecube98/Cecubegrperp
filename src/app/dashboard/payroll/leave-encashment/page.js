@@ -1,53 +1,77 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Save, RefreshCw } from 'lucide-react';
-import ActionToolbar from '@/components/ActionToolbar';
 import MultiSelect from '@/components/MultiSelect';
+
+async function fetchLeaveEncashmentEmployees(month) {
+  const response = await fetch(`/api/payroll/leave-encashment?asOnDate=${encodeURIComponent(month)}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to load leave balances.');
+  return Array.isArray(data) ? data : [];
+}
+
+function createInitialEdits(employees) {
+  return Object.fromEntries(employees.map(employee => [
+    employee.id,
+    {
+      leaveType: 'Earned Leave',
+      encashedDays: '',
+      amountPerDay: ((Number(employee.grossSalary) || 0) / 26).toFixed(2),
+      message: '',
+    },
+  ]));
+}
 
 export default function LeaveEncashment() {
   const [allEmployees, setAllEmployees] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   // Filters
   const [selectedDepts, setSelectedDepts] = useState([]);
   const [selectedEmps, setSelectedEmps] = useState([]);
-  const [asOnDate, setAsOnDate] = useState('');
+  const [asOnDate, setAsOnDate] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const initialMonth = useRef(asOnDate);
 
   // Editable row state
   const [edits, setEdits] = useState({});
 
   useEffect(() => {
-    const today = new Date();
-    setAsOnDate(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
-    
-    setLoading(true);
-    fetch('/api/payroll/leave-encashment')
-      .then(r => r.json())
-      .then(data => {
-        const empList = Array.isArray(data) ? data : [];
-        setAllEmployees(empList);
-        
-        const initialEdits = {};
-        empList.forEach(emp => {
-          let amountPerDay = 0;
-          if (emp.grossSalary) {
-             amountPerDay = emp.grossSalary / 26;
-          }
-
-          initialEdits[emp.id] = {
-             leaveType: 'Earned Leave',
-             encashedDays: emp.maxEncashable > 0 ? emp.maxEncashable : '',
-             amountPerDay: amountPerDay.toFixed(2),
-             message: ''
-          };
-        });
-        setEdits(initialEdits);
+    let active = true;
+    fetchLeaveEncashmentEmployees(initialMonth.current)
+      .then(employees => {
+        if (!active) return;
+        setAllEmployees(employees);
+        setEdits(createInitialEdits(employees));
       })
-      .catch(e => console.error(e))
+      .catch(error => {
+        if (active) {
+          console.error('Failed to load leave balances:', error);
+          alert(error.message || 'Failed to load leave balances.');
+        }
+      })
       .finally(() => setLoading(false));
+    return () => { active = false; };
   }, []);
+
+  const handleMonthChange = async month => {
+    setAsOnDate(month);
+    setLoading(true);
+    try {
+      const employees = await fetchLeaveEncashmentEmployees(month);
+      setAllEmployees(employees);
+      setEdits(createInitialEdits(employees));
+    } catch (error) {
+      console.error('Failed to load leave balances:', error);
+      alert(error.message || 'Failed to load leave balances.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const uniqueDepts = [...new Set(allEmployees.map(r => r.department).filter(Boolean))];
   const uniqueEmps = [...new Set(allEmployees.map(r => `${r.name} (${r.empId})`))];
@@ -73,47 +97,74 @@ export default function LeaveEncashment() {
     }));
   };
 
-  const handleSave = async () => {
-    // Find all rows where encashedDays is provided
-    const toSave = filteredEmployees.filter(emp => {
-       const e = edits[emp.id];
-       return e && parseFloat(e.encashedDays) > 0;
+  const saveEncashment = async employee => {
+    const edit = edits[employee.id];
+    const encashedDays = Number(edit?.encashedDays);
+    if (!Number.isFinite(encashedDays) || encashedDays <= 0) {
+      throw new Error(`Enter valid encashment days for ${employee.name}.`);
+    }
+
+    const response = await fetch('/api/payroll/leave-encashment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        employeeId: employee.id,
+        asOnDate,
+        leaveType: edit.leaveType,
+        encashedDays,
+        message: edit.message,
+      }),
     });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || `Could not encash leave for ${employee.name}.`);
+    }
+    return result;
+  };
+
+  const handleSave = async () => {
+    const toSave = filteredEmployees.filter(employee =>
+      Number(edits[employee.id]?.encashedDays) > 0
+    );
 
     if (toSave.length === 0) {
-      alert("No valid encashment days entered to save.");
+      alert('No valid encashment days entered to save.');
       return;
     }
 
     setSaving(true);
-    let successCount = 0;
-    
-    for (const emp of toSave) {
-      const payload = {
-        employeeId: emp.id,
-        asOnDate,
-        leaveType: edits[emp.id].leaveType,
-        encashedDays: parseFloat(edits[emp.id].encashedDays),
-        message: edits[emp.id].message
-      };
-
+    const failures = [];
+    for (const employee of toSave) {
       try {
-        const res = await fetch('/api/payroll/leave-encashment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const json = await res.json();
-        if (json.success) successCount++;
-      } catch (e) {
-        console.error(e);
+        await saveEncashment(employee);
+      } catch (error) {
+        failures.push(`${employee.name}: ${error.message}`);
       }
     }
 
-    alert(`Successfully processed ${successCount} encashment(s)!`);
+    if (failures.length > 0) {
+      alert(`${toSave.length - failures.length} encashment(s) saved. ${failures.length} failed:\n${failures.join('\n')}`);
+    } else {
+      alert(`Successfully processed ${toSave.length} encashment(s)!`);
+    }
+    if (failures.length < toSave.length) {
+      window.location.reload();
+      return;
+    }
     setSaving(false);
-    // Refresh page or re-fetch data to update balances
-    window.location.reload();
+  };
+
+  const handleSaveEmployee = async employee => {
+    setSaving(true);
+    try {
+      await saveEncashment(employee);
+      alert(`Leave encashment saved for ${employee.name}.`);
+      window.location.reload();
+    } catch (error) {
+      console.error(`Failed to save leave encashment for ${employee.name}:`, error);
+      alert(error.message || `Could not encash leave for ${employee.name}.`);
+      setSaving(false);
+    }
   };
 
   return (
@@ -130,12 +181,16 @@ export default function LeaveEncashment() {
           </div>
           <div className="filter-group">
             <label>As on Date</label>
-            <input type="month" value={asOnDate} onChange={e => setAsOnDate(e.target.value)} />
+            <input type="month" value={asOnDate} onChange={e => {
+              void handleMonthChange(e.target.value);
+            }} />
           </div>
         </div>
       </div>
 
-      <ActionToolbar onSave={handleSave} shareTitle="Leave Encashment" />
+      <p style={{ margin: '0.75rem 0', color: '#475569', fontSize: '0.85rem' }}>
+        Earned Leave accrues at 1.5 days per month after 10 months of service. The leave year starts in April, and unused days carry forward until encashed.
+      </p>
 
       <div style={{ marginTop: '0.5rem', marginBottom: '1rem', display: 'flex' }}>
         <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ padding: '8px 24px', background: '#0ea5e9', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: saving ? 'not-allowed' : 'pointer' }}>
@@ -155,6 +210,7 @@ export default function LeaveEncashment() {
               <th style={{ padding: '10px', textAlign: 'center' }}>TENURE (MOS)</th>
               <th style={{ padding: '10px', textAlign: 'center' }}>ELIGIBLE EL</th>
               <th style={{ padding: '10px', textAlign: 'center' }}>EL TAKEN</th>
+              <th style={{ padding: '10px', textAlign: 'center' }}>EL ENCASHED</th>
               <th style={{ padding: '10px' }}>LEAVE NAME</th>
               <th style={{ padding: '10px', textAlign: 'center' }}>SYSTEM BAL.</th>
               <th style={{ padding: '10px', textAlign: 'center' }}>MAX ENC.</th>
@@ -162,17 +218,24 @@ export default function LeaveEncashment() {
               <th style={{ padding: '10px', textAlign: 'right' }}>AMT. PER DAY</th>
               <th style={{ padding: '10px', textAlign: 'right' }}>ENC. AMOUNT</th>
               <th style={{ padding: '10px' }}>MESSAGE</th>
+              <th style={{ padding: '10px' }}>SALARY STATUS</th>
+              <th style={{ padding: '10px', textAlign: 'center' }}>ACTION</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} style={{ textAlign: 'center', padding: '2rem' }}>Loading records...</td></tr>
+              <tr><td colSpan={17} style={{ textAlign: 'center', padding: '2rem' }}>Loading records...</td></tr>
             ) : filteredEmployees.length === 0 ? (
-              <tr><td colSpan={10} style={{ textAlign: 'center', padding: '2rem' }}>No records found.</td></tr>
+              <tr><td colSpan={17} style={{ textAlign: 'center', padding: '2rem' }}>No records found.</td></tr>
             ) : filteredEmployees.map((row, idx) => {
               const edit = edits[row.id] || { leaveType: 'Earned Leave', encashedDays: '', amountPerDay: '0', message: '' };
               const encDays = parseFloat(edit.encashedDays) || 0;
               const encAmount = ((Number(row.grossSalary) || 0) * encDays / 26).toFixed(2);
+              const allMonthEncashments = (row.leaveEncashments || []).filter(encashment => encashment.asOnDate === asOnDate);
+              const monthEncashments = allMonthEncashments.filter(encashment => !encashment.cancelledAt);
+              const wasCancelled = allMonthEncashments.some(encashment => encashment.cancelledAt);
+              const includedInPayroll = monthEncashments.some(encashment => encashment.payCycleId);
+              const processedInPayroll = monthEncashments.some(encashment => encashment.isProcessed);
               
               let balance = 0;
               let maxInput = 0;
@@ -193,7 +256,7 @@ export default function LeaveEncashment() {
                 maxInput = balance;
               }
               
-              const isNotEligible = row.monthsSinceJoining < 8;
+              const isNotEligible = row.monthsSinceJoining < 10;
               
               return (
                 <tr key={row.id} style={{ background: isNotEligible ? '#fff1f2' : (idx % 2 === 0 ? 'white' : '#f8fafc'), borderBottom: '1px solid #e2e8f0', fontSize: '0.8rem', opacity: isNotEligible ? 0.85 : 1 }}>
@@ -206,6 +269,7 @@ export default function LeaveEncashment() {
                   <td style={{ padding: '8px', textAlign: 'center', color: isNotEligible ? '#e11d48' : 'inherit', fontWeight: isNotEligible ? 600 : 400 }}>{row.monthsSinceJoining}</td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeaveQuota}</td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeavesTaken}</td>
+                  <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeavesEncashed}</td>
                   <td style={{ padding: '8px', fontWeight: 600 }}>
                     Earned Leave
                   </td>
@@ -244,6 +308,28 @@ export default function LeaveEncashment() {
                       onChange={e => handleEditChange(row.id, 'message', e.target.value)}
                       placeholder="Optional"
                     />
+                  </td>
+                  <td style={{ padding: '8px', whiteSpace: 'nowrap', color: processedInPayroll ? '#15803d' : includedInPayroll ? '#0369a1' : '#64748b' }}>
+                    {processedInPayroll ? 'Salary posted' : includedInPayroll ? 'In salary calculation' : monthEncashments.length ? 'Ready for calculation' : wasCancelled ? 'Cancelled — ready to encash' : '-'}
+                  </td>
+                  <td style={{ padding: '8px', textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEmployee(row)}
+                      disabled={saving || encDays <= 0 || encDays > maxInput || processedInPayroll || includedInPayroll}
+                      title={maxInput > 0 ? `Encash up to ${maxInput} available EL day(s)` : 'No earned leave is currently available to encash'}
+                      style={{
+                        padding: '6px 10px',
+                        border: 'none',
+                        borderRadius: '4px',
+                        background: '#0ea5e9',
+                        color: 'white',
+                        cursor: saving || encDays <= 0 || encDays > maxInput || processedInPayroll || includedInPayroll ? 'not-allowed' : 'pointer',
+                        opacity: saving || encDays <= 0 || encDays > maxInput || processedInPayroll || includedInPayroll ? 0.5 : 1,
+                      }}
+                    >
+                      Encash
+                    </button>
                   </td>
                 </tr>
               );

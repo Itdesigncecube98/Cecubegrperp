@@ -132,6 +132,9 @@ model Employee {
   marketingLeads           MarketingLead[]               @relation("LeadOwner")
   marketingOpportunities   MarketingOpportunity[]        @relation("OpportunityOwner")
   orgChartNode             OrgChartNode?
+  positionIndentRaises     PositionIndent[]              @relation("PositionIndentRaiser")
+  positionIndentApprovals  PositionIndentApproval[]
+  positionIndentAssignments PositionIndentHandler[]
   overtimeAssignments      OvertimeAssignment[]
   payrollRecords           PayrollRecord[]
   activitiesResponsible    ProjectActivity[]             @relation("ActivityResponsible")
@@ -358,6 +361,7 @@ model LeaveRequest {
 model LeaveEncashment {
   id            Int      @id @default(autoincrement())
   employeeId    String
+  payCycleId    String?
   leaveType     String   @default("Earned Leave")
   asOnDate      String
   balanceBefore Float    @default(0)
@@ -366,8 +370,14 @@ model LeaveEncashment {
   totalAmount   Float    @default(0)
   message       String?
   isProcessed   Boolean  @default(false)
+  cancelledAt   DateTime?
   createdAt     DateTime @default(now())
   employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payCycle      PayCycle? @relation(fields: [payCycleId], references: [id], onDelete: SetNull)
+
+  @@index([payCycleId])
+  @@index([employeeId, asOnDate, isProcessed])
+  @@index([employeeId, asOnDate, cancelledAt])
 }
 
 model Holiday {
@@ -991,6 +1001,7 @@ model PayCycle {
   selectedEmployees   String[]              @default([])
   bonusIncentives     BonusIncentive[]
   payrollRecords      PayrollRecord[]
+  leaveEncashments    LeaveEncashment[]
   govtFormSubmissions GovtFormSubmission[]
 }
 
@@ -1175,6 +1186,7 @@ model PositionIndent {
   positionName   String
   department     String
   raisedBy       String
+  raisedByEmployeeId String?
   raisedDate     String
   empType        String
   indentType     String
@@ -1187,6 +1199,38 @@ model PositionIndent {
   company        String?
   branch         String?
   replacementFor String?
+  handledByHr    Boolean  @default(false)
+  raisedByEmployee Employee? @relation("PositionIndentRaiser", fields: [raisedByEmployeeId], references: [id], onDelete: SetNull)
+  approvals      PositionIndentApproval[]
+  handlerAssignments PositionIndentHandler[]
+
+  @@index([raisedByEmployeeId])
+}
+
+model PositionIndentApproval {
+  id              String   @id @default(cuid())
+  positionIndentId String
+  employeeId      String
+  status          String   @default("pending")
+  actedAt         DateTime?
+  createdAt       DateTime @default(now())
+  positionIndent  PositionIndent @relation(fields: [positionIndentId], references: [id], onDelete: Cascade)
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([positionIndentId, employeeId])
+  @@index([employeeId, status])
+}
+
+model PositionIndentHandler {
+  id              String   @id @default(cuid())
+  positionIndentId String
+  employeeId      String
+  createdAt       DateTime @default(now())
+  positionIndent  PositionIndent @relation(fields: [positionIndentId], references: [id], onDelete: Cascade)
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([positionIndentId, employeeId])
+  @@index([employeeId])
 }
 
 model Requisition {

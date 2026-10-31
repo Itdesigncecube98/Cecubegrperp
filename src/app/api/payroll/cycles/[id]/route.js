@@ -196,6 +196,10 @@ export async function DELETE(request, { params }) {
         }
       }
 
+      await tx.leaveEncashment.updateMany({
+        where: { payCycleId: id, isProcessed: true },
+        data: { isProcessed: false },
+      });
       await tx.payCycle.delete({ where: { id } });
       return { reversedVouchers: journalsToReverse.length, deletedPayrollRecords: records.length };
     }, { timeout: 30000 });

@@ -27,7 +27,7 @@ export default function SalaryCalculation() {
 
   // Checkbox states
   const [considerBonus, setConsiderBonus] = useState(false);
-  const [considerLeaveEncash, setConsiderLeaveEncash] = useState(false);
+  const [considerLeaveEncash, setConsiderLeaveEncash] = useState(true);
   const [considerTds, setConsiderTds] = useState(true);
 
   useEffect(() => {
@@ -239,7 +239,15 @@ export default function SalaryCalculation() {
       </div>
 
       <div className="filter-bar" style={{ marginTop: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-        <div style={{ display: 'flex', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', color: '#334155', fontSize: '0.85rem' }}>
+            <input
+              type="checkbox"
+              checked={considerLeaveEncash}
+              onChange={event => setConsiderLeaveEncash(event.target.checked)}
+            />
+            Include leave encashment for this pay cycle
+          </label>
           <button className="btn-primary" onClick={handleCalculate} disabled={processing} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: processing ? '#94a3b8' : '#0ea5e9' }}>
             {processing ? <RefreshCw className="spin" size={16} /> : <Calculator size={16} />} 
             {processing ? 'Processing...' : 'Calculate'}

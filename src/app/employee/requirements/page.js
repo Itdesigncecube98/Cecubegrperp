@@ -23,18 +23,19 @@ const EMPTY_FORM = {
   replacementFor: ''
 };
 
-function getEmpName() {
+function getEmployeeData() {
   if (typeof window !== 'undefined') {
     const empData = localStorage.getItem('employeeData');
-    if (empData) return JSON.parse(empData).name;
+    if (empData) return JSON.parse(empData);
   }
-  return '';
+  return {};
 }
 
 export default function PositionIndent() {
   const router = useRouter();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -51,41 +52,57 @@ export default function PositionIndent() {
   const fetchSyncData = useCallback(async () => {
     try {
       const res = await fetch('/api/recruitment/position-indent/sync-data');
-      if (res.ok) {
-        const json = await res.json();
-        setOptions({
-          companies: ['Select All', ...json.organizations],
-          branches: ['Select All', ...json.branches],
-          positions: ['Select', ...json.positions],
-          departments: ['Select', ...json.departments],
-          employees: ['Select', ...json.employees],
-          grades: ['Select', ...json.grades]
-        });
+      const json = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          setApiError('Your sign-in session is missing or expired. Sign in again to load Position Requirements.');
+          return;
+        }
+        throw new Error(json.error || 'Failed to load requirement options.');
       }
+      setOptions({
+        companies: ['Select All', ...json.organizations],
+        branches: ['Select All', ...json.branches],
+        positions: ['Select', ...json.positions],
+        departments: ['Select', ...json.departments],
+        employees: ['Select', ...json.employees.map(employee => employee.name)],
+        grades: ['Select', ...json.grades]
+      });
     } catch (error) {
       console.error('Failed to fetch sync data', error);
+      setApiError(error.message || 'Failed to load requirement options.');
     }
   }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const empName = getEmpName();
+      const employee = getEmployeeData();
       const params = new URLSearchParams();
-      if (empName) params.append('raiseBy', empName);
+      if (employee.id) params.append('approverId', employee.id);
+      if (employee.name) params.append('raiseBy', employee.name);
 
       const res = await fetch(`/api/recruitment/position-indent?${params.toString()}`);
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
+      const json = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          setApiError('Your sign-in session is missing or expired. Sign in again to load Position Requirements.');
+          return;
+        }
+        throw new Error(json.error || 'Failed to load Position Requirements.');
       }
+      setApiError('');
+      setData(json);
     } catch (error) {
       console.error('Failed to fetch indents', error);
+      setApiError(error.message || 'Failed to load Position Requirements.');
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
+    // These callbacks start async fetches and update page state when their requests complete.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
     fetchSyncData();
   }, [fetchData, fetchSyncData]);
@@ -97,8 +114,9 @@ export default function PositionIndent() {
     }
 
     try {
-      const empName = getEmpName();
-      const payload = { ...form, raisedBy: empName };
+      const employee = getEmployeeData();
+      const payload = { ...form, raisedBy: employee.name, raisedByEmployeeId: employee.id };
+      delete payload.status;
       
       const method = payload.id ? 'PUT' : 'POST';
       
@@ -126,21 +144,24 @@ export default function PositionIndent() {
     setModalOpen(true);
   };
 
-  const handleStatusChange = async (row, status) => {
-    if (String(row.status).trim().toLowerCase() === 'approved') return;
-    if (status === row.status) return;
+  const handleApprovalDecision = async (row, approvalAction) => {
+    const employee = getEmployeeData();
+    if (!employee.id) {
+      alert('Unable to identify your employee account. Please sign in again.');
+      return;
+    }
     setUpdatingStatusId(row.id);
     try {
       const res = await fetch('/api/recruitment/position-indent', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: row.id, status }),
+        body: JSON.stringify({ id: row.id, approvalAction, approverId: employee.id }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Failed to update requirement status.');
-      setData(previous => previous.map(item => item.id === row.id ? { ...item, status: result.status } : item));
+      if (!res.ok) throw new Error(result.error || 'Failed to record approval.');
+      setData(previous => previous.map(item => item.id === row.id ? result : item));
     } catch (error) {
-      alert(error.message || 'Failed to update requirement status.');
+      alert(error.message || 'Failed to record approval.');
     } finally {
       setUpdatingStatusId(null);
     }
@@ -177,6 +198,13 @@ export default function PositionIndent() {
         <h1 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#1e293b', margin: 0 }}>Position Indent</h1>
       </div>
 
+      {apiError && (
+        <div role="alert" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: '1rem', padding: '0.75rem 1rem', border: '1px solid #fecaca', borderRadius: 6, background: '#fef2f2', color: '#991b1b', fontSize: '0.85rem' }}>
+          <span>{apiError}</span>
+          {apiError.includes('session') && <button type="button" onClick={() => router.push('/login')} style={{ border: 0, borderRadius: 5, padding: '0.4rem 0.7rem', color: '#fff', background: '#b91c1c', cursor: 'pointer' }}>Sign in</button>}
+        </div>
+      )}
+
       {/* Data Table Area */}
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '1rem' }}>
@@ -211,7 +239,8 @@ export default function PositionIndent() {
                 <tr><td colSpan="11" style={{ textAlign: 'center', padding: '1rem', color: '#64748b', background: '#f8fafc' }}>No Details Found</td></tr>
               ) : (
                 data.map(row => {
-                  const isApproved = String(row.status).trim().toLowerCase() === 'approved';
+                  const employee = getEmployeeData();
+                  const myApproval = row.approvals?.find(approval => approval.employeeId === employee.id);
                   return (
                   <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0', fontSize: '0.85rem' }}>
                     <td style={{ padding: '0.75rem' }}>{row.positionName}</td>
@@ -221,25 +250,19 @@ export default function PositionIndent() {
                     <td style={{ padding: '0.75rem' }}>{row.empType}</td>
                     <td style={{ padding: '0.75rem' }}>{row.indentType}</td>
                     <td style={{ padding: '0.75rem' }}>{row.reqFromDate || '-'}</td>
-                    <td style={{ padding: '0.75rem' }}>{row.approvedBy || '-'}</td>
+                    <td style={{ padding: '0.75rem' }}>{row.approvals?.length ? row.approvals.map(approval => `${approval.employee.name} (${approval.status})`).join(', ') : row.approvedBy || 'Awaiting assignment'}</td>
                     <td style={{ padding: '0.75rem' }}>{row.handledBy || '-'}</td>
                     <td style={{ padding: '0.75rem' }}>
-                      <select
-                        aria-label={`Change status for ${row.positionName}`}
-                        value={row.status || 'pending'}
-                        disabled={isApproved || updatingStatusId === row.id}
-                        onChange={event => handleStatusChange(row, event.target.value)}
-                        style={{ padding: '0.4rem 0.55rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: isApproved || updatingStatusId === row.id ? '#f1f5f9' : '#fff', color: '#334155', fontSize: '0.82rem', cursor: isApproved ? 'not-allowed' : updatingStatusId === row.id ? 'wait' : 'pointer' }}
-                      >
-                        {!POSITION_STATUSES.some(status => status.value === row.status) && (
-                          <option value={row.status}>{row.status}</option>
-                        )}
-                        {POSITION_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
-                      </select>
+                      {POSITION_STATUSES.find(status => status.value === row.status)?.label || row.status}
                     </td>
                     <td style={{ padding: '0.75rem' }}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        {!isApproved ? (
+                        {myApproval?.status === 'pending' && row.status !== 'approved' && row.status !== 'rejected' ? (
+                          <>
+                            <button onClick={() => handleApprovalDecision(row, 'approved')} disabled={updatingStatusId === row.id} style={{ border: 0, borderRadius: 5, padding: '0.35rem 0.6rem', color: '#fff', background: '#16a34a', cursor: 'pointer' }}>Approve</button>
+                            <button onClick={() => handleApprovalDecision(row, 'rejected')} disabled={updatingStatusId === row.id} style={{ border: 0, borderRadius: 5, padding: '0.35rem 0.6rem', color: '#fff', background: '#dc2626', cursor: 'pointer' }}>Reject</button>
+                          </>
+                        ) : !myApproval && (row.raisedByEmployeeId === employee.id || (!row.raisedByEmployeeId && row.raisedBy === employee.name)) && row.status !== 'approved' ? (
                           <>
                             <button onClick={() => handleEdit(row)} style={{ background: 'none', border: 'none', color: '#0ea5e9', cursor: 'pointer' }} title="Edit"><Edit2 size={16} /></button>
                             <button onClick={() => handleDelete(row.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }} title="Delete"><Trash2 size={16} /></button>
