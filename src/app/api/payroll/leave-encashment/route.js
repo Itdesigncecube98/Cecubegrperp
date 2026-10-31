@@ -166,7 +166,6 @@ export async function POST(request) {
     const employee = await prisma.employee.findUnique({
       where: { id: employeeId },
       include: {
-        leaveBalance: true,
         salaryRevisions: {
           orderBy: { createdAt: 'desc' },
           include: {
@@ -184,31 +183,20 @@ export async function POST(request) {
 
     const type = leaveType || 'Earned Leave';
     
-    let currentBalance = 0;
     let balanceField = '';
     
     if (type === 'Earned Leave') {
-       currentBalance = employee.leaveBalance?.earnedLeaves || 0;
        balanceField = 'earnedLeaves';
     } else if (type === 'Casual Leave') {
-       currentBalance = employee.leaveBalance?.casualLeaves || 0;
        balanceField = 'casualLeaves';
     } else if (type === 'Leave Without Pay') {
-       currentBalance = employee.leaveBalance?.leaveWithoutPay || 0;
        balanceField = 'leaveWithoutPay';
     } else if (type === 'Compensatory Leave') {
-       currentBalance = employee.leaveBalance?.compensatoryLeaves || 0;
        balanceField = 'compensatoryLeaves';
     }
     if (!balanceField) {
       return NextResponse.json({ error: 'Invalid leave type for encashment.' }, { status: 400 });
     }
-
-    // if (currentBalance < encashedDays) {
-    //  return NextResponse.json({ error: `Insufficient ${type} balance` }, { status: 400 });
-    // }
-    // User wants to be able to just fill amount even for Leave without pay (which might be 0 balance).
-    // Let's allow negative balance or encashment for LWP.
 
     const applicableRevision = findApplicableSalaryRevision(
       employee.salaryRevisions || [],
@@ -228,6 +216,10 @@ export async function POST(request) {
         where: { employeeId },
         select: { leaveType: true, asOnDate: true, encashedDays: true, isProcessed: true, payCycleId: true, cancelledAt: true },
       });
+      const currentLeaveBalance = await tx.leaveBalance.findUnique({
+        where: { employeeId },
+      });
+      const currentBalance = Number(currentLeaveBalance?.[balanceField]) || 0;
       const currentMonth = new Date().toISOString().slice(0, 7);
       const attendanceThroughMonth = asOnDate > currentMonth ? asOnDate : currentMonth;
       const attendance = await tx.attendance.findMany({
@@ -332,6 +324,9 @@ export async function POST(request) {
     }
     if (error.code === 'P2034') {
       return NextResponse.json({ error: 'Leave balance changed during encashment. Refresh and retry.' }, { status: 409 });
+    }
+    if (error.code === 'P2025') {
+      return NextResponse.json({ error: 'Leave balance changed or was removed during encashment. Refresh the balances and retry.' }, { status: 409 });
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

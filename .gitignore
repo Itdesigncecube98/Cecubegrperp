@@ -46,6 +46,7 @@ next-env.d.ts
 # prisma generated temp
 prisma/generated*
 
+/.data/
 
 www/
 android/app/build*/

@@ -49,9 +49,7 @@ export default function DefineWBS() {
   const [taskForm, setTaskForm] = useState({
     name: '',
     volOfWorkMaterial: '',
-    materialRate: '',
     volOfWorkLabour: '',
-    labourRate: '',
     description: '',
     reraStage: '',
     targetGroupId: ''
@@ -81,12 +79,6 @@ export default function DefineWBS() {
     if (!selectedLabourId || !selectedLibraryTask?.labours) return null;
     return selectedLibraryTask.labours.find(l => l.id === selectedLabourId) || null;
   }, [selectedLibraryTask, selectedLabourId]);
-
-  const getLibraryLabourRate = (labour) => {
-    if (!labour) return null;
-    const rate = labour.rate ?? labour.labourRate;
-    return rate === undefined || rate === null || rate === '' ? null : rate;
-  };
 
   // Feedback notifications
   const [notification, setNotification] = useState(null);
@@ -206,7 +198,8 @@ export default function DefineWBS() {
   const handleOpenEditGroup = (group, e) => {
     if (e) e.stopPropagation();
     setEditingGroupId(group.id);
-    setGroupForm({ name: group.name, reraStage: group.reraStage || RERA_STAGES[0], rate: group.rate || '', budgetAmount: group.budgetAmount || group.rate || '' });
+    const groupRate = group.rate || group.budgetAmount || '';
+    setGroupForm({ name: group.name, reraStage: group.reraStage || RERA_STAGES[0], rate: groupRate, budgetAmount: groupRate });
     setShowGroupModal(true);
   };
 
@@ -220,9 +213,12 @@ export default function DefineWBS() {
     try {
       setSavingGroup(true);
       const method = editingGroupId ? 'PUT' : 'POST';
+      const groupRate = Number(groupForm.rate) || 0;
+      const projectArea = Number(selectedProject?.builtUpArea) || 1;
+      const groupBudgetAmount = groupRate * projectArea;
       const payload = editingGroupId 
-        ? { id: editingGroupId, type: 'group', name: groupForm.name.trim(), reraStage: groupForm.reraStage, rate: groupForm.rate, budgetAmount: groupForm.budgetAmount }
-        : { type: 'group', projectId: selectedProjectId, name: groupForm.name.trim(), reraStage: groupForm.reraStage, rate: groupForm.rate, budgetAmount: groupForm.budgetAmount };
+        ? { id: editingGroupId, type: 'group', name: groupForm.name.trim(), reraStage: groupForm.reraStage, rate: groupRate, budgetAmount: groupBudgetAmount }
+        : { type: 'group', projectId: selectedProjectId, name: groupForm.name.trim(), reraStage: groupForm.reraStage, rate: groupRate, budgetAmount: groupBudgetAmount };
 
       const res = await fetch('/api/engineering/wbs', {
         method,
@@ -288,9 +284,7 @@ export default function DefineWBS() {
     setTaskForm({
       name: '',
       volOfWorkMaterial: '',
-      materialRate: '',
       volOfWorkLabour: '',
-      labourRate: '',
       description: '',
       reraStage: parent.reraStage || RERA_STAGES[0],
       targetGroupId: parent.id
@@ -310,9 +304,7 @@ export default function DefineWBS() {
     setTaskForm({
       name: task.name,
       volOfWorkMaterial: task.volOfWorkMaterial ?? '',
-      materialRate: task.materialRate ?? '',
       volOfWorkLabour: task.volOfWorkLabour ?? '',
-      labourRate: task.labourRate ?? '',
       description: task.description || '',
       reraStage: task.reraStage || '',
       targetGroupId: task.groupId
@@ -331,26 +323,17 @@ export default function DefineWBS() {
     if (!libTask) return;
 
     let newMaterialVol = taskForm.volOfWorkMaterial;
-    let newMaterialRate = taskForm.materialRate;
     let newMaterialId = '';
     if (libTask.materials && libTask.materials.length > 0) {
       newMaterialId = libTask.materials[0].id;
       newMaterialVol = libTask.materials[0].quantity;
-      if (libTask.materials[0].rate !== undefined && libTask.materials[0].rate !== null) {
-        newMaterialRate = libTask.materials[0].rate;
-      }
     }
 
     let newLabourVol = taskForm.volOfWorkLabour;
-    let newLabourRate = taskForm.labourRate;
     let newLabourId = '';
     if (libTask.labours && libTask.labours.length > 0) {
       newLabourId = libTask.labours[0].id;
       newLabourVol = libTask.labours[0].quantity;
-      const libraryLabourRate = getLibraryLabourRate(libTask.labours[0]);
-      if (libraryLabourRate !== null) {
-        newLabourRate = libraryLabourRate;
-      }
     }
 
     setSelectedMaterialId(newMaterialId);
@@ -360,9 +343,7 @@ export default function DefineWBS() {
       ...prev,
       name: libTask.name,
       volOfWorkMaterial: newMaterialVol !== '' && newMaterialVol !== null ? newMaterialVol : prev.volOfWorkMaterial,
-      materialRate: newMaterialRate !== '' && newMaterialRate !== null ? newMaterialRate : prev.materialRate,
       volOfWorkLabour: newLabourVol !== '' && newLabourVol !== null ? newLabourVol : prev.volOfWorkLabour,
-      labourRate: newLabourRate !== '' && newLabourRate !== null ? newLabourRate : prev.labourRate,
       description: libTask.description ? libTask.description : prev.description
     }));
   };
@@ -376,8 +357,7 @@ export default function DefineWBS() {
     if (mat) {
       setTaskForm(prev => ({ 
         ...prev, 
-        volOfWorkMaterial: mat.quantity !== undefined && mat.quantity !== null ? mat.quantity : prev.volOfWorkMaterial,
-        materialRate: mat.rate !== undefined && mat.rate !== null ? mat.rate : prev.materialRate
+        volOfWorkMaterial: mat.quantity !== undefined && mat.quantity !== null ? mat.quantity : prev.volOfWorkMaterial
       }));
     }
   };
@@ -389,11 +369,9 @@ export default function DefineWBS() {
     const currentLibTask = libraryTasks.find(t => t.id === selectedLibraryTaskId);
     const lab = currentLibTask?.labours?.find(l => l.id === labId);
     if (lab) {
-      const libraryLabourRate = getLibraryLabourRate(lab);
       setTaskForm(prev => ({ 
         ...prev, 
-        volOfWorkLabour: lab.quantity !== undefined && lab.quantity !== null ? lab.quantity : prev.volOfWorkLabour,
-        labourRate: libraryLabourRate !== null ? libraryLabourRate : prev.labourRate
+        volOfWorkLabour: lab.quantity !== undefined && lab.quantity !== null ? lab.quantity : prev.volOfWorkLabour
       }));
     }
   };
@@ -419,9 +397,7 @@ export default function DefineWBS() {
             groupId: taskForm.targetGroupId,
             name: taskForm.name.trim(),
             volOfWorkMaterial: parseFloat(taskForm.volOfWorkMaterial) || 0,
-            materialRate: parseFloat(taskForm.materialRate) || 0,
             volOfWorkLabour: parseFloat(taskForm.volOfWorkLabour) || 0,
-            labourRate: parseFloat(taskForm.labourRate) || 0,
             description: taskForm.description ? taskForm.description.trim() : null,
             reraStage: taskForm.reraStage || null,
             materials: selectedLibraryTask?.materials || []
@@ -432,9 +408,7 @@ export default function DefineWBS() {
             groupId: taskForm.targetGroupId,
             name: taskForm.name.trim(),
             volOfWorkMaterial: parseFloat(taskForm.volOfWorkMaterial) || 0,
-            materialRate: parseFloat(taskForm.materialRate) || 0,
             volOfWorkLabour: parseFloat(taskForm.volOfWorkLabour) || 0,
-            labourRate: parseFloat(taskForm.labourRate) || 0,
             description: taskForm.description ? taskForm.description.trim() : null,
             reraStage: taskForm.reraStage || null,
             materials: selectedLibraryTask?.materials || []
@@ -707,6 +681,10 @@ export default function DefineWBS() {
                           {group.name}
                         </span>
 
+                        <span style={{ fontSize: '0.72rem', color: '#9f1239', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          Rate: ₹{Number(group.rate || group.budgetAmount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                        </span>
+
                         {/* RERA Stage Badge */}
                         {group.reraStage && (
                           <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '4px', background: '#f1f5f9', color: '#475569', fontWeight: 500 }}>
@@ -852,7 +830,7 @@ export default function DefineWBS() {
                       color: '#991b1b',
                       border: '1px solid #fecaca'
                     }}>
-                      Budget: ₹{selectedGroup.budgetAmount || selectedGroup.rate}
+                      Group Rate: ₹{Number(selectedGroup.rate || selectedGroup.budgetAmount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                     </span>
                   )}
                 </div>
@@ -916,16 +894,15 @@ export default function DefineWBS() {
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '50px', textAlign: 'center' }}>#</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '20%' }}>Task Name</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '12%' }}>RERA Stage</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '16%', textAlign: 'right' }}>Mat Vol & Rate</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '16%', textAlign: 'right' }}>Lab Vol & Rate</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '14%', textAlign: 'right' }}>Task Budget (₹)</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '18%', textAlign: 'right' }}>Material Vol</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '18%', textAlign: 'right' }}>Labour Vol</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '12%', textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {currentTasks.length === 0 ? (
                   <tr>
-                    <td colSpan="7" style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8' }}>
+                    <td colSpan="6" style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8' }}>
                       <Layers size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
                       <p style={{ margin: '0 0 6px', fontWeight: 500, fontSize: '0.95rem' }}>No Tasks in this Group</p>
                       <p style={{ margin: 0, fontSize: '0.85rem' }}>Click "Add Task to {selectedGroup?.name || 'Group'}" to add tasks with material & labour work volumes.</p>
@@ -946,15 +923,10 @@ export default function DefineWBS() {
                         </span>
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '0.88rem', fontWeight: 600, color: '#be123c' }}>
-                        <div>{parseFloat(task.volOfWorkMaterial || 0).toLocaleString()} <span style={{fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b'}}>Vol</span></div>
-                        <div style={{fontSize: '0.75rem', marginTop: '2px', fontWeight: 'normal', color: '#475569'}}>@ ₹{parseFloat(task.materialRate || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+                        {parseFloat(task.volOfWorkMaterial || 0).toLocaleString()}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '0.88rem', fontWeight: 600, color: '#10b981' }}>
-                        <div>{parseFloat(task.volOfWorkLabour || 0).toLocaleString()} <span style={{fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b'}}>Vol</span></div>
-                        <div style={{fontSize: '0.75rem', marginTop: '2px', fontWeight: 'normal', color: '#475569'}}>@ ₹{parseFloat(task.labourRate || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '0.9rem', fontWeight: 700, color: '#0f172a' }}>
-                        ₹{parseFloat(task.totalAmount || (((parseFloat(task.volOfWorkMaterial) || 0) * (parseFloat(task.materialRate) || 0)) + ((parseFloat(task.volOfWorkLabour) || 0) * (parseFloat(task.labourRate) || 0)))).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                        {parseFloat(task.volOfWorkLabour || 0).toLocaleString()}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
@@ -992,7 +964,7 @@ export default function DefineWBS() {
                     <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '0.9rem', color: '#10b981' }}>
                       {totalLabourVol.toLocaleString()}
                     </td>
-                    <td colSpan="2" style={{ padding: '12px 16px' }}></td>
+                    <td style={{ padding: '12px 16px' }}></td>
                   </tr>
                 </tfoot>
               )}
@@ -1066,14 +1038,14 @@ export default function DefineWBS() {
                 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                    Group Budget (₹)
+                    Group Rate (₹)
                   </label>
                   <input 
                     type="number" 
                     step="0.01"
                     className="premium-input" 
-                    placeholder="Enter budget..."
-                    value={groupForm.budgetAmount !== '' ? groupForm.budgetAmount : groupForm.rate}
+                    placeholder="Enter group rate..."
+                    value={groupForm.rate}
                     onChange={(e) => setGroupForm({ ...groupForm, rate: e.target.value, budgetAmount: e.target.value })}
                     style={{ width: '100%', boxSizing: 'border-box' }}
                   />
@@ -1267,20 +1239,6 @@ export default function DefineWBS() {
                       onChange={(e) => setTaskForm({ ...taskForm, volOfWorkMaterial: e.target.value })}
                       style={{ width: '100%', boxSizing: 'border-box' }}
                     />
-                    <div style={{ marginTop: '10px' }}>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569', margin: 0, display: 'block', marginBottom: '6px' }}>
-                        Material Rate (₹)
-                      </label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        className="premium-input" 
-                        placeholder="0.00"
-                        value={taskForm.materialRate}
-                        onChange={(e) => setTaskForm({ ...taskForm, materialRate: e.target.value })}
-                        style={{ width: '100%', boxSizing: 'border-box' }}
-                      />
-                    </div>
                     {selectedMaterial && (
                       <div style={{ fontSize: '0.7rem', color: '#166534', marginTop: '3px' }}>
                         Applied: <strong>{selectedMaterial.name}</strong> ({selectedMaterial.quantity} {selectedMaterial.unit})
@@ -1323,7 +1281,7 @@ export default function DefineWBS() {
                           <option value="">Select Labour Vol...</option>
                           {selectedLibraryTask.labours.map(l => (
                             <option key={l.id} value={l.id}>
-                              {l.name} (Qty: {l.quantity} {l.unit} | Rate: ₹{Number(getLibraryLabourRate(l) || 0).toLocaleString('en-IN')})
+                              {l.name} (Qty: {l.quantity} {l.unit})
                             </option>
                           ))}
                         </select>
@@ -1339,20 +1297,6 @@ export default function DefineWBS() {
                       onChange={(e) => setTaskForm({ ...taskForm, volOfWorkLabour: e.target.value })}
                       style={{ width: '100%', boxSizing: 'border-box' }}
                     />
-                    <div style={{ marginTop: '10px' }}>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569', margin: 0, display: 'block', marginBottom: '6px' }}>
-                        Labour Rate (₹)
-                      </label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        className="premium-input" 
-                        placeholder="0.00"
-                        value={taskForm.labourRate}
-                        onChange={(e) => setTaskForm({ ...taskForm, labourRate: e.target.value })}
-                        style={{ width: '100%', boxSizing: 'border-box' }}
-                      />
-                    </div>
                     {selectedLabour && (
                       <div style={{ fontSize: '0.7rem', color: '#854d0e', marginTop: '3px' }}>
                         Applied: <strong>{selectedLabour.name}</strong> ({selectedLabour.quantity} {selectedLabour.unit})
@@ -1393,13 +1337,10 @@ export default function DefineWBS() {
                   />
                 </div>
 
-                <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', marginTop: '16px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <span style={{ fontSize: '0.8rem', color: '#64748b', display: 'block' }}>Estimated Total Task Budget</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#be123c' }}>
-                      ₹{(((parseFloat(taskForm.volOfWorkMaterial) || 0) * (parseFloat(taskForm.materialRate) || 0)) + ((parseFloat(taskForm.volOfWorkLabour) || 0) * (parseFloat(taskForm.labourRate) || 0))).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
+                <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', marginTop: '16px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#475569' }}>
+                    Task rates are not entered separately. The rate set for the selected group applies to the group; add tasks here only to define its scope and work volumes.
+                  </span>
                 </div>
               </div>
 

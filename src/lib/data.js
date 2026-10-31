@@ -66,6 +66,17 @@ export const getAttendance = async (date) => {
   return Array.isArray(data) ? data : [];
 };
 
+export const getAttendanceWithSource = async (date) => {
+  const targetDate = date || new Date().toISOString().split('T')[0];
+  const res = await fetch(`/api/attendance?date=${targetDate}`, { cache: 'no-store' });
+  const data = res.ok ? await res.json() : [];
+  return {
+    records: Array.isArray(data) ? data : [],
+    source: res.headers.get('X-Attendance-Source') || 'postgres',
+    cachedAt: res.headers.get('X-Attendance-Cached-At'),
+  };
+};
+
 export const markAttendance = async (employeeId, date, status, shiftType = 'Day', timeSlots = '[]') => {
   const res = await fetch('/api/attendance', {
     method: 'POST',

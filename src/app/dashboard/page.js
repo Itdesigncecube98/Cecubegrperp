@@ -2,11 +2,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Users, UserPlus, Mail, MapPin, PlusCircle, FileText, 
-  RefreshCw, Clock, CheckCircle, File, Building, PenTool, 
-  Map, BarChart2, Calendar, Settings, DollarSign, Activity, ChevronRight
+  RefreshCw, Clock, CheckCircle, PenTool,
+  Map, Calendar, DollarSign, Activity
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell, YAxis, CartesianGrid, PieChart, Pie, Legend, LineChart, Line } from 'recharts';
 import { LineChart as LineChartIcon, BarChart3, PieChart as PieChartIcon } from 'lucide-react';
 import './dashboard.css';
@@ -1264,158 +1263,6 @@ export default function AdminDashboard() {
               )}
             </ResponsiveContainer>
           </div>
-        </div>
-      </div>
-
-      {/* Quick Links */}
-      <div className="quickLinksSection">
-        <h2 className="quickLinksTitle">Employee Musters</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
-
-          {/* Punches */}
-          <div className="card" style={{ gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Clock size={18} color="#fff" />
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Punches</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Team Punches','/dashboard/punches/team-punches'],['Team Night Punches','/dashboard/punches/team-night-punches'],['Who Is In?','/dashboard/punches/whos-in']].map(([label,href])=>(
-                <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='var(--accent-faint)';e.currentTarget.style.color='var(--accent-color)'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#c7d2fe', flexShrink: 0 }} />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Attendance */}
-          <div className="card" style={{ gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,#22c55e,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CheckCircle size={18} color="#fff" />
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Attendance</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Team Attendance Records','/dashboard/attendance/team-records'],['Team Regularization','/dashboard/attendance/team-regularization']].map(([label,href])=>(
-                <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#f0fdf4';e.currentTarget.style.color='#16a34a'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#bbf7d0', flexShrink: 0 }} />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Leave */}
-          <div className="card" style={{ gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,#f59e0b,#d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <FileText size={18} color="#fff" />
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Leave</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Leave Requests (Approve)','/dashboard/leaves/requests'],['Apply Leave','/dashboard/leaves/apply'],['Team Applications','/dashboard/leaves/team-applications'],['Leave Balances','/dashboard/leaves/balances'],["Who is on Leave?",'/dashboard/leaves/whos-on-leave']].map(([label,href])=>(
-                <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#fffbeb';e.currentTarget.style.color='#d97706'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#fde68a', flexShrink: 0 }} />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Organization */}
-          <div className="card" style={{ gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Building size={18} color="#fff" />
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Organization</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Holidays','/dashboard/organization/holidays'],['Directory','/dashboard/organization/directory'],['Announcements','/dashboard/organization/announcements']].map(([label,href])=>(
-                <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#eff6ff';e.currentTarget.style.color='#1d4ed8'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#bfdbfe', flexShrink: 0 }} />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Documents */}
-          <div className="card" style={{ gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,#64748b,#334155)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <File size={18} color="#fff" />
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Documents</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Personal Documents','/dashboard/documents/personal'],['Company Documents','/dashboard/documents/company'],['Dependent Documents','/dashboard/documents/dependent']].map(([label,href])=>(
-                <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#f1f5f9';e.currentTarget.style.color='#334155'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#cbd5e1', flexShrink: 0 }} />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Reports */}
-          <div className="card" style={{ gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,#e2725b,#cc5a43)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <BarChart2 size={18} color="#fff" />
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Reports</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Punch Reports','/dashboard/reports'],['Attendance Reports','/dashboard/reports'],['Journey Reports','/dashboard/reports'],['Leave Reports','/dashboard/reports'],['Audit Reports','/dashboard/reports'],['Employee Reports','/dashboard/reports'],['COff Reports','/dashboard/reports'],['Custom Reports','/dashboard/reports']].map(([label,href])=>(
-                <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#ffedea';e.currentTarget.style.color='#cc5a43'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#e2725b', flexShrink: 0 }} />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Synchronization 1 */}
-          <div className="card" style={{ gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#f3e8ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7' }}>
-                <Settings size={18} />
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Synchronization 1</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Admins','/dashboard/synchronisation1/admins'],['Departments','/dashboard/synchronisation1/org-sync?tab=departments'],['Branches','/dashboard/synchronisation1/org-sync?tab=branches'],['Site Offices','/dashboard/synchronisation1/org-sync?tab=siteoffices'],['Organizations','/dashboard/synchronisation1/org-sync?tab=organizations'],['Designations','/dashboard/synchronisation1/org-sync?tab=designations'],['Grades','/dashboard/synchronisation1/org-sync?tab=grades'],['Imprest Heads','/dashboard/synchronisation1/org-sync?tab=imprestheads'],['Imprest Types','/dashboard/synchronisation1/org-sync?tab=impresttypes'],['Imprest Workflow','/dashboard/synchronisation1/org-sync?tab=imprestworkflow'],['Bonus/Incentive Setup','/dashboard/synchronisation1/bonus-incentive-setup'],['Gratuity Setup','/dashboard/synchronisation1/gratuity-setup'],['Leaving Reasons','/dashboard/synchronisation1/leaving-reasons'],['Doc Workflow Config','/dashboard/synchronisation1/doc-workflow'],['HR Docs Placeholders','/dashboard/synchronisation1/hrdocs-placeholders']].map(([label,href])=>(
-                <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#f5f3ff';e.currentTarget.style.color='#7c3aed'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#c4b5fd', flexShrink: 0 }} />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Synchronization 2 */}
-          <div className="card" style={{ gap: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,#ec4899,#db2777)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Settings size={18} color="#fff" />
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Synchronization 2</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[['Head Types','/dashboard/synchronisation2/head-types'],['Salary Heads','/dashboard/synchronisation2/salary-heads'],['Advance Application','/dashboard/synchronisation2/advance-application'],['Bank Names','/dashboard/synchronisation2/bank-names'],['Weekoff Types','/dashboard/synchronisation2/weekoff-types'],['Leave Type','/dashboard/synchronisation2/leave-type'],['Muster Status','/dashboard/synchronisation2/muster-status'],['Shift','/dashboard/synchronisation2/shift'],['Document Types','/dashboard/synchronisation2/document-types'],['LTA Setup','/dashboard/synchronisation2/lta-setup'],['TDS Category','/dashboard/synchronisation2/tds-category'],['PF/NSSF Setup','/dashboard/synchronisation2/pf-nssf-setup'],['Issuing Authority','/dashboard/synchronisation2/issuing-authority'],['Skills','/dashboard/synchronisation2/skills'],['Religion','/dashboard/synchronisation2/religion'],['Relationship','/dashboard/synchronisation2/relationship']].map(([label,href])=>(
-                <Link key={label} href={href} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, color: '#4b5563', fontSize: 13, fontWeight: 500, textDecoration: 'none', transition: 'all 0.15s' }} onMouseEnter={e=>{e.currentTarget.style.background='#fdf2f8';e.currentTarget.style.color='#db2777'}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='#4b5563'}}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#fbcfe8', flexShrink: 0 }} />
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
         </div>
       </div>
 

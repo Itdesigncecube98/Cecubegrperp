@@ -62,6 +62,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }) {
   const mainItems = [
     { name: 'Switch Module', path: '/portal', icon: Layers, badge: null },
     { name: 'HR Dashboard', path: '/dashboard', icon: LayoutDashboard, badge: null },
+    { name: 'Attendance and Tools', path: '/dashboard/attendance-and-tools', icon: CalendarCheck, badge: null },
   ];
 
   const sections = [

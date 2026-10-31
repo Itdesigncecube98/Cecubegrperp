@@ -19,11 +19,8 @@ const menuConfig = [
     items: [
       { name: 'Project Dashboard',          path: '/engineering/dashboard',                          permissionCode: 'ENGG_PROJECT_DASHBOARD' },
       { name: 'Project Master',             path: '/engineering/projects',                           permissionCode: 'ENGG_PROJECT_MASTER' },
-      { name: 'Contract & Scope',           path: '/engineering/projects/scope',                     permissionCode: 'ENGG_CONTRACT_SCOPE' },
-      { name: 'Team Allocation',            path: '/engineering/projects/team',                      permissionCode: 'ENGG_TEAM_ALLOCATION' },
       { name: 'Define WBS',                 path: '/engineering/engineering/define-wbs',             permissionCode: 'ENGG_DEFINE_WBS' },
       { name: 'WBS Budget',                 path: '/engineering/projects/wbs-budget',                permissionCode: 'ENGG_WBS_BUDGET' },
-      { name: 'Budget Transaction Browse',  path: '/engineering/projects/budget-transaction-browse', permissionCode: 'ENGG_BUDGET_TXN_BROWSE' },
     ],
   },
   {

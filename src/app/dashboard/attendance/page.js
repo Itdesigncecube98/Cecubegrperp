@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAttendance, markAttendance, getAnnouncements } from '../../../lib/data';
+import { getAttendanceWithSource, markAttendance, getAnnouncements } from '../../../lib/data';
 import * as XLSX from 'xlsx';
 import { Plus, X, Trash2, Save, Check, Calendar, Clock, FileSpreadsheet } from 'lucide-react';
 import './attendance.css';
@@ -22,6 +22,8 @@ const format24HourTime = (value) => {
 export default function Attendance() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceData, setAttendanceData] = useState([]);
+  const [attendanceSource, setAttendanceSource] = useState('postgres');
+  const [cachedAt, setCachedAt] = useState(null);
   const [loading, setLoading] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,7 +36,10 @@ export default function Attendance() {
   const loadData = async (targetDate) => {
     setLoading(true);
     try {
-      const data = await getAttendance(targetDate);
+      const attendance = await getAttendanceWithSource(targetDate);
+      const data = attendance.records;
+      setAttendanceSource(attendance.source);
+      setCachedAt(attendance.cachedAt);
       // parse timeSlots string back to array if it's string
       const parsedData = data.map(item => ({
         ...item,
@@ -46,6 +51,7 @@ export default function Attendance() {
       setAnnouncements(Array.isArray(anns) ? anns : []);
     } catch (err) {
       console.error(err);
+      setAttendanceSource('unavailable');
     } finally {
       setLoading(false);
     }
@@ -70,6 +76,8 @@ export default function Attendance() {
   }, [attendanceData, searchTerm]);
 
   const [savingId, setSavingId] = useState(null);
+  const showingCachedAttendance = attendanceSource === 'sqlite-cache';
+
   const exportAttendance = () => {
     if (filteredAttendance.length === 0) return;
 
@@ -101,6 +109,7 @@ export default function Attendance() {
   };
 
   const saveRow = async (employeeId) => {
+    if (showingCachedAttendance) return;
     const record = attendanceData.find(r => r.employee.id === employeeId);
     if (!record) return;
 
@@ -135,6 +144,7 @@ export default function Attendance() {
   };
 
   const saveTimeSlots = async () => {
+    if (showingCachedAttendance) return;
     // Optimistic update
     setAttendanceData(prev => prev.map(record => 
       record.employee.id === selectedEmp.employee.id 
@@ -216,6 +226,19 @@ export default function Attendance() {
         </div>
       </div>
 
+      {showingCachedAttendance && (
+        <div role="status" style={{ background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+          Database is unavailable. Showing the last saved attendance for this date in read-only mode
+          {cachedAt ? ` (cached ${new Date(cachedAt).toLocaleString()}).` : '.'}
+          {' '}New biometric punches are saved locally and will sync automatically when the database is back.
+        </div>
+      )}
+      {attendanceSource === 'unavailable' && (
+        <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fca5a5', color: '#991b1b', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+          Attendance database is unavailable and there is no local saved snapshot for this date.
+        </div>
+      )}
+
       {holiday && (
         <div style={{ background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', border: '1px solid #86efac', padding: '1.25rem 1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 6px -1px rgba(34, 197, 94, 0.1)' }}>
           <div style={{ background: '#16a34a', color: '#fff', padding: '10px', borderRadius: '10px' }}>
@@ -277,6 +300,7 @@ export default function Attendance() {
                       value={record.status}
                       onChange={(e) => handleStatusChange(record.employee.id, e.target.value)}
                       className="attendance-status-select"
+                      disabled={showingCachedAttendance}
                     >
                       <option value="Not Marked">Not Marked</option>
                       <option value="Present">Present</option>
@@ -295,6 +319,7 @@ export default function Attendance() {
                         onClick={() => openTimeSlotsModal(record)}
                         aria-label={`Edit time slots for ${record.employee.name}`}
                         title="Edit time slots"
+                        disabled={showingCachedAttendance}
                       >
                         <Clock size={16} />
                       </button>
@@ -302,6 +327,7 @@ export default function Attendance() {
                         type="button"
                         className="btn-primary" 
                         onClick={() => saveRow(record.employee.id)}
+                        disabled={showingCachedAttendance}
                       >
                         {savingId === record.employee.id ? <Check size={16} /> : <Save size={16} />} 
                         {savingId === record.employee.id ? 'Saved' : 'Save'}

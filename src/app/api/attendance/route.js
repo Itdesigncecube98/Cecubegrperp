@@ -3,12 +3,17 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { calculateAttendanceStatus } from '../../../lib/attendanceCalculator';
 import { getEffectiveEmployeeShift, getShiftKind, resolveDayShiftAttendanceSlots } from '../../../lib/attendanceShiftPolicy';
+import {
+  cacheAttendanceRecords,
+  getCachedAttendanceRecords,
+  isTransientAttendanceDatabaseError,
+} from '../../../lib/attendanceOfflineStore';
 
 export async function GET(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const date = searchParams.get('date');
+  const { searchParams } = new URL(request.url);
+  const date = searchParams.get('date');
 
+  try {
     const employees = await prisma.employee.findMany();
     const attendanceRecords = await prisma.attendance.findMany({
       where: { date }
@@ -215,10 +220,39 @@ export async function GET(request) {
       };
     });
 
-    return NextResponse.json(Array.isArray(result) ? result : []);
+    const responseData = Array.isArray(result) ? result : [];
+    try {
+      cacheAttendanceRecords(date, responseData);
+    } catch (cacheError) {
+      console.error('Unable to update the local attendance cache:', cacheError);
+    }
+    return NextResponse.json(responseData, {
+      headers: { 'X-Attendance-Source': 'postgres' },
+    });
   } catch (error) {
     console.error('Error fetching attendance:', error);
-    return NextResponse.json([], { status: 200 });
+    if (!isTransientAttendanceDatabaseError(error)) {
+      return NextResponse.json({ error: 'Failed to fetch attendance.' }, { status: 500 });
+    }
+
+    try {
+      const cached = getCachedAttendanceRecords(date);
+      if (cached) {
+        return NextResponse.json(cached.records, {
+          headers: {
+            'X-Attendance-Source': 'sqlite-cache',
+            'X-Attendance-Cached-At': cached.cachedAt,
+          },
+        });
+      }
+    } catch (cacheError) {
+      console.error('Unable to read the local attendance cache:', cacheError);
+    }
+
+    return NextResponse.json([], {
+      status: 200,
+      headers: { 'X-Attendance-Source': 'unavailable' },
+    });
   }
 }
 

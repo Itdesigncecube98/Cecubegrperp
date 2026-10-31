@@ -1,8 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, FileText, Home, ChevronRight, ChevronDown, 
-  ChevronUp, Lock, Unlock, Trash2, Plus, History, X, Loader2, RefreshCw, CheckCircle, Eye, EyeOff, Edit
+  Search, FileText, Home, ChevronRight, ChevronDown,
+  Lock, Unlock, History, X, Loader2, CheckCircle, Eye, EyeOff, Edit
 } from 'lucide-react';
 import '../../engineering-ui.css';
 
@@ -19,31 +19,9 @@ export default function WBSBudget() {
   const [amountMode, setAmountMode] = useState('Show Amount');
   const [savingTaskId, setSavingTaskId] = useState(null);
   const [saveSuccessId, setSaveSuccessId] = useState(null);
-  const [showNewTaskModal, setShowNewTaskModal] = useState(false);
 
   // Form state for all budget columns in expanded row
   const [formData, setFormData] = useState({});
-
-  // New task modal state
-  const [newTask, setNewTask] = useState({
-    projectId: '',
-    taskName: '',
-    approvedBuiltUpArea: 1,
-    approvedRate: 0,
-    approvedAmount: 0,
-    allocatedRate: 0,
-    allocatedAmount: 0,
-    allocatedEstimateRate: 0,
-    allocatedEstimateAmount: 0,
-    unallocatedRate: 0,
-    unallocatedAmount: 0,
-    estimateRate: 0,
-    estimateAmount: 0,
-    expendedRate: 0,
-    expendedAmount: 0,
-    budgetHeadCategory: 'Civil Works',
-    remark: ''
-  });
 
   const showAmount = amountMode === 'Show Amount';
 
@@ -60,9 +38,6 @@ export default function WBSBudget() {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
           setProjects(data);
-          if (!newTask.projectId) {
-            setNewTask(prev => ({ ...prev, projectId: data[0].id }));
-          }
         }
       }
       await fetchTasks('ALL', true);
@@ -169,32 +144,35 @@ export default function WBSBudget() {
 
   const handleFieldChange = (taskId, field, value) => {
     setFormData(prev => {
+      const changedTask = tasks.find(t => t.id === taskId);
+      if (!changedTask?.wbsGroupId || changedTask.wbsTaskId) return prev;
+
       const current = prev[taskId] || {};
       const numVal = parseFloat(value) || 0;
       const updated = { ...current, [field]: value };
       const area = parseFloat(field === 'approvedBuiltUpArea' ? numVal : (current.approvedBuiltUpArea || 1));
 
-      // Auto-compute amounts when rates change
-      if (field === 'approvedRate' || field === 'approvedBuiltUpArea') {
-        const rate = field === 'approvedRate' ? numVal : (parseFloat(current.approvedRate) || 0);
-        updated.approvedAmount = (rate * area).toFixed(2);
-      }
-      if (field === 'allocatedRate') {
-        updated.allocatedAmount = (numVal * area).toFixed(2);
-      }
-      if (field === 'allocatedEstimateRate') {
-        updated.allocatedEstimateAmount = (numVal * area).toFixed(2);
-      }
-      if (field === 'estimateRate') {
-        updated.estimateAmount = (numVal * area).toFixed(2);
-      }
-      if (field === 'expendedRate') {
-        updated.expendedAmount = (numVal * area).toFixed(2);
+      const budgetPairs = [
+        ['approvedRate', 'approvedAmount'],
+        ['allocatedRate', 'allocatedAmount'],
+        ['allocatedEstimateRate', 'allocatedEstimateAmount'],
+        ['unallocatedRate', 'unallocatedAmount'],
+        ['estimateRate', 'estimateAmount'],
+        ['expendedRate', 'expendedAmount']
+      ];
+
+      for (const [rateField, amountField] of budgetPairs) {
+        if (field === rateField || field === 'approvedBuiltUpArea') {
+          const rate = field === rateField ? numVal : (Number(current[rateField]) || 0);
+          updated[amountField] = (rate * area).toFixed(2);
+        } else if (field === amountField && area > 0) {
+          updated[rateField] = (numVal / area).toFixed(2);
+        }
       }
 
       const appAmt = parseFloat(updated.approvedAmount ?? current.approvedAmount) || 0;
       const allocAmt = parseFloat(updated.allocatedAmount ?? current.allocatedAmount) || 0;
-      if (field === 'approvedRate' || field === 'approvedAmount' || field === 'allocatedRate' || field === 'allocatedAmount') {
+      if (['approvedBuiltUpArea', 'approvedRate', 'approvedAmount', 'allocatedRate', 'allocatedAmount'].includes(field)) {
         const unalloc = Math.max(0, appAmt - allocAmt);
         updated.unallocatedAmount = unalloc.toFixed(2);
         if (area > 0) {
@@ -204,62 +182,23 @@ export default function WBSBudget() {
 
       const newForm = { ...prev, [taskId]: updated };
 
-      // Hierarchical Auto-Rollup
-      const changedTask = tasks.find(t => t.id === taskId);
-      if (changedTask && changedTask.wbsTaskId) {
-        // 1. Rollup to Parent Group
-        const parentGroup = tasks.find(t => t.wbsGroupId === changedTask.wbsGroupId && !t.wbsTaskId);
-        if (parentGroup) {
-          const groupMaterials = tasks.filter(t => t.wbsGroupId === changedTask.wbsGroupId && t.wbsTaskId);
-          let sumApproved = 0, sumAllocated = 0, sumAllocEst = 0, sumEst = 0, sumExp = 0, sumUnalloc = 0;
-          groupMaterials.forEach(m => {
-            const mData = m.id === taskId ? updated : (newForm[m.id] || {});
-            sumApproved += parseFloat(mData.approvedAmount || 0);
-            sumAllocated += parseFloat(mData.allocatedAmount || 0);
-            sumAllocEst += parseFloat(mData.allocatedEstimateAmount || 0);
-            sumEst += parseFloat(mData.estimateAmount || 0);
-            sumExp += parseFloat(mData.expendedAmount || 0);
-            sumUnalloc += parseFloat(mData.unallocatedAmount || 0);
-          });
-          
-          const gData = newForm[parentGroup.id] || {};
-          newForm[parentGroup.id] = {
-            ...gData,
-            approvedAmount: sumApproved.toFixed(2),
-            allocatedAmount: sumAllocated.toFixed(2),
-            allocatedEstimateAmount: sumAllocEst.toFixed(2),
-            estimateAmount: sumEst.toFixed(2),
-            expendedAmount: sumExp.toFixed(2),
-            unallocatedAmount: sumUnalloc.toFixed(2)
-          };
-
-          // 2. Rollup to Parent Project
-          const parentProject = tasks.find(t => t.projectId === changedTask.projectId && !t.wbsGroupId && !t.wbsTaskId);
-          if (parentProject) {
-            const projectGroups = tasks.filter(t => t.projectId === changedTask.projectId && t.wbsGroupId && !t.wbsTaskId);
-            let pSumApproved = 0, pSumAllocated = 0, pSumAllocEst = 0, pSumEst = 0, pSumExp = 0, pSumUnalloc = 0;
-            projectGroups.forEach(g => {
-              const gD = g.id === parentGroup.id ? newForm[parentGroup.id] : (newForm[g.id] || {});
-              pSumApproved += parseFloat(gD.approvedAmount || 0);
-              pSumAllocated += parseFloat(gD.allocatedAmount || 0);
-              pSumAllocEst += parseFloat(gD.allocatedEstimateAmount || 0);
-              pSumEst += parseFloat(gD.estimateAmount || 0);
-              pSumExp += parseFloat(gD.expendedAmount || 0);
-              pSumUnalloc += parseFloat(gD.unallocatedAmount || 0);
-            });
-
-            const pData = newForm[parentProject.id] || {};
-            newForm[parentProject.id] = {
-              ...pData,
-              approvedAmount: pSumApproved.toFixed(2),
-              allocatedAmount: pSumAllocated.toFixed(2),
-              allocatedEstimateAmount: pSumAllocEst.toFixed(2),
-              estimateAmount: pSumEst.toFixed(2),
-              expendedAmount: pSumExp.toFixed(2),
-              unallocatedAmount: pSumUnalloc.toFixed(2)
-            };
-          }
+      const parentProject = tasks.find(t => t.projectId === changedTask.projectId && !t.wbsGroupId && !t.wbsTaskId);
+      if (parentProject) {
+        const projectGroups = tasks.filter(t => t.projectId === changedTask.projectId && t.wbsGroupId && !t.wbsTaskId);
+        const projectTotals = {};
+        for (const [rateField, amountField] of budgetPairs) {
+          const amount = projectGroups.reduce((sum, group) => {
+            const groupForm = group.id === taskId ? updated : (newForm[group.id] || group);
+            return sum + (Number(groupForm[amountField]) || 0);
+          }, 0);
+          projectTotals[amountField] = amount.toFixed(2);
+          const projectArea = Number(parentProject.approvedBuiltUpArea) || 0;
+          projectTotals[rateField] = projectArea > 0 ? (amount / projectArea).toFixed(2) : '0.00';
         }
+        newForm[parentProject.id] = {
+          ...(newForm[parentProject.id] || parentProject),
+          ...projectTotals
+        };
       }
 
       return newForm;
@@ -267,70 +206,42 @@ export default function WBSBudget() {
   };
 
   const handleSaveBudget = async (task) => {
+    if (!task.wbsGroupId || task.wbsTaskId) return;
     const taskForm = formData[task.id];
     if (!taskForm) return;
 
     try {
       setSavingTaskId(task.id);
-      
-      const tasksToSave = [task];
-      if (task.wbsTaskId) {
-         const parentGroup = tasks.find(t => t.wbsGroupId === task.wbsGroupId && !t.wbsTaskId);
-         if (parentGroup) tasksToSave.push(parentGroup);
-         const parentProject = tasks.find(t => t.projectId === task.projectId && !t.wbsGroupId && !t.wbsTaskId);
-         if (parentProject) tasksToSave.push(parentProject);
-      } else if (task.wbsGroupId) {
-         const parentProject = tasks.find(t => t.projectId === task.projectId && !t.wbsGroupId && !t.wbsTaskId);
-         if (parentProject) tasksToSave.push(parentProject);
+      const payload = {
+        id: task.id,
+        approvedBuiltUpArea: Number(taskForm.approvedBuiltUpArea) || 0,
+        approvedRate: Number(taskForm.approvedRate) || 0,
+        approvedAmount: Number(taskForm.approvedAmount) || 0,
+        allocatedRate: Number(taskForm.allocatedRate) || 0,
+        allocatedAmount: Number(taskForm.allocatedAmount) || 0,
+        allocatedEstimateRate: Number(taskForm.allocatedEstimateRate) || 0,
+        allocatedEstimateAmount: Number(taskForm.allocatedEstimateAmount) || 0,
+        unallocatedRate: Number(taskForm.unallocatedRate) || 0,
+        unallocatedAmount: Number(taskForm.unallocatedAmount) || 0,
+        estimateRate: Number(taskForm.estimateRate) || 0,
+        estimateAmount: Number(taskForm.estimateAmount) || 0,
+        expendedRate: Number(taskForm.expendedRate) || 0,
+        expendedAmount: Number(taskForm.expendedAmount) || 0,
+        budgetHeadCategory: taskForm.budgetHeadCategory,
+        remark: taskForm.remark
+      };
+
+      const res = await fetch('/api/engineering/wbs-budget', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to update group budget');
       }
 
-      let allUpdated = [];
-      await Promise.all(tasksToSave.map(async (tToSave) => {
-         const tForm = formData[tToSave.id];
-         if (!tForm) return;
-         
-         const payload = {
-            id: tToSave.id,
-            approvedBuiltUpArea: parseFloat(tForm.approvedBuiltUpArea) || 0,
-            approvedRate: parseFloat(tForm.approvedRate) || 0,
-            approvedAmount: parseFloat(tForm.approvedAmount) || 0,
-            allocatedRate: parseFloat(tForm.allocatedRate) || 0,
-            allocatedAmount: parseFloat(tForm.allocatedAmount) || 0,
-            allocatedEstimateRate: parseFloat(tForm.allocatedEstimateRate) || 0,
-            allocatedEstimateAmount: parseFloat(tForm.allocatedEstimateAmount) || 0,
-            unallocatedRate: parseFloat(tForm.unallocatedRate) || 0,
-            unallocatedAmount: parseFloat(tForm.unallocatedAmount) || 0,
-            estimateRate: parseFloat(tForm.estimateRate) || 0,
-            estimateAmount: parseFloat(tForm.estimateAmount) || 0,
-            expendedRate: parseFloat(tForm.expendedRate) || 0,
-            expendedAmount: parseFloat(tForm.expendedAmount) || 0,
-            budgetHeadCategory: tForm.budgetHeadCategory,
-            remark: tForm.remark
-         };
-
-         const res = await fetch('/api/engineering/wbs-budget', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-         });
-
-         if (res.ok) {
-            allUpdated.push(await res.json());
-         } else {
-            const err = await res.json();
-            throw new Error(err.error || 'Failed to update');
-         }
-      }));
-
-      setTasks(prev => {
-        let newTasks = [...prev];
-        allUpdated.forEach(upd => {
-          const idx = newTasks.findIndex(t => t.id === upd.id);
-          if (idx !== -1) newTasks[idx] = upd;
-        });
-        return newTasks;
-      });
-
+      await fetchTasks(selectedProjectId, false);
       setSaveSuccessId(task.id);
       setTimeout(() => setSaveSuccessId(null), 3000);
     } catch (err) {
@@ -358,82 +269,6 @@ export default function WBSBudget() {
       }
     } catch (err) {
       console.error('Error toggling lock:', err);
-    }
-  };
-
-  const handleDeleteTask = async (task) => {
-    if (!confirm(`Are you sure you want to delete "${task.taskName}"?`)) return;
-
-    try {
-      const res = await fetch('/api/engineering/wbs-budget', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: task.id })
-      });
-
-      if (res.ok) {
-        setTasks(prev => prev.filter(t => t.id !== task.id));
-        if (expandedRow === task.id) setExpandedRow(null);
-      } else {
-        alert('Failed to delete task');
-      }
-    } catch (err) {
-      console.error('Error deleting task:', err);
-      alert('Error deleting task');
-    }
-  };
-
-  const handleCreateNewTask = async (e) => {
-    e.preventDefault();
-    if (!newTask.taskName.trim()) {
-      alert('Task / Project Name is required');
-      return;
-    }
-    if (!newTask.projectId) {
-      alert('Please select a project');
-      return;
-    }
-
-    try {
-      setSavingTaskId('new');
-      const res = await fetch('/api/engineering/wbs-budget', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTask)
-      });
-
-      if (res.ok) {
-        const created = await res.json();
-        setTasks(prev => [...prev, created]);
-        setShowNewTaskModal(false);
-        setNewTask({
-          projectId: projects[0]?.id || '',
-          taskName: '',
-          approvedBuiltUpArea: 1,
-          approvedRate: 0,
-          approvedAmount: 0,
-          allocatedRate: 0,
-          allocatedAmount: 0,
-          allocatedEstimateRate: 0,
-          allocatedEstimateAmount: 0,
-          unallocatedRate: 0,
-          unallocatedAmount: 0,
-          estimateRate: 0,
-          estimateAmount: 0,
-          expendedRate: 0,
-          expendedAmount: 0,
-          budgetHeadCategory: 'Civil Works',
-          remark: ''
-        });
-      } else {
-        const err = await res.json();
-        alert('Error creating task: ' + (err.error || 'Failed'));
-      }
-    } catch (err) {
-      console.error('Error creating task:', err);
-      alert('Failed to create task');
-    } finally {
-      setSavingTaskId(null);
     }
   };
 
@@ -466,6 +301,11 @@ export default function WBSBudget() {
     const orphans = tasks.filter(t => t.projectId === pid && !sortedTasks.includes(t));
     orphans.forEach(o => sortedTasks.push(o));
   });
+  const lockedProjectIds = new Set(
+    tasks
+      .filter(task => !task.wbsGroupId && !task.wbsTaskId && task.isLocked)
+      .map(task => task.projectId)
+  );
 
   return (
     <div className="premium-page-container" style={{ padding: '0', display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -530,8 +370,8 @@ export default function WBSBudget() {
             </div>
           </div>
           
-          <button 
-            className="premium-btn-primary" 
+          <button
+            className="premium-btn-primary"
             style={{ background: '#0ea5e9', height: '40px', padding: '0 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
             onClick={() => fetchTasks(selectedProjectId, true)}
             title="Search & Sync Tasks"
@@ -550,7 +390,7 @@ export default function WBSBudget() {
                 <p style={{ margin: 0, fontSize: '0.8rem', color: '#991b1b' }}>Adding tasks or modifying budget allocations is disabled to prevent discrepancies.</p>
               </div>
             </div>
-            <button 
+            <button
               className="btn-secondary" 
               style={{ background: 'white', color: '#b91c1c', border: '1px solid #fca5a5', padding: '6px 12px', fontSize: '0.8rem', fontWeight: 600 }}
               onClick={() => window.open(`/engineering/tools/set-budget-lock?projectId=${selectedProjectId}`, '_blank')}
@@ -574,21 +414,9 @@ export default function WBSBudget() {
               {showAmount ? 'Amounts Visible' : 'Amounts Hidden'}
             </span>
           </div>
-          <button 
-            className="premium-btn-primary" 
-            style={{ background: isProjectLocked ? '#94a3b8' : '#0284c7', display: 'flex', alignItems: 'center', gap: '6px', cursor: isProjectLocked ? 'not-allowed' : 'pointer' }}
-            onClick={() => {
-              if (isProjectLocked) {
-                alert('Project budget is locked to prevent discrepancies. Unlock budget in Set Budget Lock tool to add tasks.');
-                return;
-              }
-              setShowNewTaskModal(true);
-            }}
-            disabled={isProjectLocked}
-            title={isProjectLocked ? "Budget is locked for this project. Cannot add more budget to prevent discrepancies." : "Add New Task"}
-          >
-            <Plus size={16} /> Add Task
-          </button>
+          <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+            Edit budgets on WBS group rows. Task rows are scope-only.
+          </span>
         </div>
 
         {/* Complex Data Table */}
@@ -598,7 +426,7 @@ export default function WBSBudget() {
               <thead>
                 <tr>
                   <th rowSpan={2} style={{ background: '#0ea5e9', color: 'white', padding: '12px 16px', textAlign: 'left', borderRight: '1px solid #38bdf8', borderBottom: '1px solid #38bdf8', minWidth: '240px' }}>
-                    Task
+                    Project / WBS Item
                   </th>
                   <th colSpan={showAmount ? 3 : 2} style={{ background: '#0ea5e9', color: 'white', padding: '8px', textAlign: 'center', borderRight: '1px solid #38bdf8', borderBottom: '1px solid #38bdf8', fontSize: '0.85rem' }}>
                     Approved Budget
@@ -681,9 +509,11 @@ export default function WBSBudget() {
                   sortedTasks.map((task) => {
                     const isExpanded = expandedRow === task.id;
                     const tf = formData[task.id] || {};
+                    const rowData = formData[task.id] || task;
                     const isProject = !task.wbsGroupId && !task.wbsTaskId;
                     const isGroup = task.wbsGroupId && !task.wbsTaskId;
                     const isMaterial = !!task.wbsTaskId;
+                    const isBudgetLocked = isProjectLocked || task.isLocked || lockedProjectIds.has(task.projectId);
 
                     let parentId = null;
                     if (isGroup) {
@@ -749,96 +579,89 @@ export default function WBSBudget() {
                           
                           {/* Approved Budget */}
                           <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#475569' }}>
-                            {task.approvedBuiltUpArea}
+                            {isMaterial ? '—' : rowData.approvedBuiltUpArea}
                           </td>
                           <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#475569' }}>
-                            {formatRate(task.approvedRate)}
+                            {isMaterial ? '—' : formatRate(rowData.approvedRate)}
                           </td>
                           {showAmount && (
                             <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#0369a1', fontWeight: 600 }}>
-                              {formatVal(task.approvedAmount)}
+                              {isMaterial ? '—' : formatVal(rowData.approvedAmount)}
                             </td>
                           )}
                           
                           {/* Allocated Budget */}
                           <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#475569' }}>
-                            {formatRate(task.allocatedRate)}
+                            {isMaterial ? '—' : formatRate(rowData.allocatedRate)}
                           </td>
                           {showAmount && (
                             <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#0284c7', fontWeight: 600 }}>
-                              {formatVal(task.allocatedAmount)}
+                              {isMaterial ? '—' : formatVal(rowData.allocatedAmount)}
                             </td>
                           )}
                           
                           {/* Allocated Estimate */}
                           <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#475569' }}>
-                            {formatRate(task.allocatedEstimateRate)}
+                            {isMaterial ? '—' : formatRate(rowData.allocatedEstimateRate)}
                           </td>
                           {showAmount && (
                             <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#475569' }}>
-                              {formatVal(task.allocatedEstimateAmount)}
+                              {isMaterial ? '—' : formatVal(rowData.allocatedEstimateAmount)}
                             </td>
                           )}
                           
                           {/* Unallocated Budget */}
                           <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#475569' }}>
-                            {formatRate(task.unallocatedRate)}
+                            {isMaterial ? '—' : formatRate(rowData.unallocatedRate)}
                           </td>
                           {showAmount && (
                             <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: task.unallocatedAmount > 0 ? '#15803d' : '#475569', fontWeight: 600 }}>
-                              {formatVal(task.unallocatedAmount)}
+                              {isMaterial ? '—' : formatVal(rowData.unallocatedAmount)}
                             </td>
                           )}
                           
                           {/* Estimate */}
                           <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#475569' }}>
-                            {formatRate(task.estimateRate)}
+                            {isMaterial ? '—' : formatRate(rowData.estimateRate)}
                           </td>
                           {showAmount && (
                             <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#475569' }}>
-                              {formatVal(task.estimateAmount)}
+                              {isMaterial ? '—' : formatVal(rowData.estimateAmount)}
                             </td>
                           )}
                           
                           {/* Expended */}
                           <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#475569' }}>
-                            {formatRate(task.expendedRate)}
+                            {isMaterial ? '—' : formatRate(rowData.expendedRate)}
                           </td>
                           {showAmount && (
                             <td style={{ padding: '8px', textAlign: 'right', fontSize: '0.8rem', color: '#dc2626', background: '#fecaca', fontWeight: 600 }}>
-                              {formatVal(task.expendedAmount)}
+                              {isMaterial ? '—' : formatVal(rowData.expendedAmount)}
                             </td>
                           )}
                           
                           {/* Actions */}
                           <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                              <button 
-                                onClick={() => toggleRow(task)}
-                                title="Edit Budget Columns"
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                              >
-                                <Edit size={15} color="#0ea5e9" />
-                              </button>
-                              <button 
-                                onClick={() => handleToggleLock(task)}
-                                title={task.isLocked ? "Unlock Task" : "Lock Task"}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                              >
-                                {task.isLocked ? (
-                                  <Lock size={15} color="#ef4444" />
-                                ) : (
-                                  <Unlock size={15} color="#0ea5e9" />
+                            {!isMaterial && (
+                              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+                                {isGroup && (
+                                  <button
+                                    onClick={() => toggleRow(task)}
+                                    title="Edit Group Budget"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                                  >
+                                    <Edit size={15} color="#0ea5e9" />
+                                  </button>
                                 )}
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteTask(task)}
-                                title="Delete Task"
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                              >
-                                <Trash2 size={15} color="#10b981" />
-                              </button>
-                            </div>
+                                <button
+                                  onClick={() => handleToggleLock(task)}
+                                  title={task.isLocked ? 'Unlock Budget' : 'Lock Budget'}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                                >
+                                  {task.isLocked ? <Lock size={15} color="#ef4444" /> : <Unlock size={15} color="#0ea5e9" />}
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
 
@@ -846,7 +669,7 @@ export default function WBSBudget() {
                         {isExpanded && (
                           <tr>
                             <td colSpan={showAmount ? 15 : 9} style={{ padding: '20px', background: 'white', borderBottom: '2px solid #38bdf8' }}>
-                              <div style={{ border: '1px solid #bae6fd', borderRadius: '10px', padding: '24px', background: '#f8fafc', position: 'relative', opacity: (isProject || isGroup) ? 0.7 : 1, pointerEvents: (isProject || isGroup) ? 'none' : 'auto' }}>
+                              <div style={{ border: '1px solid #bae6fd', borderRadius: '10px', padding: '24px', background: '#f8fafc', position: 'relative', opacity: isProject || isBudgetLocked ? 0.8 : 1, pointerEvents: isProject || isBudgetLocked ? 'none' : 'auto' }}>
                                 
                                 <div 
                                   style={{ position: 'absolute', top: '14px', right: '14px', cursor: 'pointer', color: '#0284c7', background: '#e0f2fe', borderRadius: '50%', padding: '4px', pointerEvents: 'auto' }} 
@@ -858,7 +681,7 @@ export default function WBSBudget() {
                                 
                                 <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                                   <div style={{ background: '#0284c7', color: 'white', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
-                                    {(isProject || isGroup) ? 'AUTO-CALCULATED BUDGET TOTALS' : 'EDIT BUDGET COLUMNS'}
+                                    {isProject ? 'AUTO-CALCULATED PROJECT TOTALS' : 'EDIT GROUP BUDGET'}
                                   </div>
                                   <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a', fontWeight: 600 }}>
                                     {task.taskName}
@@ -868,9 +691,9 @@ export default function WBSBudget() {
                                       <Lock size={12} /> Locked (Unlock to modify)
                                     </span>
                                   )}
-                                  {(isProject || isGroup) && (
+                                  {isProject && (
                                     <span style={{ fontSize: '0.75rem', color: '#0ea5e9', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto', pointerEvents: 'none' }}>
-                                      * Totals auto-calculated from materials
+                                      * Totals auto-calculated from WBS groups
                                     </span>
                                   )}
                                 </div>
@@ -892,7 +715,7 @@ export default function WBSBudget() {
                                           style={{ width: '100%', fontSize: '0.85rem' }}
                                           value={tf.approvedBuiltUpArea ?? ''}
                                           onChange={(e) => handleFieldChange(task.id, 'approvedBuiltUpArea', e.target.value)}
-                                          disabled={task.isLocked}
+                                          disabled={task.isLocked || !isGroup}
                                         />
                                       </div>
                                       <div>
@@ -903,7 +726,7 @@ export default function WBSBudget() {
                                           style={{ width: '100%', fontSize: '0.85rem' }}
                                           value={tf.approvedRate ?? ''}
                                           onChange={(e) => handleFieldChange(task.id, 'approvedRate', e.target.value)}
-                                          disabled={task.isLocked}
+                                          disabled={task.isLocked || !isGroup}
                                         />
                                       </div>
                                     </div>
@@ -915,7 +738,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem', fontWeight: 600 }}
                                         value={tf.approvedAmount ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'approvedAmount', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                   </div>
@@ -933,7 +756,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem' }}
                                         value={tf.allocatedRate ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'allocatedRate', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                     <div>
@@ -944,7 +767,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem', fontWeight: 600 }}
                                         value={tf.allocatedAmount ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'allocatedAmount', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                   </div>
@@ -962,7 +785,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem' }}
                                         value={tf.allocatedEstimateRate ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'allocatedEstimateRate', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                     <div>
@@ -973,7 +796,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem' }}
                                         value={tf.allocatedEstimateAmount ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'allocatedEstimateAmount', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                   </div>
@@ -991,7 +814,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem' }}
                                         value={tf.unallocatedRate ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'unallocatedRate', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                     <div>
@@ -1002,7 +825,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem', fontWeight: 600 }}
                                         value={tf.unallocatedAmount ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'unallocatedAmount', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                   </div>
@@ -1020,7 +843,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem' }}
                                         value={tf.estimateRate ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'estimateRate', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                     <div>
@@ -1031,7 +854,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem' }}
                                         value={tf.estimateAmount ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'estimateAmount', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                   </div>
@@ -1049,7 +872,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem' }}
                                         value={tf.expendedRate ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'expendedRate', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                     <div>
@@ -1060,7 +883,7 @@ export default function WBSBudget() {
                                         style={{ width: '100%', fontSize: '0.85rem', fontWeight: 600, color: '#dc2626' }}
                                         value={tf.expendedAmount ?? ''}
                                         onChange={(e) => handleFieldChange(task.id, 'expendedAmount', e.target.value)}
-                                        disabled={task.isLocked}
+                                        disabled={task.isLocked || !isGroup}
                                       />
                                     </div>
                                   </div>
@@ -1079,7 +902,7 @@ export default function WBSBudget() {
                                     value={tf.remark ?? ''}
                                     placeholder="Add any specific notes or justifications here..."
                                     onChange={(e) => handleFieldChange(task.id, 'remark', e.target.value)}
-                                    disabled={task.isLocked}
+                                    disabled={task.isLocked || !isGroup}
                                   />
                                 </div>
 
@@ -1092,24 +915,26 @@ export default function WBSBudget() {
                                       </span>
                                     )}
                                   </div>
-                                  <div style={{ display: 'flex', gap: '12px' }}>
-                                    <button 
-                                      className="premium-btn-primary" 
-                                      style={{ background: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                      onClick={() => alert(`History for ${task.taskName}:\nUpdated: ${new Date(task.updatedAt).toLocaleString()}`)}
-                                    >
-                                      <History size={16} /> View History
-                                    </button>
-                                    <button 
-                                      className="premium-btn-primary" 
-                                      style={{ background: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 20px', fontWeight: 600 }}
-                                      onClick={() => handleSaveBudget(task)}
-                                      disabled={savingTaskId === task.id || task.isLocked}
-                                    >
-                                      {savingTaskId === task.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-                                      Save All Budget Columns
-                                    </button>
-                                  </div>
+                                  {isGroup && (
+                                    <div style={{ display: 'flex', gap: '12px' }}>
+                                      <button
+                                        className="premium-btn-primary"
+                                        style={{ background: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                        onClick={() => alert(`History for ${task.taskName}:\nUpdated: ${new Date(task.updatedAt).toLocaleString()}`)}
+                                      >
+                                        <History size={16} /> View History
+                                      </button>
+                                      <button
+                                        className="premium-btn-primary"
+                                        style={{ background: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 20px', fontWeight: 600 }}
+                                        onClick={() => handleSaveBudget(task)}
+                                        disabled={savingTaskId === task.id || isBudgetLocked}
+                                      >
+                                        {savingTaskId === task.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                        Save Group Budget
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
 
                               </div>
@@ -1126,139 +951,6 @@ export default function WBSBudget() {
         </div>
 
       </div>
-
-      {/* New Task Modal */}
-      {showNewTaskModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', width: '580px', maxWidth: '90%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#1e293b', fontWeight: 600 }}>Add New Project Task</h3>
-              <button 
-                onClick={() => setShowNewTaskModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateNewTask}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                  Select Project <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <select
-                  className="premium-input"
-                  style={{ width: '100%' }}
-                  value={newTask.projectId}
-                  onChange={(e) => {
-                    const selProj = projects.find(p => p.id === e.target.value);
-                    setNewTask({
-                      ...newTask,
-                      projectId: e.target.value,
-                      taskName: newTask.taskName || selProj?.name || ''
-                    });
-                  }}
-                  required
-                >
-                  <option value="">-- Choose Project --</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                  Task Name <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input 
-                  type="text" 
-                  className="premium-input" 
-                  style={{ width: '100%' }}
-                  placeholder="e.g. Substation Construction"
-                  value={newTask.taskName}
-                  onChange={(e) => setNewTask({ ...newTask, taskName: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    Built-Up Area
-                  </label>
-                  <input 
-                    type="number" 
-                    className="premium-input" 
-                    style={{ width: '100%' }}
-                    value={newTask.approvedBuiltUpArea}
-                    onChange={(e) => setNewTask({ ...newTask, approvedBuiltUpArea: parseFloat(e.target.value) || 0 })}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    Approved Rate (₹)
-                  </label>
-                  <input 
-                    type="number" 
-                    className="premium-input" 
-                    style={{ width: '100%' }}
-                    value={newTask.approvedRate}
-                    onChange={(e) => setNewTask({ ...newTask, approvedRate: parseFloat(e.target.value) || 0 })}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    Approved Amount (₹)
-                  </label>
-                  <input 
-                    type="number" 
-                    className="premium-input" 
-                    style={{ width: '100%' }}
-                    value={newTask.approvedAmount}
-                    onChange={(e) => setNewTask({ ...newTask, approvedAmount: parseFloat(e.target.value) || 0 })}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                    Estimate Amount (₹)
-                  </label>
-                  <input 
-                    type="number" 
-                    className="premium-input" 
-                    style={{ width: '100%' }}
-                    value={newTask.estimateAmount}
-                    onChange={(e) => setNewTask({ ...newTask, estimateAmount: parseFloat(e.target.value) || 0 })}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
-                <button 
-                  type="button"
-                  className="btn-secondary"
-                  style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer' }}
-                  onClick={() => setShowNewTaskModal(false)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="premium-btn-primary"
-                  style={{ background: '#0ea5e9', padding: '8px 16px', borderRadius: '6px', color: 'white', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  disabled={savingTaskId === 'new'}
-                >
-                  {savingTaskId === 'new' && <Loader2 size={16} className="animate-spin" />}
-                  Create Task
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );

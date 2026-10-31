@@ -247,30 +247,88 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const decodedId = decodeURIComponent(id);
 
-    const existingEmployee = await prisma.employee.findFirst({
-      where: {
-        OR: [
-          { id: decodedId },
-          { empId: decodedId },
-          { name: decodedId }
-        ]
-      },
-      select: { id: true, name: true, empId: true }
+    const result = await prisma.$transaction(async (tx) => {
+      const existingEmployee = await tx.employee.findFirst({
+        where: {
+          OR: [
+            { id: decodedId },
+            { empId: decodedId },
+            { name: decodedId }
+          ]
+        },
+        select: { id: true, name: true, empId: true, assignedModules: true }
+      });
+
+      if (!existingEmployee) return { notFound: true };
+
+      const [teamProjects, managedProjects, responsibleProjects, projectToolGrants] = await Promise.all([
+        tx.projectTeam.findMany({
+          where: { employeeId: existingEmployee.id },
+          select: { projectId: true },
+          distinct: ['projectId']
+        }),
+        tx.projectMaster.findMany({
+          where: { managerId: existingEmployee.id },
+          select: { id: true }
+        }),
+        tx.projectActivity.findMany({
+          where: { responsibleId: existingEmployee.id },
+          select: { projectId: true },
+          distinct: ['projectId']
+        }),
+        tx.employeeProjectToolAccess.findMany({
+          where: { employeeId: existingEmployee.id, granted: true },
+          select: { projectId: true, tool: { select: { module: true } } }
+        })
+      ]);
+
+      const projectIds = new Set([
+        ...teamProjects.map(({ projectId }) => projectId),
+        ...managedProjects.map(({ id: projectId }) => projectId),
+        ...responsibleProjects.map(({ projectId }) => projectId),
+        ...projectToolGrants.map(({ projectId }) => projectId)
+      ]);
+      const assignedModules = new Set([
+        ...(existingEmployee.assignedModules || []),
+        ...projectToolGrants.map(({ tool }) => tool.module)
+      ].filter(Boolean));
+
+      if (projectIds.size > 0 || assignedModules.size > 0) {
+        return {
+          assigned: {
+            projectCount: projectIds.size,
+            modules: Array.from(assignedModules)
+          }
+        };
+      }
+
+      await tx.employee.delete({ where: { id: existingEmployee.id } });
+      return { employee: existingEmployee };
     });
 
-    if (!existingEmployee) {
+    if (result.notFound) {
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
     }
 
-    await prisma.employee.delete({
-      where: { id: existingEmployee.id }
-    });
+    if (result.assigned) {
+      const details = [];
+      if (result.assigned.projectCount) {
+        details.push(`assigned to ${result.assigned.projectCount} project(s)`);
+      }
+      if (result.assigned.modules.length) {
+        details.push(`assigned module(s): ${result.assigned.modules.join(', ')}`);
+      }
+      return NextResponse.json({
+        error: `Cannot delete this employee because they are ${details.join(' and ')}. Remove these assignments first.`,
+        assignments: result.assigned
+      }, { status: 409 });
+    }
 
     return NextResponse.json({
       success: true,
-      id: existingEmployee.id,
-      name: existingEmployee.name,
-      empId: existingEmployee.empId
+      id: result.employee.id,
+      name: result.employee.name,
+      empId: result.employee.empId
     });
   } catch (error) {
     console.error('Delete Error:', error);
