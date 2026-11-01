@@ -56,6 +56,15 @@ const DEFAULT_DETAILS = {
   priority: '',
   hsnSacCode: '',
   enquiryNo: '',
+  tenderOpeningDate: '',
+  tenderClosingDate: '',
+  tenderLocation: '',
+  kindlyAttention: '',
+  faceToFaceMeetings: [],
+  paymentStructure: [],
+  paymentRevisions: [],
+  paymentRevisionEffectiveDate: '',
+  paymentRevisionRemarks: '',
   tenderManagerCategory: '',
   tenderManagerId: '',
   purchaseTillDate: '',
@@ -118,6 +127,8 @@ const OFFICIAL_FIELDS = [
 
 const KEY_DATES = [
   { name: 'tenderDate', label: 'Tender Date' },
+  { name: 'tenderOpeningDate', label: 'Tender Opening Date' },
+  { name: 'tenderClosingDate', label: 'Tender Closing Date' },
   { name: 'purchaseTillDate', label: 'Purchase Till Date' },
   { name: 'purchaseDate', label: 'Purchase Date' },
   { name: 'bidSubLastDate', label: 'Submission Date' },
@@ -125,6 +136,33 @@ const KEY_DATES = [
   { name: 'techOpeningDate', label: 'Technical Opening Date' },
   { name: 'finOpeningDate', label: 'Financial Opening Date' }
 ];
+
+function EmployeeMultiSelect({ employees, selectedIds, onChange, label }) {
+  const allSelected = employees.length > 0 && selectedIds.length === employees.length;
+  return (
+    <label className="tnd-detail-field wide">
+      <span>{label}</span>
+      <select
+        multiple
+        size={Math.min(Math.max(employees.length, 4), 8)}
+        value={selectedIds}
+        onChange={event => onChange(Array.from(event.target.selectedOptions, option => option.value))}
+      >
+        {employees.map(employee => (
+          <option key={employee.id} value={employee.id}>{employee.name}</option>
+        ))}
+      </select>
+      <button
+        className="tnd-btn tnd-btn-outline"
+        type="button"
+        onClick={() => onChange(allSelected ? [] : employees.map(employee => employee.id))}
+        style={{ justifySelf: 'start' }}
+      >
+        {allSelected ? 'Clear employees' : 'Select all employees'}
+      </button>
+    </label>
+  );
+}
 
 function dateInputValue(value) {
   if (!value) return '';
@@ -261,9 +299,12 @@ export default function TenderDetailsForm({ id, isNew = false }) {
         for (const field of ['tenderDate', 'publishedDate', 'preBidMeeting', 'bidSubLastDate', 'techOpeningDate', 'finOpeningDate']) {
           core[field] = dateInputValue(core[field]);
         }
-        for (const field of ['purchaseTillDate', 'purchaseDate', 'presentationDate', 'awardedDate', 'expectedCommencementDate']) {
+        for (const field of ['tenderOpeningDate', 'tenderClosingDate', 'paymentRevisionEffectiveDate', 'purchaseTillDate', 'purchaseDate', 'presentationDate', 'awardedDate', 'expectedCommencementDate']) {
           defaults[field] = dateInputValue(defaults[field]);
         }
+        defaults.faceToFaceMeetings = Array.isArray(defaults.faceToFaceMeetings) ? defaults.faceToFaceMeetings : [];
+        defaults.paymentStructure = Array.isArray(defaults.paymentStructure) ? defaults.paymentStructure : [];
+        defaults.paymentRevisions = Array.isArray(defaults.paymentRevisions) ? defaults.paymentRevisions : [];
         setEmployees(availableEmployees);
         setWarning(employeeResponse.ok ? '' : 'Employee options could not be loaded. Saved employee assignments are still available.');
         setFormData({ ...core, ...defaults });
@@ -308,6 +349,32 @@ export default function TenderDetailsForm({ id, isNew = false }) {
 
   const addRow = (name, row) => setFormData(previous => ({ ...previous, [name]: [...previous[name], row] }));
   const removeRow = (name, index) => setFormData(previous => ({ ...previous, [name]: previous[name].filter((_, rowIndex) => rowIndex !== index) }));
+
+  const updateMeeting = (index, field, value) => {
+    setFormData(previous => ({
+      ...previous,
+      faceToFaceMeetings: previous.faceToFaceMeetings.map((meeting, meetingIndex) =>
+        meetingIndex === index ? { ...meeting, [field]: value } : meeting)
+    }));
+    setSavedMessage('');
+  };
+
+  const addMeeting = () => addRow('faceToFaceMeetings', {
+    date: '',
+    time: '',
+    location: formData.tenderLocation || '',
+    kindlyAttention: formData.kindlyAttention || '',
+    employeeIds: [],
+    remarks: ''
+  });
+
+  const addPaymentRevision = () => addRow('paymentStructure', {
+    milestone: '',
+    rate: '',
+    unit: '',
+    paymentTerms: '',
+    effectiveDate: formData.paymentRevisionEffectiveDate || ''
+  });
 
   const addRequiredDocuments = () => {
     const names = requiredDocumentsText
@@ -372,6 +439,15 @@ export default function TenderDetailsForm({ id, isNew = false }) {
         router.push(`/tender/${result.id}/details`);
         return;
       }
+      if (result.details) {
+        setFormData(previous => ({
+          ...previous,
+          paymentRevisions: Array.isArray(result.details.paymentRevisions)
+            ? result.details.paymentRevisions
+            : previous.paymentRevisions,
+          paymentRevisionRemarks: '',
+        }));
+      }
       setSavedMessage('Tender details saved.');
       setAuditLogs(previous => [{
         id: `saved-${Date.now()}`,
@@ -424,7 +500,9 @@ export default function TenderDetailsForm({ id, isNew = false }) {
             { name: 'country', label: 'Country' },
             { name: 'state', label: 'State' },
             { name: 'city', label: 'City' },
-            { name: 'location', label: 'Location' }
+            { name: 'location', label: 'Location' },
+            { name: 'tenderLocation', label: 'Tender / Meeting Location' },
+            { name: 'kindlyAttention', label: 'Kindly Attention (Contact Person)' }
           ].map(field => <InputField key={field.name} field={field} value={formData[field.name]} onChange={setField} employees={employees} />)}
         </div>
 
@@ -436,6 +514,75 @@ export default function TenderDetailsForm({ id, isNew = false }) {
           <InputField field={{ name: 'tenderManagerCategory', label: 'Tender Manager Category' }} value={formData.tenderManagerCategory} onChange={setField} employees={employees} />
           <InputField field={{ name: 'tenderManagerId', label: 'Tender Manager', optionsKey: 'employees' }} value={formData.tenderManagerId} onChange={setField} employees={employees} />
         </div>
+      </Section>
+
+      <Section title="Face-to-Face Meetings">
+        <p className="tnd-detail-help">Add each visit separately. Select multiple employees for each meeting, or select everyone.</p>
+        {formData.faceToFaceMeetings.map((meeting, index) => (
+          <div key={`meeting-${index}`} className="tnd-card" style={{ marginBottom: 12, padding: 16 }}>
+            <div className="tnd-detail-grid">
+              <InputField field={{ name: 'date', label: 'Meeting Date', type: 'date' }} value={meeting.date} onChange={(field, value) => updateMeeting(index, field, value)} employees={employees} />
+              <InputField field={{ name: 'time', label: 'Meeting Time', type: 'time' }} value={meeting.time} onChange={(field, value) => updateMeeting(index, field, value)} employees={employees} />
+              <InputField field={{ name: 'location', label: 'Meeting Location' }} value={meeting.location} onChange={(field, value) => updateMeeting(index, field, value)} employees={employees} />
+              <InputField field={{ name: 'kindlyAttention', label: 'Kindly Attention / Contact Person' }} value={meeting.kindlyAttention} onChange={(field, value) => updateMeeting(index, field, value)} employees={employees} />
+              <InputField field={{ name: 'remarks', label: 'Meeting Details / Remarks', type: 'textarea', wide: true }} value={meeting.remarks} onChange={(field, value) => updateMeeting(index, field, value)} employees={employees} />
+              <EmployeeMultiSelect
+                employees={employees}
+                selectedIds={Array.isArray(meeting.employeeIds) ? meeting.employeeIds : []}
+                label="Employees attending"
+                onChange={value => updateMeeting(index, 'employeeIds', value)}
+              />
+            </div>
+            <button className="tnd-btn tnd-btn-outline" type="button" onClick={() => removeRow('faceToFaceMeetings', index)}>
+              <Trash2 size={15} /> Remove meeting
+            </button>
+          </div>
+        ))}
+        <button className="tnd-btn tnd-btn-outline tnd-detail-add" type="button" onClick={addMeeting}>
+          <Plus size={15} /> Add face-to-face meeting
+        </button>
+      </Section>
+
+      <Section title="Payment Structure & Rate Revisions">
+        <p className="tnd-detail-help">Change a rate or payment milestone and save to keep a dated revision history; previous revisions remain available below.</p>
+        <EditableTable
+          columns={[
+            { name: 'milestone', label: 'Payment Milestone / Item' },
+            { name: 'rate', label: 'Rate / Amount', type: 'number' },
+            { name: 'unit', label: 'Unit' },
+            { name: 'paymentTerms', label: 'Payment Terms' },
+            { name: 'effectiveDate', label: 'Effective From', type: 'date' }
+          ]}
+          rows={formData.paymentStructure}
+          onChange={(index, field, value) => updateRows('paymentStructure', index, field, value)}
+          onRemove={index => removeRow('paymentStructure', index)}
+          emptyText="No payment milestones or rates added."
+          addLabel="Add payment milestone"
+          onAdd={addPaymentRevision}
+        />
+        <div className="tnd-detail-grid" style={{ marginTop: 16 }}>
+          <InputField field={{ name: 'paymentRevisionEffectiveDate', label: 'Revision Effective Date', type: 'date' }} value={formData.paymentRevisionEffectiveDate} onChange={setField} employees={employees} />
+          <InputField field={{ name: 'paymentRevisionRemarks', label: 'Reason for Rate / Payment Change', type: 'textarea' }} value={formData.paymentRevisionRemarks} onChange={setField} employees={employees} />
+        </div>
+        {!isNew && (
+          <div className="tnd-table-wrapper" style={{ marginTop: 16 }}>
+            <table className="tnd-table tnd-detail-table">
+              <thead><tr><th>Revision</th><th>Changed</th><th>Effective From</th><th>Reason</th><th>Payment Structure Snapshot</th></tr></thead>
+              <tbody>
+                {[...formData.paymentRevisions].reverse().map((revision, index) => (
+                  <tr key={`${revision.changedAt || 'revision'}-${index}`}>
+                    <td>R{revision.revisionNumber || index + 1}</td>
+                    <td>{revision.changedAt ? new Date(revision.changedAt).toLocaleString() : '—'}</td>
+                    <td>{revision.effectiveDate || '—'}</td>
+                    <td>{revision.remarks || '—'}</td>
+                    <td>{(revision.structure || []).map(row => `${row.milestone || 'Item'}: ${row.rate ?? '—'}${row.unit ? ` / ${row.unit}` : ''}`).join('; ') || 'No rates'}</td>
+                  </tr>
+                ))}
+                {formData.paymentRevisions.length === 0 && <tr><td colSpan="5" className="tnd-text-center tnd-text-muted">No rate revisions recorded yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Section>
 
       <Section title="Key Dates">

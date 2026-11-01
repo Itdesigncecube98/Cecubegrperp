@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import { calculateAttendanceStatus } from '../../../../lib/attendanceCalculator';
 import { getEffectiveEmployeeShift, resolveDayShiftAttendanceSlots } from '../../../../lib/attendanceShiftPolicy';
+import { getBiometricPunchesByEmployeeDay } from '../../../../lib/biometricPunchDisplay';
 
 export async function GET(request) {
   try {
@@ -17,20 +18,57 @@ export async function GET(request) {
       return NextResponse.json({ error: 'employee not found' }, { status: 404 });
     }
 
+    const today = new Date();
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(today);
+    const p = {};
+    parts.forEach(part => p[part.type] = part.value);
+    const todayStr = `${p.year}-${p.month}-${p.day}`;
+    let currentHour = parseInt(p.hour, 10);
+    if (currentHour === 24) currentHour = 0;
+    const currentTime = `${String(currentHour).padStart(2, '0')}:${p.minute || '00'}`;
+
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const isValidDate = value => {
+      if (!datePattern.test(value)) return false;
+      const timestamp = Date.parse(`${value}T00:00:00Z`);
+      return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+    };
+    const requestedStartDate = searchParams.get('startDate');
+    const requestedEndDate = searchParams.get('endDate');
+    const hasExplicitDateRange = Boolean(requestedStartDate || requestedEndDate);
+    if (
+      (requestedStartDate && !isValidDate(requestedStartDate)) ||
+      (requestedEndDate && !isValidDate(requestedEndDate))
+    ) {
+      return NextResponse.json({ error: 'Dates must use YYYY-MM-DD format.' }, { status: 400 });
+    }
+
+    const defaultStart = new Date(`${todayStr}T12:00:00Z`);
+    defaultStart.setUTCMonth(defaultStart.getUTCMonth() - 6);
+    defaultStart.setUTCDate(1);
+    const startDate = requestedStartDate || defaultStart.toISOString().slice(0, 10);
+    const endDate = requestedEndDate || todayStr;
+    if (startDate > endDate) {
+      return NextResponse.json({ error: 'startDate must be on or before endDate.' }, { status: 400 });
+    }
+    if ((Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000 > 730) {
+      return NextResponse.json({ error: 'Date range cannot exceed 730 days.' }, { status: 400 });
+    }
+
     const records = await prisma.attendance.findMany({
       where: {
         employeeId,
-        // Last 6 months only — keeps employee dashboard fast
-        date: { gte: (() => {
-          const d = new Date();
-          d.setMonth(d.getMonth() - 6);
-          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-        })() }
+        date: { gte: startDate, lte: endDate }
       }
     });
+    const biometricPunches = await getBiometricPunchesByEmployeeDay([employee], startDate, endDate);
 
-    const [holidays, workWeeks, approvedLeaves, employeeShifts, weekoffTypes] = await Promise.all([
-      prisma.holiday.findMany(),
+    const [holidays, workWeeks, approvedLeaves, employeeShifts, weekoffTypes, announcements] = await Promise.all([
+      prisma.holiday.findMany({ where: { date: { gte: startDate, lte: endDate } } }),
       prisma.workWeek.findMany(),
       prisma.leaveRequest.findMany({
         where: { employeeId, status: 'APPROVED' }
@@ -40,11 +78,24 @@ export async function GET(request) {
         include: { shift: true },
         orderBy: { effectiveFrom: 'desc' }
       }),
-      prisma.weekoffType.findMany()
+      prisma.weekoffType.findMany(),
+      prisma.announcement.findMany({
+        where: {
+          date: { gte: startDate, lte: endDate },
+          OR: [{ isWorkingDay: true }, { isHoliday: true }],
+        },
+        select: { date: true, isWorkingDay: true, isHoliday: true },
+      }),
     ]);
     
     // Convert to easy lookups
     const holidayDates = new Set(holidays.map(h => h.date));
+    announcements.forEach(announcement => {
+      if (announcement.isHoliday) holidayDates.add(announcement.date);
+    });
+    const workingAnnouncementDates = new Set(
+      announcements.filter(announcement => announcement.isWorkingDay).map(announcement => announcement.date),
+    );
     let nonWorkingDays = new Set(workWeeks.filter(w => !w.isWorking).map(w => w.day));
     
     // Default fallback: if no work week settings exist, assume Sunday is an off day
@@ -76,19 +127,6 @@ export async function GET(request) {
         curr.setDate(curr.getDate() + 1);
       }
     });
-
-    const today = new Date();
-    const parts = new Intl.DateTimeFormat('en-GB', { 
-      timeZone: 'Asia/Kolkata', 
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false
-    }).formatToParts(today);
-    const p = {};
-    parts.forEach(part => p[part.type] = part.value);
-    const todayStr = `${p.year}-${p.month}-${p.day}`;
-    let currentHour = parseInt(p.hour, 10);
-    if (currentHour === 24) currentHour = 0;
-    const currentTime = `${String(currentHour).padStart(2, '0')}:${p.minute || '00'}`;
 
     const isNightTime = (t) => t ? (t > '19:00' || t <= '08:00') : false;
     const dayCountsAsNightShift = (slots, shiftType, effStatus) => {
@@ -128,21 +166,18 @@ export async function GET(request) {
       });
       if (updatedSlots) {
         parsedSlots = updatedSlots;
-        prisma.attendance.update({
-          where: { id: record.id },
-          data: { timeSlots: JSON.stringify(parsedSlots) }
-        }).catch(() => {});
+        if (!hasExplicitDateRange || record.date >= todayStr) {
+          prisma.attendance.update({
+            where: { id: record.id },
+            data: { timeSlots: JSON.stringify(parsedSlots) }
+          }).catch(() => {});
+        }
         record.timeSlots = JSON.stringify(parsedSlots); // update in memory
       }
       recordMap.set(record.date, record);
     });
 
-    // Start from 6 months ago, 1st of month
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - 6);
-    startDate.setDate(1);
-    
-    let iterDate = new Date(startDate);
+    let iterDate = new Date(`${startDate}T12:00:00`);
     iterDate.setHours(0, 0, 0, 0); // Reset time to midnight local time
 
     while (true) {
@@ -151,8 +186,8 @@ export async function GET(request) {
       const day = String(iterDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
       
-      if (dateStr > todayStr) {
-        break; // stop when we've processed up to todayStr
+      if (dateStr > todayStr || dateStr > endDate) {
+        break;
       }
       
       const monthPrefix = `${year}-${month}`;
@@ -178,8 +213,9 @@ export async function GET(request) {
       const mStat = statsByMonth[monthPrefix];
       mStat.TotalDays++;
 
-      const isHoliday = holidayDates.has(dateStr);
-      const isOffDay = nonWorkingDays.has(dayName);
+      const isWorkingAnnouncement = workingAnnouncementDates.has(dateStr);
+      const isHoliday = !isWorkingAnnouncement && holidayDates.has(dateStr);
+      const isOffDay = !isWorkingAnnouncement && nonWorkingDays.has(dayName);
       const isLeave = leaveDates.has(dateStr);
       const record = recordMap.get(dateStr);
 
@@ -191,6 +227,12 @@ export async function GET(request) {
 
       if (record) {
         let effStatus = record.status;
+        if (effStatus === 'P') effStatus = 'Present';
+        else if (effStatus === 'A') effStatus = 'Absent';
+        else if (effStatus === 'HD') effStatus = 'Half Day';
+        else if (effStatus === 'W-off') effStatus = 'Off';
+        else if (effStatus === 'H') effStatus = 'Holiday';
+        else if (effStatus === 'C-off') effStatus = 'COFF';
         const slots = record.timeSlots ? JSON.parse(record.timeSlots) : [];
         const completedSlot = slots.filter(s => s?.in && s?.out).slice(-1)[0];
         const effectiveShift = getEffectiveEmployeeShift(employeeShifts, employeeId, dateStr);
@@ -221,6 +263,13 @@ export async function GET(request) {
           effStatus = calculateAttendanceStatus(effectiveShift.shift, completedSlot.in, completedSlot.out).status;
         }
         const hasPunch = slots.some(slot => slot?.in || slot?.out);
+        if (!isWorkingAnnouncement && (isHoliday || isOffDay) && hasPunch &&
+            ['Present', 'Late'].includes(effStatus)) {
+          effStatus = 'COFF';
+        }
+        if (isWorkingAnnouncement && ['Off', 'COFF'].includes(effStatus)) {
+          effStatus = hasPunch ? 'Present' : dateStr < todayStr ? 'Absent' : 'No Punch';
+        }
         if (
           isOffDay &&
           !isLeave &&
@@ -268,7 +317,8 @@ export async function GET(request) {
           date: dateStr,
           status: statusToPush,
           shiftType: record ? (record.shiftType || 'Day') : '-',
-          timeSlots: record && record.timeSlots ? JSON.parse(record.timeSlots) : []
+          timeSlots: record && record.timeSlots ? JSON.parse(record.timeSlots) : [],
+          biometricPunches: biometricPunches.get(`${employeeId}|${dateStr}`) || [],
         });
       }
 

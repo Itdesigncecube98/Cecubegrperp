@@ -21,9 +21,9 @@ export default function ApplyLeave() {
     endDate: '',
     reason: '',
     attachment: '',
-    attachment: '',
     isHalfDay: false
   });
+  const [attachmentName, setAttachmentName] = useState('');
   const [currentBalance, setCurrentBalance] = useState(null);
   const halfDayAllowed = supportsHalfDayLeave(formData.leaveType);
 
@@ -95,13 +95,21 @@ export default function ApplyLeave() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Supporting documents must be 5 MB or smaller.');
+        e.target.value = '';
+        return;
+      }
+      setAttachmentName(file.name);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData({ ...formData, attachment: reader.result });
+        setFormData(previous => ({ ...previous, attachment: reader.result }));
       };
+      reader.onerror = () => alert('Could not read the selected supporting document.');
       reader.readAsDataURL(file);
     } else {
-      setFormData({ ...formData, attachment: '' });
+      setAttachmentName('');
+      setFormData(previous => ({ ...previous, attachment: '' }));
     }
   };
 
@@ -176,6 +184,9 @@ export default function ApplyLeave() {
             })}
           </select>
         </div>
+        <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '1rem' }}>
+          CL: 12 days credited each 1 April and carried forward. EL: after 8 months, 1 day per 20 calendar days until the next April, then 18 days each April and carried forward. Half-day CL/EL/COFF deducts 0.5 day; half-day LWP deducts half a day of salary.
+        </div>
 
         <div style={{ display: 'flex', gap: '2rem', marginBottom: '1.5rem' }}>
           <div style={{ flex: 1 }}>
@@ -229,7 +240,7 @@ export default function ApplyLeave() {
             </label>
           </div>
           <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
-            Half-day leave is available for COFF, Casual Leave, Earned Leave and LWP.
+            Half-day leave is available for COFF, Casual Leave, Earned Leave and LWP. CL/EL/COFF deduct 0.5 day from the balance; LWP deducts half a day of salary.
           </div>
         </div>
 
@@ -257,12 +268,14 @@ export default function ApplyLeave() {
           )}
         </div>
         <div className="formGroup">
+          <label className="filterLabel">Supporting document (optional)</label>
           <input 
             type="file" 
             style={{ fontSize: '12px' }} 
             onChange={handleFileChange} 
             accept=".pdf,.png,.jpeg,.jpg,.docx"
           />
+          {attachmentName && <div style={{ fontSize: '12px', marginTop: 4 }}>{attachmentName}</div>}
           <div className="fileHelpText">(Allowed file extensions are .pdf, .png, .jpeg, .jpg, .docx)</div>
         </div>
 

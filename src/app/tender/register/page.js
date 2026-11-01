@@ -96,7 +96,7 @@ export default function TenderRegister() {
                   <th>Client / Authority</th>
                   <th>Project</th>
                   <th>Value</th>
-                  <th>Due Date</th>
+                  <th>Opening / Closing</th>
                   <th>Status</th>
                   <th className="tnd-text-right">Action</th>
                 </tr>
@@ -112,10 +112,12 @@ export default function TenderRegister() {
                     <td>
                       <div className="tnd-font-medium">{t.projectName || '-'}</div>
                       <div className="tnd-text-xs tnd-text-muted">{t.tenderType}</div>
+                      {t.details?.tenderLocation && <div className="tnd-text-xs tnd-text-muted">{t.details.tenderLocation}</div>}
                     </td>
                     <td className="tnd-font-medium">{formatCurrency(t.tenderValue)}</td>
                     <td>
-                      {t.bidSubLastDate ? new Date(t.bidSubLastDate).toLocaleDateString() : '-'}
+                      <div>Open: {t.details?.tenderOpeningDate ? new Date(`${t.details.tenderOpeningDate}T00:00:00`).toLocaleDateString() : t.techOpeningDate ? new Date(t.techOpeningDate).toLocaleDateString() : '—'}</div>
+                      <div>Close: {t.details?.tenderClosingDate ? new Date(`${t.details.tenderClosingDate}T00:00:00`).toLocaleDateString() : t.bidSubLastDate ? new Date(t.bidSubLastDate).toLocaleDateString() : '—'}</div>
                     </td>
                     <td>
                       <span className={`tnd-badge ${t.status === 'Submitted' ? 'tnd-badge-blue' : t.status === 'Evaluation' ? 'tnd-badge-amber' : 'tnd-badge-slate'}`}>

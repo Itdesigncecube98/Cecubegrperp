@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Info, Download, Search, Calendar, Users, ArrowLeft, Clock, CheckCircle, XCircle, MapPin } from 'lucide-react';
+import { ChevronLeft, Info, Download, Search, Calendar, Users, ArrowLeft, Clock, CheckCircle, XCircle, MapPin, FileSpreadsheet } from 'lucide-react';
 import '../attendance.css';
 
 export default function TeamAttendanceRecords() {
@@ -9,6 +9,12 @@ export default function TeamAttendanceRecords() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [selectedBranches, setSelectedBranches] = useState([]);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
+  const [exportStartDate, setExportStartDate] = useState('2025-09-01');
+  const [exportEndDate, setExportEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [exporting, setExporting] = useState(false);
 
   // Detail view states
   const [detailRecords, setDetailRecords] = useState([]);
@@ -18,9 +24,8 @@ export default function TeamAttendanceRecords() {
   const [detailStatus, setDetailStatus] = useState('All');
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const monthAgoStr = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(monthAgoStr);
-  const [endDate, setEndDate] = useState(todayStr);
+  const [startDate, setStartDate] = useState('2025-09-01');
+  const [endDate, setEndDate] = useState('2026-08-31');
 
   // Summary stats per employee
   const [empStats, setEmpStats] = useState({});
@@ -88,19 +93,28 @@ export default function TeamAttendanceRecords() {
     setDetailFiltered([]);
     setPunchLocations({});
     try {
-      const [statsRes, punchRes, holidayRes] = await Promise.all([
-        fetch(`/api/attendance/stats?employeeId=${emp.id}`),
+      const [statsRes, punchRes, holidayRes, announcementRes] = await Promise.all([
+        fetch(`/api/attendance/stats?employeeId=${encodeURIComponent(emp.id)}&startDate=${startDate}&endDate=${endDate}`),
         fetch(`/api/requests?employeeId=${emp.id}&startDate=${startDate}&endDate=${endDate}`),
-        fetch(`/api/leaves/holidays`)
+        fetch(`/api/leaves/holidays`),
+        fetch('/api/announcements'),
       ]);
-      const stats = await statsRes.json();
-      const punches = await punchRes.json();
-      const holidays = await holidayRes.json();
+      const [stats, punches, holidays, announcements] = await Promise.all([
+        statsRes.json(),
+        punchRes.json(),
+        holidayRes.json(),
+        announcementRes.json(),
+      ]);
 
       const holMap = {};
       if (Array.isArray(holidays)) {
         holidays.forEach(h => { holMap[h.date] = h.name; });
       }
+      const workingDateSet = new Set(
+        (Array.isArray(announcements) ? announcements : [])
+          .filter(announcement => announcement.isWorkingDay && announcement.date)
+          .map(announcement => announcement.date)
+      );
 
       // Show saved punch locations, including pending punches awaiting review.
       const locMap = {};
@@ -142,7 +156,7 @@ export default function TeamAttendanceRecords() {
         let attStatus = 'Absent';
         if (rec) {
           attStatus = rec.status;
-          if ((attStatus === 'Present' || attStatus === 'Late' || attStatus === 'PRESENT') && (holMap[dateStr] || dayName === 'Sun')) {
+          if (!workingDateSet.has(dateStr) && (attStatus === 'Present' || attStatus === 'Late' || attStatus === 'PRESENT') && (holMap[dateStr] || dayName === 'Sun')) {
             attStatus = 'COff';
           }
         } else if (holMap[dateStr]) {
@@ -154,6 +168,7 @@ export default function TeamAttendanceRecords() {
         }
 
         let shiftType = rec ? (rec.shiftType || 'Day') : '-';
+        const biometricPunches = rec?.biometricPunches || [];
         if (rec && rec.timeSlots && rec.timeSlots.length > 0) {
           const slots = rec.timeSlots;
           timeIn = slots[0]?.in || '-';
@@ -167,9 +182,17 @@ export default function TeamAttendanceRecords() {
             }
           });
           workedHours = totalMins > 0 ? `${Math.floor(totalMins/60)}h ${totalMins%60}m` : '0h 0m';
+        } else if (biometricPunches.length > 0) {
+          timeIn = biometricPunches[0].time;
+          timeOut = biometricPunches[biometricPunches.length - 1].time;
         }
         const appPunches = (appPunchesByDate[dateStr] || []).sort((a, b) => a.time.localeCompare(b.time));
-        allRecs.push({ date: dateStr, dayName, timeIn, timeOut, appPunches, workedHours, shiftType, attStatus });
+        const punchSource = rec?.timeSlots?.length
+          ? 'Attendance record'
+          : biometricPunches.length
+            ? 'Biometric (read-only)'
+            : '';
+        allRecs.push({ date: dateStr, dayName, timeIn, timeOut, appPunches, biometricPunches, punchSource, workedHours, shiftType, attStatus });
       }
       allRecs.sort((a, b) => b.date.localeCompare(a.date));
       setDetailRecords(allRecs);
@@ -231,11 +254,87 @@ export default function TeamAttendanceRecords() {
     URL.revokeObjectURL(url);
   };
 
-  const filteredEmployees = employees.filter(emp =>
-    emp.name?.toLowerCase().includes(search.toLowerCase()) ||
-    emp.empId?.toLowerCase().includes(search.toLowerCase()) ||
-    emp.department?.toLowerCase().includes(search.toLowerCase())
+  const departments = [...new Set(employees.map(employee => employee.department).filter(Boolean))].sort();
+  const branches = [...new Set(employees.map(employee => employee.branch).filter(Boolean))].sort();
+  const employeeOptions = employees.filter(employee =>
+    (!selectedDepartments.length || selectedDepartments.includes(employee.department)) &&
+    (!selectedBranches.length || selectedBranches.includes(employee.branch)) &&
+    (employee.name?.toLowerCase().includes(search.toLowerCase()) ||
+      employee.empId?.toLowerCase().includes(search.toLowerCase()))
   );
+  const filteredEmployees = employees.filter(emp =>
+    (!selectedDepartments.length || selectedDepartments.includes(emp.department)) &&
+    (!selectedBranches.length || selectedBranches.includes(emp.branch)) &&
+    (!selectedEmployeeIds.length || selectedEmployeeIds.includes(emp.id)) &&
+    (emp.name?.toLowerCase().includes(search.toLowerCase()) ||
+      emp.empId?.toLowerCase().includes(search.toLowerCase()) ||
+      emp.department?.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const toggleSelection = (value, selected, setSelected) => {
+    setSelected(selected.includes(value)
+      ? selected.filter(item => item !== value)
+      : [...selected, value]);
+  };
+
+  const renderMultiSelect = (label, options, selected, setSelected) => (
+    <details style={{ position: 'relative', minWidth: 200 }}>
+      <summary style={{ cursor: 'pointer', border: '1px solid #cbd5e1', borderRadius: 8, padding: '9px 12px', background: '#fff', color: '#334155', fontSize: 13, listStyle: 'none' }}>
+        {label}: {selected.length ? `${selected.length} selected` : 'All'}
+      </summary>
+      <div style={{ position: 'absolute', zIndex: 20, top: 'calc(100% + 4px)', left: 0, width: 'max(100%, 240px)', maxHeight: 280, overflow: 'auto', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8, boxShadow: '0 8px 20px rgba(15,23,42,.12)', padding: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+          <button type="button" className="btnOutline" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => setSelected(selected.length === options.length ? [] : options.map(option => option.value))}>Select all</button>
+          <button type="button" className="btnOutline" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => setSelected([])}>Clear</button>
+        </div>
+        {options.map(option => (
+          <label key={option.value} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 2px', cursor: 'pointer', fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={selected.includes(option.value)}
+              onChange={() => toggleSelection(option.value, selected, setSelected)}
+            />
+            <span>{option.label}</span>
+          </label>
+        ))}
+        {!options.length && <div style={{ color: '#64748b', fontSize: 13 }}>No options available.</div>}
+      </div>
+    </details>
+  );
+
+  const exportTeamAttendance = async () => {
+    if (!exportStartDate || !exportEndDate || exportStartDate > exportEndDate) {
+      alert('Select a valid attendance date range.');
+      return;
+    }
+    const params = new URLSearchParams({ startDate: exportStartDate, endDate: exportEndDate });
+    selectedDepartments.forEach(department => params.append('department', department));
+    selectedBranches.forEach(branch => params.append('branch', branch));
+    selectedEmployeeIds.forEach(employeeId => params.append('employeeId', employeeId));
+
+    setExporting(true);
+    try {
+      const response = await fetch(`/api/attendance/team-export?${params.toString()}`);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to export attendance.');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `team-attendance_${exportStartDate}_${exportEndDate}.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export team attendance:', error);
+      alert(error.message || 'Failed to export attendance.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const presentCount = detailFiltered.filter(r => r.attStatus === 'Present').length;
   const lateCount = detailFiltered.filter(r => r.attStatus === 'Late').length;
@@ -342,8 +441,14 @@ export default function TeamAttendanceRecords() {
                     <td>{r.date}</td>
                     <td style={{color: r.dayName === 'Sun' ? '#dc2626' : '#6b7280', fontWeight: r.dayName === 'Sun' ? 600 : 'normal'}}>{r.dayName}</td>
                     <td>{selectedEmployee.empId || '-'}</td>
-                    <td style={{color:r.timeIn!=='-'?'#22c55e':'#9ca3af'}}>{r.timeIn}</td>
-                    <td style={{color:r.timeOut!=='-'?'#ef4444':'#9ca3af'}}>{r.timeOut}</td>
+                    <td style={{color:r.timeIn!=='-'?'#22c55e':'#9ca3af'}}>
+                      {r.timeIn}
+                      {r.punchSource === 'Biometric (read-only)' && <small style={{display:'block',color:'#0369a1'}}>Device</small>}
+                    </td>
+                    <td style={{color:r.timeOut!=='-'?'#ef4444':'#9ca3af'}}>
+                      {r.timeOut}
+                      {r.punchSource === 'Biometric (read-only)' && <small style={{display:'block',color:'#0369a1'}}>Device</small>}
+                    </td>
                     <td>
                       {r.appPunches?.length ? r.appPunches.map((p, punchIndex) => (
                         <div key={`${p.type}-${p.time}-${punchIndex}`} style={{whiteSpace:'nowrap'}}>
@@ -432,7 +537,32 @@ export default function TeamAttendanceRecords() {
           <div className="actionButtons">
             <div style={{display:'flex',alignItems:'center',gap:6, border:'1px solid #e5e7eb', borderRadius:8, padding:'6px 12px'}}>
               <Search size={14} color="#9ca3af"/>
-              <input type="text" style={{border:'none',outline:'none',fontSize:'0.875rem',width:180}} placeholder="Search employee..." value={search} onChange={e=>setSearch(e.target.value)}/>
+              <input type="text" style={{border:'none',outline:'none',fontSize:'0.875rem',width:180}} placeholder="Employee name or ID..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            </div>
+            <button type="button" className="btnOutline" onClick={exportTeamAttendance} disabled={exporting || loading} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <FileSpreadsheet size={15} /> {exporting ? 'Preparing Excel…' : 'Export Team Excel'}
+            </button>
+          </div>
+        </div>
+
+        <div className="card" style={{ margin: '0 0 1rem', padding: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'end', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 160 }}>
+              <label className="filterLabel">From date</label>
+              <input type="date" className="filterInput" value={exportStartDate} onChange={event => setExportStartDate(event.target.value)} />
+            </div>
+            <div style={{ minWidth: 160 }}>
+              <label className="filterLabel">To date</label>
+              <input type="date" className="filterInput" value={exportEndDate} onChange={event => setExportEndDate(event.target.value)} />
+            </div>
+            {renderMultiSelect('Department', departments.map(value => ({ value, label: value })), selectedDepartments, setSelectedDepartments)}
+            {renderMultiSelect('Branch', branches.map(value => ({ value, label: value })), selectedBranches, setSelectedBranches)}
+            {renderMultiSelect('Employees', employeeOptions.map(employee => ({
+              value: employee.id,
+              label: `${employee.name}${employee.empId ? ` (${employee.empId})` : ''}`,
+            })), selectedEmployeeIds, setSelectedEmployeeIds)}
+            <div style={{ marginLeft: 'auto', color: '#64748b', fontSize: 12, paddingBottom: 8 }}>
+              Excel includes every selected employee and each date in the range, with saved time slots and read-only biometric punch times.
             </div>
           </div>
         </div>

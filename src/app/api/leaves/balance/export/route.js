@@ -1,158 +1,108 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
+import { toDateKey } from '../../../../../lib/leaveEntitlements';
+import { calculateLeaveBalanceSnapshot } from '../../../../../lib/leaveBalanceSnapshot';
 import * as XLSX from 'xlsx';
+
+const pad = value => String(value).padStart(2, '0');
+const toKey = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const year = searchParams.get('year');
+    if ((month && !year) || (!month && year)) {
+      return NextResponse.json({ error: 'A valid month and year are required.' }, { status: 400 });
+    }
 
+    const now = new Date();
+    const targetMonth = month ? Number.parseInt(month, 10) : now.getMonth() + 1;
+    const targetYear = year ? Number.parseInt(year, 10) : now.getFullYear();
+    if (!Number.isInteger(targetMonth) || targetMonth < 1 || targetMonth > 12 ||
+        !Number.isInteger(targetYear) || targetYear < 2000 || targetYear > 9999) {
+      return NextResponse.json({ error: 'A valid month and year are required.' }, { status: 400 });
+    }
+
+    const asOnMonth = `${targetYear}-${pad(targetMonth)}`;
+    const monthEnd = toKey(new Date(targetYear, targetMonth, 0));
     const employees = await prisma.employee.findMany({
-      select: { id: true, name: true, empId: true, department: true }
+      select: { id: true, name: true, empId: true, department: true, joinedDate: true },
     });
-    const empMap = {};
-    employees.forEach(e => { empMap[e.id] = e; });
+    const earliestJoinDate = employees
+      .map(employee => toDateKey(employee.joinedDate))
+      .filter(Boolean)
+      .sort()[0] || '2020-01-01';
+    const [approvedRequests, attendanceRows, savedBalances, encashments] = await Promise.all([
+      prisma.leaveRequest.findMany({
+        where: { status: 'APPROVED', startDate: { lte: monthEnd } },
+      }),
+      prisma.attendance.findMany({
+        where: { date: { gte: earliestJoinDate, lte: monthEnd } },
+        select: { employeeId: true, date: true, status: true },
+      }),
+      prisma.leaveBalance.findMany(),
+      prisma.leaveEncashment.findMany({
+        where: { cancelledAt: null, asOnDate: { lte: monthEnd } },
+        select: {
+          employeeId: true,
+          leaveType: true,
+          asOnDate: true,
+          encashedDays: true,
+          cancelledAt: true,
+        },
+      }),
+    ]);
 
-    let balancesData = [];
-
-    if (month && year) {
-      const targetMonth = parseInt(month, 10);
-      const targetYear = parseInt(year, 10);
-
-      const targetMonthStr = String(targetMonth).padStart(2, '0');
-      const targetYearStr = String(targetYear);
-      const monthPrefix = `${targetYearStr}-${targetMonthStr}`;
-
-      const approvedRequests = await prisma.leaveRequest.findMany({
-        where: { status: 'APPROVED' }
-      });
-
-      const presentAttendances = await prisma.attendance.findMany({
-        where: {
-          date: { startsWith: monthPrefix },
-          status: 'Present'
-        }
-      });
-      const presentSet = new Set(presentAttendances.map(a => `${a.employeeId}_${a.date}`));
-
-      const usageByEmp = {};
-      for (const emp of employees) {
-        usageByEmp[emp.id] = {
-          employeeId: emp.id,
-          casualLeaves: 1,
-          earnedLeaves: 2,
-          leaveWithoutPay: 0,
-          compensatoryLeaves: 0
-        };
+    const indexByEmployee = rows => {
+      const index = new Map();
+      for (const row of rows) {
+        const values = index.get(row.employeeId) || [];
+        values.push(row);
+        index.set(row.employeeId, values);
       }
+      return index;
+    };
+    const requestsByEmployee = indexByEmployee(approvedRequests);
+    const attendanceByEmployee = indexByEmployee(attendanceRows);
+    const encashmentsByEmployee = indexByEmployee(encashments);
+    const balancesByEmployee = new Map(savedBalances.map(balance => [balance.employeeId, balance]));
+    const balanceRows = employees.map(employee => calculateLeaveBalanceSnapshot({
+      employee,
+      asOnMonth,
+      approvedRequests: requestsByEmployee.get(employee.id) || [],
+      attendance: attendanceByEmployee.get(employee.id) || [],
+      encashments: encashmentsByEmployee.get(employee.id) || [],
+      savedBalance: balancesByEmployee.get(employee.id),
+    }));
 
-      for (const req of approvedRequests) {
-        if (!usageByEmp[req.employeeId]) continue;
-        const start = new Date(req.startDate);
-        const end = new Date(req.endDate);
-
-        let overlapDays = 0;
-        let curr = new Date(start);
-        while (curr <= end) {
-          if (curr.getMonth() + 1 === targetMonth && curr.getFullYear() === targetYear) {
-            // Use local date string to match YYYY-MM-DD
-            const dateStr = [
-              curr.getFullYear(),
-              String(curr.getMonth() + 1).padStart(2, '0'),
-              String(curr.getDate()).padStart(2, '0')
-            ].join('-');
-
-            if (!presentSet.has(`${req.employeeId}_${dateStr}`)) {
-              overlapDays += req.isHalfDay ? 0.5 : 1;
-            }
-          }
-          curr.setDate(curr.getDate() + 1);
-        }
-
-        if (overlapDays > 0) {
-          if (req.leaveType === 'Casual') {
-            usageByEmp[req.employeeId].casualLeaves -= overlapDays;
-            if (usageByEmp[req.employeeId].casualLeaves < 0) {
-              usageByEmp[req.employeeId].leaveWithoutPay += Math.abs(usageByEmp[req.employeeId].casualLeaves);
-              usageByEmp[req.employeeId].casualLeaves = 0;
-            }
-          }
-          if (req.leaveType === 'Earned') {
-            usageByEmp[req.employeeId].earnedLeaves -= overlapDays;
-            if (usageByEmp[req.employeeId].earnedLeaves < 0) {
-              usageByEmp[req.employeeId].leaveWithoutPay += Math.abs(usageByEmp[req.employeeId].earnedLeaves);
-              usageByEmp[req.employeeId].earnedLeaves = 0;
-            }
-          }
-          if (req.leaveType === 'Unpaid') usageByEmp[req.employeeId].leaveWithoutPay += overlapDays;
-          if (req.leaveType === 'COFF') {
-            usageByEmp[req.employeeId].compensatoryLeaves -= overlapDays;
-            if (usageByEmp[req.employeeId].compensatoryLeaves < 0) {
-              usageByEmp[req.employeeId].leaveWithoutPay += Math.abs(usageByEmp[req.employeeId].compensatoryLeaves);
-              usageByEmp[req.employeeId].compensatoryLeaves = 0;
-            }
-          }
-        }
-      }
-      balancesData = Object.values(usageByEmp);
-    } else {
-      balancesData = await prisma.leaveBalance.findMany();
-    }
-
-    // Build rows
-    const rows = balancesData.map(b => {
-      const emp = empMap[b.employeeId] || {};
+    const employeeById = new Map(employees.map(employee => [employee.id, employee]));
+    const rows = balanceRows.map(balance => {
+      const employee = employeeById.get(balance.employeeId) || {};
       return {
-        'Employee Name': emp.name || 'Unknown',
-        'Emp Code': emp.empId || '-',
-        'Department': emp.department || '-',
-        'Casual Leave (CL)': b.casualLeaves ?? 0,
-        'Earned Leave (EL)': b.earnedLeaves ?? 0,
-        'Comp. Off (C-off)': b.compensatoryLeaves ?? 0,
-        'LWP Used': b.leaveWithoutPay ?? 0,
+        'Employee Name': employee.name || 'Unknown',
+        'Emp Code': employee.empId || '-',
+        'Department': employee.department || '-',
+        'Casual Leave (CL)': balance.casualLeaves ?? 0,
+        'Earned Leave (EL)': balance.earnedLeaves ?? 0,
+        'Comp. Off (C-off)': balance.compensatoryLeaves ?? 0,
+        'LWP Used': balance.leaveWithoutPay ?? 0,
       };
-    });
-
-    if (!month || !year) {
-      // Also add employees with no balance record (show 0 for all)
-      const balanceEmpIds = new Set(balancesData.map(b => b.employeeId));
-      employees.forEach(emp => {
-        if (!balanceEmpIds.has(emp.id)) {
-          rows.push({
-            'Employee Name': emp.name,
-            'Emp Code': emp.empId || '-',
-            'Department': emp.department || '-',
-            'Casual Leave (CL)': 0,
-            'Earned Leave (EL)': 0,
-            'Comp. Off (C-off)': 0,
-            'LWP Used': 0,
-          });
-        }
-      });
-    }
-
-    // Sort by employee name
-    rows.sort((a, b) => a['Employee Name'].localeCompare(b['Employee Name']));
+    }).sort((left, right) => left['Employee Name'].localeCompare(right['Employee Name']));
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
-
-    // Set column widths
     worksheet['!cols'] = [
-      { wch: 25 }, // Employee Name
-      { wch: 12 }, // Emp Code
-      { wch: 20 }, // Department
-      { wch: 18 }, // CL
-      { wch: 18 }, // EL
-      { wch: 18 }, // C-off
-      { wch: 12 }, // LWP
+      { wch: 25 },
+      { wch: 12 },
+      { wch: 20 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 12 },
     ];
-
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Leave Balances');
-
-    // Write to buffer
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
     return new NextResponse(buffer, {
@@ -160,7 +110,7 @@ export async function GET(request) {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="leave_balances_${new Date().toISOString().split('T')[0]}.xlsx"`,
-      }
+      },
     });
   } catch (error) {
     console.error('Excel export error:', error);

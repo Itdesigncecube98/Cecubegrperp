@@ -2149,6 +2149,8 @@ model TenderBOQItem {
   quantity      Float   @default(0)
   clientRate    Float   @default(0)
   estimatedRate Float   @default(0)
+  materials     Json?
+  labours       Json?
   tender        Tender  @relation(fields: [tenderId], references: [id], onDelete: Cascade)
 }
 

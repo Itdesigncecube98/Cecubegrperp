@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getLeaveRequests, updateLeaveRequestStatus } from '../../../../lib/data';
+import { updateLeaveRequestStatus } from '../../../../lib/data';
+import { getLeaveAttachmentLink } from '../../../../lib/leaveAttachmentLink';
 
 export default function SupervisorApprovalsPage() {
   const [requests, setRequests] = useState([]);
@@ -97,6 +98,7 @@ export default function SupervisorApprovalsPage() {
               <th>Leave Type</th>
               <th>Duration</th>
               <th>Reason</th>
+              <th>Supporting Document</th>
               <th>Applied On</th>
               <th>Actual Attendance</th>
               <th>Status</th>
@@ -108,8 +110,16 @@ export default function SupervisorApprovalsPage() {
               <tr key={req.id}>
                 <td>{req.employee?.name || 'Unknown'}</td>
                 <td>{req.leaveType === 'COFF' ? 'Compensatory Off' : req.leaveType}</td>
-                <td>{req.startDate} to {req.endDate}</td>
+                <td>{req.startDate} to {req.endDate}{req.isHalfDay ? ' (Half day)' : ''}</td>
                 <td>{req.reason}</td>
+                <td>
+                  {(() => {
+                    const attachment = getLeaveAttachmentLink(req.attachment);
+                    return attachment
+                      ? <a href={attachment.href} target="_blank" rel="noopener noreferrer" download={attachment.download}>Open document</a>
+                      : '—';
+                  })()}
+                </td>
                 <td>{new Date(req.appliedOn).toLocaleDateString()}</td>
                 <td style={{ fontWeight: 600, color: req.actualAttendance === 'Present' ? '#16a34a' : '#6b7280' }}>
                   {req.actualAttendance === 'Present' ? 'Present' : 'Absent'}
@@ -130,7 +140,7 @@ export default function SupervisorApprovalsPage() {
             ))}
             {requests.length === 0 && (
               <tr>
-                <td colSpan="8" className="text-center">No leave requests pending your approval.</td>
+                <td colSpan="9" className="text-center">No leave requests pending your approval.</td>
               </tr>
             )}
           </tbody>

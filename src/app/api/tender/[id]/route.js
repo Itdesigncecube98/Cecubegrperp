@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { normalizeTenderDetails } from '@/lib/tenderDetails';
 
 export async function GET(req, { params }) {
   try {
@@ -38,6 +39,7 @@ export async function PUT(req, { params }) {
     if (!currentTender) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const data = {};
+    let detailUpdate = null;
     const stringFields = [
       'tenderNo',
       'referenceNo',
@@ -87,10 +89,16 @@ export async function PUT(req, { params }) {
       data.tenderValue = tenderValue;
     }
     if (body.details !== undefined) {
-      if (!body.details || typeof body.details !== 'object' || Array.isArray(body.details)) {
-        return NextResponse.json({ error: 'Tender details must be an object' }, { status: 400 });
+      try {
+        detailUpdate = normalizeTenderDetails(
+          body.details,
+          currentTender.details && typeof currentTender.details === 'object' ? currentTender.details : {},
+          { userId: body.ownerId || currentTender.ownerId },
+        );
+        data.details = detailUpdate.details;
+      } catch (validationError) {
+        return NextResponse.json({ error: validationError.message }, { status: 400 });
       }
-      data.details = body.details;
     }
 
     const tender = await prisma.$transaction(async (transaction) => {
@@ -111,7 +119,7 @@ export async function PUT(req, { params }) {
           }
         });
       }
-      if (body.details !== undefined) {
+      if (detailUpdate) {
         await transaction.tenderAuditLog.create({
           data: {
             tenderId: id,
@@ -120,6 +128,18 @@ export async function PUT(req, { params }) {
             userId: body.ownerId || currentTender.ownerId
           }
         });
+        if (detailUpdate.structureChanged) {
+          await transaction.tenderAuditLog.create({
+            data: {
+              tenderId: id,
+              action: 'PaymentStructureRevised',
+              oldValue: JSON.stringify(detailUpdate.previousStructure),
+              newValue: JSON.stringify(detailUpdate.currentStructure),
+              remarks: detailUpdate.revision?.remarks || `Payment structure revised, effective ${detailUpdate.revision?.effectiveDate || 'immediately'}.`,
+              userId: body.ownerId || currentTender.ownerId
+            }
+          });
+        }
       }
       return updatedTender;
     });

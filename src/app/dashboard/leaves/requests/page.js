@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getLeaveRequests, updateLeaveRequestStatus } from '../../../../lib/data';
+import { updateLeaveRequestStatus } from '../../../../lib/data';
+import { getLeaveAttachmentLink } from '../../../../lib/leaveAttachmentLink';
 
 export default function LeaveRequestsPage() {
   const [requests, setRequests] = useState([]);
@@ -66,6 +67,7 @@ export default function LeaveRequestsPage() {
               <th>Leave Type</th>
               <th>Duration</th>
               <th>Reason</th>
+              <th>Supporting Document</th>
               <th>Applied On</th>
               <th>Status</th>
               <th>Action</th>
@@ -76,8 +78,16 @@ export default function LeaveRequestsPage() {
               <tr key={req.id}>
                 <td>{req.employee?.name || 'Unknown'}</td>
                 <td>{req.leaveType}</td>
-                <td>{req.startDate} to {req.endDate}</td>
+                <td>{req.startDate} to {req.endDate}{req.isHalfDay ? ' (Half day)' : ''}</td>
                 <td>{req.reason}</td>
+                <td>
+                  {(() => {
+                    const attachment = getLeaveAttachmentLink(req.attachment);
+                    return attachment
+                      ? <a href={attachment.href} target="_blank" rel="noopener noreferrer" download={attachment.download}>Open document</a>
+                      : '—';
+                  })()}
+                </td>
                 <td>{new Date(req.appliedOn).toLocaleDateString()}</td>
                 <td>
                   <span className={`status-badge ${req.status.toLowerCase().replace('_', '-')}`}>
@@ -99,7 +109,7 @@ export default function LeaveRequestsPage() {
             ))}
             {requests.length === 0 && (
               <tr>
-                <td colSpan="7" className="text-center">No leave requests found.</td>
+                <td colSpan="8" className="text-center">No leave requests found.</td>
               </tr>
             )}
           </tbody>

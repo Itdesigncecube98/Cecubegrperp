@@ -30,7 +30,7 @@ function addMonthsClamped(date, months) {
   return new Date(Date.UTC(year, month, day));
 }
 
-export function getEarnedLeaveAccrual(joinedDate, asOnMonth, leavesPerMonth = 1.5) {
+export function getEarnedLeaveAccrual(joinedDate, asOnMonth) {
   const joinDate = parseDateOnly(joinedDate);
   const cutoff = monthEnd(asOnMonth);
   if (!joinDate || !cutoff || joinDate > cutoff) return { monthsSinceJoining: 0, accruedLeaves: 0 };
@@ -40,13 +40,22 @@ export function getEarnedLeaveAccrual(joinedDate, asOnMonth, leavesPerMonth = 1.
     (cutoff.getUTCFullYear() - joinDate.getUTCFullYear()) * 12
       + cutoff.getUTCMonth() - joinDate.getUTCMonth()
   );
-  let accruedMonths = 0;
-  for (let monthsAfterJoining = 10; ; monthsAfterJoining += 1) {
-    if (addMonthsClamped(joinDate, monthsAfterJoining) > cutoff) break;
-    accruedMonths += 1;
+  const eligibilityDate = addMonthsClamped(joinDate, 8);
+  if (eligibilityDate > cutoff) return { monthsSinceJoining, accruedLeaves: 0 };
+
+  let firstApril = new Date(Date.UTC(eligibilityDate.getUTCFullYear(), 3, 1));
+  if (firstApril <= eligibilityDate) {
+    firstApril = new Date(Date.UTC(eligibilityDate.getUTCFullYear() + 1, 3, 1));
+  }
+  const initialPeriodEnd = cutoff < firstApril ? cutoff : firstApril;
+  const initialPeriodDays = Math.floor((initialPeriodEnd - eligibilityDate) / 86400000);
+  const initialAccrual = Math.floor(initialPeriodDays / 20);
+  let annualCredits = 0;
+  for (let creditDate = firstApril; creditDate <= cutoff; creditDate = new Date(Date.UTC(creditDate.getUTCFullYear() + 1, 3, 1))) {
+    annualCredits += 18;
   }
 
-  return { monthsSinceJoining, accruedLeaves: accruedMonths * leavesPerMonth };
+  return { monthsSinceJoining, accruedLeaves: initialAccrual + annualCredits };
 }
 
 export function getCasualLeaveAccrual(joinedDate, asOnMonth, leavesPerYear = 12) {
@@ -54,14 +63,22 @@ export function getCasualLeaveAccrual(joinedDate, asOnMonth, leavesPerYear = 12)
   const cutoff = monthEnd(asOnMonth);
   if (!joinDate || !cutoff || joinDate > cutoff) return { monthsSinceJoining: 0, accruedLeaves: 0 };
 
-  let monthsSinceJoining = 0;
-  for (let month = 1; addMonthsClamped(joinDate, month) <= cutoff; month += 1) {
-    monthsSinceJoining += 1;
+  const monthsSinceJoining = Math.max(
+    0,
+    (cutoff.getUTCFullYear() - joinDate.getUTCFullYear()) * 12
+      + cutoff.getUTCMonth() - joinDate.getUTCMonth()
+  );
+  let firstCredit = new Date(Date.UTC(joinDate.getUTCFullYear(), 3, 1));
+  if (firstCredit < joinDate) {
+    firstCredit = new Date(Date.UTC(joinDate.getUTCFullYear() + 1, 3, 1));
   }
-
+  let annualCredits = 0;
+  for (let creditDate = firstCredit; creditDate <= cutoff; creditDate = new Date(Date.UTC(creditDate.getUTCFullYear() + 1, 3, 1))) {
+    annualCredits += leavesPerYear;
+  }
   return {
     monthsSinceJoining,
-    accruedLeaves: (monthsSinceJoining * leavesPerYear) / 12,
+    accruedLeaves: annualCredits,
   };
 }
 
@@ -70,11 +87,22 @@ function calculateLeaveDaysTaken(leaveRequests, asOnMonth, attendance, isLeaveTy
   if (!cutoff) return 0;
 
   const takenDates = new Map();
+  const requestDates = new Set();
+  leaveRequests.forEach(request => {
+    const start = parseDateOnly(request.startDate);
+    const end = parseDateOnly(request.endDate);
+    if (!start || !end || start > cutoff) return;
+    const lastDay = end < cutoff ? end : cutoff;
+    for (let date = start; date <= lastDay; date = new Date(date.getTime() + 86400000)) {
+      requestDates.add(date.toISOString().slice(0, 10));
+    }
+  });
   attendance.forEach(record => {
     const status = String(record.status || '').trim().toLowerCase();
     const date = parseDateOnly(record.date);
-    if (!date || date > cutoff || !isLeaveType(status)) return;
-    takenDates.set(date.toISOString().slice(0, 10), 1);
+    const dateKey = date?.toISOString().slice(0, 10);
+    if (!date || date > cutoff || !isLeaveType(status) || requestDates.has(dateKey)) return;
+    takenDates.set(dateKey, 1);
   });
 
   leaveRequests.forEach(request => {
@@ -87,15 +115,10 @@ function calculateLeaveDaysTaken(leaveRequests, asOnMonth, attendance, isLeaveTy
     const lastDay = end < cutoff ? end : cutoff;
     if (lastDay < start) return;
 
-    if (request.isHalfDay) {
-      const dateKey = start.toISOString().slice(0, 10);
-      if (!takenDates.has(dateKey)) takenDates.set(dateKey, 0.5);
-      return;
-    }
-
     for (let date = start; date <= lastDay; date = new Date(date.getTime() + 86400000)) {
       const dateKey = date.toISOString().slice(0, 10);
-      if (!takenDates.has(dateKey)) takenDates.set(dateKey, 1);
+      const days = request.isHalfDay && dateKey === start.toISOString().slice(0, 10) ? 0.5 : 1;
+      if (isLeaveType(leaveType)) takenDates.set(dateKey, Math.max(takenDates.get(dateKey) || 0, days));
     }
   });
 

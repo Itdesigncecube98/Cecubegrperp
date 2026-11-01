@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ChevronLeft, Info } from 'lucide-react';
 import { getLeaveBalance, createLeaveRequest, getLeaveRequests, getLeaveTypes } from '../../../lib/data';
 import { supportsHalfDayLeave } from '../../../lib/leavePolicy';
+import { getLeaveAttachmentLink } from '../../../lib/leaveAttachmentLink';
 import '../../dashboard/attendance/attendance.css';
 import '../../dashboard/leaves/leaves.css';
 
@@ -15,6 +16,7 @@ export default function EmployeeLeavePage() {
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [employeeId, setEmployeeId] = useState('');
+  const [attachmentName, setAttachmentName] = useState('');
   
   const [newRequest, setNewRequest] = useState({
     leaveType: '',
@@ -91,7 +93,8 @@ export default function EmployeeLeavePage() {
         throw new Error(result.error);
       }
 
-      setNewRequest({ leaveType: '', startDate: '', endDate: '', reason: '', attachment: '', isHalfDay: false });
+      setNewRequest({ leaveType: '', startDate: '', endDate: '', reason: '', attachment: '', isHalfDay: false, routeTo: 'SENIOR' });
+      setAttachmentName('');
       fetchData(employeeId);
       alert('Leave request submitted successfully!');
     } catch (error) {
@@ -103,13 +106,21 @@ export default function EmployeeLeavePage() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Supporting documents must be 5 MB or smaller.');
+        e.target.value = '';
+        return;
+      }
+      setAttachmentName(file.name);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setNewRequest({ ...newRequest, attachment: reader.result });
+        setNewRequest(previous => ({ ...previous, attachment: reader.result }));
       };
+      reader.onerror = () => alert('Could not read the selected supporting document.');
       reader.readAsDataURL(file);
     } else {
-      setNewRequest({ ...newRequest, attachment: '' });
+      setAttachmentName('');
+      setNewRequest(previous => ({ ...previous, attachment: '' }));
     }
   };
 
@@ -162,11 +173,13 @@ export default function EmployeeLeavePage() {
             <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Casual Leave (CL)</h3>
             <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.casualLeaves ?? 0}</p>
             <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days remaining</p>
+            <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#64748b' }}>12 days credited each 1 April; unused CL carries forward.</p>
           </div>
           <div className="card" style={{ borderLeft: '4px solid #10b981', padding: '1.5rem' }}>
             <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Earned Leave (EL)</h3>
             <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.earnedLeaves ?? 0}</p>
             <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days remaining</p>
+            <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#64748b' }}>After 8 months: 1 day per 20 calendar days until April, then 18 days each April; carries forward.</p>
           </div>
           <div className="card" style={{ borderLeft: '4px solid #8b5cf6', padding: '1.5rem' }}>
             <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Comp. Off (C-off)</h3>
@@ -277,7 +290,7 @@ export default function EmployeeLeavePage() {
             </label>
           </div>
           <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
-            Half-day leave is available for COFF, Casual Leave, Earned Leave and LWP.
+            Half-day leave is available for COFF, CL, EL and LWP. Half-day CL/EL/COFF deducts 0.5 day from that balance; half-day LWP deducts half a day of salary.
           </div>
         </div>
 
@@ -292,12 +305,14 @@ export default function EmployeeLeavePage() {
         </div>
 
         <div className="formGroup">
+          <label className="filterLabel">Supporting document (optional)</label>
           <input 
             type="file" 
             style={{ fontSize: '12px' }} 
             onChange={handleFileChange} 
             accept=".pdf,.png,.jpeg,.jpg,.docx"
           />
+          {attachmentName && <div style={{ fontSize: '12px', marginTop: 4 }}>{attachmentName}</div>}
           <div className="fileHelpText">(Allowed file extensions are .pdf, .png, .jpeg, .jpg, .docx)</div>
         </div>
 
@@ -316,6 +331,7 @@ export default function EmployeeLeavePage() {
               <th>CATEGORY</th>
               <th>DATES</th>
               <th>REASON</th>
+              <th>SUPPORTING DOCUMENT</th>
               <th>STATUS</th>
             </tr>
           </thead>
@@ -324,8 +340,16 @@ export default function EmployeeLeavePage() {
               history.map(req => (
                 <tr key={req.id}>
                   <td>{req.leaveType}</td>
-                  <td>{req.startDate} to {req.endDate}</td>
+                  <td>{req.startDate} to {req.endDate}{req.isHalfDay ? ' (Half day)' : ''}</td>
                   <td>{req.reason}</td>
+                  <td>
+                    {(() => {
+                      const attachment = getLeaveAttachmentLink(req.attachment);
+                      return attachment
+                        ? <a href={attachment.href} target="_blank" rel="noopener noreferrer" download={attachment.download}>Open document</a>
+                        : '—';
+                    })()}
+                  </td>
                   <td>
                     <span style={{
                         backgroundColor: req.status === 'PENDING' ? '#fef3c7' : req.status === 'APPROVED' ? '#dcfce7' : '#fee2e2',
@@ -342,7 +366,7 @@ export default function EmployeeLeavePage() {
               ))
             ) : (
               <tr>
-                <td colSpan="4" style={{ textAlign: 'center', padding: '1rem' }}>No leave requests found.</td>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '1rem' }}>No leave requests found.</td>
               </tr>
             )}
           </tbody>

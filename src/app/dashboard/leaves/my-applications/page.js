@@ -1,10 +1,46 @@
 'use client';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Info } from 'lucide-react';
+import { getLeaveAttachmentLink } from '../../../../lib/leaveAttachmentLink';
 import '../../attendance/attendance.css';
 
 export default function MyLeaveApplications() {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const userData = sessionStorage.getItem('adminData') || localStorage.getItem('employeeData');
+    if (!userData) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    async function loadRequests() {
+      try {
+        const { id } = JSON.parse(userData);
+        const response = await fetch(`/api/leaves?employeeId=${encodeURIComponent(id)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to load leave applications.');
+        if (active) setRequests(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to load leave applications:', error);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadRequests();
+    return () => { active = false; };
+  }, []);
+
+  const calculateDays = request => {
+    const start = new Date(`${request.startDate}T00:00:00`);
+    const end = new Date(`${request.endDate}T00:00:00`);
+    const fullDays = Math.floor((end - start) / 86400000) + 1;
+    return Math.max(0, fullDays - (request.isHalfDay ? 0.5 : 0));
+  };
+
   return (
     <div className="pageContainer">
       <Link href="/dashboard" className="backLink">
@@ -93,13 +129,34 @@ export default function MyLeaveApplications() {
                 <th>TOTAL LEAVE DAYS</th>
                 <th>STATUS</th>
                 <th>REASON</th>
+                <th>SUPPORTING DOCUMENT</th>
                 <th>ACTION</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', background: '#f9fafb' }}>No data available in table</td>
-              </tr>
+              {loading ? (
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>Loading...</td></tr>
+              ) : requests.length ? requests.map(request => {
+                const attachment = getLeaveAttachmentLink(request.attachment);
+                return (
+                  <tr key={request.id}>
+                    <td>{request.leaveType}</td>
+                    <td>{request.startDate}</td>
+                    <td>{request.endDate}{request.isHalfDay ? ' (Half day)' : ''}</td>
+                    <td>{calculateDays(request)}</td>
+                    <td>{request.status}</td>
+                    <td>{request.reason || '—'}</td>
+                    <td>
+                      {attachment
+                        ? <a href={attachment.href} target="_blank" rel="noopener noreferrer" download={attachment.download}>Open document</a>
+                        : '—'}
+                    </td>
+                    <td>—</td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: '2rem', background: '#f9fafb' }}>No leave applications found.</td></tr>
+              )}
             </tbody>
           </table>
         </div>

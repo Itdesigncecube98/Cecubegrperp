@@ -66,9 +66,11 @@ export const getAttendance = async (date) => {
   return Array.isArray(data) ? data : [];
 };
 
-export const getAttendanceWithSource = async (date) => {
+export const getAttendanceWithSource = async (date, { includeBiometric = false } = {}) => {
   const targetDate = date || new Date().toISOString().split('T')[0];
-  const res = await fetch(`/api/attendance?date=${targetDate}`, { cache: 'no-store' });
+  const params = new URLSearchParams({ date: targetDate });
+  if (includeBiometric) params.set('includeBiometric', 'true');
+  const res = await fetch(`/api/attendance?${params}`, { cache: 'no-store' });
   const data = res.ok ? await res.json() : [];
   return {
     records: Array.isArray(data) ? data : [],

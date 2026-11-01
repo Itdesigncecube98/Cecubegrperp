@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { calculateAttendanceStatus } from '../../../lib/attendanceCalculator';
 import { getEffectiveEmployeeShift, getShiftKind, resolveDayShiftAttendanceSlots } from '../../../lib/attendanceShiftPolicy';
+import { getBiometricPunchesByEmployeeDay } from '../../../lib/biometricPunchDisplay';
 import {
   cacheAttendanceRecords,
   getCachedAttendanceRecords,
@@ -12,6 +13,8 @@ import {
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const date = searchParams.get('date');
+  const readOnly = searchParams.get('readOnly') === 'true';
+  const includeBiometric = searchParams.get('includeBiometric') === 'true';
 
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json(
@@ -71,6 +74,7 @@ export async function GET(request) {
     let currentMinute = parseInt(p.minute || 0, 10);
 
     for (let record of attendanceRecords) {
+      if (readOnly) continue;
       if (record.timeSlots) {
         try {
           let slots = JSON.parse(record.timeSlots);
@@ -174,10 +178,12 @@ export async function GET(request) {
       calculatedStatuses.set(record.id, newStatus);
       if (record.status !== newStatus) {
         record.status = newStatus;
-        prisma.attendance.update({
-          where: { id: record.id },
-          data: { status: newStatus }
-        }).catch(console.error);
+        if (!readOnly) {
+          prisma.attendance.update({
+            where: { id: record.id },
+            data: { status: newStatus }
+          }).catch(console.error);
+        }
       }
     }
 
@@ -187,6 +193,15 @@ export async function GET(request) {
       let finalStatus = record ? (calculatedStatuses.get(record.id) || record.status) : 'Not Marked';
       if (finalStatus === 'P') finalStatus = 'Present';
       if (finalStatus === 'A') finalStatus = 'Absent';
+      if (isWorkingAnn && ['Off', 'W-off', 'Weekly Off', 'C-off', 'COFF', 'COff'].includes(finalStatus)) {
+        let slots = [];
+        try {
+          slots = JSON.parse(record?.timeSlots || '[]');
+        } catch {
+          slots = [];
+        }
+        finalStatus = slots.some(slot => slot?.in || slot?.out) ? 'Present' : 'Not Marked';
+      }
       
       if (!record || record.status === 'Not Marked') {
         const empLeave = leaves.find(l => l.employeeId === emp.id);
@@ -207,7 +222,7 @@ export async function GET(request) {
           isEmpWoff = empOffDays.includes(dayName) && !isWorkingAnn;
         }
 
-        const isEmpHoliday = isGlobalHoliday && hasCeCubeHolidaysTemplate;
+        const isEmpHoliday = isGlobalHoliday && hasCeCubeHolidaysTemplate && !isWorkingAnn;
 
         if (empLeave) {
           finalStatus = empLeave.leaveType === 'Casual' ? 'CL' : empLeave.leaveType === 'Sick' ? 'SL' : empLeave.leaveType === 'Earned' ? 'EL' : empLeave.leaveType === 'Unpaid' ? 'LWP' : 'Leave';
@@ -228,6 +243,12 @@ export async function GET(request) {
     });
 
     const responseData = Array.isArray(result) ? result : [];
+    if (includeBiometric) {
+      const biometricPunches = await getBiometricPunchesByEmployeeDay(employees, date, date);
+      for (const record of responseData) {
+        record.biometricPunches = biometricPunches.get(`${record.employee.id}|${date}`) || [];
+      }
+    }
     try {
       cacheAttendanceRecords(date, responseData);
     } catch (cacheError) {

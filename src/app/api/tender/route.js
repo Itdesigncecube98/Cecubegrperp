@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { normalizeTenderDetails } from '@/lib/tenderDetails';
 
 export async function GET(req) {
   try {
@@ -22,6 +23,15 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const body = await req.json();
+    let details;
+    try {
+      details = normalizeTenderDetails(body.details || {}, {}, {
+        initializeRevision: true,
+        userId: body.ownerId || null,
+      }).details;
+    } catch (validationError) {
+      return NextResponse.json({ error: validationError.message }, { status: 400 });
+    }
 
     // Auto-generate Tender No if not provided
     const count = await prisma.tender.count();
@@ -50,7 +60,7 @@ export async function POST(req) {
         techOpeningDate: body.techOpeningDate ? new Date(body.techOpeningDate) : null,
         finOpeningDate: body.finOpeningDate ? new Date(body.finOpeningDate) : null,
         ownerId: body.ownerId || null,
-        details: body.details || undefined,
+        details,
         status: 'Evaluation' // default starting status
       }
     });

@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Info, Check, X } from 'lucide-react';
-import { getLeaveRequests, updateLeaveRequestStatus, getEmployees } from '../../../../lib/data';
+import { updateLeaveRequestStatus, getEmployees } from '../../../../lib/data';
+import { getLeaveAttachmentLink } from '../../../../lib/leaveAttachmentLink';
 import '../../attendance/attendance.css';
 
 export default function TeamLeaveApplications() {
@@ -58,11 +59,11 @@ export default function TeamLeaveApplications() {
     }
   };
 
-  const calculateDays = (start, end) => {
+  const calculateDays = (start, end, isHalfDay) => {
     const s = new Date(start);
     const e = new Date(end);
     const diffTime = Math.abs(e - s);
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 - (isHalfDay ? 0.5 : 0));
   };
 
   return (
@@ -178,17 +179,18 @@ export default function TeamLeaveApplications() {
                 <th>STATUS</th>
                 <th>ACTUAL ATTENDANCE</th>
                 <th>REASON</th>
+                <th>SUPPORTING DOCUMENT</th>
                 <th>ACTION</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>Loading...</td>
+                  <td colSpan="10" style={{ textAlign: 'center', padding: '2rem' }}>Loading...</td>
                 </tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No data available in table</td>
+                  <td colSpan="10" style={{ textAlign: 'center', padding: '2rem' }}>No data available in table</td>
                 </tr>
               ) : (
                 requests.map(req => (
@@ -197,7 +199,7 @@ export default function TeamLeaveApplications() {
                     <td>{req.leaveType}</td>
                     <td>{req.startDate}</td>
                     <td>{req.endDate}</td>
-                    <td>{calculateDays(req.startDate, req.endDate)}</td>
+                    <td>{calculateDays(req.startDate, req.endDate, req.isHalfDay)}</td>
                     <td>
                       <span style={{
                         backgroundColor:
@@ -220,6 +222,14 @@ export default function TeamLeaveApplications() {
                       {req.actualAttendance === 'Present' ? 'Present (Punched In)' : 'Absent / No Punch'}
                     </td>
                     <td>{req.reason}</td>
+                    <td>
+                      {(() => {
+                        const attachment = getLeaveAttachmentLink(req.attachment);
+                        return attachment
+                          ? <a href={attachment.href} target="_blank" rel="noopener noreferrer" download={attachment.download}>Open document</a>
+                          : '—';
+                      })()}
+                    </td>
                     <td>
                       {(req.status === 'PENDING_SUPERVISOR' || req.status === 'PENDING_ADMIN') ? (
                         <div style={{ display: 'flex', gap: '0.5rem' }}>

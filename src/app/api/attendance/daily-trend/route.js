@@ -21,7 +21,7 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Date range cannot exceed 366 days' }, { status: 400 });
     }
 
-    const [employeeCount, rangeRecords, holidays, leaves] = await Promise.all([
+    const [employeeCount, rangeRecords, holidays, leaves, workWeeks, announcements] = await Promise.all([
       prisma.employee.count().catch(() => 0),
       prisma.attendance.findMany({
         where: { date: { gte: startDateStr, lte: endDateStr } },
@@ -38,7 +38,15 @@ export async function GET(request) {
           endDate: { gte: startDateStr }
         },
         select: { employeeId: true, startDate: true, endDate: true }
-      }).catch(() => [])
+      }).catch(() => []),
+      prisma.workWeek.findMany({ select: { day: true, isWorking: true } }),
+      prisma.announcement.findMany({
+        where: {
+          date: { gte: startDateStr, lte: endDateStr },
+          OR: [{ isWorkingDay: true }, { isHoliday: true }],
+        },
+        select: { date: true, isWorkingDay: true, isHoliday: true },
+      }),
     ]);
 
     // Group employees by Date and their Status
@@ -47,6 +55,8 @@ export async function GET(request) {
     const lateByDate = {};
     const halfDayByDate = {};
 
+    const workedStatuses = ['Present', 'P', 'Half Day', 'Late', 'C-off', 'COFF', 'COff'];
+    const leaveStatuses = ['Leave', 'L'];
     rangeRecords.forEach(r => {
       const date = r.date;
       const status = r.status || '';
@@ -55,9 +65,6 @@ export async function GET(request) {
       if (!leaveByDate[date]) leaveByDate[date] = new Set();
       if (!lateByDate[date]) lateByDate[date] = new Set();
       if (!halfDayByDate[date]) halfDayByDate[date] = new Set();
-
-      const workedStatuses = ['Present', 'P', 'Half Day', 'Late'];
-      const leaveStatuses = ['Leave', 'L'];
 
       if (workedStatuses.includes(status)) {
         workedByDate[date].add(r.employeeId);
@@ -69,17 +76,27 @@ export async function GET(request) {
     });
 
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const nonWorkingDays = new Set(
+      workWeeks.length ? workWeeks.filter(day => !day.isWorking).map(day => day.day) : ['Sunday'],
+    );
+    const holidayDates = new Set(holidays.map(holiday => holiday.date));
+    announcements.forEach(announcement => {
+      if (announcement.isHoliday) holidayDates.add(announcement.date);
+    });
+    const workingAnnouncementDates = new Set(
+      announcements.filter(announcement => announcement.isWorkingDay).map(announcement => announcement.date),
+    );
     const dailyTrend = [];
     
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const isSun = d.getDay() === 0;
-      const isHol = holidays.some(h => h.date === dStr);
-      const isOffDay = isHol || isSun;
-      
+      const isWorkingAnnouncement = workingAnnouncementDates.has(dStr);
+      const isHol = !isWorkingAnnouncement && holidayDates.has(dStr);
+      const isOffDay = !isWorkingAnnouncement && (isHol || nonWorkingDays.has(dayNames[d.getDay()]));
+
       let note = '';
       if (isHol) note = 'Holiday';
-      else if (isSun) note = 'Off';
+      else if (isOffDay) note = 'Off';
       
       const dateLabel = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} (${dayNames[d.getDay()]})` + (note ? `||${note}` : '');
       

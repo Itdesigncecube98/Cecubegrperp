@@ -34,12 +34,8 @@ export default function AttendanceMuster() {
 
   const filters = useReportFilters();
 
-  const today = new Date();
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-  const [startDate, setStartDate] = useState(fmt(firstDay));
-  const [endDate, setEndDate] = useState(fmt(lastDay));
+  const [startDate, setStartDate] = useState('2025-09-01');
+  const [endDate, setEndDate] = useState('2026-08-31');
   const [showGrid, setShowGrid] = useState(false);
   const [days, setDays] = useState([]);
 
@@ -68,18 +64,21 @@ export default function AttendanceMuster() {
       setEmployees(emps);
 
       const map = {};
-      await Promise.all(dateRange.map(async (d) => {
-        const dateStr = fmt(d);
-        const res = await fetch(`/api/attendance?date=${dateStr}`);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          data.forEach(rec => {
-            const empId = rec.employee?.id || rec.employeeId;
-            if (!map[empId]) map[empId] = {};
-            map[empId][dateStr] = rec;
-          });
-        }
-      }));
+      for (let offset = 0; offset < dateRange.length; offset += 12) {
+        const batch = dateRange.slice(offset, offset + 12);
+        await Promise.all(batch.map(async (d) => {
+          const dateStr = fmt(d);
+          const res = await fetch(`/api/attendance?date=${dateStr}&readOnly=true&includeBiometric=true`);
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            data.forEach(rec => {
+              const empId = rec.employee?.id || rec.employeeId;
+              if (!map[empId]) map[empId] = {};
+              map[empId][dateStr] = rec;
+            });
+          }
+        }));
+      }
       setAttendanceMap(map);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -91,13 +90,19 @@ export default function AttendanceMuster() {
     const slots = parseTimeSlots(rec.timeSlots);
     const firstIn = slots[0]?.in || '';
     const lastOut = slots[slots.length - 1]?.out || '';
-    return { status: rec.status, inTime: firstIn, outTime: lastOut, isApproved: rec.isApproved };
+    return {
+      status: rec.status,
+      inTime: firstIn,
+      outTime: lastOut,
+      isApproved: rec.isApproved,
+      biometricPunches: Array.isArray(rec.biometricPunches) ? rec.biometricPunches : [],
+    };
   };
 
   const getCellDataWithEdits = (empId, dateStr) => {
     const edit = edits[empId]?.[dateStr];
     if (edit) {
-      return { status: edit, inTime: '', outTime: '' };
+      return { ...getCellData(empId, dateStr), status: edit, inTime: '', outTime: '' };
     }
     return getCellData(empId, dateStr);
   };
@@ -362,7 +367,12 @@ export default function AttendanceMuster() {
               days.forEach(d => {
                 const dateStr = fmt(d);
                 const cellData = getCellDataWithEdits(emp.id, dateStr);
-                row[dateStr] = cellData ? statusAbbr(cellData.status) : 'A';
+                row[dateStr] = cellData
+                  ? [
+                    statusAbbr(cellData.status),
+                    ...(cellData.biometricPunches || []).map(punch => punch.time),
+                  ].join(' ')
+                  : 'A';
               });
               return row;
             });
@@ -491,6 +501,9 @@ export default function AttendanceMuster() {
                             <select 
                               value={abbr} 
                               onChange={(e) => handleStatusChange(emp.id, dStr, fullStatusFromAbbr(e.target.value))}
+                              title={data?.biometricPunches?.length
+                                ? `Biometric punches (read-only): ${data.biometricPunches.map(punch => punch.time).join(', ')}`
+                                : undefined}
                               style={{ 
                                 width: '100%', 
                                 height: '100%', 
@@ -517,6 +530,14 @@ export default function AttendanceMuster() {
                               <option value="W-off">W-off</option>
                               <option value="H">H</option>
                             </select>
+                            {data?.biometricPunches?.length > 0 && (
+                              <span
+                                title={`Biometric punches (read-only): ${data.biometricPunches.map(punch => punch.time).join(', ')}`}
+                                style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '9px', lineHeight: '12px', color: '#0369a1' }}
+                              >
+                                {data.biometricPunches.map(punch => punch.time).join(', ')}
+                              </span>
+                            )}
                           </td>
                         );
                       })}

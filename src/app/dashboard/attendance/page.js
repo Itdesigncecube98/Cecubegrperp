@@ -37,14 +37,15 @@ export default function Attendance() {
   const loadData = async (targetDate) => {
     setLoading(true);
     try {
-      const attendance = await getAttendanceWithSource(targetDate);
+      const attendance = await getAttendanceWithSource(targetDate, { includeBiometric: true });
       const data = attendance.records;
       setAttendanceSource(attendance.source);
       setCachedAt(attendance.cachedAt);
       // parse timeSlots string back to array if it's string
       const parsedData = data.map(item => ({
         ...item,
-        timeSlots: item.timeSlots ? JSON.parse(item.timeSlots) : []
+        timeSlots: item.timeSlots ? JSON.parse(item.timeSlots) : [],
+        biometricPunches: Array.isArray(item.biometricPunches) ? item.biometricPunches : [],
       }));
       setAttendanceData(parsedData);
       
@@ -295,6 +296,12 @@ export default function Attendance() {
                             {format24HourTime(slot.in) || '--:--'} - {format24HourTime(slot.out) || 'Open'}
                           </span>
                         ))}
+                      </div>
+                    ) : record.biometricPunches.length ? (
+                      <div className="attendance-time-list">
+                        <span className="attendance-time-slot" title="Raw biometric punches; shown read-only">
+                          Biometric: {record.biometricPunches.map(punch => punch.time).join(', ')}
+                        </span>
                       </div>
                     ) : (
                       <span className="attendance-no-times">No punches</span>

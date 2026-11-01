@@ -67,6 +67,14 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const data = await request.json();
+    const attachment = typeof data.attachment === 'string' ? data.attachment : '';
+    const allowedAttachment = /^data:(application\/pdf|image\/png|image\/jpeg|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document);base64,[A-Za-z0-9+/]+={0,2}$/i;
+    if (attachment.length > 7_000_000) {
+      return NextResponse.json({ error: 'Supporting documents must be 5 MB or smaller.' }, { status: 413 });
+    }
+    if (attachment && !allowedAttachment.test(attachment)) {
+      return NextResponse.json({ error: 'Supporting document must be a PDF, PNG, JPG, JPEG, or DOCX file.' }, { status: 400 });
+    }
     
     // Get employee to check if they have a supervisor, and get demographics for validation
     const employee = await prisma.employee.findUnique({
@@ -147,7 +155,7 @@ export async function POST(request) {
         startDate: data.startDate,
         endDate: data.endDate,
         reason: data.reason,
-        attachment: data.attachment || null,
+        attachment: attachment || null,
         isHalfDay: data.isHalfDay || false,
         status: initialStatus,
         targetSupervisorId: targetSupervisorId
