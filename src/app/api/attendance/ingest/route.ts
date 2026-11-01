@@ -28,6 +28,7 @@ type IncomingPunch = {
   punchTime: string;
   location?: string | null;
   rawPunchesOnly?: boolean;
+  missingAttendanceOnly?: boolean;
 };
 
 function keyMatches(provided: string | null): boolean {
@@ -76,7 +77,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  let body: { source?: string; rawPunchesOnly?: boolean; punches?: IncomingPunch[] };
+  let body: { source?: string; rawPunchesOnly?: boolean; missingAttendanceOnly?: boolean; punches?: IncomingPunch[] };
   try {
     body = await request.json();
   } catch {
@@ -107,6 +108,7 @@ export async function POST(request: Request) {
     location: string | null;
     source: string;
     rawPunchesOnly: boolean;
+    missingAttendanceOnly: boolean;
   }> = [];
   let invalid = 0;
 
@@ -136,6 +138,7 @@ export async function POST(request: Request) {
       location: typeof punch.location === "string" ? punch.location.slice(0, 200) : null,
       source,
       rawPunchesOnly: body.rawPunchesOnly === true || punch.rawPunchesOnly === true,
+      missingAttendanceOnly: body.missingAttendanceOnly === true || punch.missingAttendanceOnly === true,
     });
   }
 
@@ -153,6 +156,7 @@ export async function POST(request: Request) {
       skippedAfterCutoff: 0,
       attendanceUpdated: 0,
       attendanceSkippedApproved: 0,
+      attendanceSkippedExisting: 0,
       attendanceSkippedNonDayShift: 0,
       deviceUsersMapped: 0,
       unmatchedEmployeeCodes: [],
@@ -162,7 +166,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await prisma.attendancePunch.createMany({
-      data: rows.map(({ rawPunchesOnly: _rawPunchesOnly, ...row }) => row),
+      data: rows.map(({ rawPunchesOnly: _rawPunchesOnly, missingAttendanceOnly: _missingAttendanceOnly, ...row }) => row),
       skipDuplicates: true,
     });
 
@@ -184,6 +188,7 @@ export async function POST(request: Request) {
     let attendanceUpdated = 0;
     let attendanceSkippedApproved = 0;
     let attendanceSkippedNonDayShift = 0;
+    let attendanceSkippedExisting = 0;
     let deviceUsersMapped = 0;
     let unmatchedEmployeeCodes: string[] = [];
 
@@ -299,6 +304,15 @@ export async function POST(request: Request) {
         punchesByEmployeeDay.set(key, grouped);
       }
 
+      const missingAttendanceDays = new Set<string>();
+      for (const row of attendanceRows) {
+        if (!row.missingAttendanceOnly) continue;
+        const employeeId = employeeByIdentity.get(identityForPunch(row));
+        if (employeeId) {
+          missingAttendanceDays.add(`${employeeId}|${getIndiaDateAndTime(row.punchTime).date}`);
+        }
+      }
+
       for (const [key, dayPunches] of punchesByEmployeeDay) {
         const separator = key.lastIndexOf("|");
         const employeeId = key.slice(0, separator);
@@ -357,12 +371,31 @@ export async function POST(request: Request) {
           continue;
         }
 
-        await prisma.attendance.upsert({
-          where: { employeeId_date: { employeeId, date } },
-          update: { status: "Present", shiftType: isNightShift ? "Night" : "Day", timeSlots: JSON.stringify(timeSlots) },
-          create: { employeeId, date, status: "Present", shiftType: isNightShift ? "Night" : "Day", timeSlots: JSON.stringify(timeSlots) },
-        });
-        attendanceUpdated++;
+        if (missingAttendanceDays.has(key)) {
+          if (existing) {
+            attendanceSkippedExisting++;
+            continue;
+          }
+          const created = await prisma.attendance.createMany({
+            data: [{
+              employeeId,
+              date,
+              status: "Present",
+              shiftType: isNightShift ? "Night" : "Day",
+              timeSlots: JSON.stringify(timeSlots),
+            }],
+            skipDuplicates: true,
+          });
+          attendanceUpdated += created.count;
+          attendanceSkippedExisting += 1 - created.count;
+        } else {
+          await prisma.attendance.upsert({
+            where: { employeeId_date: { employeeId, date } },
+            update: { status: "Present", shiftType: isNightShift ? "Night" : "Day", timeSlots: JSON.stringify(timeSlots) },
+            create: { employeeId, date, status: "Present", shiftType: isNightShift ? "Night" : "Day", timeSlots: JSON.stringify(timeSlots) },
+          });
+          attendanceUpdated++;
+        }
       }
     }
 
@@ -375,6 +408,7 @@ export async function POST(request: Request) {
       skippedAfterCutoff: 0,
       attendanceUpdated,
       attendanceSkippedApproved,
+      attendanceSkippedExisting,
       attendanceSkippedNonDayShift,
       deviceUsersMapped,
       unmatchedEmployeeCodes,
@@ -392,6 +426,7 @@ export async function POST(request: Request) {
       skippedAfterCutoff: 0,
       attendanceUpdated: 0,
       attendanceSkippedApproved: 0,
+      attendanceSkippedExisting: 0,
       attendanceSkippedNonDayShift: 0,
       deviceUsersMapped: 0,
       unmatchedEmployeeCodes: [],

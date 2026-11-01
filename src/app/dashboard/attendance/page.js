@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getAttendanceWithSource, markAttendance, getAnnouncements } from '../../../lib/data';
 import * as XLSX from 'xlsx';
-import { Plus, X, Trash2, Save, Check, Calendar, Clock, FileSpreadsheet } from 'lucide-react';
+import { Plus, X, Trash2, Save, Check, Calendar, Clock, FileSpreadsheet, History } from 'lucide-react';
+import Link from 'next/link';
 import './attendance.css';
 
 const format24HourTime = (value) => {
@@ -165,6 +166,10 @@ export default function Attendance() {
         <div>
           <h1 className="page-title" style={{ margin: 0, marginBottom: '0.5rem' }}>Attendance Tracking</h1>
           <p className="page-subtitle">Mark and view daily attendance records. Open punches are automatically closed at 19:00.</p>
+          <Link href="/dashboard/attendance/biometric-backup" className="attendance-export-button" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 10, textDecoration: 'none' }}>
+            <History size={17} />
+            Biometric Backup
+          </Link>
         </div>
         
         <div className="attendance-controls" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>

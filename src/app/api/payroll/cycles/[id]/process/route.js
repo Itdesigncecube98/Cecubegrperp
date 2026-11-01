@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
 import { classifyStandardEarningHead } from '@/lib/payrollSalaryHeads';
 import { findApplicableSalaryRevision } from '@/lib/payrollDates';
+import { getLeaveCategory } from '@/lib/leavePolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -182,12 +183,12 @@ export async function POST(request, { params }) {
         );
 
         if (leave) {
-          const lt = (leave.leaveType || '').toLowerCase();
-          if (lt.includes('casual') || lt === 'cl') s = 'CL';
-          else if (lt.includes('earned') || lt.includes('paid') || lt === 'el' || lt === 'pl') s = 'EL';
-          else if (lt.includes('sick') || lt === 'sl') s = 'SL';
-          else if (lt.includes('unpaid') || lt === 'lwp') s = 'LWP';
-          else if (lt.includes('coff') || lt === 'c-off') s = 'C-off';
+          const leaveCategory = getLeaveCategory(leave.leaveType);
+          if (leaveCategory === 'CL') s = 'CL';
+          else if (leaveCategory === 'EL') s = 'EL';
+          else if (leaveCategory === 'SL') s = 'SL';
+          else if (leaveCategory === 'LWP') s = 'LWP';
+          else if (leaveCategory === 'COFF') s = 'C-off';
           else s = 'CL';
         } else if (!s) {
           const isWorkingAnn = workingAnnouncements.some(a => a.date === col.fullDate);
@@ -204,6 +205,20 @@ export async function POST(request, { params }) {
         if (s === 'Present') s = 'P';
         if (s === 'Absent') s = 'A';
         if (s === 'Leave' || s === 'L') s = 'CL';
+
+        if (leave?.isHalfDay) {
+          const leaveCategory = getLeaveCategory(leave.leaveType);
+          halfDayCount++;
+          if (leaveCategory === 'LWP') {
+            aCount += 0.5;
+            unpaidDays += 0.5;
+            return;
+          }
+          if (['CL', 'EL', 'COFF'].includes(leaveCategory)) {
+            pCount += 0.5;
+            return;
+          }
+        }
 
         if (s === 'P' || s === 'C-off') pCount++;
         else if (s === 'Half Day' || s === 'HD') {

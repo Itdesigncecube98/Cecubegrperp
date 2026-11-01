@@ -95,11 +95,11 @@ export async function GET(request) {
           const type = normalizeLeaveType(req.leaveType);
 
           if (inYearSoFar && !presentSet.has(`${req.employeeId}_${dateStr}`)) {
-            if (type.includes('earned') || type === 'paid leave') {
+            if (type.includes('earned') || type === 'paid leave' || type === 'el' || type === 'pl') {
               // Collected now, applied against the yearly pool below
               earnedDaysByEmp[req.employeeId].push({ dateStr, days: dayValue });
             } else if (inTargetMonth) {
-              if (type.includes('casual')) {
+              if (type.includes('casual') || type === 'cl') {
                 u.casualLeaves -= dayValue;
                 if (u.casualLeaves < 0) {
                   addLwp(u, Math.abs(u.casualLeaves));
@@ -113,6 +113,8 @@ export async function GET(request) {
                 }
               } else if (
                 type === 'unpaid' ||
+                type === 'lwp' ||
+                type.includes('unpaid') ||
                 type.includes('leave without pay') ||
                 type === 'sick'
               ) {

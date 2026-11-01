@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, Info } from 'lucide-react';
 import { getLeaveBalance, createLeaveRequest, getLeaveRequests, getLeaveTypes } from '../../../lib/data';
+import { supportsHalfDayLeave } from '../../../lib/leavePolicy';
 import '../../dashboard/attendance/attendance.css';
 import '../../dashboard/leaves/leaves.css';
 
@@ -25,6 +26,7 @@ export default function EmployeeLeavePage() {
     routeTo: 'SENIOR'
   });
   const [activeTab, setActiveTab] = useState('balances');
+  const halfDayAllowed = supportsHalfDayLeave(newRequest.leaveType);
 
   const router = useRouter();
 
@@ -193,7 +195,12 @@ export default function EmployeeLeavePage() {
             value={newRequest.leaveType}
             onChange={(e) => {
               const val = e.target.value;
-              setNewRequest({...newRequest, leaveType: val, isHalfDay: (val === 'Paid leave' || val === 'Earned Leave') ? false : newRequest.isHalfDay});
+              setNewRequest({
+                ...newRequest,
+                leaveType: val,
+                isHalfDay: supportsHalfDayLeave(val) && newRequest.isHalfDay,
+                endDate: newRequest.isHalfDay && !supportsHalfDayLeave(val) ? newRequest.startDate : newRequest.endDate,
+              });
             }}
             required
           >
@@ -213,7 +220,11 @@ export default function EmployeeLeavePage() {
               type="date" 
               className="formInput" 
               value={newRequest.startDate}
-              onChange={(e) => setNewRequest({...newRequest, startDate: e.target.value})}
+              onChange={(e) => setNewRequest({
+                ...newRequest,
+                startDate: e.target.value,
+                ...(newRequest.isHalfDay ? { endDate: e.target.value } : {}),
+              })}
               required
             />
           </div>
@@ -224,6 +235,7 @@ export default function EmployeeLeavePage() {
               className="formInput" 
               value={newRequest.endDate}
               onChange={(e) => setNewRequest({...newRequest, endDate: e.target.value})}
+              disabled={newRequest.isHalfDay}
               required
             />
           </div>
@@ -244,14 +256,14 @@ export default function EmployeeLeavePage() {
         <div className="formGroup">
           <label className="formLabel">Are there any Half Days? <Info size={16} style={{ color: '#f59e0b' }} /></label>
           <div className="radioGroup">
-            <label className="radioLabel" style={{ opacity: (newRequest.leaveType === 'Paid leave' || newRequest.leaveType === 'Earned Leave') ? 0.5 : 1 }}>
+            <label className="radioLabel" style={{ opacity: halfDayAllowed ? 1 : 0.5 }}>
               <input 
                 type="radio" 
                 name="halfday" 
                 value="yes" 
                 checked={newRequest.isHalfDay} 
-                onChange={() => setNewRequest({...newRequest, isHalfDay: true})} 
-                disabled={newRequest.leaveType === 'Paid leave' || newRequest.leaveType === 'Earned Leave'}
+                onChange={() => setNewRequest({ ...newRequest, isHalfDay: true, endDate: newRequest.startDate })} 
+                disabled={!halfDayAllowed}
               /> Yes
             </label>
             <label className="radioLabel">
@@ -264,9 +276,9 @@ export default function EmployeeLeavePage() {
               /> No
             </label>
           </div>
-          {(newRequest.leaveType === 'Paid leave' || newRequest.leaveType === 'Earned Leave') && (
-            <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>* Half day is not allowed for Earned Leave</div>
-          )}
+          <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
+            Half-day leave is available for COFF, Casual Leave, Earned Leave and LWP.
+          </div>
         </div>
 
         <div className="formGroup">

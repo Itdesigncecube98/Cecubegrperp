@@ -74,6 +74,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }) {
         { name: 'Employee Master', path: '/dashboard/employees', icon: Users },
         { name: 'Candidates', path: '/dashboard/candidates', icon: Users },
         { name: 'Muster Management', path: '/dashboard/attendance', icon: CalendarCheck },
+        { name: 'Biometric Backup', path: '/dashboard/attendance/biometric-backup', icon: CalendarCheck },
         { name: 'Payroll', path: '/dashboard/payroll', icon: Banknote },
         { name: 'TDS Management', path: '/dashboard/tds', icon: ClipboardList },
         { name: 'Appraisal', path: '/dashboard/appraisal', icon: Award },

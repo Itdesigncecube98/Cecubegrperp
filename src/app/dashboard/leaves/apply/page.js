@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Info } from 'lucide-react';
 import { getEmployees, createLeaveRequest, getLeaveTypes } from '../../../../lib/data';
+import { supportsHalfDayLeave } from '../../../../lib/leavePolicy';
 import '../../attendance/attendance.css';
 import '../leaves.css';
 
@@ -24,6 +25,7 @@ export default function ApplyLeave() {
     isHalfDay: false
   });
   const [currentBalance, setCurrentBalance] = useState(null);
+  const halfDayAllowed = supportsHalfDayLeave(formData.leaveType);
 
   useEffect(() => {
     if (formData.employeeId) {
@@ -137,7 +139,12 @@ export default function ApplyLeave() {
             value={formData.leaveType}
             onChange={(e) => {
               const val = e.target.value;
-              setFormData({...formData, leaveType: val, isHalfDay: (val === 'Paid leave' || val === 'Earned Leave') ? false : formData.isHalfDay});
+              setFormData({
+                ...formData,
+                leaveType: val,
+                isHalfDay: supportsHalfDayLeave(val) && formData.isHalfDay,
+                endDate: formData.isHalfDay && !supportsHalfDayLeave(val) ? formData.startDate : formData.endDate,
+              });
             }}
             required
           >
@@ -177,7 +184,11 @@ export default function ApplyLeave() {
               type="date" 
               className="formInput" 
               value={formData.startDate}
-              onChange={(e) => setFormData({...formData, startDate: e.target.value})}
+              onChange={(e) => setFormData({
+                ...formData,
+                startDate: e.target.value,
+                ...(formData.isHalfDay ? { endDate: e.target.value } : {}),
+              })}
               required
             />
           </div>
@@ -188,6 +199,7 @@ export default function ApplyLeave() {
               className="formInput" 
               value={formData.endDate}
               onChange={(e) => setFormData({...formData, endDate: e.target.value})}
+              disabled={formData.isHalfDay}
               required
             />
           </div>
@@ -196,14 +208,14 @@ export default function ApplyLeave() {
         <div className="formGroup">
           <label className="formLabel">Are there any Half Days? <Info size={16} style={{ color: '#f59e0b' }} /></label>
           <div className="radioGroup">
-            <label className="radioLabel" style={{ opacity: (formData.leaveType === 'Paid leave' || formData.leaveType === 'Earned Leave') ? 0.5 : 1 }}>
+            <label className="radioLabel" style={{ opacity: halfDayAllowed ? 1 : 0.5 }}>
               <input 
                 type="radio" 
                 name="halfday" 
                 value="yes" 
                 checked={formData.isHalfDay} 
-                onChange={() => setFormData({...formData, isHalfDay: true})} 
-                disabled={formData.leaveType === 'Paid leave' || formData.leaveType === 'Earned Leave'}
+                onChange={() => setFormData({ ...formData, isHalfDay: true, endDate: formData.startDate })} 
+                disabled={!halfDayAllowed}
               /> Yes
             </label>
             <label className="radioLabel">
@@ -216,9 +228,9 @@ export default function ApplyLeave() {
               /> No
             </label>
           </div>
-          {(formData.leaveType === 'Paid leave' || formData.leaveType === 'Earned Leave') && (
-            <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>* Half day is not allowed for Earned Leave</div>
-          )}
+          <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
+            Half-day leave is available for COFF, Casual Leave, Earned Leave and LWP.
+          </div>
         </div>
 
         <div className="formGroup">

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { getEarnedLeaveEligibilityDate, toDateKey } from '../../../lib/leaveEntitlements';
+import { calculateLeaveDays, getLeaveCategory, supportsHalfDayLeave } from '../../../lib/leavePolicy';
 
 export async function GET(request) {
   try {
@@ -78,21 +79,24 @@ export async function POST(request) {
     }
 
     // --- Validation Logic ---
-    const start = new Date(data.startDate);
-    const end = new Date(data.endDate);
-    const diffTime = Math.abs(end - start);
-    let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    if (data.isHalfDay) diffDays = 0.5;
-
+    const diffDays = calculateLeaveDays(data.startDate, data.endDate, Boolean(data.isHalfDay));
+    if (diffDays === null) {
+      return NextResponse.json({ error: 'Please enter a valid leave date range.' }, { status: 400 });
+    }
+    if (data.isHalfDay && toDateKey(data.startDate) !== toDateKey(data.endDate)) {
+      return NextResponse.json({ error: 'A half-day leave request must be for a single date.' }, { status: 400 });
+    }
     const type = data.leaveType;
-    if (type === 'Casual Leave') {
+    const category = getLeaveCategory(type);
+    if (data.isHalfDay && !supportsHalfDayLeave(type)) {
+      return NextResponse.json({ error: 'Half-day leave is available only for COFF, Casual Leave, Earned Leave, and LWP.' }, { status: 400 });
+    }
+
+    if (category === 'CL') {
       if (diffDays > 4) {
         return NextResponse.json({ error: 'Maximum 4 days of Casual Leave can be taken at a time.' }, { status: 400 });
       }
-    } else if (type === 'Paid leave' || type === 'Earned Leave') {
-      if (data.isHalfDay) {
-        return NextResponse.json({ error: 'Half day is not allowed for Earned Leave.' }, { status: 400 });
-      }
+    } else if (category === 'EL') {
       const eligibleFrom = getEarnedLeaveEligibilityDate(employee);
       const leaveStart = toDateKey(data.startDate);
       if (employee.joinedDate && !eligibleFrom) {
@@ -191,49 +195,52 @@ export async function PUT(request) {
       updateData.status = 'REJECTED';
     }
 
-    const updatedRequest = await prisma.leaveRequest.update({
-      where: { id: parseInt(id) },
-      data: updateData
+    const requestId = Number.parseInt(id, 10);
+    if (!Number.isInteger(requestId)) {
+      return NextResponse.json({ error: 'Invalid leave request ID.' }, { status: 400 });
+    }
+
+    const updatedRequest = await prisma.$transaction(async (tx) => {
+      const previousRequest = await tx.leaveRequest.findUnique({ where: { id: requestId } });
+      if (!previousRequest) return null;
+
+      const updated = await tx.leaveRequest.update({
+        where: { id: requestId },
+        data: updateData
+      });
+
+      const newlyApproved = previousRequest.status !== 'APPROVED'
+        && updated.status === 'APPROVED'
+        && (role === 'ADMIN' || role === 'SUPERVISOR');
+      if (!newlyApproved) return updated;
+
+      const { employeeId, leaveType, startDate, endDate, isHalfDay } = updated;
+      const days = calculateLeaveDays(startDate, endDate, isHalfDay);
+      if (days === null) throw new Error('The saved leave request has an invalid date range.');
+
+      const balance = await tx.leaveBalance.findUnique({ where: { employeeId } });
+      if (!balance) return updated;
+
+      const category = getLeaveCategory(leaveType);
+      const balanceUpdateData = category === 'CL'
+        ? { casualLeaves: { decrement: days } }
+        : category === 'EL'
+          ? { earnedLeaves: { decrement: days } }
+          : category === 'COFF'
+            ? { compensatoryLeaves: { decrement: days } }
+            : category === 'LWP' || category === 'SL'
+              ? { leaveWithoutPay: { increment: days } }
+              : null;
+
+      if (balanceUpdateData) {
+        await tx.leaveBalance.update({ where: { employeeId }, data: balanceUpdateData });
+      }
+
+      return updated;
     });
 
-    // If leave is approved (by supervisor OR admin), deduct from balance
-    if (status === 'APPROVED' && (role === 'ADMIN' || role === 'SUPERVISOR')) {
-      const { employeeId, leaveType, startDate, endDate, isHalfDay } = updatedRequest;
-      // Calculate days
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const diffTime = Math.abs(end - start);
-      let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-
-      if (isHalfDay) {
-        diffDays = Math.max(0, diffDays - 0.5);
-      }
-
-      // Update balance
-      const balance = await prisma.leaveBalance.findUnique({
-        where: { employeeId }
-      });
-      
-      if (balance) {
-        let balanceUpdateData = {};
-        let currentLwp = balance.leaveWithoutPay || 0;
-
-        if (leaveType === 'Casual') {
-          balanceUpdateData.casualLeaves = balance.casualLeaves - diffDays;
-        } else if (leaveType === 'Leave Without Pay' || leaveType === 'Sick' || leaveType === 'Unpaid') {
-          currentLwp += diffDays;
-          balanceUpdateData.leaveWithoutPay = currentLwp;
-        } else if (leaveType === 'Earned' || leaveType === 'Paid leave') {
-          balanceUpdateData.earnedLeaves = balance.earnedLeaves - diffDays;
-        } else if (leaveType === 'COFF') {
-          balanceUpdateData.compensatoryLeaves = balance.compensatoryLeaves - diffDays;
-        }
-        
-        await prisma.leaveBalance.update({
-          where: { employeeId },
-          data: balanceUpdateData
-        });
-      }
+    if (!updatedRequest) {
+      return NextResponse.json({ error: 'Leave request not found.' }, { status: 404 });
     }
 
     return NextResponse.json(updatedRequest);
