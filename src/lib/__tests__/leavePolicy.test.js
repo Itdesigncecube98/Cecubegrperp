@@ -1,4 +1,12 @@
-import { calculateLeaveDays, getLeaveCategory, supportsHalfDayLeave } from '../leavePolicy';
+import {
+  calculateLeaveDays,
+  getLeaveCategory,
+  isFemaleEmployee,
+  isMaternityLeave,
+  isPaternityLeave,
+  isWithinSixMonthMaternityLimit,
+  supportsHalfDayLeave,
+} from '../leavePolicy';
 
 describe('getLeaveCategory', () => {
   test.each([
@@ -18,12 +26,33 @@ describe('getLeaveCategory', () => {
 });
 
 describe('supportsHalfDayLeave', () => {
-  test.each(['Casual', 'Paid leave', 'COFF', 'Unpaid leave'])('allows half-day %s', (type) => {
+  test.each(['Casual', 'Paid leave', 'COFF'])('allows half-day %s', (type) => {
     expect(supportsHalfDayLeave(type)).toBe(true);
+  });
+
+  test('does not allow half-day LWP', () => {
+    expect(supportsHalfDayLeave('LWP')).toBe(false);
   });
 
   test('does not allow half days for other leave types', () => {
     expect(supportsHalfDayLeave('Maternity Leave')).toBe(false);
+  });
+});
+
+describe('gendered leave policies', () => {
+  test('identifies gendered leave types and female employees', () => {
+    expect(isMaternityLeave('Maternity Leave')).toBe(true);
+    expect(isPaternityLeave('Paternity Leave')).toBe(true);
+    expect(isFemaleEmployee('Female')).toBe(true);
+    expect(isFemaleEmployee('Male')).toBe(false);
+    expect(isFemaleEmployee('')).toBe(false);
+  });
+
+  test('allows maternity leave up to six calendar months, inclusive', () => {
+    expect(isWithinSixMonthMaternityLimit('2026-01-01', '2026-06-30')).toBe(true);
+    expect(isWithinSixMonthMaternityLimit('2026-01-01', '2026-07-01')).toBe(false);
+    expect(isWithinSixMonthMaternityLimit('2026-01-31', '2026-07-30')).toBe(true);
+    expect(isWithinSixMonthMaternityLimit('invalid', '2026-06-30')).toBe(false);
   });
 });
 

@@ -64,6 +64,26 @@ export async function PUT(req, { params }) {
     const body = await req.json();
     const itemId = typeof body.itemId === 'string' ? body.itemId : '';
     const resourceType = body.resourceType;
+    if (resourceType === 'TaskLibraryImport') {
+      if (!itemId) return NextResponse.json({ error: 'A BOQ item is required.' }, { status: 400 });
+      const materialValidation = validateResourceBundles(body.materials, 'Material');
+      const labourValidation = validateResourceBundles(body.labours, 'Labour');
+      if (materialValidation.error) return NextResponse.json({ error: materialValidation.error }, { status: 400 });
+      if (labourValidation.error) return NextResponse.json({ error: labourValidation.error }, { status: 400 });
+      const item = await prisma.tenderBOQItem.findFirst({
+        where: { id: itemId, tenderId },
+        select: { id: true },
+      });
+      if (!item) return NextResponse.json({ error: 'BOQ item not found for this tender.' }, { status: 404 });
+      const updated = await prisma.tenderBOQItem.update({
+        where: { id: itemId },
+        data: {
+          materials: materialValidation.value,
+          labours: labourValidation.value,
+        },
+      });
+      return NextResponse.json(updated);
+    }
     const field = resourceType === 'Material' ? 'materials' : resourceType === 'Labour' ? 'labours' : null;
     if (!itemId || !field) {
       return NextResponse.json({ error: 'A BOQ item and valid resource type are required.' }, { status: 400 });

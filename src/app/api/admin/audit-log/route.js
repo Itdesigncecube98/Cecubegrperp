@@ -1,11 +1,8 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { readAuthSession } from '../../../../lib/authSession';
 import { writeSessionAudit } from '../../../../lib/serverAudit';
-
-const prisma = new PrismaClient();
-
 // ─── GET /api/admin/audit-log ─────────────────────────────────────────────────
 // Query: userId, module, subModule, action, entityType, entityId,
 //        status, dateFrom, dateTo, page, limit

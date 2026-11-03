@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Info } from 'lucide-react';
 import { getEmployees, createLeaveRequest, getLeaveTypes } from '../../../../lib/data';
-import { supportsHalfDayLeave } from '../../../../lib/leavePolicy';
+import { isFemaleEmployee, isMaternityLeave, isPaternityLeave, supportsHalfDayLeave } from '../../../../lib/leavePolicy';
 import '../../attendance/attendance.css';
 import '../leaves.css';
 
@@ -14,6 +14,7 @@ export default function ApplyLeave() {
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [leavingReasons, setLeavingReasons] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [dataLoadError, setDataLoadError] = useState('');
   const [formData, setFormData] = useState({
     employeeId: '',
     leaveType: '',
@@ -21,11 +22,17 @@ export default function ApplyLeave() {
     endDate: '',
     reason: '',
     attachment: '',
-    isHalfDay: false
+    isHalfDay: false,
+    halfDayPeriod: '',
   });
   const [attachmentName, setAttachmentName] = useState('');
   const [currentBalance, setCurrentBalance] = useState(null);
   const halfDayAllowed = supportsHalfDayLeave(formData.leaveType);
+  const selectedEmployee = employees.find(employee => employee.id === formData.employeeId);
+  const availableLeaveTypes = leaveTypes.filter(type =>
+    !isPaternityLeave(type.name) &&
+    (!isMaternityLeave(type.name) || isFemaleEmployee(selectedEmployee?.gender))
+  );
 
   useEffect(() => {
     if (formData.employeeId) {
@@ -45,10 +52,18 @@ export default function ApplyLeave() {
           getEmployees(),
           getLeaveTypes()
         ]);
-        setEmployees(empData || []);
-        setLeaveTypes((typeData || []).filter(t => t.isActive));
+        if (!Array.isArray(empData)) {
+          throw new Error(empData?.error || 'Employee list could not be loaded. Please try again.');
+        }
+        if (!Array.isArray(typeData)) {
+          throw new Error(typeData?.error || 'Leave categories could not be loaded. Please try again.');
+        }
+        setEmployees(empData);
+        setLeaveTypes(typeData.filter(t => t.isActive));
+        setDataLoadError('');
       } catch (err) {
         console.error('Failed to load data', err);
+        setDataLoadError(err.message || 'Could not load employee and leave data.');
       }
       
       const savedReasons = localStorage.getItem('leavingReasons');
@@ -68,6 +83,10 @@ export default function ApplyLeave() {
     e.preventDefault();
     if (!formData.employeeId || !formData.leaveType || !formData.startDate || !formData.endDate) {
       alert('Please fill all required fields');
+      return;
+    }
+    if (formData.isHalfDay && !formData.halfDayPeriod) {
+      alert('Choose first half or second half for the half-day leave.');
       return;
     }
     
@@ -121,6 +140,11 @@ export default function ApplyLeave() {
       
       <h1 className="pageTitle">Apply Leave (Admin)</h1>
       <hr style={{ borderTop: '1px solid #e5e7eb', marginBottom: '1.5rem' }} />
+      {dataLoadError && (
+        <div role="alert" style={{ color: '#b91c1c', marginBottom: '1rem' }}>
+          {dataLoadError}
+        </div>
+      )}
 
       <form className="card" style={{ maxWidth: '1000px' }} onSubmit={handleSubmit}>
         <div className="formGroup">
@@ -128,7 +152,17 @@ export default function ApplyLeave() {
           <select 
             className="formInput"
             value={formData.employeeId}
-            onChange={(e) => setFormData({...formData, employeeId: e.target.value})}
+            onChange={(e) => {
+              const employeeId = e.target.value;
+              const employee = employees.find(item => item.id === employeeId);
+              const leaveTypeUnavailable = isPaternityLeave(formData.leaveType) ||
+                (isMaternityLeave(formData.leaveType) && !isFemaleEmployee(employee?.gender));
+              setFormData(previous => ({
+                ...previous,
+                employeeId,
+                leaveType: leaveTypeUnavailable ? '' : previous.leaveType,
+              }));
+            }}
             required
           >
             <option value="">-- Select Employee --</option>
@@ -151,13 +185,14 @@ export default function ApplyLeave() {
                 ...formData,
                 leaveType: val,
                 isHalfDay: supportsHalfDayLeave(val) && formData.isHalfDay,
+                halfDayPeriod: supportsHalfDayLeave(val) ? formData.halfDayPeriod : '',
                 endDate: formData.isHalfDay && !supportsHalfDayLeave(val) ? formData.startDate : formData.endDate,
               });
             }}
             required
           >
             <option value="">-- Select Category --</option>
-            {leaveTypes.map(lt => {
+            {availableLeaveTypes.map(lt => {
               let isDisabled = false;
               let labelSuffix = '';
 
@@ -185,7 +220,7 @@ export default function ApplyLeave() {
           </select>
         </div>
         <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '1rem' }}>
-          CL: 12 days credited each 1 April and carried forward. EL: after 8 months, 1 day per 20 calendar days until the next April, then 18 days each April and carried forward. Half-day CL/EL/COFF deducts 0.5 day; half-day LWP deducts half a day of salary.
+          CL: 12 days credited on joining and each joining anniversary; unused CL carries forward. EL: 18 days after 8 months of service, then 18 days each joining anniversary; unused EL carries forward. Half-day CL/EL/COFF deducts 0.5 day. Maternity Leave is available only to female employees, up to 6 months; Paternity Leave is not available.
         </div>
 
         <div style={{ display: 'flex', gap: '2rem', marginBottom: '1.5rem' }}>
@@ -225,7 +260,7 @@ export default function ApplyLeave() {
                 name="halfday" 
                 value="yes" 
                 checked={formData.isHalfDay} 
-                onChange={() => setFormData({ ...formData, isHalfDay: true, endDate: formData.startDate })} 
+                onChange={() => setFormData({ ...formData, isHalfDay: true, endDate: formData.startDate })}
                 disabled={!halfDayAllowed}
               /> Yes
             </label>
@@ -235,12 +270,41 @@ export default function ApplyLeave() {
                 name="halfday" 
                 value="no" 
                 checked={!formData.isHalfDay} 
-                onChange={() => setFormData({...formData, isHalfDay: false})} 
+                onChange={() => setFormData(previous => ({ ...previous, isHalfDay: false, halfDayPeriod: '' }))} 
               /> No
             </label>
           </div>
+          {formData.isHalfDay && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <span className="filterLabel">Which half of the day? <span style={{ color: 'red' }}>*</span></span>
+              <div className="radioGroup">
+                <label className="radioLabel">
+                  <input
+                    type="radio"
+                    name="halfDayPeriod"
+                    value="FIRST_HALF"
+                    checked={formData.halfDayPeriod === 'FIRST_HALF'}
+                    onChange={() => setFormData(previous => ({ ...previous, halfDayPeriod: 'FIRST_HALF' }))}
+                    required
+                  /> First Half
+                </label>
+                <label className="radioLabel">
+                  <input
+                    type="radio"
+                    name="halfDayPeriod"
+                    value="SECOND_HALF"
+                    checked={formData.halfDayPeriod === 'SECOND_HALF'}
+                    onChange={() => setFormData(previous => ({ ...previous, halfDayPeriod: 'SECOND_HALF' }))}
+                    required
+                  /> Second Half
+                </label>
+              </div>
+            </div>
+          )}
           <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
-            Half-day leave is available for COFF, Casual Leave, Earned Leave and LWP. CL/EL/COFF deduct 0.5 day from the balance; LWP deducts half a day of salary.
+            {halfDayAllowed
+              ? "Half-day leave is available for the selected category and deducts 0.5 day from its balance."
+              : 'Select CL, EL, or COFF above to enable the half-day option.'}
           </div>
         </div>
 
@@ -268,7 +332,7 @@ export default function ApplyLeave() {
           )}
         </div>
         <div className="formGroup">
-          <label className="filterLabel">Supporting document (optional)</label>
+          <label className="filterLabel">Upload supporting document (optional)</label>
           <input 
             type="file" 
             style={{ fontSize: '12px' }} 

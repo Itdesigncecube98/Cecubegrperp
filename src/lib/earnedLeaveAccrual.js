@@ -43,19 +43,12 @@ export function getEarnedLeaveAccrual(joinedDate, asOnMonth) {
   const eligibilityDate = addMonthsClamped(joinDate, 8);
   if (eligibilityDate > cutoff) return { monthsSinceJoining, accruedLeaves: 0 };
 
-  let firstApril = new Date(Date.UTC(eligibilityDate.getUTCFullYear(), 3, 1));
-  if (firstApril <= eligibilityDate) {
-    firstApril = new Date(Date.UTC(eligibilityDate.getUTCFullYear() + 1, 3, 1));
-  }
-  const initialPeriodEnd = cutoff < firstApril ? cutoff : firstApril;
-  const initialPeriodDays = Math.floor((initialPeriodEnd - eligibilityDate) / 86400000);
-  const initialAccrual = Math.floor(initialPeriodDays / 20);
-  let annualCredits = 0;
-  for (let creditDate = firstApril; creditDate <= cutoff; creditDate = new Date(Date.UTC(creditDate.getUTCFullYear() + 1, 3, 1))) {
-    annualCredits += 18;
+  let accruedLeaves = 0;
+  for (let creditDate = eligibilityDate; creditDate <= cutoff; creditDate = addMonthsClamped(creditDate, 12)) {
+    accruedLeaves += 18;
   }
 
-  return { monthsSinceJoining, accruedLeaves: initialAccrual + annualCredits };
+  return { monthsSinceJoining, accruedLeaves };
 }
 
 export function getCasualLeaveAccrual(joinedDate, asOnMonth, leavesPerYear = 12) {
@@ -68,17 +61,13 @@ export function getCasualLeaveAccrual(joinedDate, asOnMonth, leavesPerYear = 12)
     (cutoff.getUTCFullYear() - joinDate.getUTCFullYear()) * 12
       + cutoff.getUTCMonth() - joinDate.getUTCMonth()
   );
-  let firstCredit = new Date(Date.UTC(joinDate.getUTCFullYear(), 3, 1));
-  if (firstCredit < joinDate) {
-    firstCredit = new Date(Date.UTC(joinDate.getUTCFullYear() + 1, 3, 1));
-  }
-  let annualCredits = 0;
-  for (let creditDate = firstCredit; creditDate <= cutoff; creditDate = new Date(Date.UTC(creditDate.getUTCFullYear() + 1, 3, 1))) {
-    annualCredits += leavesPerYear;
+  let accruedLeaves = 0;
+  for (let creditDate = joinDate; creditDate <= cutoff; creditDate = addMonthsClamped(creditDate, 12)) {
+    accruedLeaves += leavesPerYear;
   }
   return {
     monthsSinceJoining,
-    accruedLeaves: annualCredits,
+    accruedLeaves,
   };
 }
 

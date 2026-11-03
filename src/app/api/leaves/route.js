@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { getEarnedLeaveEligibilityDate, toDateKey } from '../../../lib/leaveEntitlements';
-import { calculateLeaveDays, getLeaveCategory, supportsHalfDayLeave } from '../../../lib/leavePolicy';
+import {
+  calculateLeaveDays,
+  getLeaveCategory,
+  isFemaleEmployee,
+  isMaternityLeave,
+  isPaternityLeave,
+  isWithinSixMonthMaternityLimit,
+  supportsHalfDayLeave,
+} from '../../../lib/leavePolicy';
 
 export async function GET(request) {
   try {
@@ -94,10 +102,17 @@ export async function POST(request) {
     if (data.isHalfDay && toDateKey(data.startDate) !== toDateKey(data.endDate)) {
       return NextResponse.json({ error: 'A half-day leave request must be for a single date.' }, { status: 400 });
     }
+    const halfDayPeriod = data.isHalfDay ? data.halfDayPeriod : null;
+    if (data.isHalfDay && !['FIRST_HALF', 'SECOND_HALF'].includes(halfDayPeriod)) {
+      return NextResponse.json({ error: 'Choose whether the leave is for the first half or second half of the day.' }, { status: 400 });
+    }
     const type = data.leaveType;
     const category = getLeaveCategory(type);
     if (data.isHalfDay && !supportsHalfDayLeave(type)) {
-      return NextResponse.json({ error: 'Half-day leave is available only for COFF, Casual Leave, Earned Leave, and LWP.' }, { status: 400 });
+      return NextResponse.json({ error: 'Half-day leave is available only for Casual Leave, Earned Leave, and COFF.' }, { status: 400 });
+    }
+    if (isPaternityLeave(type)) {
+      return NextResponse.json({ error: 'Paternity Leave is not available.' }, { status: 400 });
     }
 
     if (category === 'CL') {
@@ -113,22 +128,12 @@ export async function POST(request) {
       if (eligibleFrom && leaveStart && leaveStart < eligibleFrom) {
         return NextResponse.json({ error: `Earned Leave can only be availed from ${eligibleFrom}, after completion of 8 months of service.` }, { status: 400 });
       }
-    } else if (type === 'Maternity Leave') {
-      if (employee.gender && employee.gender.toLowerCase() !== 'female') {
+    } else if (isMaternityLeave(type)) {
+      if (!isFemaleEmployee(employee.gender)) {
         return NextResponse.json({ error: 'Maternity Leave is only applicable for female employees.' }, { status: 400 });
       }
-      if (employee.joinedDate && tenureMonths < 24) {
-        return NextResponse.json({ error: 'Maternity Leave can only be availed after completion of 2 years of service.' }, { status: 400 });
-      }
-      if (diffDays > 183) { // approx 6 months
+      if (!isWithinSixMonthMaternityLimit(data.startDate, data.endDate)) {
         return NextResponse.json({ error: 'Maximum 6 months of Maternity Leave can be taken.' }, { status: 400 });
-      }
-    } else if (type === 'Paternity Leave') {
-      if (employee.gender && employee.gender.toLowerCase() !== 'male') {
-        return NextResponse.json({ error: 'Paternity Leave is only applicable for male employees.' }, { status: 400 });
-      }
-      if (diffDays > 4) {
-         return NextResponse.json({ error: 'Maximum 4 days of Paternity Leave can be taken.' }, { status: 400 });
       }
     }
     // --- End Validation ---
@@ -157,6 +162,7 @@ export async function POST(request) {
         reason: data.reason,
         attachment: attachment || null,
         isHalfDay: data.isHalfDay || false,
+        halfDayPeriod,
         status: initialStatus,
         targetSupervisorId: targetSupervisorId
       }

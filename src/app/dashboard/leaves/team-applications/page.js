@@ -198,7 +198,7 @@ export default function TeamLeaveApplications() {
                     <td>{req.employee?.name || 'Unknown'}</td>
                     <td>{req.leaveType}</td>
                     <td>{req.startDate}</td>
-                    <td>{req.endDate}</td>
+                    <td>{req.endDate}{req.isHalfDay ? ` (Half day${req.halfDayPeriod ? `, ${req.halfDayPeriod === 'FIRST_HALF' ? 'First Half' : 'Second Half'}` : ''})` : ''}</td>
                     <td>{calculateDays(req.startDate, req.endDate, req.isHalfDay)}</td>
                     <td>
                       <span style={{

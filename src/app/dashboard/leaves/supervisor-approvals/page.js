@@ -110,7 +110,7 @@ export default function SupervisorApprovalsPage() {
               <tr key={req.id}>
                 <td>{req.employee?.name || 'Unknown'}</td>
                 <td>{req.leaveType === 'COFF' ? 'Compensatory Off' : req.leaveType}</td>
-                <td>{req.startDate} to {req.endDate}{req.isHalfDay ? ' (Half day)' : ''}</td>
+                <td>{req.startDate} to {req.endDate}{req.isHalfDay ? ` (Half day${req.halfDayPeriod ? `, ${req.halfDayPeriod === 'FIRST_HALF' ? 'First Half' : 'Second Half'}` : ''})` : ''}</td>
                 <td>{req.reason}</td>
                 <td>
                   {(() => {

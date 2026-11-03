@@ -8,6 +8,14 @@ export default function TenderRegister() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [registeredTenderNo, setRegisteredTenderNo] = useState('');
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get('registered') === '1') {
+      setRegisteredTenderNo(searchParams.get('tenderNo') || 'successfully');
+    }
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -52,6 +60,12 @@ export default function TenderRegister() {
           + New Tender
         </Link>
       </div>
+
+      {registeredTenderNo && (
+        <div className="tnd-detail-success" role="status" style={{ marginBottom: 16 }}>
+          Tender {registeredTenderNo} registered successfully. It is now listed below.
+        </div>
+      )}
 
       <div className="tnd-card">
         <div className="tnd-toolbar">

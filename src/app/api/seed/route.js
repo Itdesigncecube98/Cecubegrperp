@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 
 export async function GET() {
-  const types = ['Maternity Leave', 'Paternity Leave'];
+  const types = ['Maternity Leave'];
   const res = [];
   
   for (const name of types) {

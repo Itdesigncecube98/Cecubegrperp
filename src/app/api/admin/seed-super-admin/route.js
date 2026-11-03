@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
-
 // ─── POST /api/admin/seed-super-admin ────────────────────────────────────────
 // One-time bootstrap: creates super admin user + seeds all permissions + system roles
 // Only works if no SystemUser exists yet OR ?force=true is passed

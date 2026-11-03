@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '@/lib/prisma';
 // ─── GET /api/admin/license/validate?companyId=&userId= ──────────────────────
 // Called at every login to check license validity
 export async function GET(request) {

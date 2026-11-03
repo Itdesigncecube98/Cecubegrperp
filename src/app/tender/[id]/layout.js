@@ -1,23 +1,11 @@
 'use client';
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { 
-  ClipboardList, 
-  FileText, 
-  Calculator, 
-  Briefcase, 
-  CheckSquare, 
-  Send, 
-  Award,
-  ArrowLeft,
-  Info
-} from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 export default function TenderDetailLayout({ children, params }) {
   const unwrappedParams = use(params);
   const tenderId = unwrappedParams.id;
-  const pathname = usePathname();
   
   const [tender, setTender] = useState(null);
 
@@ -32,17 +20,6 @@ export default function TenderDetailLayout({ children, params }) {
     }
     loadTender();
   }, [tenderId]);
-
-  const tabs = [
-    { name: 'Details', path: `/tender/${tenderId}/details`, icon: Info },
-    { name: 'Evaluation', path: `/tender/${tenderId}/evaluation`, icon: ClipboardList },
-    { name: 'Documents', path: `/tender/${tenderId}/documents`, icon: FileText },
-    { name: 'BOQ & Costing', path: `/tender/${tenderId}/boq`, icon: Calculator },
-    { name: 'Bid Prep', path: `/tender/${tenderId}/bid`, icon: Briefcase },
-    { name: 'Approval', path: `/tender/${tenderId}/approval`, icon: CheckSquare },
-    { name: 'Submission', path: `/tender/${tenderId}/submission`, icon: Send },
-    { name: 'Result', path: `/tender/${tenderId}/result`, icon: Award },
-  ];
 
   return (
     <div className="tnd-page-container">
@@ -68,24 +45,6 @@ export default function TenderDetailLayout({ children, params }) {
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="tnd-tabs" style={{ marginLeft: '44px', marginBottom: '24px' }}>
-        {tabs.map(tab => {
-          const isActive = pathname === tab.path;
-          return (
-            <Link 
-              key={tab.name} 
-              href={tab.path}
-              className={`tnd-tab ${isActive ? 'active' : ''}`}
-            >
-              <tab.icon size={16} />
-              {tab.name}
-            </Link>
-          );
-        })}
-      </div>
-
-      {/* Tab Content */}
       <div style={{ marginLeft: '44px' }}>
         {children}
       </div>

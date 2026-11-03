@@ -3,8 +3,20 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveProjectLibraryContext } from '@/lib/projectLibrary';
 
+const materialLibraryState = globalThis;
+
 // Auto-seed default library hierarchy if empty
 async function seedDefaultMaterialTreeIfNeeded() {
+  if (!materialLibraryState.materialLibrarySeedPromise) {
+    materialLibraryState.materialLibrarySeedPromise = seedDefaultMaterialTree().catch(error => {
+      materialLibraryState.materialLibrarySeedPromise = null;
+      throw error;
+    });
+  }
+  return materialLibraryState.materialLibrarySeedPromise;
+}
+
+async function seedDefaultMaterialTree() {
   try {
     const count = await prisma.materialLibraryGroup.count();
     if (count > 0) return;
@@ -171,6 +183,7 @@ async function seedDefaultMaterialTreeIfNeeded() {
     console.log('Successfully auto-seeded Material Library hierarchical tree.');
   } catch (err) {
     console.error('Error in seedDefaultMaterialTreeIfNeeded:', err);
+    throw err;
   }
 }
 

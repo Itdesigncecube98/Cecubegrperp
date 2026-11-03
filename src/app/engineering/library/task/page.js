@@ -8,6 +8,25 @@ import {
 } from 'lucide-react';
 import '../../../../app/accounts/company/company.css';
 
+function flattenMaterialGroups(groups, parentPath = '') {
+  return (groups || []).flatMap(group => {
+    const groupPath = [parentPath, group.name].filter(Boolean).join(' / ');
+    return [{ ...group, groupPath }, ...flattenMaterialGroups(group.subgroups, groupPath)];
+  });
+}
+
+function collectMaterialGroupItems(group, parentPath = '') {
+  const groupPath = [parentPath, group.name].filter(Boolean).join(' / ');
+  return [
+    ...(group.materials || []).map(material => ({
+      ...material,
+      sourceGroupId: group.id,
+      groupPath,
+    })),
+    ...(group.subgroups || []).flatMap(subgroup => collectMaterialGroupItems(subgroup, groupPath)),
+  ];
+}
+
 export default function TaskLibrary() {
   // State for Libraries
   const [libraries, setLibraries] = useState([]);
@@ -20,6 +39,13 @@ export default function TaskLibrary() {
   const [availableUnits, setAvailableUnits] = useState([]);
   // State for Master Library Resources (Materials, Labours)
   const [masterResources, setMasterResources] = useState({ material: [], labour: [] });
+  const [materialGroups, setMaterialGroups] = useState([]);
+  const [materialSelectionMode, setMaterialSelectionMode] = useState('individual');
+  const [selectedMaterialGroupIds, setSelectedMaterialGroupIds] = useState([]);
+  const [materialComponentDrafts, setMaterialComponentDrafts] = useState({});
+  const [combinedMaterialRate, setCombinedMaterialRate] = useState('');
+  const [combinedMaterialRateTouched, setCombinedMaterialRateTouched] = useState(false);
+  const [combinedMaterialSpecification, setCombinedMaterialSpecification] = useState('');
   const [labourSubgroups, setLabourSubgroups] = useState([]);
   const [loadingLabourSubgroups, setLoadingLabourSubgroups] = useState(false);
   const [labourSubgroupsError, setLabourSubgroupsError] = useState('');
@@ -45,6 +71,8 @@ export default function TaskLibrary() {
             setLoadingLabourSubgroups(false);
             return [];
           }
+          const groupList = Array.isArray(groups) ? groups : [];
+          setMaterialGroups(flattenMaterialGroups(groupList));
           // Flatten items from groups and subgroups
           const items = [];
           const extractItems = (groupList) => {
@@ -89,6 +117,8 @@ export default function TaskLibrary() {
   // selectedTaskId: string | null
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [rateDrafts, setRateDrafts] = useState({ materials: {}, labours: {} });
+  const [savingRates, setSavingRates] = useState(false);
 
   // Active tab in task view: 'materials' | 'labours'
   const [activeTab, setActiveTab] = useState('materials');
@@ -111,6 +141,25 @@ export default function TaskLibrary() {
   // Saving indicator
   const [submitting, setSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const selectedMaterialComponents = useMemo(() => {
+    const byId = new Map();
+    for (const groupId of selectedMaterialGroupIds) {
+      const group = materialGroups.find(candidate => candidate.id === groupId);
+      if (!group) continue;
+      for (const material of collectMaterialGroupItems(group)) byId.set(material.id, material);
+    }
+    return [...byId.values()];
+  }, [materialGroups, selectedMaterialGroupIds]);
+  const calculatedCombinedMaterialRate = useMemo(
+    () => selectedMaterialComponents.reduce((sum, material) =>
+      sum + Number(materialComponentDrafts[material.id]?.quantity ?? material.quantity ?? 0) *
+        Number(materialComponentDrafts[material.id]?.rate ?? material.rate ?? 0), 0),
+    [selectedMaterialComponents, materialComponentDrafts]
+  );
+
+  useEffect(() => {
+    if (!combinedMaterialRateTouched) setCombinedMaterialRate(String(calculatedCombinedMaterialRate));
+  }, [calculatedCombinedMaterialRate, combinedMaterialRateTouched]);
 
   const showToast = (msg, type = 'success') => {
     setToastMessage({ msg, type });
@@ -124,6 +173,33 @@ export default function TaskLibrary() {
     setLabourComponentOverrides({});
     setLabourGroupUnit('');
     setLabourModal({ open: true, mode: 'create', taskId, data: null });
+  };
+
+  const openCreateMaterialModal = taskId => {
+    setMaterialSelectionMode('individual');
+    setSelectedMaterialGroupIds([]);
+    setMaterialComponentDrafts({});
+    setCombinedMaterialRate('');
+    setCombinedMaterialRateTouched(false);
+    setCombinedMaterialSpecification('');
+    setMaterialModal({ open: true, mode: 'create', taskId, data: null });
+  };
+
+  const openEditMaterialModal = (taskId, material) => {
+    const subgroupIds = Array.isArray(material.subgroupIds) ? material.subgroupIds : [];
+    const components = Array.isArray(material.components) ? material.components : [];
+    setMaterialSelectionMode(subgroupIds.length ? 'groups' : 'individual');
+    setSelectedMaterialGroupIds(subgroupIds);
+    setMaterialComponentDrafts(Object.fromEntries(components.map(component => [component.sourceId, {
+      quantity: String(component.quantity ?? 0),
+      rate: String(component.rate ?? 0),
+    }])));
+    setCombinedMaterialRate(String(material.rate ?? 0));
+    setCombinedMaterialRateTouched(true);
+    setCombinedMaterialSpecification(
+      String(material.specification || '').split('\n').filter(line => !line.trim().startsWith('Includes:')).join('\n').trim()
+    );
+    setMaterialModal({ open: true, mode: 'edit', taskId, data: material });
   };
 
   const openEditLabourModal = (taskId, labour) => {
@@ -165,6 +241,7 @@ export default function TaskLibrary() {
       setSelectedGroupId(null);
       setSelectedTaskId(null);
       setMasterResources({ material: [], labour: [] });
+      setMaterialGroups([]);
     }
   }, [selectedLibraryId, selectedProjectId]);
 
@@ -265,6 +342,17 @@ export default function TaskLibrary() {
     }
     return null;
   }, [groups, selectedTaskId]);
+
+  useEffect(() => {
+    if (!selectedTask) {
+      setRateDrafts({ materials: {}, labours: {} });
+      return;
+    }
+    setRateDrafts({
+      materials: Object.fromEntries((selectedTask.materials || []).map(item => [item.id, item.rate ?? 0])),
+      labours: Object.fromEntries((selectedTask.labours || []).map(item => [item.id, item.rate ?? 0])),
+    });
+  }, [selectedTask]);
 
   const allLabourItems = useMemo(() => {
     const itemsById = new Map();
@@ -484,10 +572,62 @@ export default function TaskLibrary() {
   // ==================== MATERIAL CRUD ====================
   const handleSaveMaterial = async (e) => {
     e.preventDefault();
+    if (materialSelectionMode === 'groups') {
+      if (!selectedMaterialComponents.length) {
+        showToast('Select at least one material group', 'error');
+        return;
+      }
+      const components = selectedMaterialComponents.map(material => {
+        const quantity = materialComponentDrafts[material.id]?.quantity ?? material.quantity ?? 1;
+        const rate = materialComponentDrafts[material.id]?.rate ?? material.rate ?? 0;
+        return {
+          sourceId: material.id,
+          quantity: String(quantity).trim() === '' ? 0 : Number(quantity),
+          rate: String(rate).trim() === '' ? 0 : Number(rate),
+        };
+      });
+      const combinedRate = combinedMaterialRate.trim() === '' ? NaN : Number(combinedMaterialRate);
+      if (components.some(component =>
+        !Number.isFinite(component.quantity) || component.quantity < 0 ||
+        !Number.isFinite(component.rate) || component.rate < 0
+      ) || !Number.isFinite(combinedRate) || combinedRate < 0) {
+        showToast('Material quantities and rates must be valid non-negative numbers', 'error');
+        return;
+      }
+      try {
+        setSubmitting(true);
+        const response = await fetch('/api/engineering/task-library', {
+          method: materialModal.mode === 'create' ? 'POST' : 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'materialGroup',
+            id: materialModal.mode === 'edit' ? materialModal.data.id : undefined,
+            taskId: materialModal.taskId,
+            subgroupIds: selectedMaterialGroupIds,
+            components,
+            rate: combinedRate,
+            specification: combinedMaterialSpecification.trim(),
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to add material group');
+        showToast(materialModal.mode === 'create' ? 'Combined material group added to task' : 'Combined material group updated');
+        setMaterialModal({ open: false, mode: 'create', taskId: '', data: null });
+        await fetchGroups(selectedLibraryId);
+      } catch (error) {
+        console.error('Failed to add material group to task:', error);
+        showToast(error.message || 'Failed to add material group', 'error');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     const formData = new FormData(e.target);
     const name = formData.get('name')?.toString().trim();
     const unit = formData.get('unit')?.toString().trim() || null;
     const quantity = parseFloat(formData.get('quantity')) || 0;
+    const rate = parseFloat(formData.get('rate')) || 0;
     const specification = formData.get('specification')?.toString().trim() || null;
     if (!name) {
       showToast('Material name is required', 'error');
@@ -506,6 +646,7 @@ export default function TaskLibrary() {
             name,
             unit,
             quantity,
+            rate,
             specification
           })
         });
@@ -528,6 +669,7 @@ export default function TaskLibrary() {
             name,
             unit,
             quantity,
+            rate,
             specification
           })
         });
@@ -545,6 +687,45 @@ export default function TaskLibrary() {
       showToast('Network error while saving material', 'error');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const saveTaskResourceRates = async () => {
+    if (!selectedTask) return;
+    const materials = (selectedTask.materials || []).map(material => ({
+      id: material.id,
+      rate: rateDrafts.materials[material.id] ?? material.rate ?? 0,
+    }));
+    const labours = (selectedTask.labours || []).map(labour => ({
+      id: labour.id,
+      rate: rateDrafts.labours[labour.id] ?? labour.rate ?? 0,
+    }));
+    const invalidRate = [...materials, ...labours].some(({ rate }) =>
+      String(rate).trim() === '' || !Number.isFinite(Number(rate)) || Number(rate) < 0
+    );
+    if (invalidRate) {
+      showToast('Rates must be valid non-negative numbers', 'error');
+      return;
+    }
+
+    try {
+      setSavingRates(true);
+      const response = await fetch('/api/engineering/task-library', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'rates', taskId: selectedTask.id, materials, labours }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save task rates');
+      }
+      showToast('Material and labour rates saved');
+      await fetchGroups(selectedLibraryId);
+    } catch (error) {
+      console.error('Failed to save task resource rates:', error);
+      showToast(error.message || 'Failed to save task rates', 'error');
+    } finally {
+      setSavingRates(false);
     }
   };
 
@@ -739,7 +920,7 @@ export default function TaskLibrary() {
               </div>
             </div>
             
-            <button 
+            <button
               onClick={() => selectedLibraryId && fetchGroups(selectedLibraryId)} 
               title="Refresh Task Library"
               style={{
@@ -838,7 +1019,7 @@ export default function TaskLibrary() {
 
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
+            <button
               className="btn-primary" 
               onClick={() => setGroupModal({ open: true, mode: 'create', data: null })}
               disabled={!selectedLibraryId}
@@ -1364,16 +1545,27 @@ export default function TaskLibrary() {
                           Attached Materials
                         </h3>
                         <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>
-                          Bill of Materials required per unit of "{selectedTask.name}"
+                          Bill of Materials and standard rates per unit of "{selectedTask.name}". Saved rates prefill Purchase Orders and Work Orders.
                         </p>
                       </div>
-                      <button 
-                        className="btn-primary"
-                        onClick={() => setMaterialModal({ open: true, mode: 'create', taskId: selectedTask.id, data: null })}
-                        style={{ padding: '7px 14px', fontSize: '0.8rem' }}
-                      >
-                        <Plus size={14} /> Add Material
-                      </button>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {selectedTask.materials?.length > 0 && <button
+                          className="btn-primary"
+                          type="button"
+                          onClick={saveTaskResourceRates}
+                          disabled={savingRates}
+                          style={{ padding: '7px 14px', fontSize: '0.8rem', background: '#0f766e' }}
+                        >
+                          {savingRates ? 'Saving Rates…' : 'Save All Rates'}
+                        </button>}
+                        <button
+                          className="btn-primary"
+                          onClick={() => openCreateMaterialModal(selectedTask.id)}
+                          style={{ padding: '7px 14px', fontSize: '0.8rem' }}
+                        >
+                          <Plus size={14} /> Add Material
+                        </button>
+                      </div>
                     </div>
 
                     {(!selectedTask.materials || selectedTask.materials.length === 0) ? (
@@ -1388,7 +1580,7 @@ export default function TaskLibrary() {
                         </p>
                         <button 
                           className="btn-primary"
-                          onClick={() => setMaterialModal({ open: true, mode: 'create', taskId: selectedTask.id, data: null })}
+                          onClick={() => openCreateMaterialModal(selectedTask.id)}
                           style={{ padding: '7px 14px', fontSize: '0.78rem' }}
                         >
                           <Plus size={14} /> Add First Material
@@ -1403,6 +1595,8 @@ export default function TaskLibrary() {
                               <th style={{ padding: '10px 14px' }}>Material Name</th>
                               <th style={{ padding: '10px 14px', width: '110px' }}>Unit</th>
                               <th style={{ padding: '10px 14px', width: '120px' }}>Quantity</th>
+                              <th style={{ padding: '10px 14px', width: '140px' }}>Rate / Unit</th>
+                              <th style={{ padding: '10px 14px', width: '140px' }}>Amount</th>
                               <th style={{ padding: '10px 14px' }}>Specification / Grade</th>
                               <th style={{ padding: '10px 14px', width: '100px', textAlign: 'center' }}>Actions</th>
                             </tr>
@@ -1425,6 +1619,23 @@ export default function TaskLibrary() {
                                 <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>
                                   {mat.quantity}
                                 </td>
+                                <td style={{ padding: '10px 14px' }}>
+                                  <input
+                                    aria-label={`${mat.name} rate`}
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={rateDrafts.materials[mat.id] ?? mat.rate ?? 0}
+                                    onChange={event => setRateDrafts(current => ({
+                                      ...current,
+                                      materials: { ...current.materials, [mat.id]: event.target.value },
+                                    }))}
+                                    style={{ width: 110, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6 }}
+                                  />
+                                </td>
+                                <td style={{ padding: '10px 14px', fontWeight: 700, color: '#0369a1' }}>
+                                  ₹{(Number(mat.quantity || 0) * Number(rateDrafts.materials[mat.id] ?? mat.rate ?? 0)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                </td>
                                 <td style={{ padding: '10px 14px', color: '#64748b' }}>
                                   {mat.specification || <span style={{ fontStyle: 'italic', color: '#cbd5e1' }}>None</span>}
                                 </td>
@@ -1432,7 +1643,7 @@ export default function TaskLibrary() {
                                   <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                                     <button 
                                       title="Edit Material"
-                                      onClick={() => setMaterialModal({ open: true, mode: 'edit', taskId: selectedTask.id, data: mat })}
+                                      onClick={() => openEditMaterialModal(selectedTask.id, mat)}
                                       style={{
                                         background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px'
                                       }}
@@ -1477,13 +1688,24 @@ export default function TaskLibrary() {
                           Workforce & labour effort required per unit of "{selectedTask.name}"
                         </p>
                       </div>
-                      <button 
-                        className="btn-primary"
-                        onClick={() => openCreateLabourModal(selectedTask.id)}
-                        style={{ padding: '7px 14px', fontSize: '0.8rem' }}
-                      >
-                        <Plus size={14} /> Add Labour
-                      </button>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {selectedTask.labours?.length > 0 && <button
+                          className="btn-primary"
+                          type="button"
+                          onClick={saveTaskResourceRates}
+                          disabled={savingRates}
+                          style={{ padding: '7px 14px', fontSize: '0.8rem', background: '#0f766e' }}
+                        >
+                          {savingRates ? 'Saving Rates…' : 'Save All Rates'}
+                        </button>}
+                        <button
+                          className="btn-primary"
+                          onClick={() => openCreateLabourModal(selectedTask.id)}
+                          style={{ padding: '7px 14px', fontSize: '0.8rem' }}
+                        >
+                          <Plus size={14} /> Add Labour
+                        </button>
+                      </div>
                     </div>
 
                     {(!selectedTask.labours || selectedTask.labours.length === 0) ? (
@@ -1537,11 +1759,22 @@ export default function TaskLibrary() {
                                 <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>
                                   {lab.quantity}
                                 </td>
-                                <td style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>
-                                  ₹{Number(lab.rate || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                <td style={{ padding: '10px 14px' }}>
+                                  <input
+                                    aria-label={`${lab.name} rate`}
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={rateDrafts.labours[lab.id] ?? lab.rate ?? 0}
+                                    onChange={event => setRateDrafts(current => ({
+                                      ...current,
+                                      labours: { ...current.labours, [lab.id]: event.target.value },
+                                    }))}
+                                    style={{ width: 110, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6 }}
+                                  />
                                 </td>
                                 <td style={{ padding: '10px 14px', fontWeight: 700, color: '#b45309' }}>
-                                  ₹{(Number(lab.quantity || 0) * Number(lab.rate || 0)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                  ₹{(Number(lab.quantity || 0) * Number(rateDrafts.labours[lab.id] ?? lab.rate ?? 0)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                 </td>
                                 <td style={{ padding: '10px 14px', color: '#64748b' }}>
                                   {lab.specification || <span style={{ fontStyle: 'italic', color: '#cbd5e1' }}>None</span>}
@@ -2130,6 +2363,122 @@ export default function TaskLibrary() {
             </div>
 
             <form onSubmit={handleSaveMaterial} style={{ padding: '20px' }}>
+              {materialModal.mode === 'create' && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16, padding: 4, background: '#f1f5f9', borderRadius: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setMaterialSelectionMode('individual')}
+                    style={{ flex: 1, padding: '8px 10px', border: 0, borderRadius: 6, background: materialSelectionMode === 'individual' ? '#fff' : 'transparent', color: materialSelectionMode === 'individual' ? '#0369a1' : '#64748b', fontWeight: 700, cursor: 'pointer', boxShadow: materialSelectionMode === 'individual' ? '0 1px 3px rgba(15,23,42,.12)' : 'none' }}
+                  >
+                    Individual Material
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMaterialSelectionMode('groups')}
+                    style={{ flex: 1, padding: '8px 10px', border: 0, borderRadius: 6, background: materialSelectionMode === 'groups' ? '#fff' : 'transparent', color: materialSelectionMode === 'groups' ? '#0369a1' : '#64748b', fontWeight: 700, cursor: 'pointer', boxShadow: materialSelectionMode === 'groups' ? '0 1px 3px rgba(15,23,42,.12)' : 'none' }}
+                  >
+                    Combined Material Group
+                  </button>
+                </div>
+              )}
+              {materialSelectionMode === 'groups' ? (
+                <div>
+                  <label className="modern-label">Select material group(s) *</label>
+                  {materialGroups.length === 0 ? (
+                    <div style={{ padding: 12, border: '1px solid #e2e8f0', borderRadius: 8, color: '#64748b' }}>
+                      No material groups are available in this library.
+                    </div>
+                  ) : (
+                    <div style={{ maxHeight: 190, overflowY: 'auto', border: '1px solid #cbd5e1', borderRadius: 8, padding: 8 }}>
+                      {materialGroups.map(group => {
+                        const materialCount = collectMaterialGroupItems(group).length;
+                        return (
+                          <label key={group.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 6px', borderBottom: '1px solid #f1f5f9', cursor: materialCount ? 'pointer' : 'default', opacity: materialCount ? 1 : 0.6 }}>
+                            <input
+                              type="checkbox"
+                              disabled={!materialCount}
+                              checked={selectedMaterialGroupIds.includes(group.id)}
+                              onChange={() => {
+                                setCombinedMaterialRateTouched(false);
+                                setSelectedMaterialGroupIds(current =>
+                                  current.includes(group.id) ? current.filter(id => id !== group.id) : [...current, group.id]
+                                );
+                              }}
+                            />
+                            <span style={{ flex: 1 }}>
+                              <strong>{group.groupPath}</strong>
+                              <small style={{ display: 'block', color: '#64748b' }}>{materialCount} material{materialCount === 1 ? '' : 's'} · combined master rate ₹{collectMaterialGroupItems(group).reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.rate || 0), 0).toLocaleString('en-IN')}</small>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {selectedMaterialComponents.length > 0 && (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <strong>Materials to add ({selectedMaterialComponents.length})</strong>
+                        <strong style={{ color: '#0369a1' }}>
+                          Component total: ₹{calculatedCombinedMaterialRate.toLocaleString('en-IN')}
+                        </strong>
+                      </div>
+                      <div style={{ maxHeight: 190, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
+                        {selectedMaterialComponents.map(material => {
+                          const draft = materialComponentDrafts[material.id] || {};
+                          return (
+                            <div key={material.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 1fr) 80px 90px 100px', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f1f5f9' }}>
+                              <span><strong>{material.name}</strong><small style={{ display: 'block', color: '#64748b' }}>{material.groupPath}</small></span>
+                              <span style={{ color: '#64748b' }}>{material.unit || 'Nos'}</span>
+                              <input aria-label={`${material.name} quantity`} type="number" min="0" step="any" className="modern-input" value={draft.quantity ?? material.quantity ?? 1} onChange={event => setMaterialComponentDrafts(current => ({ ...current, [material.id]: { ...current[material.id], quantity: event.target.value } }))} />
+                              <input aria-label={`${material.name} rate`} title="Rate per unit" type="number" min="0" step="any" className="modern-input" value={draft.rate ?? material.rate ?? 0} onChange={event => setMaterialComponentDrafts(current => ({ ...current, [material.id]: { ...current[material.id], rate: event.target.value } }))} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
+                        <div>
+                          <label className="modern-label">Unit *</label>
+                          <input className="modern-input" value="Lot" readOnly />
+                        </div>
+                        <div>
+                          <label className="modern-label">Quantity *</label>
+                          <input className="modern-input" type="number" value="1" readOnly />
+                        </div>
+                        <div>
+                          <label className="modern-label">Combined Rate (editable)</label>
+                          <input
+                            aria-label="Combined material rate"
+                            type="number"
+                            min="0"
+                            step="any"
+                            className="modern-input"
+                            value={combinedMaterialRate}
+                            onChange={event => {
+                              setCombinedMaterialRate(event.target.value);
+                              setCombinedMaterialRateTouched(true);
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 12 }}>
+                        <label className="modern-label">Specification / Grade</label>
+                        <textarea
+                          className="modern-input"
+                          rows={2}
+                          value={combinedMaterialSpecification}
+                          onChange={event => setCombinedMaterialSpecification(event.target.value)}
+                          placeholder="Optional group specification"
+                          style={{ resize: 'vertical' }}
+                        />
+                      </div>
+                      <small style={{ display: 'block', marginTop: 6, color: '#64748b' }}>
+                        The combined rate is saved for the selected material group. You can edit each component rate above or override the total here.
+                      </small>
+                    </div>
+                  )}
+                </div>
+              ) : (
+              <>
               <div style={{ marginBottom: '14px' }}>
                 <label className="modern-label">Material Name *</label>
                 <select 
@@ -2193,6 +2542,7 @@ export default function TaskLibrary() {
                   <label className="modern-label">Rate</label>
                   <input 
                     type="number" 
+                    min="0"
                     step="any"
                     name="rate" 
                     className="modern-input" 
@@ -2213,6 +2563,8 @@ export default function TaskLibrary() {
                   style={{ resize: 'vertical' }}
                 />
               </div>
+              </>
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button 
@@ -2233,7 +2585,11 @@ export default function TaskLibrary() {
                   style={{ padding: '8px 20px', fontSize: '0.85rem' }}
                 >
                   {submitting && <Loader2 size={14} className="animate-spin" />}
-                  {materialModal.mode === 'create' ? 'Add Material' : 'Save Changes'}
+                  {materialModal.mode === 'edit'
+                    ? 'Save Changes'
+                    : materialSelectionMode === 'groups'
+                      ? `Add ${selectedMaterialComponents.length || ''} Group Materials`
+                      : 'Add Material'}
                 </button>
               </div>
             </form>
@@ -2386,6 +2742,7 @@ export default function TaskLibrary() {
                   <label className="modern-label">{labourSelectionMode === 'groups' ? 'Combined Rate (editable)' : 'Rate (editable)'}</label>
                   <input 
                     type="number" 
+                    min="0"
                     step="any"
                     name="rate" 
                     className="modern-input" 

@@ -51,6 +51,7 @@ function CreatePOContent() {
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [unitList, setUnitList] = useState([]);
+  const [bulkRates, setBulkRates] = useState('');
   const [lastEditedBy, setLastEditedBy] = useState('');
   const [lastEditedAt, setLastEditedAt] = useState('');
 
@@ -254,6 +255,16 @@ function CreatePOContent() {
   };
 
   const addItem = () => setItems([...items, { item: '', specification: '', hsnCode: generateHsnSacCode('', items.length), quantity: '', unit: unitList[0] || '', rate: '', itemDiscount: 0, gstPercent: 18, cgstPercent: 9, sgstPercent: 9 }]);
+
+  const applyBulkRates = () => {
+    const rates = bulkRates.split(/\r?\n/).map(rate => rate.trim()).filter(Boolean);
+    if (rates.length !== items.length || rates.some(rate => !Number.isFinite(Number(rate)) || Number(rate) < 0)) {
+      alert(`Enter exactly ${items.length} valid non-negative rates, one per item row.`);
+      return;
+    }
+    setItems(current => current.map((item, index) => ({ ...item, rate: Number(rates[index]) })));
+    setBulkRates('');
+  };
 
   let totalBasic = 0;
   let totalCgst = 0;
@@ -488,6 +499,22 @@ function CreatePOContent() {
             </table>
           </div>
 
+          <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'end', gap: 8, margin: '12px 0' }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>
+              Paste item rates (one per line, same row order)
+              <textarea
+                value={bulkRates}
+                onChange={event => setBulkRates(event.target.value)}
+                className="doc-input"
+                rows={2}
+                placeholder="1200&#10;850.50&#10;300"
+                style={{ display: 'block', width: 230, border: '1px solid #cbd5e1', borderRadius: 4, marginTop: 4, textAlign: 'right', resize: 'vertical' }}
+              />
+            </label>
+            <button type="button" onClick={applyBulkRates} className="no-print" style={{ padding: '7px 12px', border: '1px solid #2563eb', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, cursor: 'pointer' }}>
+              Apply rates
+            </button>
+          </div>
           <table className="doc-table items-table">
             <thead>
               <tr style={{ backgroundColor: '#f1f5f9' }}>
@@ -527,7 +554,7 @@ function CreatePOContent() {
                         {unitList.map(unit => <option key={unit} value={unit}>{unit}</option>)}
                       </select><span className="print-value" style={{ textAlign: 'center' }}>{item.unit || 'N/A'}</span>
                     </td>
-                    <td><input type="number" step="any" name="rate" value={item.rate} onChange={e => handleItemChange(idx, e)} className="doc-input" style={{ textAlign: 'right' }} required /><span className="print-value" style={{ textAlign: 'right' }}>{formatIndianAmount(item.rate)}</span></td>
+                    <td><input type="number" min="0" step="any" name="rate" value={item.rate} onChange={e => handleItemChange(idx, e)} className="doc-input" style={{ textAlign: 'right' }} required /><span className="print-value" style={{ textAlign: 'right' }}>{formatIndianAmount(item.rate)}</span></td>
                     <td style={{ textAlign: 'right' }}>{formatIndianAmount(taxable)}</td>
                     <td>
                       <select name="gstPercent" value={item.gstPercent ?? ((parseFloat(item.cgstPercent || 0) + parseFloat(item.sgstPercent || 0)) || 0)} onChange={e => handleItemChange(idx, e)} className="doc-select" style={{ textAlign: 'center' }}>

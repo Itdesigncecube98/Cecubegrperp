@@ -8,29 +8,27 @@ import {
 } from '../earnedLeaveAccrual';
 
 describe('getCasualLeaveAccrual', () => {
-  test('credits 12 CL each April after joining and carries it forward', () => {
+  test('credits 12 CL on joining and each joining-date anniversary', () => {
     expect(getCasualLeaveAccrual('2025-04-15', '2026-10')).toMatchObject({
       monthsSinceJoining: 18,
-      accruedLeaves: 12,
+      accruedLeaves: 24,
     });
   });
 
-  test('does not accrue the current month before the joining-date anniversary', () => {
-    expect(getCasualLeaveAccrual('2026-10-15', '2026-10').accruedLeaves).toBe(0);
+  test('does not accrue before the joining date', () => {
+    expect(getCasualLeaveAccrual('2026-11-15', '2026-10').accruedLeaves).toBe(0);
   });
 });
 
 describe('getEarnedLeaveAccrual', () => {
-  test('starts one EL per 20 calendar days after eight months of service', () => {
+  test('credits 18 EL after eight months and every joining anniversary thereafter', () => {
     expect(getEarnedLeaveAccrual('2025-01-15', '2025-11')).toMatchObject({
       monthsSinceJoining: 10,
-      accruedLeaves: 3,
+      accruedLeaves: 18,
     });
-  });
-
-  test('credits 18 EL each April after the initial 20-day accrual period', () => {
-    expect(getEarnedLeaveAccrual('2025-01-15', '2026-04').accruedLeaves).toBe(27);
-    expect(getEarnedLeaveAccrual('2025-01-15', '2026-11').accruedLeaves).toBe(45);
+    expect(getEarnedLeaveAccrual('2025-01-15', '2026-08').accruedLeaves).toBe(18);
+    expect(getEarnedLeaveAccrual('2025-01-15', '2026-09').accruedLeaves).toBe(36);
+    expect(getEarnedLeaveAccrual('2025-01-15', '2026-10').accruedLeaves).toBe(36);
   });
 
   test('does not accrue before the eight-month service milestone', () => {
@@ -38,13 +36,14 @@ describe('getEarnedLeaveAccrual', () => {
   });
 
   test('clamps a month-end joining date when calculating eligibility', () => {
-    expect(getEarnedLeaveAccrual('2025-01-31', '2025-11').accruedLeaves).toBe(3);
+    expect(getEarnedLeaveAccrual('2025-01-31', '2025-11').accruedLeaves).toBe(18);
   });
 
-  test('uses the 20-calendar-day pre-April accrual for a September joiner', () => {
-    expect(getEarnedLeaveAccrual('2026-09-15', '2027-06').accruedLeaves).toBe(2);
-    expect(getEarnedLeaveAccrual('2026-09-15', '2027-07').accruedLeaves).toBe(3);
-    expect(getEarnedLeaveAccrual('2026-09-15', '2028-04').accruedLeaves).toBe(34);
+  test('bases earned-leave credits on service milestones, not April', () => {
+    expect(getEarnedLeaveAccrual('2026-09-15', '2027-04').accruedLeaves).toBe(0);
+    expect(getEarnedLeaveAccrual('2026-09-15', '2027-06').accruedLeaves).toBe(18);
+    expect(getEarnedLeaveAccrual('2026-09-15', '2028-04').accruedLeaves).toBe(18);
+    expect(getEarnedLeaveAccrual('2026-09-15', '2028-05').accruedLeaves).toBe(36);
   });
 
   test('ignores a cancelled encashment when calculating carried leave', () => {
@@ -55,7 +54,7 @@ describe('getEarnedLeaveAccrual', () => {
       encashments: [
         { asOnDate: '2025-11', encashedDays: 6, cancelledAt: '2025-11-10T00:00:00.000Z' },
       ],
-    }).availableLeaves).toBe(3);
+    }).availableLeaves).toBe(18);
   });
 
   test('does not subtract encashed non-earned leave from the earned-leave balance', () => {
@@ -66,7 +65,7 @@ describe('getEarnedLeaveAccrual', () => {
       encashments: [
         { leaveType: 'Casual Leave', asOnDate: '2025-11', encashedDays: 6 },
       ],
-    }).availableLeaves).toBe(3);
+    }).availableLeaves).toBe(18);
   });
 
   test('deduplicates attendance CL with an approved Casual leave request', () => {
@@ -92,10 +91,10 @@ describe('getEarnedLeaveAccrual', () => {
         { date: '2026-09-02', status: 'EL' },
       ],
     })).toMatchObject({
-      accruedLeaves: 12,
+      accruedLeaves: 24,
       leavesTaken: 1,
       leavesEncashed: 2,
-      availableLeaves: 9,
+      availableLeaves: 21,
     });
   });
 
@@ -119,10 +118,10 @@ describe('calculateAvailableEarnedLeave', () => {
       encashments: [{ asOnDate: '2026-02', encashedDays: 5 }],
     });
     expect(balance).toMatchObject({
-      accruedLeaves: 45,
+      accruedLeaves: 54,
       leavesTaken: 2,
       leavesEncashed: 5,
-      availableLeaves: 38,
+      availableLeaves: 47,
     });
   });
 
@@ -156,9 +155,9 @@ describe('calculateAvailableEarnedLeave', () => {
         { date: '2025-10-03', status: 'CL' },
       ],
     })).toMatchObject({
-      accruedLeaves: 27,
+      accruedLeaves: 36,
       leavesTaken: 2,
-      availableLeaves: 25,
+      availableLeaves: 34,
     });
   });
 });

@@ -2,10 +2,10 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  Briefcase, FileText, Settings, 
-  ChevronDown, ChevronRight, Users, 
-  LogOut, Search, X, 
+import {
+  Briefcase, FileText,
+  ChevronDown, ChevronRight, Users,
+  LogOut, Search, X,
   ChevronLeft, Sparkles, BarChart2, Layers,
   ListOrdered
 } from 'lucide-react';
@@ -53,15 +53,7 @@ export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollaps
       label: 'Tenders',
       icon: ListOrdered,
       items: [
-        { name: 'Tender Register', path: '/tender/register' },
-      ]
-    },
-    {
-      id: 'master',
-      label: 'Masters',
-      icon: Settings,
-      items: [
-        { name: 'Tender Master', path: '/tender/master' },
+        { name: 'Tender', path: '/tender/register' },
       ]
     }
   ];

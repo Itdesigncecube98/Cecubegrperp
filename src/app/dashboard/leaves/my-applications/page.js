@@ -142,7 +142,7 @@ export default function MyLeaveApplications() {
                   <tr key={request.id}>
                     <td>{request.leaveType}</td>
                     <td>{request.startDate}</td>
-                    <td>{request.endDate}{request.isHalfDay ? ' (Half day)' : ''}</td>
+                    <td>{request.endDate}{request.isHalfDay ? ` (Half day${request.halfDayPeriod ? `, ${request.halfDayPeriod === 'FIRST_HALF' ? 'First Half' : 'Second Half'}` : ''})` : ''}</td>
                     <td>{calculateDays(request)}</td>
                     <td>{request.status}</td>
                     <td>{request.reason || '—'}</td>

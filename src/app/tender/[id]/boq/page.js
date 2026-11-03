@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, use, useMemo } from 'react';
-import { Plus, Trash2, X, PackagePlus, Users, Save } from 'lucide-react';
+import { Plus, Trash2, X, PackagePlus, Users, Save, BookOpen } from 'lucide-react';
 
 const DEFAULT_UNITS = ['Nos', 'Rmt', 'Mtr', 'Sqm', 'Cum', 'Kg', 'Ton', 'Lot', 'Bags', 'Manday', 'Hour', 'Point'];
 
@@ -23,6 +23,18 @@ function flattenMaterialGroups(groups, parentPath = '') {
 
 function getMaterialGroupComponents(group) {
   return flattenMaterialGroups([group]);
+}
+
+function getResourceComponents(resource) {
+  if (Array.isArray(resource.components) && resource.components.length) return resource.components;
+  return [{
+    id: resource.id || resource.name,
+    name: resource.name,
+    quantity: resource.quantity ?? 0,
+    unit: resource.unit || '',
+    rate: resource.rate ?? 0,
+    specification: resource.specification || '',
+  }];
 }
 
 function getSelectedComponents(type, mode, selectedGroupIds, selectedItemIds, catalog) {
@@ -49,7 +61,7 @@ export default function TenderBOQ({ params }) {
   const tenderId = unwrappedParams.id;
   const [loading, setLoading] = useState(false);
   const [boqItems, setBoqItems] = useState([]);
-  const [expandedItemId, setExpandedItemId] = useState(null);
+  const [expandedItemIds, setExpandedItemIds] = useState([]);
   const [libraries, setLibraries] = useState([]);
   const [selectedLibraryId, setSelectedLibraryId] = useState('');
   const [catalog, setCatalog] = useState({ groups: [], items: [] });
@@ -67,6 +79,12 @@ export default function TenderBOQ({ params }) {
   const [rateTouched, setRateTouched] = useState(false);
   const [resourceSpecification, setResourceSpecification] = useState('');
   const [componentEdits, setComponentEdits] = useState({});
+  const [taskModalItemId, setTaskModalItemId] = useState(null);
+  const [taskLibraryId, setTaskLibraryId] = useState('');
+  const [taskLibraryGroups, setTaskLibraryGroups] = useState([]);
+  const [taskLibraryLoading, setTaskLibraryLoading] = useState(false);
+  const [taskLibraryError, setTaskLibraryError] = useState('');
+  const [selectedTaskId, setSelectedTaskId] = useState('');
   const [availableUnits, setAvailableUnits] = useState(DEFAULT_UNITS);
   const [newItem, setNewItem] = useState({
     serialNo: '',
@@ -87,11 +105,19 @@ export default function TenderBOQ({ params }) {
         ]);
         if (!tenderRes.ok) throw new Error('Failed to load tender BOQ.');
         const tenderData = await tenderRes.json();
-        setBoqItems((tenderData.boqItems || []).map(item => ({
+        const loadedItems = (tenderData.boqItems || []).map(item => ({
           ...item,
-          materials: Array.isArray(item.materials) ? item.materials : [],
-          labours: Array.isArray(item.labours) ? item.labours : [],
-        })));
+          materials: (Array.isArray(item.materials) ? item.materials : []).map(resource => ({
+            ...resource,
+            components: getResourceComponents(resource),
+          })),
+          labours: (Array.isArray(item.labours) ? item.labours : []).map(resource => ({
+            ...resource,
+            components: getResourceComponents(resource),
+          })),
+        }));
+        setBoqItems(loadedItems);
+        setExpandedItemIds(loadedItems.map(item => item.id));
         if (libraryRes.ok) {
           const libraryData = await libraryRes.json();
           setLibraries(Array.isArray(libraryData) ? libraryData : []);
@@ -155,6 +181,43 @@ export default function TenderBOQ({ params }) {
     return () => { active = false; };
   }, [selectedLibraryId, resourceModal?.type]);
 
+  useEffect(() => {
+    if (!taskModalItemId || !taskLibraryId) {
+      setTaskLibraryGroups([]);
+      setSelectedTaskId('');
+      return;
+    }
+    let active = true;
+    async function loadTaskLibrary() {
+      setTaskLibraryLoading(true);
+      setTaskLibraryError('');
+      try {
+        const response = await fetch(`/api/engineering/task-library?libraryId=${encodeURIComponent(taskLibraryId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load Task Library tasks.');
+        if (!active) return;
+        const groups = Array.isArray(data) ? data : [];
+        setTaskLibraryGroups(groups);
+        setSelectedTaskId(groups.flatMap(group => group.tasks || [])[0]?.id || '');
+      } catch (error) {
+        if (active) {
+          console.error('Failed to load BOQ Task Library:', error);
+          setTaskLibraryError(error.message || 'Could not load Task Library tasks.');
+          setTaskLibraryGroups([]);
+        }
+      } finally {
+        if (active) setTaskLibraryLoading(false);
+      }
+    }
+    loadTaskLibrary();
+    return () => { active = false; };
+  }, [taskModalItemId, taskLibraryId]);
+
+  const selectedTask = useMemo(
+    () => taskLibraryGroups.flatMap(group => group.tasks || []).find(task => task.id === selectedTaskId) || null,
+    [taskLibraryGroups, selectedTaskId]
+  );
+
   const selectedComponents = useMemo(
     () => getSelectedComponents(resourceModal?.type, resourceMode, selectedGroupIds, selectedItemIds, catalog),
     [resourceModal?.type, resourceMode, selectedGroupIds, selectedItemIds, catalog]
@@ -193,6 +256,7 @@ export default function TenderBOQ({ params }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to add BOQ item.');
       setBoqItems(previous => [...previous, data]);
+      setExpandedItemIds(previous => [...previous, data.id]);
       setNewItem({ serialNo: '', description: '', unit: '', quantity: '', clientRate: '', estimatedRate: '' });
     } catch (error) {
       console.error('Failed to add BOQ item:', error);
@@ -291,14 +355,138 @@ export default function TenderBOQ({ params }) {
     }
   };
 
+  const updateResourceComponent = (itemId, type, resourceId, componentId, field, value) => {
+    const resourceField = type === 'Material' ? 'materials' : 'labours';
+    setBoqItems(previous => previous.map(item => item.id !== itemId ? item : {
+      ...item,
+      [resourceField]: (item[resourceField] || []).map(resource => resource.id !== resourceId ? resource : {
+        ...resource,
+        components: getResourceComponents(resource).map(component => component.id !== componentId ? component : {
+          ...component,
+          [field]: field === 'quantity' ? (value === '' ? '' : Number(value)) : value,
+        }),
+      }),
+    }));
+  };
+
+  const saveResourceComponents = async (item, type, resource) => {
+    const field = type === 'Material' ? 'materials' : 'labours';
+    const resources = (item[field] || []).map(entry => ({
+      ...entry,
+      components: getResourceComponents(entry).map(component => ({
+        ...component,
+        quantity: String(component.quantity).trim() === '' ? 0 : Number(component.quantity),
+        unit: String(component.unit || '').trim() || entry.unit || (type === 'Material' ? 'Nos' : 'Manday'),
+      })),
+    }));
+    setResourceSaving(true);
+    try {
+      const response = await fetch(`/api/tender/${tenderId}/boq`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: item.id, resourceType: type, resources }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `Failed to save ${type.toLowerCase()} breakdown.`);
+      setBoqItems(previous => previous.map(row => row.id === item.id ? {
+        ...row,
+        [field]: Array.isArray(data[field]) ? data[field] : resources,
+      } : row));
+    } catch (error) {
+      console.error(`Failed to save BOQ ${type.toLowerCase()} component quantities and units:`, error);
+      alert(error.message || `Failed to save ${type.toLowerCase()} breakdown.`);
+    } finally {
+      setResourceSaving(false);
+    }
+  };
+
+  const importTaskResources = async () => {
+    const item = boqItems.find(row => row.id === taskModalItemId);
+    if (!item || !selectedTask) return;
+    const materials = (selectedTask.materials || []).map(material => ({
+      id: `task-${selectedTask.id}-${material.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: material.name,
+      mode: 'task-library',
+      taskLibraryTaskId: selectedTask.id,
+      taskLibraryTaskName: selectedTask.name,
+      perTaskUnit: true,
+      unit: material.unit || 'Nos',
+      quantity: Number(material.quantity) || 0,
+      rate: Number(material.rate) || 0,
+      specification: material.specification || '',
+      components: [{
+        id: material.id,
+        name: material.name,
+        quantity: Number(material.quantity) || 0,
+        unit: material.unit || 'Nos',
+        rate: Number(material.rate) || 0,
+        specification: material.specification || '',
+      }],
+    }));
+    const labours = (selectedTask.labours || []).map(labour => ({
+      id: `task-${selectedTask.id}-${labour.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: labour.name,
+      mode: 'task-library',
+      taskLibraryTaskId: selectedTask.id,
+      taskLibraryTaskName: selectedTask.name,
+      perTaskUnit: true,
+      unit: labour.unit || 'Manday',
+      quantity: Number(labour.quantity) || 0,
+      rate: Number(labour.rate) || 0,
+      specification: labour.specification || '',
+      components: (Array.isArray(labour.components) ? labour.components : []).map((component, index) => ({
+        id: component.sourceId || `${labour.id}-component-${index}`,
+        name: component.name || labour.name,
+        groupPath: component.groupPath || '',
+        quantity: Number(component.quantity) || 0,
+        unit: component.unit || labour.unit || 'Manday',
+        rate: Number(component.rate) || 0,
+        specification: component.specification || '',
+      })),
+    }));
+    if (!materials.length && !labours.length) {
+      alert('This Task Library task has no attached materials or labour to import.');
+      return;
+    }
+
+    setResourceSaving(true);
+    try {
+      const response = await fetch(`/api/tender/${tenderId}/boq`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemId: item.id,
+          resourceType: 'TaskLibraryImport',
+          materials: [...(Array.isArray(item.materials) ? item.materials : []), ...materials],
+          labours: [...(Array.isArray(item.labours) ? item.labours : []), ...labours],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to import Task Library resources.');
+      setBoqItems(previous => previous.map(row => row.id === item.id ? {
+        ...row,
+        materials: Array.isArray(data.materials) ? data.materials : [...(item.materials || []), ...materials],
+        labours: Array.isArray(data.labours) ? data.labours : [...(item.labours || []), ...labours],
+      } : row));
+      setTaskModalItemId(null);
+    } catch (error) {
+      console.error('Failed to import Task Library resources into BOQ:', error);
+      alert(error.message || 'Failed to import Task Library resources.');
+    } finally {
+      setResourceSaving(false);
+    }
+  };
+
   const toggleSelection = (id, current, setter) => setter(current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
   const formatCurrency = value => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  const resourceAmount = (resource, boqQuantity) =>
+    Number(resource.quantity || 0) * Number(resource.rate || 0) * (resource.perTaskUnit ? boqQuantity : 1);
   const totals = boqItems.reduce((acc, item) => {
     const qty = Number(item.quantity) || 0;
     acc.clientTotal += qty * (Number(item.clientRate) || 0);
     acc.estTotal += qty * (Number(item.estimatedRate) || 0);
     acc.resourceTotal += [...(item.materials || []), ...(item.labours || [])]
-      .reduce((sum, resource) => sum + Number(resource.quantity || 0) * Number(resource.rate || 0), 0);
+      .reduce((sum, resource) => sum + resourceAmount(resource, qty), 0);
     return acc;
   }, { clientTotal: 0, estTotal: 0, resourceTotal: 0 });
 
@@ -332,8 +520,10 @@ export default function TenderBOQ({ params }) {
               const materials = Array.isArray(item.materials) ? item.materials : [];
               const labours = Array.isArray(item.labours) ? item.labours : [];
               const resourceTotal = [...materials, ...labours]
-                .reduce((sum, resource) => sum + Number(resource.quantity || 0) * Number(resource.rate || 0), 0);
-              const expanded = expandedItemId === item.id;
+                .reduce((sum, resource) => sum + resourceAmount(resource, qty), 0);
+              const expanded = expandedItemIds.includes(item.id);
+              const materialCount = materials.reduce((count, resource) => count + getResourceComponents(resource).length, 0);
+              const labourCount = labours.reduce((count, resource) => count + getResourceComponents(resource).length, 0);
               return (
                 <React.Fragment key={item.id}>
                   <tr>
@@ -352,17 +542,25 @@ export default function TenderBOQ({ params }) {
                         <div>
                           <strong>Task resources</strong>
                           <span style={{ marginLeft: 12, color: '#475569' }}>
-                            {materials.length} material group/item{materials.length === 1 ? '' : 's'} · {labours.length} labour group/item{labours.length === 1 ? '' : 's'} · Resource cost {formatCurrency(resourceTotal)}
+                            {materialCount} material{materialCount === 1 ? '' : 's'} · {labourCount} labour item{labourCount === 1 ? '' : 's'} · Resource cost {formatCurrency(resourceTotal)}
                           </span>
                         </div>
                         <div style={{ display: 'flex', gap: 8 }}>
+                          <button type="button" className="tnd-btn" onClick={() => {
+                            setTaskLibraryId(selectedLibraryId);
+                            setTaskModalItemId(item.id);
+                          }}>
+                            <BookOpen size={15} /> Add from Task Library
+                          </button>
                           <button type="button" className="tnd-btn" onClick={() => openResourceDialog(item, 'Material')}>
                             <PackagePlus size={15} /> Add Material
                           </button>
                           <button type="button" className="tnd-btn" onClick={() => openResourceDialog(item, 'Labour')}>
                             <Users size={15} /> Add Labour
                           </button>
-                          <button type="button" className="tnd-btn" onClick={() => setExpandedItemId(expanded ? null : item.id)}>
+                          <button type="button" className="tnd-btn" onClick={() => setExpandedItemIds(previous => (
+                            expanded ? previous.filter(id => id !== item.id) : [...previous, item.id]
+                          ))}>
                             {expanded ? 'Hide details' : 'View details'}
                           </button>
                         </div>
@@ -378,17 +576,59 @@ export default function TenderBOQ({ params }) {
                                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                                     <div>
                                       <strong>{resource.name}</strong>
-                                      <span style={{ marginLeft: 10 }}>{resource.quantity} {resource.unit} × {formatCurrency(resource.rate)} = {formatCurrency(resource.quantity * resource.rate)}</span>
+                                      <span style={{ marginLeft: 10 }}>
+                                        {resource.quantity} {resource.unit} × {formatCurrency(resource.rate)}
+                                        {resource.perTaskUnit ? ` per BOQ unit × ${qty}` : ''}
+                                        {' = '}{formatCurrency(resourceAmount(resource, qty))}
+                                      </span>
+                                      {resource.taskLibraryTaskName && <div style={{ color: '#64748b', marginTop: 3 }}>Task Library: {resource.taskLibraryTaskName}</div>}
                                       {resource.specification && <div style={{ color: '#64748b', marginTop: 3 }}>{resource.specification}</div>}
                                     </div>
                                     <button type="button" title={`Remove ${type.toLowerCase()}`} disabled={resourceSaving} className="tnd-btn" onClick={() => removeResource(item, type, resource.id)}>
                                       <Trash2 size={15} />
                                     </button>
                                   </div>
-                                  {resource.components?.length > 0 && (
-                                    <div style={{ marginTop: 8, color: '#475569', fontSize: 13 }}>
-                                      {resource.components.map(component => (
-                                        <div key={component.id}>{component.groupPath ? `${component.groupPath} · ` : ''}{component.name}: {component.quantity} {component.unit} × {formatCurrency(component.rate)}</div>
+                                  {getResourceComponents(resource).length > 0 && (
+                                    <div style={{ marginTop: 10, padding: 10, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                        <strong style={{ fontSize: 13 }}>Individual {type.toLowerCase()} quantity and unit</strong>
+                                        <button
+                                          type="button"
+                                          className="tnd-btn"
+                                          disabled={resourceSaving}
+                                          onClick={() => saveResourceComponents(item, type, resource)}
+                                        >
+                                          <Save size={14} /> Save details
+                                        </button>
+                                      </div>
+                                      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(160px, 1fr) 110px 120px 130px', gap: 8, alignItems: 'center', color: '#64748b', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                                        <span>ITEM</span><span>QUANTITY</span><span>UNIT</span><span className="tnd-text-right">RATE / UNIT</span>
+                                      </div>
+                                      {getResourceComponents(resource).map(component => (
+                                        <div key={component.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(160px, 1fr) 110px 120px 130px', gap: 8, alignItems: 'center', marginTop: 6 }}>
+                                          <span style={{ fontSize: 13, color: '#334155' }}>
+                                            {component.name}
+                                            {component.groupPath && <small style={{ display: 'block', color: '#64748b' }}>{component.groupPath}</small>}
+                                          </span>
+                                          <input
+                                            aria-label={`${component.name} quantity`}
+                                            type="number"
+                                            min="0"
+                                            step="any"
+                                            className="tnd-input"
+                                            value={component.quantity ?? 0}
+                                            onChange={event => updateResourceComponent(item.id, type, resource.id, component.id, 'quantity', event.target.value)}
+                                          />
+                                          <input
+                                            aria-label={`${component.name} unit`}
+                                            className="tnd-input"
+                                            value={component.unit || resource.unit || (type === 'Material' ? 'Nos' : 'Manday')}
+                                            onChange={event => updateResourceComponent(item.id, type, resource.id, component.id, 'unit', event.target.value)}
+                                          />
+                                          <span className="tnd-text-right" style={{ fontSize: 13 }}>
+                                            {formatCurrency(component.rate)} / {component.unit || resource.unit || (type === 'Material' ? 'Nos' : 'Manday')}
+                                          </span>
+                                        </div>
                                       ))}
                                     </div>
                                   )}
@@ -576,6 +816,77 @@ export default function TenderBOQ({ params }) {
               <button type="button" className="tnd-btn" onClick={() => setResourceModal(null)}>Cancel</button>
               <button type="button" className="tnd-btn tnd-btn-primary" disabled={resourceSaving || catalogLoading || !activeResourceComponents.length} onClick={saveResource}>
                 <Save size={16} /> {resourceSaving ? 'Saving…' : `Add ${resourceModal.type}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {taskModalItemId && (
+        <div role="dialog" aria-modal="true" aria-labelledby="boq-task-title" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15, 23, 42, .55)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+          <div style={{ width: 'min(760px, 100%)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 10, padding: 20, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 id="boq-task-title" style={{ margin: 0 }}>Add Task Library Resources to BOQ</h3>
+              <button type="button" className="tnd-btn" aria-label="Close dialog" onClick={() => setTaskModalItemId(null)}><X size={18} /></button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="tnd-form-group">
+                <label className="tnd-label">Task Library</label>
+                <select className="tnd-input" value={taskLibraryId} onChange={event => setTaskLibraryId(event.target.value)}>
+                  {libraries.map(library => <option key={library.id} value={library.id}>{library.name}</option>)}
+                </select>
+              </div>
+              <div className="tnd-form-group">
+                <label className="tnd-label">Task</label>
+                <select className="tnd-input" value={selectedTaskId} onChange={event => setSelectedTaskId(event.target.value)} disabled={taskLibraryLoading || !taskLibraryGroups.length}>
+                  {taskLibraryGroups.map(group => (
+                    <optgroup key={group.id} label={group.name}>
+                      {(group.tasks || []).map(task => <option key={task.id} value={task.id}>{task.name}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {taskLibraryLoading && <div style={{ color: '#475569', padding: '12px 0' }}>Loading Task Library…</div>}
+            {!taskLibraryLoading && taskLibraryError && <div role="alert" style={{ color: '#b91c1c', padding: '12px 0' }}>{taskLibraryError}</div>}
+            {!taskLibraryLoading && !taskLibraryError && !taskLibraryGroups.some(group => (group.tasks || []).length) && (
+              <div style={{ color: '#64748b', padding: '12px 0' }}>No tasks found in this library.</div>
+            )}
+            {selectedTask && (
+              <div style={{ marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ padding: 12, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  <strong>{selectedTask.name}</strong>
+                  <span style={{ marginLeft: 8, color: '#64748b' }}>{selectedTask.unit || 'Task'}</span>
+                  {selectedTask.description && <div style={{ color: '#64748b', marginTop: 4 }}>{selectedTask.description}</div>}
+                </div>
+                {[['Materials', selectedTask.materials || []], ['Labour', selectedTask.labours || []]].map(([label, resources]) => (
+                  <div key={label} style={{ padding: 12, borderBottom: label === 'Materials' ? '1px solid #e2e8f0' : 0 }}>
+                    <strong>{label} ({resources.length})</strong>
+                    {!resources.length && <span style={{ marginLeft: 8, color: '#64748b' }}>None attached</span>}
+                    {resources.map((resource, index) => (
+                      <div key={resource.id || `${label}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 8, color: '#334155' }}>
+                        <span>{resource.name} · {Number(resource.quantity) || 0} {resource.unit || ''}</span>
+                        <span>{formatCurrency(resource.rate)} / {resource.unit || 'unit'}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                <div style={{ padding: 12, background: '#f0fdf4', fontWeight: 600, textAlign: 'right' }}>
+                  Cost per BOQ unit: {formatCurrency([
+                    ...(selectedTask.materials || []),
+                    ...(selectedTask.labours || []),
+                  ].reduce((sum, resource) => sum + (Number(resource.quantity) || 0) * (Number(resource.rate) || 0), 0))}
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button type="button" className="tnd-btn" onClick={() => setTaskModalItemId(null)}>Cancel</button>
+              <button
+                type="button"
+                className="tnd-btn tnd-btn-primary"
+                disabled={resourceSaving || taskLibraryLoading || !selectedTask || !(selectedTask.materials || []).length && !(selectedTask.labours || []).length}
+                onClick={importTaskResources}
+              >
+                <BookOpen size={16} /> {resourceSaving ? 'Adding…' : 'Add Task Resources'}
               </button>
             </div>
           </div>

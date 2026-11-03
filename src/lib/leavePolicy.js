@@ -9,7 +9,40 @@ export function getLeaveCategory(value) {
 }
 
 export function supportsHalfDayLeave(value) {
-  return ['CL', 'EL', 'COFF', 'LWP'].includes(getLeaveCategory(value));
+  return ['CL', 'EL', 'COFF'].includes(getLeaveCategory(value));
+}
+
+function normalizeLeaveType(value) {
+  return String(value || '').trim().toLowerCase().replace(/[\s_-]+/g, ' ');
+}
+
+export function isMaternityLeave(value) {
+  return normalizeLeaveType(value).includes('maternity');
+}
+
+export function isPaternityLeave(value) {
+  return normalizeLeaveType(value).includes('paternity');
+}
+
+export function isFemaleEmployee(gender) {
+  return ['female', 'f'].includes(String(gender || '').trim().toLowerCase());
+}
+
+export function isWithinSixMonthMaternityLimit(startDate, endDate) {
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (!datePattern.test(startDate || '') || !datePattern.test(endDate || '')) return false;
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start ||
+      start.toISOString().slice(0, 10) !== startDate || end.toISOString().slice(0, 10) !== endDate) return false;
+
+  const monthIndex = start.getUTCMonth() + 6;
+  const targetYear = start.getUTCFullYear() + Math.floor(monthIndex / 12);
+  const targetMonth = monthIndex % 12;
+  const lastDayOfTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const limit = new Date(Date.UTC(targetYear, targetMonth, Math.min(start.getUTCDate(), lastDayOfTargetMonth)));
+  limit.setUTCDate(limit.getUTCDate() - 1);
+  return end <= limit;
 }
 
 export function calculateLeaveDays(startDate, endDate, isHalfDay = false) {

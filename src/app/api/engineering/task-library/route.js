@@ -67,6 +67,44 @@ function collectLabourComponents(group, path = []) {
   ];
 }
 
+function collectMaterialComponents(group, path = []) {
+  const currentPath = [...path, group.name].filter(Boolean);
+  return [
+    ...(group.materials || []).map(item => ({
+      sourceId: item.id,
+      sourceGroupId: item.groupId,
+      groupPath: currentPath.join(' / '),
+      name: item.name,
+      quantity: Number(item.quantity ?? 1),
+      unit: item.unit || 'Nos',
+      rate: Number(item.rate || 0),
+      specification: item.specification || null,
+    })),
+    ...(group.subgroups || []).flatMap(subgroup => collectMaterialComponents(subgroup, currentPath)),
+  ];
+}
+
+async function loadMaterialGroupTree(libraryId) {
+  if (!libraryId) return new Map();
+  const groups = await prisma.materialLibraryGroup.findMany({
+    where: { libraryId, resourceType: 'Material' },
+    select: { id: true, name: true, parentId: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!groups.length) return new Map();
+  const items = await prisma.materialLibraryItem.findMany({
+    where: { groupId: { in: groups.map(group => group.id) }, resourceType: 'Material' },
+    select: { id: true, groupId: true, name: true, quantity: true, unit: true, rate: true, specification: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const nodes = new Map(groups.map(group => [group.id, { ...group, materials: [], subgroups: [] }]));
+  for (const item of items) nodes.get(item.groupId)?.materials.push(item);
+  for (const group of groups) {
+    if (group.parentId && nodes.has(group.parentId)) nodes.get(group.parentId).subgroups.push(nodes.get(group.id));
+  }
+  return nodes;
+}
+
 async function loadLabourGroupTree(libraryId) {
   if (!libraryId) return new Map();
   const groups = await prisma.materialLibraryGroup.findMany({
@@ -117,10 +155,11 @@ export async function GET(req) {
     const libraryId = searchParams.get('libraryId');
     const search = searchParams.get('search');
     const projectId = searchParams.get('projectId');
+    const syncWorkOrders = searchParams.get('syncWorkOrders') !== 'false';
 
     // Work-order scopes are also kept in their project's Task Library group.
     // This repairs older work orders that were previously copied only to Site Task Tree.
-    if (libraryId) await syncWorkOrderTasksIntoLibrary(libraryId);
+    if (libraryId && syncWorkOrders) await syncWorkOrderTasksIntoLibrary(libraryId);
 
     let where = {};
     if (libraryId) {
@@ -220,11 +259,74 @@ export async function POST(req) {
     const body = await req.json();
     const { type } = body;
 
+    if (type === 'materialGroup') {
+      const { taskId, subgroupIds = [], components = [], rate } = body;
+      if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
+      if (String(rate).trim() === '' || !Number.isFinite(Number(rate)) || Number(rate) < 0) {
+        return NextResponse.json({ error: 'Combined material rate must be a valid non-negative number.' }, { status: 400 });
+      }
+      if (!Array.isArray(subgroupIds) || subgroupIds.length === 0 || subgroupIds.length > 100) {
+        return NextResponse.json({ error: 'Select between 1 and 100 material groups.' }, { status: 400 });
+      }
+      if (!Array.isArray(components) || components.length === 0 || components.length > 500 || components.some(component =>
+        !component?.sourceId ||
+        !Number.isFinite(Number(component.quantity)) || Number(component.quantity) < 0 ||
+        !Number.isFinite(Number(component.rate)) || Number(component.rate) < 0
+      )) {
+        return NextResponse.json({ error: 'Each selected material needs a valid non-negative quantity and rate.' }, { status: 400 });
+      }
+      if (new Set(subgroupIds).size !== subgroupIds.length || new Set(components.map(item => item.sourceId)).size !== components.length) {
+        return NextResponse.json({ error: 'Duplicate material groups or components are not allowed.' }, { status: 400 });
+      }
+      const task = await prisma.taskLibraryItem.findUnique({ where: { id: taskId }, select: { id: true, libraryId: true } });
+      if (!task) return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
+      const materialTree = await loadMaterialGroupTree(task.libraryId);
+      const selectedGroups = subgroupIds.map(groupId => materialTree.get(groupId)).filter(Boolean);
+      if (selectedGroups.length !== new Set(subgroupIds).size) {
+        return NextResponse.json({ error: 'One or more selected material groups are unavailable.' }, { status: 400 });
+      }
+      const selectedComponents = new Map(
+        selectedGroups.flatMap(group => collectMaterialComponents(group)).map(component => [component.sourceId, component])
+      );
+      if (components.some(component => !selectedComponents.has(component.sourceId)) ||
+          selectedComponents.size !== components.length) {
+        return NextResponse.json({ error: 'Material components do not match the selected groups.' }, { status: 400 });
+      }
+      const componentOverrides = new Map(components.map(component => [component.sourceId, component]));
+      const materialComponents = [...selectedComponents.values()].map(component => {
+        const override = componentOverrides.get(component.sourceId);
+        return {
+          ...component,
+          quantity: Number(override.quantity),
+          rate: Number(override.rate),
+        };
+      });
+      const combinedName = selectedGroups.map(group => group.name).join(' + ');
+      const combinedMaterial = await prisma.taskLibraryMaterial.create({
+        data: {
+          taskId,
+          name: combinedName,
+          unit: 'Lot',
+          quantity: 1,
+          rate: Number(rate),
+          subgroupIds: selectedGroups.map(group => group.id),
+          components: materialComponents,
+          specification: materialComponents.length
+            ? `Includes: ${materialComponents.map(component => component.name).join(', ')}`
+            : null,
+        },
+      });
+      return NextResponse.json(combinedMaterial, { status: 201 });
+    }
+
     // 1. Add Material to Task
     if (type === 'material') {
       const { taskId, name, unit, quantity, rate, specification } = body;
       if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
       if (!name || !name.trim()) return NextResponse.json({ error: 'Material name is required' }, { status: 400 });
+      if (rate !== undefined && (String(rate).trim() === '' || !Number.isFinite(Number(rate)) || Number(rate) < 0)) {
+        return NextResponse.json({ error: 'Material rate must be a valid non-negative number.' }, { status: 400 });
+      }
 
       const material = await prisma.taskLibraryMaterial.create({
         data: {
@@ -244,6 +346,9 @@ export async function POST(req) {
       if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
       if (!Array.isArray(items) || items.length === 0) return NextResponse.json({ error: 'Select at least one individual labour item.' }, { status: 400 });
       if (items.some(item => !item?.sourceId)) return NextResponse.json({ error: 'Each individual labour selection must have a source item.' }, { status: 400 });
+      if (items.some(item => item.rate !== undefined && (String(item.rate).trim() === '' || !Number.isFinite(Number(item.rate)) || Number(item.rate) < 0))) {
+        return NextResponse.json({ error: 'Labour rates must be valid non-negative numbers.' }, { status: 400 });
+      }
       const task = await prisma.taskLibraryItem.findUnique({ where: { id: taskId }, select: { libraryId: true } });
       if (!task) return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
       const sourceItems = await prisma.materialLibraryItem.findMany({
@@ -281,6 +386,9 @@ export async function POST(req) {
     if (type === 'labour') {
       const { taskId, name, unit, quantity, rate, specification, subgroupIds = [] } = body;
       if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
+      if (rate !== undefined && rate !== null && rate !== '' && (!Number.isFinite(Number(rate)) || Number(rate) < 0)) {
+        return NextResponse.json({ error: 'Labour rate must be a valid non-negative number.' }, { status: 400 });
+      }
       if (!Array.isArray(subgroupIds) || subgroupIds.length === 0) return NextResponse.json({ error: 'Select at least one labour group.' }, { status: 400 });
       const task = await prisma.taskLibraryItem.findUnique({ where: { id: taskId }, select: { libraryId: true } });
       if (!task) return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
@@ -381,10 +489,123 @@ export async function PUT(req) {
   try {
     const body = await req.json();
     const { id, type } = body;
+    if (type === 'materialGroup') {
+      const { taskId, subgroupIds = [], components = [], rate } = body;
+      if (!id || !taskId) return NextResponse.json({ error: 'Material and task IDs are required.' }, { status: 400 });
+      if (String(rate).trim() === '' || !Number.isFinite(Number(rate)) || Number(rate) < 0) {
+        return NextResponse.json({ error: 'Combined material rate must be a valid non-negative number.' }, { status: 400 });
+      }
+      if (!Array.isArray(subgroupIds) || subgroupIds.length === 0 || subgroupIds.length > 100) {
+        return NextResponse.json({ error: 'Select between 1 and 100 material groups.' }, { status: 400 });
+      }
+      if (!Array.isArray(components) || components.length === 0 || components.length > 500 || components.some(component =>
+        !component?.sourceId ||
+        !Number.isFinite(Number(component.quantity)) || Number(component.quantity) < 0 ||
+        !Number.isFinite(Number(component.rate)) || Number(component.rate) < 0
+      )) {
+        return NextResponse.json({ error: 'Each selected material needs a valid non-negative quantity and rate.' }, { status: 400 });
+      }
+      if (new Set(subgroupIds).size !== subgroupIds.length || new Set(components.map(component => component.sourceId)).size !== components.length) {
+        return NextResponse.json({ error: 'Duplicate material groups or components are not allowed.' }, { status: 400 });
+      }
+      const existing = await prisma.taskLibraryMaterial.findFirst({
+        where: { id, taskId, subgroupIds: { isEmpty: false } },
+        select: { id: true, task: { select: { libraryId: true } } },
+      });
+      if (!existing) return NextResponse.json({ error: 'Combined material group not found for this task.' }, { status: 404 });
+      const materialTree = await loadMaterialGroupTree(existing.task.libraryId);
+      const selectedGroups = subgroupIds.map(groupId => materialTree.get(groupId)).filter(Boolean);
+      if (selectedGroups.length !== new Set(subgroupIds).size) {
+        return NextResponse.json({ error: 'One or more selected material groups are unavailable.' }, { status: 400 });
+      }
+      const selectedComponents = new Map(
+        selectedGroups.flatMap(group => collectMaterialComponents(group)).map(component => [component.sourceId, component])
+      );
+      if (components.some(component => !selectedComponents.has(component.sourceId)) ||
+          selectedComponents.size !== components.length) {
+        return NextResponse.json({ error: 'Material components do not match the selected groups.' }, { status: 400 });
+      }
+      const overrides = new Map(components.map(component => [component.sourceId, component]));
+      const materialComponents = [...selectedComponents.values()].map(component => {
+        const override = overrides.get(component.sourceId);
+        return {
+          ...component,
+          quantity: Number(override.quantity),
+          rate: Number(override.rate),
+        };
+      });
+      const customSpecification = String(body.specification || '').trim();
+      const includes = `Includes: ${materialComponents.map(component => component.name).join(', ')}`;
+      const material = await prisma.taskLibraryMaterial.update({
+        where: { id },
+        data: {
+          name: selectedGroups.map(group => group.name).join(' + '),
+          unit: 'Lot',
+          quantity: 1,
+          rate: Number(rate),
+          subgroupIds: selectedGroups.map(group => group.id),
+          components: materialComponents,
+          specification: [customSpecification || null, includes].filter(Boolean).join('\n'),
+        },
+      });
+      return NextResponse.json(material);
+    }
+    if (type === 'rates') {
+      const { taskId, materials = [], labours = [] } = body;
+      if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
+      if (!Array.isArray(materials) || !Array.isArray(labours)) {
+        return NextResponse.json({ error: 'Material and labour rates must be arrays.' }, { status: 400 });
+      }
+      const validEntries = entries => entries.every(entry =>
+        entry?.id &&
+        String(entry.rate).trim() !== '' &&
+        Number.isFinite(Number(entry.rate)) &&
+        Number(entry.rate) >= 0
+      );
+      if (!validEntries(materials) || !validEntries(labours)) {
+        return NextResponse.json({ error: 'Each rate must be a valid non-negative number.' }, { status: 400 });
+      }
+      if (
+        new Set(materials.map(entry => entry.id)).size !== materials.length ||
+        new Set(labours.map(entry => entry.id)).size !== labours.length
+      ) {
+        return NextResponse.json({ error: 'Duplicate task resource IDs are not allowed.' }, { status: 400 });
+      }
+
+      const [task, taskMaterials, taskLabours] = await Promise.all([
+        prisma.taskLibraryItem.findUnique({ where: { id: taskId }, select: { id: true } }),
+        materials.length
+          ? prisma.taskLibraryMaterial.findMany({ where: { taskId, id: { in: materials.map(entry => entry.id) } }, select: { id: true } })
+          : [],
+        labours.length
+          ? prisma.taskLibraryLabour.findMany({ where: { taskId, id: { in: labours.map(entry => entry.id) } }, select: { id: true } })
+          : [],
+      ]);
+      if (!task) return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
+      if (taskMaterials.length !== materials.length || taskLabours.length !== labours.length) {
+        return NextResponse.json({ error: 'One or more selected resources do not belong to this task.' }, { status: 400 });
+      }
+
+      const updates = [
+        ...materials.map(entry => prisma.taskLibraryMaterial.update({
+          where: { id: entry.id },
+          data: { rate: Number(entry.rate) },
+        })),
+        ...labours.map(entry => prisma.taskLibraryLabour.update({
+          where: { id: entry.id },
+          data: { rate: Number(entry.rate) },
+        })),
+      ];
+      if (updates.length) await prisma.$transaction(updates);
+      return NextResponse.json({ success: true, materialCount: materials.length, labourCount: labours.length });
+    }
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
 
     if (type === 'material') {
       const { name, unit, quantity, rate, specification } = body;
+      if (rate !== undefined && (String(rate).trim() === '' || !Number.isFinite(Number(rate)) || Number(rate) < 0)) {
+        return NextResponse.json({ error: 'Material rate must be a valid non-negative number.' }, { status: 400 });
+      }
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (unit !== undefined) updateData.unit = unit ? unit.trim() : null;
@@ -401,6 +622,9 @@ export async function PUT(req) {
 
     if (type === 'labour') {
       const { name, unit, quantity, rate, specification, subgroupIds } = body;
+      if (rate !== undefined && (String(rate).trim() === '' || !Number.isFinite(Number(rate)) || Number(rate) < 0)) {
+        return NextResponse.json({ error: 'Labour rate must be a valid non-negative number.' }, { status: 400 });
+      }
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       if (unit !== undefined) updateData.unit = unit ? unit.trim() : 'Manday';

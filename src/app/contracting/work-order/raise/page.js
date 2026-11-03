@@ -191,6 +191,7 @@ export default function RaiseWorkOrder() {
   const [items, setItems] = useState([
     { id: 1, description: '', qty: 1.00, unit: 'Job', rate: 0, gstPercent: 18 }
   ]);
+  const [bulkRates, setBulkRates] = useState('');
 
   // Fetch projects, contractors, tasks, quotations
   useEffect(() => {
@@ -304,6 +305,17 @@ export default function RaiseWorkOrder() {
     return matchingItem && Number(matchingItem.rate) > 0 ? matchingItem : null;
   };
 
+  const applyBulkRates = () => {
+    const rates = bulkRates.split(/\r?\n/).map(rate => rate.trim()).filter(Boolean);
+    if (rates.length !== items.length || rates.some(rate => !Number.isFinite(Number(rate)) || Number(rate) < 0)) {
+      setSaveMessage(`Enter exactly ${items.length} valid non-negative rates, one per item row.`);
+      return;
+    }
+    setItems(current => current.map((item, index) => ({ ...item, rate: Number(rates[index]) })));
+    setBulkRates('');
+    setSaveMessage('');
+  };
+
   // When a quotation is selected, auto-populate fields
   const handleQuotationSelect = (quotationId) => {
     setSelectedQuotationId(quotationId);
@@ -336,6 +348,14 @@ export default function RaiseWorkOrder() {
     const selectedQuotation = quotations.find(q => q.id === selectedQuotationId);
 
     const newItems = selectedTasks.flatMap((task, taskIndex) => {
+      const taskMaterials = (task.materials || []).map((material, itemIndex) => ({
+        id: `mat-${taskIndex}-${itemIndex}`,
+        description: material.name,
+        qty: material.quantity || 1,
+        unit: material.unit || 'Nos',
+        rate: Number(material.rate) || 0,
+        gstPercent: 18,
+      }));
       const taskLabours = (task.labours || []).map((l, itemIndex) => ({
         id: `lab-${taskIndex}-${itemIndex}`,
         description: `${task.name} - ${l.name}`,
@@ -343,14 +363,14 @@ export default function RaiseWorkOrder() {
         unit: l.unit || 'Manday',
         rate: firstPositiveRate(
           findSelectedQuotationRate(l.name, selectedQuotation)?.rate,
+          l.rate,
           findLabourRate(l.name)?.rate,
           findQuotationRate(l.name)?.rate,
-          l.rate,
           l.labourRate
         ),
         gstPercent: 18
       }));
-      return taskLabours;
+      return [...taskMaterials, ...taskLabours];
     });
 
     if (newItems.length === 0) {
@@ -423,6 +443,7 @@ export default function RaiseWorkOrder() {
     setTaskMenuOpen(false);
     setWoData(null);
     setSaveMessage('');
+    setBulkRates('');
     setItems([{ id: 1, description: '', qty: 1.00, unit: 'Job', rate: 0, gstPercent: 18 }]);
   };
 
@@ -756,6 +777,21 @@ export default function RaiseWorkOrder() {
             </div>
 
             {/* Items Table */}
+            <div className="screen-editable" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'end', gap: 8, padding: '10px 0' }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>
+                Paste item rates (one per line, same row order)
+                <textarea
+                  rows={2}
+                  value={bulkRates}
+                  onChange={event => setBulkRates(event.target.value)}
+                  placeholder={'1200\n850.50\n300'}
+                  style={{ display: 'block', width: 230, padding: 6, border: '1px solid #cbd5e1', borderRadius: 4, marginTop: 4, textAlign: 'right', resize: 'vertical' }}
+                />
+              </label>
+              <button type="button" onClick={applyBulkRates} style={{ padding: '7px 12px', border: '1px solid #2563eb', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, cursor: 'pointer' }}>
+                Apply rates
+              </button>
+            </div>
             <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #334155', borderTop: 'none', fontSize: '0.8rem' }}>
               <colgroup>
                 <col style={{ width: '5%' }} />
@@ -822,6 +858,7 @@ export default function RaiseWorkOrder() {
                       <td style={{ border: '1px solid #334155', padding: '8px 5px', textAlign: 'right', minWidth: 0, overflowWrap: 'anywhere' }}>
                         <input 
                           type="number" 
+                          min="0"
                           style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', textAlign: 'right' }} 
                           value={item.rate} 
                           onChange={(e) => {

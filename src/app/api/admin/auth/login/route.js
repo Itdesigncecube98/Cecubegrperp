@@ -1,11 +1,8 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { attachAuthSession } from '@/lib/authSession';
-
-const prisma = new PrismaClient();
-
 // ─── POST /api/admin/auth/login ───────────────────────────────────────────────
 // Body: { username (or email), password, ipAddress?, userAgent? }
 export async function POST(request) {

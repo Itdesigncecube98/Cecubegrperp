@@ -62,6 +62,7 @@ export async function POST(request) {
           name: employee.name,
           email: employee.email,
           department: employee.department,
+          gender: employee.gender,
           role: employee.role,
           password: employee.password,
           supervisorId: employee.supervisorId

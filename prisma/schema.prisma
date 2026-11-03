@@ -343,6 +343,7 @@ model LeaveRequest {
   attachment           String?
   status               String    @default("PENDING_SUPERVISOR")
   isHalfDay            Boolean   @default(false)
+  halfDayPeriod        String?
   appliedOn            DateTime  @default(now())
   supervisorApproved   Boolean   @default(false)
   supervisorApprovedAt DateTime?
@@ -1569,6 +1570,8 @@ model TaskLibraryMaterial {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   rate          Float           @default(0)
+  subgroupIds   String[]        @default([])
+  components    Json?
   task          TaskLibraryItem @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])

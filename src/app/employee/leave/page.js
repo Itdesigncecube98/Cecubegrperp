@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, Info } from 'lucide-react';
 import { getLeaveBalance, createLeaveRequest, getLeaveRequests, getLeaveTypes } from '../../../lib/data';
-import { supportsHalfDayLeave } from '../../../lib/leavePolicy';
+import {
+  isFemaleEmployee,
+  isMaternityLeave,
+  isPaternityLeave,
+  supportsHalfDayLeave,
+} from '../../../lib/leavePolicy';
 import { getLeaveAttachmentLink } from '../../../lib/leaveAttachmentLink';
 import '../../dashboard/attendance/attendance.css';
 import '../../dashboard/leaves/leaves.css';
@@ -16,6 +21,7 @@ export default function EmployeeLeavePage() {
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [employeeId, setEmployeeId] = useState('');
+  const [employeeGender, setEmployeeGender] = useState('');
   const [attachmentName, setAttachmentName] = useState('');
   
   const [newRequest, setNewRequest] = useState({
@@ -25,6 +31,7 @@ export default function EmployeeLeavePage() {
     reason: '',
     attachment: '',
     isHalfDay: false,
+    halfDayPeriod: '',
     routeTo: 'SENIOR'
   });
   const [activeTab, setActiveTab] = useState('balances');
@@ -41,7 +48,8 @@ export default function EmployeeLeavePage() {
     const parsed = JSON.parse(empData);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEmployeeId(parsed.id);
-    fetchData(parsed.id);
+    setEmployeeGender(parsed.gender || '');
+    fetchData(parsed.id, parsed.gender || '');
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('tab') === 'history') {
@@ -49,7 +57,7 @@ export default function EmployeeLeavePage() {
     }
   }, [router]);
 
-  async function fetchData(id) {
+  async function fetchData(id, gender = employeeGender) {
     try {
       const currMonth = new Date().getMonth() + 1;
       const currYear = new Date().getFullYear();
@@ -68,7 +76,11 @@ export default function EmployeeLeavePage() {
         getLeaveTypes()
       ]);
       setHistory(reqs || []);
-      setLeaveTypes((typesData || []).filter(t => t.isActive));
+      setLeaveTypes((typesData || []).filter(type =>
+        type.isActive &&
+        !isPaternityLeave(type.name) &&
+        (!isMaternityLeave(type.name) || isFemaleEmployee(gender))
+      ));
     } catch (e) {
       console.error('Failed to load leave data', e);
     } finally {
@@ -82,6 +94,10 @@ export default function EmployeeLeavePage() {
       alert('Please fill all required fields');
       return;
     }
+    if (newRequest.isHalfDay && !newRequest.halfDayPeriod) {
+      alert('Choose first half or second half for the half-day leave.');
+      return;
+    }
 
     try {
       const result = await createLeaveRequest({
@@ -93,9 +109,9 @@ export default function EmployeeLeavePage() {
         throw new Error(result.error);
       }
 
-      setNewRequest({ leaveType: '', startDate: '', endDate: '', reason: '', attachment: '', isHalfDay: false, routeTo: 'SENIOR' });
+      setNewRequest({ leaveType: '', startDate: '', endDate: '', reason: '', attachment: '', isHalfDay: false, halfDayPeriod: '', routeTo: 'SENIOR' });
       setAttachmentName('');
-      fetchData(employeeId);
+      fetchData(employeeId, employeeGender);
       alert('Leave request submitted successfully!');
     } catch (error) {
       console.error("Error submitting leave", error);
@@ -173,13 +189,13 @@ export default function EmployeeLeavePage() {
             <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Casual Leave (CL)</h3>
             <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.casualLeaves ?? 0}</p>
             <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days remaining</p>
-            <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#64748b' }}>12 days credited each 1 April; unused CL carries forward.</p>
+            <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#64748b' }}>12 days credited on joining and each joining anniversary; unused CL carries forward.</p>
           </div>
           <div className="card" style={{ borderLeft: '4px solid #10b981', padding: '1.5rem' }}>
             <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Earned Leave (EL)</h3>
             <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.earnedLeaves ?? 0}</p>
             <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days remaining</p>
-            <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#64748b' }}>After 8 months: 1 day per 20 calendar days until April, then 18 days each April; carries forward.</p>
+            <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#64748b' }}>18 days after 8 months of service, then 18 days each joining anniversary; unused EL carries forward.</p>
           </div>
           <div className="card" style={{ borderLeft: '4px solid #8b5cf6', padding: '1.5rem' }}>
             <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Comp. Off (C-off)</h3>
@@ -212,6 +228,7 @@ export default function EmployeeLeavePage() {
                 ...newRequest,
                 leaveType: val,
                 isHalfDay: supportsHalfDayLeave(val) && newRequest.isHalfDay,
+                halfDayPeriod: supportsHalfDayLeave(val) ? newRequest.halfDayPeriod : '',
                 endDate: newRequest.isHalfDay && !supportsHalfDayLeave(val) ? newRequest.startDate : newRequest.endDate,
               });
             }}
@@ -275,7 +292,11 @@ export default function EmployeeLeavePage() {
                 name="halfday" 
                 value="yes" 
                 checked={newRequest.isHalfDay} 
-                onChange={() => setNewRequest({ ...newRequest, isHalfDay: true, endDate: newRequest.startDate })} 
+                onChange={() => setNewRequest(previous => ({
+                  ...previous,
+                  isHalfDay: true,
+                  endDate: previous.startDate,
+                }))}
                 disabled={!halfDayAllowed}
               /> Yes
             </label>
@@ -285,12 +306,42 @@ export default function EmployeeLeavePage() {
                 name="halfday" 
                 value="no" 
                 checked={!newRequest.isHalfDay} 
-                onChange={() => setNewRequest({...newRequest, isHalfDay: false})} 
+                onChange={() => setNewRequest(previous => ({ ...previous, isHalfDay: false, halfDayPeriod: '' }))} 
               /> No
             </label>
           </div>
+          {newRequest.isHalfDay && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <span className="filterLabel">Which half of the day? <span style={{ color: 'red' }}>*</span></span>
+              <div className="radioGroup">
+                <label className="radioLabel">
+                  <input
+                    type="radio"
+                    name="halfDayPeriod"
+                    value="FIRST_HALF"
+                    checked={newRequest.halfDayPeriod === 'FIRST_HALF'}
+                    onChange={() => setNewRequest(previous => ({ ...previous, halfDayPeriod: 'FIRST_HALF' }))}
+                    required
+                  /> First Half
+                </label>
+                <label className="radioLabel">
+                  <input
+                    type="radio"
+                    name="halfDayPeriod"
+                    value="SECOND_HALF"
+                    checked={newRequest.halfDayPeriod === 'SECOND_HALF'}
+                    onChange={() => setNewRequest(previous => ({ ...previous, halfDayPeriod: 'SECOND_HALF' }))}
+                    required
+                  /> Second Half
+                </label>
+              </div>
+            </div>
+          )}
           <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
-            Half-day leave is available for COFF, CL, EL and LWP. Half-day CL/EL/COFF deducts 0.5 day from that balance; half-day LWP deducts half a day of salary.
+            {halfDayAllowed
+              ? "Half-day leave is available for the selected category and deducts 0.5 day from its balance."
+              : 'Select CL, EL, or COFF above to enable the half-day option.'}
+            {' '}Maternity Leave is available only to female employees, up to 6 months; Paternity Leave is not available.
           </div>
         </div>
 
@@ -305,7 +356,7 @@ export default function EmployeeLeavePage() {
         </div>
 
         <div className="formGroup">
-          <label className="filterLabel">Supporting document (optional)</label>
+          <label className="filterLabel">Upload supporting document (optional)</label>
           <input 
             type="file" 
             style={{ fontSize: '12px' }} 
@@ -340,7 +391,7 @@ export default function EmployeeLeavePage() {
               history.map(req => (
                 <tr key={req.id}>
                   <td>{req.leaveType}</td>
-                  <td>{req.startDate} to {req.endDate}{req.isHalfDay ? ' (Half day)' : ''}</td>
+                  <td>{req.startDate} to {req.endDate}{req.isHalfDay ? ` (Half day${req.halfDayPeriod ? `, ${req.halfDayPeriod === 'FIRST_HALF' ? 'First Half' : 'Second Half'}` : ''})` : ''}</td>
                   <td>{req.reason}</td>
                   <td>
                     {(() => {
