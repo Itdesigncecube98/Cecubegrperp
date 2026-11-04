@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Info } from 'lucide-react';
 import { getEmployees, createLeaveRequest, getLeaveTypes } from '../../../../lib/data';
-import { isFemaleEmployee, isMaternityLeave, isPaternityLeave, supportsHalfDayLeave } from '../../../../lib/leavePolicy';
+import { getLeaveCategory, isFemaleEmployee, isMaternityLeave, isPaternityLeave, supportsHalfDayLeave } from '../../../../lib/leavePolicy';
 import '../../attendance/attendance.css';
 import '../leaves.css';
 
@@ -195,6 +195,16 @@ export default function ApplyLeave() {
             {availableLeaveTypes.map(lt => {
               let isDisabled = false;
               let labelSuffix = '';
+              if (getLeaveCategory(lt.name) === 'EL') {
+                const eligibleFrom = currentBalance?.earnedLeaveEligibleFrom;
+                const today = new Date();
+                const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                const requestedStart = formData.startDate || todayKey;
+                if (!eligibleFrom || requestedStart < eligibleFrom) {
+                  isDisabled = true;
+                  labelSuffix = eligibleFrom ? ` (Available from ${eligibleFrom})` : ' (Joining date required)';
+                }
+              }
 
               if (currentBalance) {
                 if (lt.name === 'Casual' && currentBalance.casualLeaves <= 0) {
@@ -220,7 +230,7 @@ export default function ApplyLeave() {
           </select>
         </div>
         <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '1rem' }}>
-          CL: 12 days credited on joining and each joining anniversary; unused CL carries forward. EL: 18 days after 8 months of service, then 18 days each joining anniversary; unused EL carries forward. Half-day CL/EL/COFF deducts 0.5 day. Maternity Leave is available only to female employees, up to 6 months; Paternity Leave is not available.
+          CL: 12 days credited on joining and each joining anniversary; unused CL carries forward. EL: 1.5 days accrue per completed service month from joining, and can be used after 8 months; unused EL carries forward. Half-day CL/EL/COFF deducts 0.5 day. Maternity Leave is available only to female employees, up to 6 months; Paternity Leave is not available.
         </div>
 
         <div style={{ display: 'flex', gap: '2rem', marginBottom: '1.5rem' }}>
@@ -270,7 +280,7 @@ export default function ApplyLeave() {
                 name="halfday" 
                 value="no" 
                 checked={!formData.isHalfDay} 
-                onChange={() => setFormData(previous => ({ ...previous, isHalfDay: false, halfDayPeriod: '' }))} 
+                onChange={() => setFormData(previous => ({ ...previous, isHalfDay: false, halfDayPeriod: '' }))}
               /> No
             </label>
           </div>

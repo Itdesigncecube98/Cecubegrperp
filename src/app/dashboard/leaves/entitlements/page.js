@@ -33,11 +33,17 @@ export default function EntitlementsPage() {
       const [empRes, ltRes, balRes] = await Promise.all([
         fetch('/api/employees'),
         fetch('/api/setup/leavetype'),
-        fetch('/api/leaves/balance')
+        fetch('/api/leaves/balance'),
       ]);
-      const emps = await empRes.json();
-      const lts = await ltRes.json();
-      const bals = await balRes.json();
+      const [emps, lts, bals] = await Promise.all([
+        empRes.json(),
+        ltRes.json(),
+        balRes.json(),
+      ]);
+      if (!empRes.ok || !Array.isArray(emps) || !ltRes.ok || !Array.isArray(lts) ||
+          !balRes.ok || !Array.isArray(bals)) {
+        throw new Error(emps?.error || lts?.error || bals?.error || 'Leave data could not be loaded.');
+      }
       setEmployees(emps.filter(e => e.role === 'EMPLOYEE'));
       setLeaveTypes(lts);
       // Build entitlements table from balance data
@@ -51,8 +57,11 @@ export default function EntitlementsPage() {
         ];
       });
       setEntitlements(ents);
-    } catch (e) { console.error(e); }
-    setLoading(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const showToast = (msg, type = 'success') => {
@@ -81,32 +90,25 @@ export default function EntitlementsPage() {
       // For each row, update the balance
       for (const row of valid) {
         const days = parseFloat(row.entitlement) || 0;
-        const existingRes = await fetch(`/api/leaves/balance?employeeId=${row.employeeId}`);
-        const existing = await existingRes.json();
-
-        const payload = {
-          employeeId: parseInt(row.employeeId) || row.employeeId,
-          casualLeaves: existing.casualLeaves || 0,
-          leaveWithoutPay: existing.leaveWithoutPay || 0,
-          earnedLeaves: existing.earnedLeaves || 0,
-        };
-
+        const payload = { employeeId: row.employeeId };
         if (row.leaveType === 'Casual') payload.casualLeaves = days;
         else if (row.leaveType === 'Leave Without Pay') payload.leaveWithoutPay = days;
         else if (row.leaveType === 'Earned') payload.earnedLeaves = days;
 
-        await fetch('/api/leaves/balance', {
+        const response = await fetch('/api/leaves/balance', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `Could not save leave for ${row.empName || row.employeeId}.`);
       }
-      showToast('Entitlement added successfully!');
+      showToast('Leave balance saved successfully. EL will accrue at 1.5 days per service month.');
       setShowModal(false);
       setModalRows([{ employeeId: '', leavePeriod: 'All', leaveType: '', entitlement: '' }]);
       fetchData();
     } catch (e) {
-      showToast('Error saving entitlement.', 'error');
+      showToast(e.message || 'Error saving entitlement.', 'error');
     }
   };
 
@@ -163,7 +165,7 @@ export default function EntitlementsPage() {
         <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f3f4f6' }}>
           <div>
             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Entitlement</h3>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#9ca3af' }}>The below table shows the list of entitlements.</p>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#9ca3af' }}>An Earned Leave entry sets a one-time opening balance. Future EL accrues at 1.5 days per completed service month and can be used after 8 months.</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <button style={{ padding: '8px 16px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>

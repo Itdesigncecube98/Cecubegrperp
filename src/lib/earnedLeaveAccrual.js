@@ -30,22 +30,39 @@ function addMonthsClamped(date, months) {
   return new Date(Date.UTC(year, month, day));
 }
 
-export function getEarnedLeaveAccrual(joinedDate, asOnMonth) {
+export const EARNED_LEAVE_ENCASHMENT_MIN_BALANCE = 50;
+export const EARNED_LEAVE_ENCASHMENT_MAX_DAYS = 20;
+
+export function getEarnedLeaveAccrual(
+  joinedDate,
+  asOnMonth,
+  openingBalance = null,
+  openingBalanceAsOnDate = null,
+) {
   const joinDate = parseDateOnly(joinedDate);
   const cutoff = monthEnd(asOnMonth);
-  if (!joinDate || !cutoff || joinDate > cutoff) return { monthsSinceJoining: 0, accruedLeaves: 0 };
+  if (!cutoff) return { monthsSinceJoining: 0, accruedLeaves: 0 };
+
+  const parsedOpeningDate = parseDateOnly(openingBalanceAsOnDate);
+  const hasOpeningBalance = openingBalance !== null && openingBalance !== undefined &&
+    Number.isFinite(Number(openingBalance)) && parsedOpeningDate && parsedOpeningDate <= cutoff;
+  if (!joinDate || joinDate > cutoff) {
+    return {
+      monthsSinceJoining: 0,
+      accruedLeaves: hasOpeningBalance ? Number(openingBalance) : 0,
+    };
+  }
 
   const monthsSinceJoining = Math.max(
     0,
     (cutoff.getUTCFullYear() - joinDate.getUTCFullYear()) * 12
       + cutoff.getUTCMonth() - joinDate.getUTCMonth()
   );
-  const eligibilityDate = addMonthsClamped(joinDate, 8);
-  if (eligibilityDate > cutoff) return { monthsSinceJoining, accruedLeaves: 0 };
-
-  let accruedLeaves = 0;
-  for (let creditDate = eligibilityDate; creditDate <= cutoff; creditDate = addMonthsClamped(creditDate, 12)) {
-    accruedLeaves += 18;
+  let accruedLeaves = hasOpeningBalance ? Number(openingBalance) : 0;
+  for (let serviceMonth = 1; ; serviceMonth += 1) {
+    const creditDate = addMonthsClamped(joinDate, serviceMonth);
+    if (creditDate > cutoff) break;
+    if (!hasOpeningBalance || creditDate > parsedOpeningDate) accruedLeaves += 1.5;
   }
 
   return { monthsSinceJoining, accruedLeaves };
@@ -71,17 +88,23 @@ export function getCasualLeaveAccrual(joinedDate, asOnMonth, leavesPerYear = 12)
   };
 }
 
-function calculateLeaveDaysTaken(leaveRequests, asOnMonth, attendance, isLeaveType) {
+function calculateLeaveDaysTaken(leaveRequests, asOnMonth, attendance, isLeaveType, excludeThroughDate = null) {
   const cutoff = monthEnd(asOnMonth);
+  const excludedThrough = parseDateOnly(excludeThroughDate);
   if (!cutoff) return 0;
 
   const takenDates = new Map();
   const requestDates = new Set();
   leaveRequests.forEach(request => {
-    const start = parseDateOnly(request.startDate);
+    const originalStart = parseDateOnly(request.startDate);
+    let start = originalStart;
     const end = parseDateOnly(request.endDate);
     if (!start || !end || start > cutoff) return;
+    if (excludedThrough && start <= excludedThrough) {
+      start = new Date(excludedThrough.getTime() + 86400000);
+    }
     const lastDay = end < cutoff ? end : cutoff;
+    if (start > lastDay) return;
     for (let date = start; date <= lastDay; date = new Date(date.getTime() + 86400000)) {
       requestDates.add(date.toISOString().slice(0, 10));
     }
@@ -90,7 +113,8 @@ function calculateLeaveDaysTaken(leaveRequests, asOnMonth, attendance, isLeaveTy
     const status = String(record.status || '').trim().toLowerCase();
     const date = parseDateOnly(record.date);
     const dateKey = date?.toISOString().slice(0, 10);
-    if (!date || date > cutoff || !isLeaveType(status) || requestDates.has(dateKey)) return;
+    if (!date || date > cutoff || (excludedThrough && date <= excludedThrough) ||
+        !isLeaveType(status) || requestDates.has(dateKey)) return;
     takenDates.set(dateKey, 1);
   });
 
@@ -98,15 +122,19 @@ function calculateLeaveDaysTaken(leaveRequests, asOnMonth, attendance, isLeaveTy
     const leaveType = String(request.leaveType || '').trim().toLowerCase();
     if (!isLeaveType(leaveType)) return;
 
-    const start = parseDateOnly(request.startDate);
+    const originalStart = parseDateOnly(request.startDate);
+    let start = originalStart;
     const end = parseDateOnly(request.endDate);
     if (!start || !end || start > cutoff) return;
+    if (excludedThrough && start <= excludedThrough) {
+      start = new Date(excludedThrough.getTime() + 86400000);
+    }
     const lastDay = end < cutoff ? end : cutoff;
     if (lastDay < start) return;
 
     for (let date = start; date <= lastDay; date = new Date(date.getTime() + 86400000)) {
       const dateKey = date.toISOString().slice(0, 10);
-      const days = request.isHalfDay && dateKey === start.toISOString().slice(0, 10) ? 0.5 : 1;
+      const days = request.isHalfDay && dateKey === originalStart.toISOString().slice(0, 10) ? 0.5 : 1;
       if (isLeaveType(leaveType)) takenDates.set(dateKey, Math.max(takenDates.get(dateKey) || 0, days));
     }
   });
@@ -122,24 +150,38 @@ const isCasualLeaveType = leaveType => (
   leaveType.includes('casual') || leaveType === 'cl'
 );
 
-export function calculateEarnedLeaveDaysTaken(leaveRequests, asOnMonth, attendance = []) {
-  return calculateLeaveDaysTaken(leaveRequests, asOnMonth, attendance, isEarnedLeaveType);
+export function calculateEarnedLeaveDaysTaken(leaveRequests, asOnMonth, attendance = [], excludeThroughDate = null) {
+  return calculateLeaveDaysTaken(leaveRequests, asOnMonth, attendance, isEarnedLeaveType, excludeThroughDate);
 }
 
 export function calculateCasualLeaveDaysTaken(leaveRequests, asOnMonth, attendance = []) {
   return calculateLeaveDaysTaken(leaveRequests, asOnMonth, attendance, isCasualLeaveType);
 }
 
-export function calculateEncashedLeaveDays(encashments, asOnMonth, requestedLeaveType = 'Earned Leave') {
+export function calculateEncashedLeaveDays(
+  encashments,
+  asOnMonth,
+  requestedLeaveType = 'Earned Leave',
+  excludeThroughDate = null,
+) {
   const isMatchingLeaveType = requestedLeaveType === 'Casual Leave'
     ? isCasualLeaveType
     : isEarnedLeaveType;
+  const excludedThrough = parseDateOnly(excludeThroughDate);
 
   return encashments.reduce((total, encashment) => {
     const leaveType = String(encashment.leaveType || 'Earned Leave').trim().toLowerCase();
+    const createdDate = parseDateOnly(encashment.createdAt);
+    const encashmentMonth = String(encashment.asOnDate || '').slice(0, 7);
+    const isBeforeOpeningBalance = excludedThrough && (
+      createdDate
+        ? createdDate <= excludedThrough
+        : encashmentMonth <= excludedThrough.toISOString().slice(0, 7)
+    );
     if (!isMatchingLeaveType(leaveType)
       || encashment.cancelledAt
-      || String(encashment.asOnDate || '').slice(0, 7) > asOnMonth) {
+      || encashmentMonth > asOnMonth
+      || isBeforeOpeningBalance) {
       return total;
     }
     return total + (Number(encashment.encashedDays) || 0);
@@ -165,10 +207,29 @@ export function calculateAvailableCasualLeave({
   };
 }
 
-export function calculateAvailableEarnedLeave({ joinedDate, asOnMonth, leaveRequests, encashments, attendance = [] }) {
-  const { accruedLeaves, monthsSinceJoining } = getEarnedLeaveAccrual(joinedDate, asOnMonth);
-  const leavesTaken = calculateEarnedLeaveDaysTaken(leaveRequests, asOnMonth, attendance);
-  const leavesEncashed = calculateEncashedLeaveDays(encashments, asOnMonth);
+export function calculateAvailableEarnedLeave({
+  joinedDate,
+  asOnMonth,
+  leaveRequests,
+  encashments,
+  attendance = [],
+  openingBalance = null,
+  openingBalanceAsOnDate = null,
+}) {
+  const { accruedLeaves, monthsSinceJoining } = getEarnedLeaveAccrual(
+    joinedDate,
+    asOnMonth,
+    openingBalance,
+    openingBalanceAsOnDate,
+  );
+  const parsedOpeningDate = parseDateOnly(openingBalanceAsOnDate);
+  const cutoff = monthEnd(asOnMonth);
+  const baselineDate = openingBalance !== null && openingBalance !== undefined &&
+    Number.isFinite(Number(openingBalance)) && parsedOpeningDate && cutoff && parsedOpeningDate <= cutoff
+    ? openingBalanceAsOnDate
+    : null;
+  const leavesTaken = calculateEarnedLeaveDaysTaken(leaveRequests, asOnMonth, attendance, baselineDate);
+  const leavesEncashed = calculateEncashedLeaveDays(encashments, asOnMonth, 'Earned Leave', baselineDate);
   return {
     monthsSinceJoining,
     accruedLeaves,

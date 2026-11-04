@@ -324,13 +324,22 @@ model PunchLocationHistory {
 }
 
 model LeaveBalance {
-  id                 Int      @id @default(autoincrement())
-  employeeId         String   @unique
-  casualLeaves       Float    @default(12)
-  leaveWithoutPay    Float    @default(0)
-  earnedLeaves       Float    @default(15)
-  compensatoryLeaves Float    @default(0)
-  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id                        Int      @id @default(autoincrement())
+  employeeId                String   @unique
+  casualLeaves              Float    @default(12)
+  leaveWithoutPay           Float    @default(0)
+  earnedLeaves              Float    @default(15)
+  earnedLeaveOpeningBalance Float?
+  earnedLeaveOpeningDate    String?
+  compensatoryLeaves        Float    @default(0)
+  employee                  Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model LeaveBalanceSetup {
+  id            String   @id
+  completedAt   DateTime @default(now())
+  completedBy   String
+  employeeCount Int
 }
 
 model LeaveRequest {

@@ -3,6 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, RefreshCw } from 'lucide-react';
 import MultiSelect from '@/components/MultiSelect';
+import {
+  EARNED_LEAVE_ENCASHMENT_MAX_DAYS,
+  EARNED_LEAVE_ENCASHMENT_MIN_BALANCE,
+} from '@/lib/earnedLeaveAccrual';
 
 async function fetchLeaveEncashmentEmployees(month) {
   const response = await fetch(`/api/payroll/leave-encashment?asOnDate=${encodeURIComponent(month)}`);
@@ -17,6 +21,7 @@ function createInitialEdits(employees) {
     {
       leaveType: 'Earned Leave',
       encashedDays: '',
+      eligibleElValue: String(employee.earnedLeaveQuota ?? 0),
       amountPerDay: ((Number(employee.grossSalary) || 0) / 26).toFixed(2),
       message: '',
     },
@@ -35,6 +40,8 @@ export default function LeaveEncashment() {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   });
+  const today = new Date();
+  const isCurrentMonth = asOnDate === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const initialMonth = useRef(asOnDate);
 
   // Editable row state
@@ -167,6 +174,41 @@ export default function LeaveEncashment() {
     }
   };
 
+  const handleSaveEligibleEl = async employee => {
+    if (!isCurrentMonth) {
+      alert('Select the current month before correcting Eligible EL.');
+      return;
+    }
+    const enteredValue = edits[employee.id]?.eligibleElValue;
+    const eligibleLeaves = Number(enteredValue);
+    if (enteredValue === '' || !Number.isFinite(eligibleLeaves) || eligibleLeaves < 0) {
+      alert(`Enter a valid non-negative Eligible EL value for ${employee.name}.`);
+      return;
+    }
+    if (!window.confirm(
+      `Set ${employee.name}'s Eligible EL to ${eligibleLeaves} days from the old server? This correction can only be saved once for this employee. Future monthly accrual will continue on top.`
+    )) return;
+
+    setSaving(true);
+    try {
+      const response = await fetch('/api/leaves/balance/opening-setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: employee.id, eligibleLeaves }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || `Could not set Eligible EL for ${employee.name}.`);
+      }
+      alert(`${employee.name}'s Eligible EL was updated and locked.`);
+      window.location.reload();
+    } catch (error) {
+      console.error(`Failed to correct Eligible EL for ${employee.name}:`, error);
+      alert(error.message || `Could not set Eligible EL for ${employee.name}.`);
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
       <div className="filter-bar">
@@ -189,7 +231,7 @@ export default function LeaveEncashment() {
       </div>
 
       <p style={{ margin: '0.75rem 0', color: '#475569', fontSize: '0.85rem' }}>
-        Earned Leave accrues at 1.5 days per month after 10 months of service. The leave year starts in April, and unused days carry forward until encashed.
+        Earned Leave accrues at 1.5 days for each completed service month, starting from joining. EL can be used after 8 months of service. Encashment requires at least 50 available EL days and is limited to 20 days per request.
       </p>
 
       <div style={{ marginTop: '0.5rem', marginBottom: '1rem', display: 'flex' }}>
@@ -241,7 +283,9 @@ export default function LeaveEncashment() {
               let maxInput = 0;
               if (edit.leaveType === 'Earned Leave') {
                 balance = row.leaveBalance?.earnedLeaves || 0;
-                maxInput = row.maxEncashable || 0;
+                maxInput = row.earnedLeaveEligible && balance >= EARNED_LEAVE_ENCASHMENT_MIN_BALANCE
+                  ? Math.min(row.maxEncashable || 0, EARNED_LEAVE_ENCASHMENT_MAX_DAYS)
+                  : 0;
               }
               else if (edit.leaveType === 'Casual Leave') {
                 balance = row.leaveBalance?.casualLeaves || 0;
@@ -256,7 +300,7 @@ export default function LeaveEncashment() {
                 maxInput = balance;
               }
               
-              const isNotEligible = row.monthsSinceJoining < 10;
+              const isNotEligible = edit.leaveType === 'Earned Leave' && !row.earnedLeaveEligible;
               
               return (
                 <tr key={row.id} style={{ background: isNotEligible ? '#fff1f2' : (idx % 2 === 0 ? 'white' : '#f8fafc'), borderBottom: '1px solid #e2e8f0', fontSize: '0.8rem', opacity: isNotEligible ? 0.85 : 1 }}>
@@ -267,21 +311,63 @@ export default function LeaveEncashment() {
                   <td style={{ padding: '8px' }}>{row.department || '-'}</td>
                   <td style={{ padding: '8px' }}>{row.joinedDate ? new Date(row.joinedDate).toLocaleDateString('en-GB') : '-'}</td>
                   <td style={{ padding: '8px', textAlign: 'center', color: isNotEligible ? '#e11d48' : 'inherit', fontWeight: isNotEligible ? 600 : 400 }}>{row.monthsSinceJoining}</td>
-                  <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeaveQuota}</td>
+                  <td style={{ padding: '8px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        aria-label={`Eligible EL for ${row.name}`}
+                        value={edit.eligibleElValue}
+                        disabled={row.eligibleBalanceSetupLocked || saving || !isCurrentMonth}
+                        onChange={event => handleEditChange(row.id, 'eligibleElValue', event.target.value)}
+                        title={!isCurrentMonth ? 'Select the current month to correct Eligible EL.' : undefined}
+                        style={{ width: '76px', padding: '5px', border: '1px solid #cbd5e1', borderRadius: '4px', textAlign: 'center', background: row.eligibleBalanceSetupLocked || !isCurrentMonth ? '#f1f5f9' : 'white' }}
+                      />
+                      {row.eligibleBalanceSetupLocked ? (
+                        <span title="This employee's Eligible EL correction is locked" style={{ color: '#15803d', fontSize: '0.68rem' }}>Locked</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEligibleEl(row)}
+                          disabled={saving || !isCurrentMonth}
+                          title={!isCurrentMonth ? 'Select the current month to correct Eligible EL.' : undefined}
+                          style={{ padding: '5px 7px', border: 'none', borderRadius: '4px', background: '#b91c1c', color: 'white', cursor: saving || !isCurrentMonth ? 'not-allowed' : 'pointer', opacity: saving || !isCurrentMonth ? 0.6 : 1, whiteSpace: 'nowrap' }}
+                        >
+                          Set once
+                        </button>
+                      )}
+                    </div>
+                  </td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeavesTaken}</td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>{row.earnedLeavesEncashed}</td>
                   <td style={{ padding: '8px', fontWeight: 600 }}>
                     Earned Leave
                   </td>
                   <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#64748b' }}>{balance}</td>
-                  <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#0ea5e9' }}>{maxInput}</td>
+                  <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#0ea5e9' }}>
+                    {maxInput}
+                    {edit.leaveType === 'Earned Leave' && !row.earnedLeaveEligible && (
+                      <div style={{ color: '#e11d48', fontSize: '0.7rem', fontWeight: 400 }}>After 8 months</div>
+                    )}
+                    {edit.leaveType === 'Earned Leave' && row.earnedLeaveEligible && balance < EARNED_LEAVE_ENCASHMENT_MIN_BALANCE && (
+                      <div style={{ color: '#b45309', fontSize: '0.7rem', fontWeight: 400 }}>50 EL required</div>
+                    )}
+                  </td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>
                     <input 
                       type="number" 
                       min="0"
+                      step="0.5"
                       max={maxInput}
                       style={{ width: '80px', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', textAlign: 'right' }}
                       value={edit.encashedDays}
+                      disabled={maxInput <= 0}
+                      title={edit.leaveType === 'Earned Leave' && !row.earnedLeaveEligible
+                        ? 'Earned Leave encashment is available after 8 months of service.'
+                        : edit.leaveType === 'Earned Leave' && balance < EARNED_LEAVE_ENCASHMENT_MIN_BALANCE
+                          ? `At least ${EARNED_LEAVE_ENCASHMENT_MIN_BALANCE} available Earned Leave days are required.`
+                          : undefined}
                       onChange={e => {
                         let val = e.target.value;
                         if (parseFloat(val) > maxInput) val = maxInput.toString();

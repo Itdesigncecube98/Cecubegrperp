@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import {
   calculateAvailableEarnedLeave,
+  EARNED_LEAVE_ENCASHMENT_MAX_DAYS,
+  EARNED_LEAVE_ENCASHMENT_MIN_BALANCE,
   getMonthEndDateString,
 } from '../../../../lib/earnedLeaveAccrual';
+import { getEarnedLeaveEligibilityDate } from '../../../../lib/leaveEntitlements';
 import { findApplicableSalaryRevision } from '../../../../lib/payrollDates';
 
 export const dynamic = 'force-dynamic';
@@ -54,6 +57,8 @@ export async function GET(request) {
         leaveBalance: {
           select: {
             earnedLeaves: true,
+            earnedLeaveOpeningBalance: true,
+            earnedLeaveOpeningDate: true,
             casualLeaves: true,
             leaveWithoutPay: true,
             compensatoryLeaves: true,
@@ -70,6 +75,7 @@ export async function GET(request) {
             isProcessed: true,
             payCycleId: true,
             cancelledAt: true,
+            createdAt: true,
           },
           orderBy: { createdAt: 'desc' }
         },
@@ -88,8 +94,9 @@ export async function GET(request) {
     });
 
     const employeeIds = employees.map(employee => employee.id);
-    const attendance = employeeIds.length
-      ? await prisma.attendance.findMany({
+    const [attendance, globalEligibleSetup, employeeEligibleSetups] = await Promise.all([
+      employeeIds.length
+        ? prisma.attendance.findMany({
           where: {
             employeeId: { in: employeeIds },
             status: { in: ['EL'] },
@@ -97,7 +104,23 @@ export async function GET(request) {
           },
           select: { employeeId: true, date: true, status: true },
         })
-      : [];
+        : [],
+      prisma.leaveBalanceSetup.findUnique({
+        where: { id: 'EL_OPENING_BALANCE_V1' },
+        select: { id: true },
+      }),
+      employeeIds.length
+        ? prisma.leaveBalanceSetup.findMany({
+            where: {
+              id: { in: employeeIds.map(id => `EL_OPENING_BALANCE_V1:${id}`) },
+            },
+            select: { id: true },
+          })
+        : [],
+    ]);
+    const eligibleSetupIds = new Set(employeeEligibleSetups.map(setup =>
+      setup.id.slice('EL_OPENING_BALANCE_V1:'.length)
+    ));
     const attendanceByEmployee = new Map();
     attendance.forEach(record => {
       const records = attendanceByEmployee.get(record.employeeId) || [];
@@ -118,8 +141,14 @@ export async function GET(request) {
         leaveRequests: emp.leaveRequests || [],
         encashments: emp.leaveEncashments || [],
         attendance: attendanceByEmployee.get(emp.id) || [],
+        openingBalance: emp.leaveBalance?.earnedLeaveOpeningBalance,
+        openingBalanceAsOnDate: emp.leaveBalance?.earnedLeaveOpeningDate,
       });
       const maxEncashable = earnedLeaveBalance.availableLeaves;
+      const earnedLeaveEligibleFrom = getEarnedLeaveEligibilityDate(emp);
+      const earnedLeaveEligible = Boolean(
+        earnedLeaveEligibleFrom && earnedLeaveEligibleFrom <= getMonthEndDateString(asOnMonth)
+      );
 
       return {
         id: emp.id,
@@ -138,7 +167,9 @@ export async function GET(request) {
         earnedLeaveQuota: earnedLeaveBalance.accruedLeaves,
         earnedLeavesTaken: earnedLeaveBalance.leavesTaken,
         earnedLeavesEncashed: earnedLeaveBalance.leavesEncashed,
-        maxEncashable
+        maxEncashable,
+        earnedLeaveEligible,
+        eligibleBalanceSetupLocked: Boolean(globalEligibleSetup || eligibleSetupIds.has(emp.id)),
       };
     });
 
@@ -182,6 +213,18 @@ export async function POST(request) {
     }
 
     const type = leaveType || 'Earned Leave';
+    if (type === 'Earned Leave' && numericEncashedDays > EARNED_LEAVE_ENCASHMENT_MAX_DAYS) {
+      return NextResponse.json({
+        error: `A maximum of ${EARNED_LEAVE_ENCASHMENT_MAX_DAYS} Earned Leave days can be encashed at one time.`,
+      }, { status: 400 });
+    }
+
+    if (type === 'Earned Leave') {
+      const eligibleFrom = getEarnedLeaveEligibilityDate(employee);
+      if (!eligibleFrom || eligibleFrom > getMonthEndDateString(asOnDate)) {
+        return NextResponse.json({ error: 'Earned Leave can only be encashed after completing 8 months of service.' }, { status: 409 });
+      }
+    }
     
     let balanceField = '';
     
@@ -214,7 +257,15 @@ export async function POST(request) {
       });
       const encashments = await tx.leaveEncashment.findMany({
         where: { employeeId },
-        select: { leaveType: true, asOnDate: true, encashedDays: true, isProcessed: true, payCycleId: true, cancelledAt: true },
+        select: {
+          leaveType: true,
+          asOnDate: true,
+          encashedDays: true,
+          isProcessed: true,
+          payCycleId: true,
+          cancelledAt: true,
+          createdAt: true,
+        },
       });
       const currentLeaveBalance = await tx.leaveBalance.findUnique({
         where: { employeeId },
@@ -264,8 +315,17 @@ export async function POST(request) {
             leaveRequests,
             encashments,
             attendance,
+            openingBalance: currentLeaveBalance?.earnedLeaveOpeningBalance,
+            openingBalanceAsOnDate: currentLeaveBalance?.earnedLeaveOpeningDate,
           }).availableLeaves
         : currentBalance;
+      if (type === 'Earned Leave' && availableBalance < EARNED_LEAVE_ENCASHMENT_MIN_BALANCE) {
+        const error = new Error(
+          `At least ${EARNED_LEAVE_ENCASHMENT_MIN_BALANCE} Earned Leave days are required before encashment. Current balance: ${availableBalance}.`
+        );
+        error.code = 'EL_ENCASH_THRESHOLD';
+        throw error;
+      }
       if (numericEncashedDays > availableBalance) {
         const error = new Error(`Only ${availableBalance} ${type} day(s) are available to encash.`);
         error.code = 'INSUFFICIENT_LEAVE';
@@ -291,9 +351,11 @@ export async function POST(request) {
           leaveRequests,
           encashments: [
             ...encashments,
-              { asOnDate, encashedDays: numericEncashedDays, cancelledAt: null },
+              { asOnDate, encashedDays: numericEncashedDays, cancelledAt: null, createdAt: new Date() },
           ],
           attendance,
+          openingBalance: currentLeaveBalance?.earnedLeaveOpeningBalance,
+          openingBalanceAsOnDate: currentLeaveBalance?.earnedLeaveOpeningDate,
         }).availableLeaves;
         await tx.leaveBalance.upsert({
           where: { employeeId },
@@ -320,6 +382,9 @@ export async function POST(request) {
   } catch (error) {
     console.error('Error saving leave encashment:', error);
     if (error.code === 'ENCASHMENT_LOCKED' || error.code === 'INSUFFICIENT_LEAVE') {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error.code === 'EL_ENCASH_THRESHOLD') {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
     if (error.code === 'P2034') {

@@ -51,6 +51,7 @@ export async function GET(request) {
           asOnDate: true,
           encashedDays: true,
           cancelledAt: true,
+          createdAt: true,
         },
       }),
     ]);

@@ -334,4 +334,57 @@
   .print-emp-row:nth-child(even) {
     background: transparent !important;
   }
+
+  @page salary-slip {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  .salary-slips-print {
+    page: salary-slip;
+  }
+
+  .salary-slip-print {
+    page-break-after: always;
+    break-after: page;
+    font-family: Arial, sans-serif;
+    color: #000;
+  }
+
+  .salary-slip-print:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .salary-slip-employee {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 18px;
+    padding: 8px 0;
+    font-size: 12px;
+  }
+
+  .salary-slip-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .salary-slip-table th,
+  .salary-slip-table td {
+    border: 1px solid #444;
+    padding: 8px;
+    text-align: left;
+  }
+
+  .salary-slip-table th:nth-child(even),
+  .salary-slip-table td:nth-child(even) {
+    text-align: right;
+  }
+
+  .salary-slip-note {
+    margin-top: 24px;
+    text-align: center;
+    font-size: 10px;
+  }
 }

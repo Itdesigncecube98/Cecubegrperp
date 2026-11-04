@@ -7,6 +7,7 @@ import { ChevronLeft, Info } from 'lucide-react';
 import { getLeaveBalance, createLeaveRequest, getLeaveRequests, getLeaveTypes } from '../../../lib/data';
 import {
   isFemaleEmployee,
+  getLeaveCategory,
   isMaternityLeave,
   isPaternityLeave,
   supportsHalfDayLeave,
@@ -195,7 +196,7 @@ export default function EmployeeLeavePage() {
             <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Earned Leave (EL)</h3>
             <p style={{ margin: '0.5rem 0 0 0', fontSize: '2rem', fontWeight: 'bold', color: '#111827' }}>{balance.earnedLeaves ?? 0}</p>
             <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>days remaining</p>
-            <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#64748b' }}>18 days after 8 months of service, then 18 days each joining anniversary; unused EL carries forward.</p>
+            <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#64748b' }}>1.5 days accrue per completed service month from joining. EL can be used after 8 months; unused EL carries forward.</p>
           </div>
           <div className="card" style={{ borderLeft: '4px solid #8b5cf6', padding: '1.5rem' }}>
             <h3 style={{ margin: 0, fontSize: '1rem', color: '#6b7280', fontWeight: '500' }}>Comp. Off (C-off)</h3>
@@ -235,11 +236,23 @@ export default function EmployeeLeavePage() {
             required
           >
             <option value="">-- Select Category --</option>
-            {leaveTypes.map(lt => (
-              <option key={lt.id} value={lt.name}>
-                {lt.name === 'Paid leave' ? 'Earned' : lt.name === 'COFF' ? 'Compensatory Off (COFF)' : lt.name}
-              </option>
-            ))}
+            {leaveTypes.map(lt => {
+              const eligibleFrom = balance.earnedLeaveEligibleFrom;
+              const today = new Date();
+              const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+              const requestedStart = newRequest.startDate || todayKey;
+              const isEarnedLeaveUnavailable = getLeaveCategory(lt.name) === 'EL' &&
+                (!eligibleFrom || requestedStart < eligibleFrom);
+              const labelSuffix = isEarnedLeaveUnavailable
+                ? eligibleFrom ? ` (Available from ${eligibleFrom})` : ' (Joining date required)'
+                : '';
+              return (
+                <option key={lt.id} value={lt.name} disabled={isEarnedLeaveUnavailable}>
+                  {lt.name === 'Paid leave' ? 'Earned' : lt.name === 'COFF' ? 'Compensatory Off (COFF)' : lt.name}
+                  {labelSuffix}
+                </option>
+              );
+            })}
           </select>
         </div>
 
@@ -306,7 +319,7 @@ export default function EmployeeLeavePage() {
                 name="halfday" 
                 value="no" 
                 checked={!newRequest.isHalfDay} 
-                onChange={() => setNewRequest(previous => ({ ...previous, isHalfDay: false, halfDayPeriod: '' }))} 
+                onChange={() => setNewRequest(previous => ({ ...previous, isHalfDay: false, halfDayPeriod: '' }))}
               /> No
             </label>
           </div>

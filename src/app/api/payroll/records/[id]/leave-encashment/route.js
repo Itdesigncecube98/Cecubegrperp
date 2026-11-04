@@ -57,8 +57,9 @@ export async function POST(request, { params }) {
         });
         const allEncashments = await tx.leaveEncashment.findMany({
           where: { employeeId: record.employeeId },
-          select: { leaveType: true, asOnDate: true, encashedDays: true, cancelledAt: true },
+          select: { leaveType: true, asOnDate: true, encashedDays: true, cancelledAt: true, createdAt: true },
         });
+        const currentBalance = await tx.leaveBalance.findUnique({ where: { employeeId: record.employeeId } });
         const balanceMonth = new Date().toISOString().slice(0, 7);
         const attendance = await tx.attendance.findMany({
           where: {
@@ -74,6 +75,8 @@ export async function POST(request, { params }) {
           leaveRequests,
           encashments: allEncashments,
           attendance,
+          openingBalance: currentBalance?.earnedLeaveOpeningBalance,
+          openingBalanceAsOnDate: currentBalance?.earnedLeaveOpeningDate,
         }).availableLeaves;
         const earnedField = LEAVE_BALANCE_FIELDS['Earned Leave'];
         const nonEarnedRestoration = encashments.reduce((totals, encashment) => {
@@ -82,7 +85,6 @@ export async function POST(request, { params }) {
           if (field) totals[field] = (totals[field] || 0) + encashment.encashedDays;
           return totals;
         }, {});
-        const currentBalance = await tx.leaveBalance.findUnique({ where: { employeeId: record.employeeId } });
         await tx.leaveBalance.upsert({
           where: { employeeId: record.employeeId },
           create: {

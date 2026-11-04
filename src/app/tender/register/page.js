@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, Filter } from 'lucide-react';
+import { Search, Filter, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function TenderRegister() {
@@ -9,8 +9,12 @@ export default function TenderRegister() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [registeredTenderNo, setRegisteredTenderNo] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [deletingTenderId, setDeletingTenderId] = useState('');
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
+    setIsAdmin(sessionStorage.getItem('isAdmin') === 'true');
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('registered') === '1') {
       setRegisteredTenderNo(searchParams.get('tenderNo') || 'successfully');
@@ -30,6 +34,27 @@ export default function TenderRegister() {
     }
     loadData();
   }, []);
+
+  const deleteTender = async (tender) => {
+    const tenderLabel = tender.tenderNo || tender.title || 'this tender';
+    const confirmed = window.confirm(
+      `Permanently delete ${tenderLabel}? This also deletes its BOQ, bid, document records, approvals, and tender audit history. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingTenderId(tender.id);
+    setDeleteError('');
+    try {
+      const response = await fetch(`/api/tender/${encodeURIComponent(tender.id)}`, { method: 'DELETE' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Tender could not be deleted.');
+      setTenders(current => current.filter(item => item.id !== tender.id));
+    } catch (error) {
+      setDeleteError(error.message || 'Tender could not be deleted.');
+    } finally {
+      setDeletingTenderId('');
+    }
+  };
 
   const formatCurrency = (val) => {
     if (!val) return '-';
@@ -66,6 +91,7 @@ export default function TenderRegister() {
           Tender {registeredTenderNo} registered successfully. It is now listed below.
         </div>
       )}
+      {deleteError && <div className="tnd-detail-error" role="alert" style={{ marginBottom: 16 }}>{deleteError}</div>}
 
       <div className="tnd-card">
         <div className="tnd-toolbar">
@@ -142,6 +168,19 @@ export default function TenderRegister() {
                       <Link href={`/tender/${t.id}/details`} className="tnd-btn tnd-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
                         Manage
                       </Link>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="tnd-btn tnd-btn-outline"
+                          style={{ padding: '4px 8px', marginLeft: 8, color: '#b91c1c', borderColor: '#fecaca', fontSize: '0.75rem' }}
+                          aria-label={`Delete ${t.tenderNo || 'tender'}`}
+                          disabled={deletingTenderId === t.id}
+                          onClick={() => deleteTender(t)}
+                        >
+                          <Trash2 size={13} />
+                          {deletingTenderId === t.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

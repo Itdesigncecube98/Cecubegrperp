@@ -26,6 +26,8 @@ export function calculateLeaveBalanceSnapshot({
     leaveRequests: approvedRequests,
     encashments,
     attendance,
+    openingBalance: savedBalance?.earnedLeaveOpeningBalance,
+    openingBalanceAsOnDate: savedBalance?.earnedLeaveOpeningDate,
   });
   const monthPrefix = asOnMonth;
   const result = {

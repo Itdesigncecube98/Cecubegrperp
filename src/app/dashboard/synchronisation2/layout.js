@@ -11,7 +11,6 @@ export default function Synchronisation2Layout({ children }) {
   const tabs = [
     { name: 'Head Types', path: '/dashboard/synchronisation2/head-types' },
     { name: 'Salary Heads', path: '/dashboard/synchronisation2/salary-heads' },
-    { name: 'Advance Application', path: '/dashboard/synchronisation2/advance-application' },
     { name: 'Bank Names', path: '/dashboard/synchronisation2/bank-names' },
     { name: 'Weekoff Types', path: '/dashboard/synchronisation2/weekoff-types' },
     { name: 'Leave Type', path: '/dashboard/synchronisation2/leave-type' },
@@ -41,7 +40,7 @@ export default function Synchronisation2Layout({ children }) {
                 Synchronization 2
               </h1>
               <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '14px' }}>
-                Manage Salary Heads and Advance Applications
+                Manage Salary Heads and Employee Setup
               </p>
             </div>
           </div>

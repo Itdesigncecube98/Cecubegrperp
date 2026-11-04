@@ -114,6 +114,8 @@ export async function GET(request) {
         employmentStatus: true,
         supervisorId: true,
         joinedDate: true,
+        maritalStatus: true,
+        marriageAnniversary: true,
         createdAt: true,
         photoUrl: true,
         basicSalary: true,
@@ -243,6 +245,8 @@ export async function POST(request) {
         role: body.role || 'EMPLOYEE',
         employmentStatus: body.employmentStatus || body.status || 'Working',
         organisation,
+        maritalStatus: body.maritalStatus || null,
+        marriageAnniversary: body.marriageAnniversary || null,
         ...(Array.isArray(body.emergencyContacts) ? {
           emergencyContacts: {
             create: body.emergencyContacts.map(contact => ({

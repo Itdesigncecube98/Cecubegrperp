@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { normalizeTenderDetails } from '@/lib/tenderDetails';
+import { readAuthSession } from '@/lib/authSession';
 
 function validateBoqItems(value) {
   if (!Array.isArray(value) || value.length > 500) {
@@ -67,6 +68,48 @@ export async function GET(req, { params }) {
   } catch (error) {
     console.error('Error fetching tender details:', error);
     return NextResponse.json({ error: 'Failed to fetch tender' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request, { params }) {
+  const session = readAuthSession(request);
+  if (session?.type !== 'admin') {
+    return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
+  }
+
+  try {
+    const { id } = await params;
+    const deletedTender = await prisma.$transaction(async transaction => {
+      const tender = await transaction.tender.findUnique({
+        where: { id },
+        select: { id: true, tenderNo: true, title: true, status: true },
+      });
+      if (!tender) return null;
+
+      await transaction.auditLog.create({
+        data: {
+          module: 'TENDER',
+          subModule: 'Tender Register',
+          action: 'DELETE',
+          entityType: 'Tender',
+          entityId: tender.id,
+          oldValues: JSON.stringify(tender),
+          ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+            request.headers.get('x-real-ip') ||
+            null,
+          userAgent: request.headers.get('user-agent'),
+          remarks: `Deleted by admin session ${session.id}`,
+        },
+      });
+
+      return transaction.tender.delete({ where: { id } });
+    });
+
+    if (!deletedTender) return NextResponse.json({ error: 'Tender not found.' }, { status: 404 });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting tender:', error);
+    return NextResponse.json({ error: 'Failed to delete tender.' }, { status: 500 });
   }
 }
 

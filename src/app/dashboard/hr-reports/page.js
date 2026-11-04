@@ -7,8 +7,6 @@ import MultiSelect from '../../../components/MultiSelect';
 const reportTypes = [
   'Salary Statement',
   'Salary Disbursement Letter To Bank',
-  'Cash Payment List',
-  'Cheque Payment List',
   'Payslip Register',
   'Hold Salary Letter to Bank',
   'PF/NSSF Statement',
@@ -16,16 +14,13 @@ const reportTypes = [
   'ESI/NHIF Statement',
   'LWF Statement',
   'Bonus Statement',
-  'Allowances Deductions Statement',
   'Monthly Attendance Summary',
   'Leave Statement',
   'Advance Balance Statement',
   'Muster Statuswise Report',
   'Monthly Advance Recovery',
-  'Employee List',
   'Birthday List',
   'Holiday List',
-  'Address List of Employees',
   'Anniversary List'
 ];
 
@@ -46,8 +41,13 @@ const calculateGrossSalary = (emp) => {
   return total > 0 ? total : 0;
 };
 
+const formatSalaryAmount = value => Number(value || 0).toLocaleString('en-IN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export default function HRReportsPage() {
-  const [activeReport, setActiveReport] = useState('Employee List');
+  const [activeReport, setActiveReport] = useState('Salary Statement');
   const [employees, setEmployees] = useState([]);
   const [payrollData, setPayrollData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -128,6 +128,7 @@ export default function HRReportsPage() {
   };
 
   const getFilteredData = () => {
+    const payrollRecords = Array.isArray(payrollData) ? payrollData : [];
     let filteredEmployees = employees;
 
     // Only filter if not ALL options are selected
@@ -151,6 +152,23 @@ export default function HRReportsPage() {
     }
 
     switch (activeReport) {
+      case 'Salary Statement': {
+        if (!selectedMonth) return [];
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const monthStart = `${selectedMonth}-01`;
+        const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+        return payrollRecords.filter(record => {
+          if (record.status !== 'POSTED' || !record.payCycle?.startDate || !record.payCycle?.endDate) return false;
+          if (record.payCycle.startDate > monthEnd || record.payCycle.endDate < monthStart) return false;
+          const employee = record.employee || {};
+          const branch = employee.siteOffice || employee.branch;
+          if (!isAllBranchesSelected && selectedBranches.length > 0 && !selectedBranches.includes(branch)) return false;
+          if (!isAllDeptsSelected && selectedDepartments.length > 0 && !selectedDepartments.includes(employee.department)) return false;
+          if (!isAllEmployeesSelected && selectedEmployeesFilter.length > 0 &&
+              !selectedEmployeesFilter.includes(`${employee.name} (${employee.empId})`)) return false;
+          return true;
+        });
+      }
       case 'Employee List':
         return filteredEmployees;
 
@@ -241,7 +259,7 @@ export default function HRReportsPage() {
       case 'Bonus Statement':
       case 'Allowances Deductions Statement':
         // These reports use payrollData instead of employees
-        let filteredPayroll = payrollData;
+        let filteredPayroll = payrollRecords;
         
         // Filter by branch/dept based on the associated employee
         if (!isAllBranchesSelected && selectedBranches.length > 0) {
@@ -277,6 +295,31 @@ export default function HRReportsPage() {
 
   const renderTableHead = () => {
     switch (activeReport) {
+      case 'Salary Statement':
+        return (
+          <tr>
+            <th>Employee ID</th>
+            <th>Employee Name</th>
+            <th>Pay Period</th>
+            <th>Working Days</th>
+            <th>Present Days</th>
+            <th>Absent Days</th>
+            <th style={{ textAlign: 'right' }}>Basic</th>
+            <th style={{ textAlign: 'right' }}>HRA</th>
+            <th style={{ textAlign: 'right' }}>Conveyance</th>
+            <th style={{ textAlign: 'right' }}>Medical</th>
+            <th style={{ textAlign: 'right' }}>Special Allowance</th>
+            <th style={{ textAlign: 'right' }}>Bonus</th>
+            <th style={{ textAlign: 'right' }}>Leave Encashment</th>
+            <th style={{ textAlign: 'right' }}>Gross Pay</th>
+            <th style={{ textAlign: 'right' }}>PF</th>
+            <th style={{ textAlign: 'right' }}>Professional Tax</th>
+            <th style={{ textAlign: 'right' }}>TDS</th>
+            <th style={{ textAlign: 'right' }}>Other Deduction</th>
+            <th style={{ textAlign: 'right' }}>Total Deduction</th>
+            <th style={{ textAlign: 'right' }}>Net Salary</th>
+          </tr>
+        );
       case 'Employee List':
         return (
           <tr>
@@ -366,6 +409,22 @@ export default function HRReportsPage() {
 
   const renderTableRow = (emp) => {
     switch (activeReport) {
+      case 'Salary Statement':
+        return (
+          <tr key={emp.id}>
+            <td>{emp.employee?.empId || '-'}</td>
+            <td>{emp.employee?.name || '-'}</td>
+            <td>{emp.payCycle?.name || '-'}</td>
+            {[emp.workingDays, emp.presentDays, emp.absentDays, emp.basicPay, emp.hra, emp.conveyance, emp.medical,
+              emp.specialAllow, emp.bonus, emp.leaveEncashment, emp.grossPay,
+              emp.pfEmployee, emp.professionalTax, emp.tds, emp.otherDeductions, emp.totalDeductions, emp.netPay]
+              .map((amount, index) => (
+                <td key={index} style={{ textAlign: 'right', fontWeight: index === 13 ? 700 : 400 }}>
+                  {Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </td>
+              ))}
+          </tr>
+        );
       case 'Employee List':
         return (
           <tr key={emp.id}>
@@ -458,6 +517,31 @@ export default function HRReportsPage() {
     let rows = [];
 
     switch (activeReport) {
+      case 'Salary Statement':
+        headers = ['Employee ID', 'Employee Name', 'Pay Period', 'Working Days', 'Present Days', 'Absent Days', 'Basic', 'HRA', 'Conveyance', 'Medical', 'Special Allowance', 'Bonus', 'Leave Encashment', 'Gross Pay', 'PF', 'Professional Tax', 'TDS', 'Other Deduction', 'Total Deduction', 'Net Salary'];
+        rows = currentData.map(record => [
+          record.employee?.empId || '-',
+          record.employee?.name || '-',
+          record.payCycle?.name || '-',
+          record.workingDays,
+          record.presentDays,
+          record.absentDays,
+          record.basicPay,
+          record.hra,
+          record.conveyance,
+          record.medical,
+          record.specialAllow,
+          record.bonus,
+          record.leaveEncashment,
+          record.grossPay,
+          record.pfEmployee,
+          record.professionalTax,
+          record.tds,
+          record.otherDeductions,
+          record.totalDeductions,
+          record.netPay,
+        ]);
+        break;
       case 'Employee List':
         headers = ['Emp ID', 'Name', 'Father\'s Name', 'Joining Date', 'Designation', 'Department', 'Gross Salary', 'Status'];
         rows = currentData.map(emp => [
@@ -581,7 +665,7 @@ export default function HRReportsPage() {
   };
 
   const currentData = getFilteredData();
-  const isImplemented = ['Employee List', 'Birthday List', 'Anniversary List', 'Address List of Employees', 'LWF Statement', 'Bonus Statement', 'Allowances Deductions Statement'].includes(activeReport);
+  const isImplemented = ['Salary Statement', 'Birthday List', 'Anniversary List', 'LWF Statement', 'Bonus Statement'].includes(activeReport);
   
   const groupedPrintData = activeReport === 'Employee List' ? groupEmployeesForPrint(currentData) : 
                            activeReport === 'Birthday List' ? groupEmployeesByBranchForPrint(currentData) : {};
@@ -703,8 +787,10 @@ export default function HRReportsPage() {
             </div>
           ) : currentData.length === 0 ? (
             <div className="hr-reports-empty">
-              <h3>No records found</h3>
-              <p>Try adjusting your filter criteria.</p>
+              <h3>{activeReport === 'Salary Statement' && !selectedMonth ? 'Select a month' : 'No posted salaries found'}</h3>
+              <p>{activeReport === 'Salary Statement' && !selectedMonth
+                ? 'Choose a salary month to see employees whose salaries have been posted.'
+                : 'No records match the selected month and filters.'}</p>
             </div>
           ) : (
             <table className="hr-reports-table">
@@ -729,12 +815,71 @@ export default function HRReportsPage() {
                   From {new Date(fromDate).toLocaleDateString('en-GB')} To Date {new Date(toDate).toLocaleDateString('en-GB')}
                 </div>
               )}
+
             </div>
             <div className="print-header-right" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between' }}>
               <img src="/logo.png" alt="CeCube Logo" style={{ height: '56px', marginBottom: '8px' }} />
               <div className="print-date" style={{ fontSize: '12px', color: '#333' }}>Print Date : {new Date().toLocaleDateString('en-GB')}</div>
             </div>
           </div>
+
+          {activeReport === 'Salary Statement' && (
+            <div className="salary-slips-print">
+              {currentData.map(record => {
+                const earnings = [
+                  ['Basic Pay', record.basicPay],
+                  ['House Rent Allowance', record.hra],
+                  ['Conveyance', record.conveyance],
+                  ['Medical Allowance', record.medical],
+                  ['Special Allowance', record.specialAllow],
+                  ['Bonus', record.bonus],
+                  ['Leave Encashment', record.leaveEncashment],
+                  ['Gross Earnings', record.grossPay],
+                ];
+                const deductions = [
+                  ['Employee PF', record.pfEmployee],
+                  ['Professional Tax', record.professionalTax],
+                  ['TDS', record.tds],
+                  ['Other Deductions', record.otherDeductions],
+                  ['Total Deductions', record.totalDeductions],
+                  ['Net Salary', record.netPay],
+                ];
+                return (
+                  <section key={record.id} className="salary-slip-print">
+                    <h2 style={{ textAlign: 'center', margin: '0 0 4px' }}>CeCube Engineering India Private Limited</h2>
+                    <h3 style={{ textAlign: 'center', margin: '0 0 14px' }}>Salary Slip — {record.payCycle?.name || selectedMonth}</h3>
+                    <div className="salary-slip-employee">
+                      <span><strong>Employee:</strong> {record.employee?.name || '-'}</span>
+                      <span><strong>Employee ID:</strong> {record.employee?.empId || '-'}</span>
+                      <span><strong>Department:</strong> {record.employee?.department || '-'}</span>
+                      <span><strong>Designation:</strong> {record.employee?.designation || '-'}</span>
+                    </div>
+                    <div className="salary-slip-employee">
+                      <span><strong>Working Days:</strong> {Number(record.workingDays || 0).toFixed(1)}</span>
+                      <span><strong>Present Days:</strong> {Number(record.presentDays || 0).toFixed(1)}</span>
+                      <span><strong>Absent Days:</strong> {Number(record.absentDays || 0).toFixed(1)}</span>
+                    </div>
+                    <table className="salary-slip-table">
+                      <thead>
+                        <tr><th>Earnings</th><th>Amount (₹)</th><th>Deductions</th><th>Amount (₹)</th></tr>
+                      </thead>
+                      <tbody>
+                        {Array.from({ length: Math.max(earnings.length, deductions.length) }, (_, index) => (
+                          <tr key={index}>
+                            <td><strong>{earnings[index]?.[0] || ''}</strong></td>
+                            <td>{earnings[index] ? formatSalaryAmount(earnings[index][1]) : ''}</td>
+                            <td><strong>{deductions[index]?.[0] || ''}</strong></td>
+                            <td>{deductions[index] ? formatSalaryAmount(deductions[index][1]) : ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="salary-slip-note">This is a system-generated salary slip.</p>
+                  </section>
+                );
+              })}
+            </div>
+          )}
 
           {activeReport === 'Employee List' && (
             <table className="print-table">
@@ -858,7 +1003,7 @@ export default function HRReportsPage() {
           )}
           
           {/* Fallback for other reports for now */}
-          {!['Employee List', 'Birthday List', 'LWF Statement', 'Bonus Statement'].includes(activeReport) && (
+          {!['Salary Statement', 'Employee List', 'Birthday List', 'LWF Statement', 'Bonus Statement'].includes(activeReport) && (
             <p style={{textAlign: 'center', marginTop: '20px'}}>Print format for {activeReport} is under construction.</p>
           )}
         </div>

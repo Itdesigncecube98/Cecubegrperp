@@ -122,10 +122,10 @@ export async function POST(request) {
     } else if (category === 'EL') {
       const eligibleFrom = getEarnedLeaveEligibilityDate(employee);
       const leaveStart = toDateKey(data.startDate);
-      if (employee.joinedDate && !eligibleFrom) {
-        return NextResponse.json({ error: 'Employee joining date is invalid. Please contact HR.' }, { status: 400 });
+      if (!eligibleFrom) {
+        return NextResponse.json({ error: 'A valid employee joining date is required to determine Earned Leave eligibility. Please contact HR.' }, { status: 400 });
       }
-      if (eligibleFrom && leaveStart && leaveStart < eligibleFrom) {
+      if (leaveStart && leaveStart < eligibleFrom) {
         return NextResponse.json({ error: `Earned Leave can only be availed from ${eligibleFrom}, after completion of 8 months of service.` }, { status: 400 });
       }
     } else if (isMaternityLeave(type)) {

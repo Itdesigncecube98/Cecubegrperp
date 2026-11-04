@@ -49,6 +49,7 @@ export async function GET(request) {
           asOnDate: true,
           encashedDays: true,
           cancelledAt: true,
+          createdAt: true,
         },
       }),
     ]);
@@ -121,14 +122,59 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Employee ID is required.' }, { status: 400 });
     }
 
-    const balance = await prisma.leaveBalance.upsert({
-      where: { employeeId },
-      update: { casualLeaves, leaveWithoutPay, earnedLeaves },
-      create: { employeeId, casualLeaves, leaveWithoutPay, earnedLeaves },
-    });
+    const updateData = {
+      ...(casualLeaves !== undefined ? { casualLeaves } : {}),
+      ...(leaveWithoutPay !== undefined ? { leaveWithoutPay } : {}),
+    };
+    if (earnedLeaves !== undefined) {
+      const openingBalance = Number(earnedLeaves);
+      if (!Number.isFinite(openingBalance) || openingBalance < 0) {
+        return NextResponse.json({ error: 'Earned Leave balance must be a non-negative number.' }, { status: 400 });
+      }
+      updateData.earnedLeaves = openingBalance;
+      updateData.earnedLeaveOpeningBalance = openingBalance;
+      updateData.earnedLeaveOpeningDate = new Date().toISOString().slice(0, 10);
+    }
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'At least one leave balance is required.' }, { status: 400 });
+    }
+
+    const balance = earnedLeaves !== undefined
+      ? await prisma.$transaction(async transaction => {
+          const setupRecords = await transaction.leaveBalanceSetup.findMany({
+            where: {
+              id: {
+                in: [
+                  'EL_OPENING_BALANCE_V1',
+                  `EL_OPENING_BALANCE_V1:${employeeId}`,
+                ],
+              },
+            },
+            select: { id: true },
+          });
+          if (setupRecords.length > 0) return null;
+          return transaction.leaveBalance.upsert({
+            where: { employeeId },
+            update: updateData,
+            create: { employeeId, ...updateData },
+          });
+        }, { isolationLevel: 'Serializable' })
+      : await prisma.leaveBalance.upsert({
+          where: { employeeId },
+          update: updateData,
+          create: { employeeId, ...updateData },
+        });
+    if (!balance) {
+      return NextResponse.json({
+        error: 'EL opening balances are locked because the one-time setup has been completed.',
+      }, { status: 409 });
+    }
     return NextResponse.json(balance);
   } catch (error) {
     console.error('Failed to save leave balance:', error);
+    if (error.code === 'P2034') {
+      return NextResponse.json({ error: 'The one-time EL setup is in progress. Refresh the balances and try again.' }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

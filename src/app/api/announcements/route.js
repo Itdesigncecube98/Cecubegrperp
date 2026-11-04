@@ -17,31 +17,42 @@ export async function GET() {
 export async function POST(request) {
   try {
     const data = await request.json();
+    const isHoliday = data.isHoliday === true;
+    const isWorkingDay = data.isWorkingDay === true;
+    const date = typeof data.date === 'string' && data.date.trim() ? data.date.trim() : null;
 
-    // Create the announcement
-    const announcement = await prisma.announcement.create({
-      data: {
-        subject: data.subject,
-        message: data.message,
-        isHoliday: data.isHoliday || false,
-        isWorkingDay: data.isWorkingDay || false,
-        date: data.date || null
-      }
-    });
-
-    // If it's a holiday, also create a holiday record
-    if (data.isHoliday && data.date) {
-      // Upsert so we don't crash if holiday already exists on this date
-      await prisma.holiday.upsert({
-        where: { date: data.date },
-        update: { name: data.subject },
-        create: {
-          name: data.subject,
-          date: data.date,
-          type: 'Public'
-        }
-      });
+    if (isHoliday && isWorkingDay) {
+      return NextResponse.json({ error: 'An announcement cannot be both a holiday and a working day.' }, { status: 400 });
     }
+    if ((isHoliday || isWorkingDay) && !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
+      return NextResponse.json({ error: 'A valid date is required for a holiday or working-day announcement.' }, { status: 400 });
+    }
+
+    const announcement = await prisma.$transaction(async transaction => {
+      const created = await transaction.announcement.create({
+        data: {
+          subject: data.subject,
+          message: data.message,
+          isHoliday,
+          isWorkingDay,
+          date,
+        },
+      });
+
+      if (isHoliday && date) {
+        await transaction.holiday.upsert({
+          where: { date },
+          update: { name: data.subject },
+          create: {
+            name: data.subject,
+            date,
+            type: 'Public',
+          },
+        });
+      }
+
+      return created;
+    });
 
     return NextResponse.json(announcement);
   } catch (error) {

@@ -1333,6 +1333,17 @@ export default function EmployeeProfilePage({ initialId }) {
                       <option value="Married">Married</option>
                     </select>
                   </div>
+                  {f('maritalStatus') === 'Married' && (
+                    <div>
+                      <label style={labelSm}>Date of Anniversary</label>
+                      <input
+                        type="date"
+                        value={String(f('marriageAnniversary') || '').slice(0, 10)}
+                        onChange={e => set('marriageAnniversary', e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+                  )}
                   <div>
                     <label style={labelSm}>Nationality</label>
                     <select
