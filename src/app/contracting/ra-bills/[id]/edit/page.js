@@ -1,6 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
+import { getClientActor } from '@/lib/clientActor';
 
 const num = v => { const n = parseFloat(v); return Number.isNaN(n) ? 0 : n; };
 const inr = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -11,6 +14,8 @@ const label = { display: 'block', fontSize: 12, color: '#475569', marginBottom: 
 export default function EditRABillPage() {
     const { id } = useParams();
     const router = useRouter();
+    const { activeEmployee, activeProject, hasRight } = usePermissions();
+    const canEdit = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', 'Edit RA Bill')));
     const [bill, setBill] = useState(null);
     const [form, setForm] = useState(null);
     const [lines, setLines] = useState([]);
@@ -60,6 +65,7 @@ export default function EditRABillPage() {
 
     if (loading) return <div style={{ padding: 40 }}>Loading...</div>;
     if (error && !form) return <div style={{ padding: 40, color: '#b91c1c' }}>{error}</div>;
+    if (!canEdit) return <div style={{ padding: 40, color: '#64748b' }}>You do not have permission to edit RA bills for this project.</div>;
 
     const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
     const setLine = (i, k, v) => setLines(ls => ls.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
@@ -95,6 +101,7 @@ export default function EditRABillPage() {
                     tdsPercent: num(form.tdsPercent),
                     remarks: form.remarks,
                     taskLines,
+                    editedBy: getClientActor(),
                 }),
             });
             const data = await res.json();

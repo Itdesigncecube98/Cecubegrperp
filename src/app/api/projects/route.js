@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { readAuthSession } from '../../../lib/authSession';
 import { employeeHasAnyTool, employeeHasProjectTool, getEmployeeGrantedLegacyProjectIds } from '../../../lib/projectAccess';
+import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 
 export async function GET(req) {
   try {
@@ -46,6 +47,12 @@ export async function POST(req) {
       return NextResponse.json({ error: 'You do not have New Project access.' }, { status: 403 });
     }
     const project = await prisma.project.create({ data });
+    await autoGrantCreatorProjectTools(prisma, req, {
+      requestedEmployeeId: data.creatorEmployeeId,
+      projectId: project.id,
+      module: 'Engineering',
+      toolNames: ['New Project', 'Project View', 'Project Edit', 'Project Delete'],
+    });
     return NextResponse.json(project);
   } catch (error) {
     console.error('Error creating project:', error);

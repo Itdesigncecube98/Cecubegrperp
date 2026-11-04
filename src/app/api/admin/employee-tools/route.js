@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { readAuthSession } from '@/lib/authSession';
-import { employeeToolCode } from '@/lib/employeeToolCatalog';
+import { employeeToolCode, PROJECT_TOOL_MODULES } from '@/lib/employeeToolCatalog';
 
 /**
  * GET /api/admin/employee-tools?employeeId=xxx&projectId=yyy
@@ -82,10 +82,37 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Administrator access is required to change tool permissions.' }, { status: session ? 403 : 401 });
     }
     const body = await req.json();
-    const { employeeId, projectId, toolIds } = body;
+    const { employeeId, projectId, toolIds, module } = body;
 
     if (!employeeId || !projectId || !Array.isArray(toolIds)) {
       return NextResponse.json({ error: 'employeeId, projectId and toolIds[] are required' }, { status: 400 });
+    }
+
+    if (module && (!Object.hasOwn(PROJECT_TOOL_MODULES, module) || !['Purchase', 'Marketing'].includes(module))) {
+      return NextResponse.json({ error: 'Employee-scoped saving is only enabled for Purchase and Marketing.' }, { status: 400 });
+    }
+
+    if (module) {
+      const moduleTools = await prisma.adminTool.findMany({ where: { module }, select: { id: true } });
+      const allowedIds = new Set(moduleTools.map(tool => tool.id));
+      if (toolIds.some(toolId => !allowedIds.has(toolId))) {
+        return NextResponse.json({ error: `Only ${module} tools can be saved in this request.` }, { status: 400 });
+      }
+
+      await prisma.$transaction(async tx => {
+        // Scope replacement to this module so another module's grants for the
+        // same employee and project remain intact.
+        await tx.employeeProjectToolAccess.deleteMany({
+          where: { employeeId, projectId, tool: { is: { module } } },
+        });
+        if (toolIds.length > 0) {
+          await tx.employeeProjectToolAccess.createMany({
+            data: toolIds.map(toolId => ({ employeeId, projectId, toolId, granted: true })),
+            skipDuplicates: true,
+          });
+        }
+      });
+      return NextResponse.json({ saved: toolIds.length, module });
     }
 
     // Remove all existing grants for this employee+project

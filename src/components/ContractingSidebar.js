@@ -35,7 +35,6 @@ const menuConfig = [
     label: 'Work Order',
     icon: FileText,
     items: [
-      { name: 'Raise Work Order',    path: '/contracting/work-order/raise',         permissionCode: 'CONTRACT_WO_RAISE' },
       { name: 'Browse Work Order',   path: '/contracting/work-order/browse',        permissionCode: 'CONTRACT_WO_BROWSE' },
     ],
   },
@@ -44,7 +43,7 @@ const menuConfig = [
     label: 'RA Bills',
     icon: FileSearch,
     items: [
-      { name: 'RA Bill Generation', path: '/contracting/ra-bills/generation', permissionCode: 'CONTRACT_RA_GEN' },
+      { name: 'RA Bills', path: '/contracting/ra-bills/generation', permissionCodes: ['CONTRACT_RA_GEN', 'CONTRACT_RA_BROWSE', 'CONTRACT_RA_EDIT', 'CONTRACT_RA_DELETE', 'CONTRACT_RA_APPROVAL'] },
       { name: 'RA Bill Advance',    path: '/contracting/advance',             permissionCode: 'CONTRACT_RA_ADVANCE' },
     ],
   },

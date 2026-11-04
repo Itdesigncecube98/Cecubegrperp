@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { FileText, Send, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Eye, Pencil, Mail } from 'lucide-react';
+import { FileText, Send, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Eye, Pencil, Mail, Trash2 } from 'lucide-react';
 import '../purchase.css';
-import { getClientActor } from '@/lib/clientActor';
+import { getClientActor, getClientEmployeeId } from '@/lib/clientActor';
 import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
@@ -51,7 +51,8 @@ export default function PurchaseBillsPage() {
   const canCreateBill = canTool('Purchase Bills Create');
   const canEditBills = canTool('Purchase Bills Edit');
   const canApproveBills = canTool('Purchase Bills Approve');
-  const canViewBills = canTool('Purchase Bills View') || canEditBills || canApproveBills || canTool('Send Purchase Bill by Email');
+  const canDeleteBills = canTool('Purchase Bills Delete');
+  const canViewBills = canTool('Purchase Bills View') || canEditBills || canDeleteBills || canApproveBills || canTool('Send Purchase Bill by Email');
   const canEmailBills = canTool('Send Purchase Bill by Email');
 
   useEffect(() => {
@@ -78,6 +79,16 @@ export default function PurchaseBillsPage() {
     const result = await response.json();
     if (!response.ok) { alert(result.error || 'Unable to approve purchase bill.'); return; }
     setBills(previous => previous.map(item => item.id === bill.id ? { ...item, approvalStatus: 'APPROVED', approvedBy: result.approvedBy } : item));
+  };
+
+  const deleteBill = async bill => {
+    if (!window.confirm(`Delete unpaid purchase bill ${displayBillNo(bill.billNo, bill.billDate)}?`)) return;
+    try {
+      const response = await fetch(`/api/purchase/bills?id=${encodeURIComponent(bill.id)}`, { method: 'DELETE' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Unable to delete purchase bill.');
+      setBills(previous => previous.filter(item => item.id !== bill.id));
+    } catch (error) { alert(error.message); }
   };
 
   const fetchApprovedPOs = async () => {
@@ -256,7 +267,9 @@ export default function PurchaseBillsPage() {
           companyBankAccount: form.companyBankAccount,
           companyBankIfsc: form.companyBankIfsc,
           remarks:     form.remarks,
-          editedBy:    getClientActor()
+          editedBy:    getClientActor(),
+          createdBy:   editingBillId ? undefined : getClientActor(),
+          creatorEmployeeId: editingBillId ? undefined : getClientEmployeeId()
         })
       });
       const data = await res.json();
@@ -494,6 +507,8 @@ export default function PurchaseBillsPage() {
                     <th>Date</th>
                     <th>PO Reference</th>
                     <th>Last edited by</th>
+                    <th>Made by</th>
+                    <th>Approver</th>
                     <th>Remarks</th>
                     <th>Status</th>
                     <th style={{ textAlign: 'right' }}>Taxable</th>
@@ -520,6 +535,8 @@ export default function PurchaseBillsPage() {
                         <td style={{ color: '#64748b', fontSize: 12 }}>
                           {bill.editedBy ? <><div>{bill.editedBy}</div><div>{bill.editedAt ? new Date(bill.editedAt).toLocaleString('en-IN') : ''}</div></> : '—'}
                         </td>
+                        <td>{bill.createdBy || '—'}</td>
+                        <td>{bill.approvedBy || '—'}</td>
                         <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b', fontSize: '13px' }}>
                           {bill.remarks || '—'}
                         </td>
@@ -539,6 +556,7 @@ export default function PurchaseBillsPage() {
                             {(canTool('Purchase Bills View') || canEditBills) && <button type="button" onClick={() => openSavedBill(bill, 'view')} title="Open bill" aria-label={`Open bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', color: '#334155', cursor: 'pointer' }}><Eye size={14} /> Open</button>}
                             {canEditBills && <button type="button" onClick={() => openSavedBill(bill, 'edit')} title="Edit bill" aria-label={`Edit bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #bfdbfe', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}><Pencil size={14} /> Edit</button>}
                             {canApproveBills && bill.approvalStatus !== 'APPROVED' && <button type="button" onClick={() => approveBill(bill)} title="Approve purchase bill" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #a7f3d0', borderRadius: 4, background: '#ecfdf5', color: '#047857', cursor: 'pointer' }}>Approve</button>}
+                            {canDeleteBills && bill.status === 'UNPAID' && !bill.voucherId && <button type="button" onClick={() => deleteBill(bill)} title="Delete unpaid purchase bill" aria-label={`Delete bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #fecaca', borderRadius: 4, background: '#fef2f2', color: '#b91c1c', cursor: 'pointer' }}><Trash2 size={14} /> Delete</button>}
                             {canEmailBills && <button type="button" onClick={() => emailBill(bill)} title="Email bill" aria-label={`Email bill ${displayBillNo(bill.billNo, bill.billDate)}`} disabled={sendingBillId === bill.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #a7f3d0', borderRadius: 4, background: '#ecfdf5', color: '#047857', cursor: 'pointer' }}><Mail size={14} /> Email</button>}
                           </div>
                         </td>

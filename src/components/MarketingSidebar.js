@@ -62,7 +62,7 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       icon: Users,
       items: [
         { name: 'Lead Register', path: '/marketing/leads', permissionCode: 'MARKETING_LEAD_REGISTER' },
-        { name: 'Project Enquiries', path: '/marketing/enquiries', projectScoped: true },
+        { name: 'Project Enquiries', path: '/marketing/enquiries', projectScoped: true, permissionCode: 'MARKETING_PROJECT_ENQUIRIES' },
       ]
     },
     {

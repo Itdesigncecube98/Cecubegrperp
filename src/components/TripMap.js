@@ -1,6 +1,6 @@
 ﻿'use client';
 import { useEffect, useRef, useState } from 'react';
-import { loadGoogleMaps } from '@/components/GoogleMapsView';
+import GoogleMapsView, { loadGoogleMaps } from '@/components/GoogleMapsView';
 import { cleanTripTrack } from '@/lib/tripGps';
 import LiveTripMap from '@/components/LiveTripMap';
 
@@ -99,6 +99,6 @@ function GoogleMapStatic({ locations, path, height }) {
     return () => { cancelled = true; };
   }, [locations, path]);
 
-  if (error) return <div style={{ padding: 16, color: '#b91c1c', background: '#fef2f2', borderRadius: 8 }}>Map error: {error}</div>;
+  if (error) return <div><GoogleMapsView locations={locations} paths={[path]} height={height} /><div style={{ padding: '6px 2px', color: '#64748b', fontSize: 12 }}>Google Maps unavailable ({error}); showing the road map.</div></div>;
   return <div ref={divRef} style={{ height, width: '100%', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }} />;
 }

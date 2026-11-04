@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getPurchaseBillPreview } from '@/lib/purchaseBillAmounts';
 import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
+import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 
 async function getNextBillNumbers(client = prisma, year = new Date().getFullYear()) {
   const existingBills = await client.vendorBill.findMany({
@@ -187,6 +188,7 @@ export async function POST(request) {
             companyBankName: companyBankName || null,
             companyBankAccount: companyBankAccount || null,
             companyBankIfsc: companyBankIfsc || null,
+            createdBy: body.createdBy || body.editedBy || null,
           };
           const remarksText = `__META__:${JSON.stringify(meta)}\n${remarks || `Bill for PO ${poNumber} — ${supplierName || latestPo.supplierName}`}`;
           const bill = await tx.vendorBill.create({
@@ -206,6 +208,13 @@ export async function POST(request) {
           });
           await tx.purchaseOrder.update({ where: { id: latestPo.id }, data: { status: 'SENT' } });
           return { bill: { ...bill, ...meta, remarks: remarks || `Bill for PO ${poNumber}` } };
+        });
+        await autoGrantCreatorProjectTools(prisma, request, {
+          requestedEmployeeId: body.creatorEmployeeId,
+          projectId: po.projectId,
+          projectName: po.projectName,
+          module: 'Purchase',
+          toolNames: ['Purchase Bills Create', 'Purchase Bills View', 'Purchase Bills Edit', 'Purchase Bills Delete'],
         });
         return NextResponse.json({ ...result, message: 'Bill sent to accounts for payment' }, { status: 201 });
       } catch (error) {
@@ -238,7 +247,13 @@ export async function PUT(request) {
       return NextResponse.json({ ...approvedBill, approvalStatus: 'APPROVED', approvedBy: body.approvedBy || null });
     }
 
+    let existingMeta = {};
+    try {
+      const match = String(current.remarks || '').match(/^__META__:(\{.*?\})\n?/);
+      if (match) existingMeta = JSON.parse(match[1]);
+    } catch { /* Preserve any audit fields that can still be read. */ }
     const meta = {
+      ...existingMeta,
       taxableAmount: Number(body.taxableAmount) || 0,
       cgstAmount: Number(body.cgstAmount) || 0,
       sgstAmount: Number(body.sgstAmount) || 0,
@@ -272,5 +287,22 @@ export async function PUT(request) {
   } catch (error) {
     console.error('Error updating purchase bill:', error);
     return NextResponse.json({ error: error.message || 'Failed to update bill' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const id = new URL(request.url).searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'Bill id is required' }, { status: 400 });
+    const bill = await prisma.vendorBill.findUnique({ where: { id } });
+    if (!bill) return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
+    if (bill.status !== 'UNPAID' || bill.voucherId || Number(bill.paidAmount || 0) > 0) {
+      return NextResponse.json({ error: 'Only unpaid bills without a payment voucher can be deleted.' }, { status: 409 });
+    }
+    await prisma.vendorBill.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting purchase bill:', error);
+    return NextResponse.json({ error: error.message || 'Failed to delete purchase bill' }, { status: 500 });
   }
 }

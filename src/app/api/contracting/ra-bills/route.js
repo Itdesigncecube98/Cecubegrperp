@@ -1,7 +1,8 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
+import { getDocumentActors, getDocumentEditors, recordDocumentAction, recordDocumentEdit } from '@/lib/documentAudit';
+import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 
 const VALID_STATUSES = ['Submitted', 'Approved', 'Paid', 'Rejected'];
 
@@ -38,8 +39,11 @@ export async function GET(request) {
       },
       orderBy: { createdAt: 'desc' }
     });
-    const editors = await getDocumentEditors(prisma, 'WorkOrderRABill', bills.map(bill => bill.id));
-    return NextResponse.json(bills.map(bill => ({ ...bill, ...editors[bill.id] })));
+    const [editors, actors] = await Promise.all([
+      getDocumentEditors(prisma, 'WorkOrderRABill', bills.map(bill => bill.id)),
+      getDocumentActors(prisma, 'WorkOrderRABill', bills.map(bill => bill.id)),
+    ]);
+    return NextResponse.json(bills.map(bill => ({ ...bill, ...actors[bill.id], ...editors[bill.id] })));
   } catch (error) {
     console.error('Error fetching RA bills:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -125,6 +129,15 @@ export async function POST(request) {
         project: { select: { id: true, name: true } }
       }
     });
+
+    await autoGrantCreatorProjectTools(prisma, request, {
+      requestedEmployeeId: data.creatorEmployeeId,
+      projectId: wo.projectId,
+      module: 'Contracting',
+      toolNames: ['Create RA Bill', 'View RA Bill', 'Edit RA Bill', 'Delete RA Bill'],
+    });
+
+    await recordDocumentAction(prisma, { entityType: 'WorkOrderRABill', entityId: bill.id, module: 'Contracting', action: 'CREATE', actorName: data.madeBy || data.editedBy });
 
     return NextResponse.json(bill, { status: 201 });
   } catch (error) {
@@ -214,6 +227,9 @@ export async function PUT(request) {
     await recordDocumentEdit(prisma, {
       entityType: 'WorkOrderRABill', entityId: updated.id, module: 'Contracting', editorName: data.editedBy,
     });
+    if (status === 'Approved') {
+      await recordDocumentAction(prisma, { entityType: 'WorkOrderRABill', entityId: updated.id, module: 'Contracting', action: 'APPROVE', actorName: data.approvedBy || data.editedBy });
+    }
 
     return NextResponse.json({ ...updated, editedBy: data.editedBy || null });
   } catch (error) {

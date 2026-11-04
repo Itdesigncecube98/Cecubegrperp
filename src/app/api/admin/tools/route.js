@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { PROJECT_EMPLOYEE_TOOLS } from '@/lib/employeeToolCatalog';
+import { readAuthSession } from '@/lib/authSession';
 
 // ─── All canonical admin tools ─────────────────────────────────────────────────
 const LEGACY_ADMIN_TOOLS = {
@@ -14,9 +15,9 @@ const LEGACY_ADMIN_TOOLS = {
     { name: 'Requisition Browse', code: 'CONTRACT_REQ_BROWSE' },
     { name: 'Labour Requisition Approve', code: 'CONTRACT_REQ_APPROVE' },
     { name: 'Labour Requisition wise WO Generation', code: 'CONTRACT_REQ_WO_GEN' },
-    { name: 'Raise Work Order', code: 'CONTRACT_WO_RAISE' },
-    { name: 'Browse Work Order', code: 'CONTRACT_WO_BROWSE' },
-    { name: 'RA Bill Generation', code: 'CONTRACT_RA_GEN' },
+    { name: 'Create Work Order', code: 'CONTRACT_WO_RAISE' },
+    { name: 'View Work Order', code: 'CONTRACT_WO_BROWSE' },
+    { name: 'Create RA Bill', code: 'CONTRACT_RA_GEN' },
     { name: 'RA Bill Advance', code: 'CONTRACT_RA_ADVANCE' },
     { name: 'Enquiry Generation', code: 'CONTRACT_ENQUIRY_GEN' },
     { name: 'Enquiry Browse', code: 'CONTRACT_ENQUIRY_BROWSE' },
@@ -31,7 +32,6 @@ const LEGACY_ADMIN_TOOLS = {
     { name: 'Team Allocation', code: 'ENGG_TEAM_ALLOCATION' },
     { name: 'Define WBS', code: 'ENGG_DEFINE_WBS' },
     { name: 'WBS Budget', code: 'ENGG_WBS_BUDGET' },
-    { name: 'Budget Transaction Browse', code: 'ENGG_BUDGET_TXN_BROWSE' },
     { name: 'Library Manager', code: 'ENGG_LIBRARY_MANAGER' },
     { name: 'Task Library', code: 'ENGG_TASK_LIBRARY' },
     { name: 'Material Library', code: 'ENGG_MATERIAL_LIBRARY' },
@@ -94,33 +94,14 @@ export const ALL_ADMIN_TOOLS = {
   Marketing: [...new Map([...LEGACY_ADMIN_TOOLS.Marketing, ...(PROJECT_EMPLOYEE_TOOLS.Marketing || [])].map(tool => [tool.name, tool])).values()],
 };
 
-// ─── GET /api/admin/tools ──────────────────────────────────────────────────────
-export async function GET(req) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const module = searchParams.get('module');
-    const roleId = searchParams.get('roleId');
-
-    const where = module ? { module } : {};
-    const tools = await prisma.adminTool.findMany({
-      where,
-      orderBy: [{ module: 'asc' }, { name: 'asc' }],
-      include: roleId
-        ? { roleAccess: { where: { roleId } } }
-        : { roleAccess: { select: { roleId: true, granted: true } } },
-    });
-
-    return NextResponse.json(tools);
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-
-// ─── POST /api/admin/tools  ────────────────────────────────────────────────────
-// body: { action: 'seed' } OR { roleId, toolIds: string[] }
+// Tool catalog seeding used by Employee Access only.
+// Role-based tool permission reads and writes have been removed.
 export async function POST(req) {
   try {
+    const session = readAuthSession(req);
+    if (!session || session.type !== 'admin') {
+      return NextResponse.json({ error: 'Administrator access is required to sync the Employee Access tool catalog.' }, { status: session ? 403 : 401 });
+    }
     const body = await req.json();
 
     // Seed all tools — purge old entries first so stale items are gone
@@ -135,7 +116,6 @@ export async function POST(req) {
       const existing = await prisma.adminTool.findMany({
         select: {
           id: true, module: true, name: true,
-          roleAccess: { select: { roleId: true, granted: true } },
           employeeProjectAccess: { select: { employeeId: true, projectId: true, granted: true } },
         },
       });
@@ -145,6 +125,11 @@ export async function POST(req) {
       // Move access from renamed combined tools to the nearest read permission;
       // never silently broaden an existing grant to Create/Edit.
       const renamedTargets = {
+        'Contracting||Raise Work Order': 'Create Work Order',
+        'Contracting||Browse Work Order': 'View Work Order',
+        'Contracting||RA Bill Generation': 'Create RA Bill',
+        'Contracting||RA Bill Browse': 'View RA Bill',
+        'Contracting||RA Bill Approval': 'Approve RA Bill',
         'Purchase||Purchase Indent (PR)': 'Purchase Indent View',
         'Purchase||Purchase Indent (PR) Create/View/Edit': 'Purchase Indent View',
         'Purchase||Vendor Master': 'Vendor Master View',
@@ -168,42 +153,23 @@ export async function POST(req) {
         }
       }
 
-      const roleMigrations = [];
       const employeeMigrations = [];
       for (const oldTool of staleTools) {
         const targetName = renamedTargets[`${oldTool.module}||${oldTool.name}`];
         const targetId = targetName && seededTools.get(`${oldTool.module}||${targetName}`);
         if (!targetId) continue;
-        oldTool.roleAccess.forEach(access => roleMigrations.push({ ...access, toolId: targetId }));
         oldTool.employeeProjectAccess.forEach(access => employeeMigrations.push({ ...access, toolId: targetId }));
       }
-      if (roleMigrations.length) await prisma.roleToolAccess.createMany({ data: roleMigrations, skipDuplicates: true });
       if (employeeMigrations.length) await prisma.employeeProjectToolAccess.createMany({ data: employeeMigrations, skipDuplicates: true });
       if (toDelete.length) await prisma.adminTool.deleteMany({ where: { id: { in: toDelete } } });
       return NextResponse.json({
         seeded: count,
         purged: toDelete.length,
         migratedEmployeeGrants: employeeMigrations.length,
-        migratedRoleGrants: roleMigrations.length,
       });
     }
 
-    // Save role ↔ tool grants
-    if (body.roleId && Array.isArray(body.toolIds)) {
-      const { roleId, toolIds } = body;
-      // Remove all existing grants for this role
-      await prisma.roleToolAccess.deleteMany({ where: { roleId } });
-      // Re-create granted ones
-      if (toolIds.length > 0) {
-        await prisma.roleToolAccess.createMany({
-          data: toolIds.map((toolId) => ({ roleId, toolId, granted: true })),
-          skipDuplicates: true,
-        });
-      }
-      return NextResponse.json({ saved: toolIds.length });
-    }
-
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    return NextResponse.json({ error: 'Only Employee Access catalog sync is supported.' }, { status: 400 });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: err.message }, { status: 500 });

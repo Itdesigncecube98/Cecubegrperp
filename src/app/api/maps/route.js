@@ -1,7 +1,7 @@
 ﻿export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 
-const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const getMapsApiKey = () => process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
 // GET /api/maps?action=geocode&address=...
 // GET /api/maps?action=directions&origin=lat,lng&destination=lat,lng
@@ -14,9 +14,10 @@ export async function GET(request) {
     if (!address) return NextResponse.json({ error: 'address required' }, { status: 400 });
 
     // Try Google Geocoding first (if key+API enabled)
-    if (API_KEY) {
+    const apiKey = getMapsApiKey();
+    if (apiKey) {
       try {
-        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address + ', India')}&key=${API_KEY}`;
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address + ', India')}&key=${apiKey}`;
         const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
         const data = await res.json();
         if (data.status === 'OK' && data.results?.[0]) {
@@ -59,9 +60,10 @@ export async function GET(request) {
     if (!origin || !destination) return NextResponse.json({ error: 'origin and destination required' }, { status: 400 });
 
     // Try Google Directions first
-    if (API_KEY) {
+    const apiKey = getMapsApiKey();
+    if (apiKey) {
       try {
-        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&mode=driving&key=${API_KEY}`;
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=driving&key=${apiKey}`;
         const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
         const data = await res.json();
         if (data.status === 'OK' && data.routes?.[0]) {
@@ -77,23 +79,36 @@ export async function GET(request) {
     }
 
     // Fallback: OSRM free routing
-    const [oLat, oLng] = origin.split(',');
-    const [dLat, dLng] = destination.split(',');
-    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=polyline`;
-    const osrmRes = await fetch(osrmUrl, { signal: AbortSignal.timeout(10000) });
-    const osrmData = await osrmRes.json();
-    if (osrmData.code !== 'Ok' || !osrmData.routes?.[0]) {
-      return NextResponse.json({ error: 'No driving route found. Check pickup and destination.' }, { status: 404 });
+    const parseCoordinate = value => {
+      const rawParts = String(value).split(',');
+      const parts = rawParts.map(Number);
+      if (parts.length !== 2 || rawParts.some(part => !part.trim()) || !parts.every(Number.isFinite) || Math.abs(parts[0]) > 90 || Math.abs(parts[1]) > 180) return null;
+      return parts;
+    };
+    const start = parseCoordinate(origin);
+    const end = parseCoordinate(destination);
+    if (!start || !end) return NextResponse.json({ error: 'Invalid route coordinates.' }, { status: 400 });
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=polyline`;
+    try {
+      const osrmRes = await fetch(osrmUrl, { signal: AbortSignal.timeout(12000) });
+      if (!osrmRes.ok) throw new Error(`Route service returned ${osrmRes.status}.`);
+      const osrmData = await osrmRes.json();
+      if (osrmData.code !== 'Ok' || !osrmData.routes?.[0]) {
+        return NextResponse.json({ error: 'No driving route found. Check pickup and destination.' }, { status: 404 });
+      }
+      const route = osrmData.routes[0];
+      const distanceMeters = Math.round(route.distance);
+      const mins = Math.round(route.duration / 60);
+      return NextResponse.json({
+        distanceMeters,
+        distanceText: `${(distanceMeters / 1000).toFixed(1)} km`,
+        durationText: mins < 60 ? `${mins} mins` : `${Math.floor(mins/60)} hr ${mins%60} mins`,
+        polyline: route.geometry,
+      });
+    } catch (error) {
+      console.error('Vehicle route fallback failed:', error);
+      return NextResponse.json({ error: 'Route service is unavailable right now. Please try again shortly.' }, { status: 502 });
     }
-    const route = osrmData.routes[0];
-    const distanceMeters = Math.round(route.distance);
-    const mins = Math.round(route.duration / 60);
-    return NextResponse.json({
-      distanceMeters,
-      distanceText: `${(distanceMeters / 1000).toFixed(1)} km`,
-      durationText: mins < 60 ? `${mins} mins` : `${Math.floor(mins/60)} hr ${mins%60} mins`,
-      polyline: route.geometry
-    });
   }
 
   return NextResponse.json({ error: 'Invalid action.' }, { status: 400 });

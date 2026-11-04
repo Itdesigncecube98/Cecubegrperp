@@ -2,6 +2,7 @@
 import React from 'react';
 import TenderSidebar from '../../components/TenderSidebar';
 import TopHeader from '../../components/TopHeader';
+import ProjectRoutePermissionGate from '../../components/ProjectRoutePermissionGate';
 import './layout.css';
 import './tender.css';
 
@@ -16,7 +17,7 @@ export default function TenderLayout({ children }) {
           <TopHeader title="Tender Dashboard" />
         </div>
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', minWidth: 0 }} className="custom-horizontal-scrollbar">
-          {children}
+          <ProjectRoutePermissionGate>{children}</ProjectRoutePermissionGate>
         </div>
       </div>
     </div>

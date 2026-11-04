@@ -106,7 +106,6 @@ export default function AdminOverviewPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[
               { label: 'Add New User',          href: '/admin-dashboard/users',          icon: Users,         color: '#6366f1' },
-              { label: 'Tool Permissions (Role)', href: '/admin-dashboard/tools',          icon: Key,           color: '#f59e0b' },
               { label: 'Employee Project Access', href: '/admin-dashboard/employee-tools', icon: UserCheck,     color: '#0891b2' },
               { label: 'Access Logs',             href: '/admin-dashboard/access-logs',    icon: ClipboardList, color: '#8b5cf6' },
               { label: 'Add Company',             href: '/admin-dashboard/company',        icon: Building2,     color: '#10b981' },

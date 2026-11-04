@@ -1652,7 +1652,7 @@ export default function EmployeeVehiclesPage() {
                 </button>
                 {routeError && (
                   <div role="alert" style={{ marginBottom: "1rem", padding: "0.75rem 1rem", borderRadius: 10, background: "#fef2f2", color: "#b91c1c", fontSize: "0.875rem" }}>
-                    {routeError} If this continues, ask admin to check Google Maps JavaScript, Geocoding, and Routes API access.
+                    {routeError} Check the pickup and destination text, then retry when the route service is available.
                   </div>
                 )}
 
@@ -1667,7 +1667,7 @@ export default function EmployeeVehiclesPage() {
                       height={280}
                     />
                     <div style={{ marginTop: "0.5rem", color: "#64748b", fontSize: "0.8rem" }}>
-                      Google Maps driving route · Expense is estimated from route distance × vehicle rate.
+                      Road route map · Expense is estimated from route distance × vehicle rate.
                     </div>
                   </div>
                 )}

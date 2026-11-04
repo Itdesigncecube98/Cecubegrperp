@@ -10,6 +10,7 @@ import {
   ListOrdered
 } from 'lucide-react';
 import Dialog from './Dialog';
+import { usePermissions } from '../context/PermissionsContext';
 import './sidebar.css';
 
 export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollapsed: propSetIsCollapsed }) {
@@ -18,6 +19,7 @@ export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollaps
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showWidget, setShowWidget] = useState(true);
+  const { activeEmployee, permissionsLoaded, hasRight } = usePermissions();
 
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
@@ -45,7 +47,7 @@ export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollaps
       label: 'Dashboard',
       icon: BarChart2,
       items: [
-        { name: 'Tender Dashboard', path: '/tender/dashboard' },
+        { name: 'Tender Dashboard', path: '/tender/dashboard', permissionCode: 'TENDER_DASHBOARD' },
       ]
     },
     {
@@ -53,7 +55,7 @@ export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollaps
       label: 'Tenders',
       icon: ListOrdered,
       items: [
-        { name: 'Tender', path: '/tender/register' },
+        { name: 'Tender', path: '/tender/register', permissionCode: 'TENDER_REGISTER' },
       ]
     }
   ];
@@ -62,11 +64,17 @@ export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollaps
     const list = [];
     menuConfig.forEach(group => {
       group.items.forEach(item => {
+        if (activeEmployee && (!permissionsLoaded || !hasRight(item.permissionCode))) return;
         list.push({ ...item, group: group.label, icon: group.icon });
       });
     });
     return list;
-  }, []);
+  }, [activeEmployee, permissionsLoaded, hasRight]);
+
+  const visibleMenu = useMemo(() => menuConfig.map(group => ({
+    ...group,
+    items: group.items.filter(item => !activeEmployee || (permissionsLoaded && hasRight(item.permissionCode))),
+  })).filter(group => group.items.length), [activeEmployee, permissionsLoaded, hasRight]);
 
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) return null;
@@ -172,7 +180,7 @@ export default function TenderSidebar({ isCollapsed: propCollapsed, setIsCollaps
             )}
           </div>
         ) : (
-          menuConfig.map((section) => {
+          visibleMenu.map((section) => {
             const Icon = section.icon;
             const isGroupOpen = expanded[section.id];
             const hasActiveChild = section.items.some(item => pathname === item.path || pathname.startsWith(`${item.path}/`));

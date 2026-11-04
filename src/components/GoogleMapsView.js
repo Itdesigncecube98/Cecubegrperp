@@ -3,7 +3,7 @@
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef, useState } from 'react';
 
-const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_MAPS_API_KEY;
 
 let mapsLoadPromise = null;
 
@@ -11,20 +11,32 @@ export function loadGoogleMaps() {
   if (typeof window === 'undefined') return Promise.resolve(null);
   if (window.google?.maps) return Promise.resolve(window.google.maps);
   if (mapsLoadPromise) return mapsLoadPromise;
+  if (!MAPS_KEY) return Promise.reject(new Error('Google Maps browser key is missing; showing the road map fallback.'));
 
   mapsLoadPromise = new Promise((resolve, reject) => {
-    if (!MAPS_KEY) { reject(new Error('Maps API key missing')); return; }
-    window.__gmCallback = () => resolve(window.google.maps);
+    let settled = false;
+    const finish = (error, maps) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error); else resolve(maps);
+    };
+    const timer = setTimeout(() => finish(new Error('Google Maps did not respond; showing the road map fallback.')), 12000);
+    window.__gmCallback = () => {
+      const maps = window.google?.maps;
+      finish(maps ? null : new Error('Google Maps did not initialize; showing the road map fallback.'), maps);
+    };
     window.gm_authFailure = () => {
       window.__gmAuthFailed = true;
       window.dispatchEvent(new CustomEvent('gm_auth_failure'));
+      finish(new Error('Google Maps rejected its browser key; showing the road map fallback.'));
     };
     const s = document.createElement('script');
     s.src = `https://maps.googleapis.com/maps/api/js?key=${MAPS_KEY}&loading=async&libraries=marker&callback=__gmCallback`;
     s.async = true; s.defer = true;
-    s.onerror = () => { mapsLoadPromise = null; reject(new Error('Failed to load Google Maps')); };
+    s.onerror = () => finish(new Error('Failed to load Google Maps; showing the road map fallback.'));
     document.head.appendChild(s);
-  });
+  }).catch(error => { mapsLoadPromise = null; throw error; });
   return mapsLoadPromise;
 }
 

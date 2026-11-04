@@ -14,6 +14,7 @@ const MODULE_COLORS = {
   Purchase: { color: '#f59e0b', bg: '#fffbeb' },
   Site: { color: '#ef4444', bg: '#fef2f2' },
   Marketing: { color: '#f97316', bg: '#fff7ed' },
+  Tender: { color: '#10b981', bg: '#ecfdf5' },
 };
 
 const MODULES = Object.keys(PROJECT_TOOL_MODULES);
@@ -131,7 +132,7 @@ export default function EmployeeToolsPage() {
     if (!selectedEmp || !selectedProject) return;
     setSaving(true);
     try {
-      await fetch('/api/admin/employee-tools', {
+      const response = await fetch('/api/admin/employee-tools', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -140,6 +141,8 @@ export default function EmployeeToolsPage() {
           toolIds: Array.from(granted),
         }),
       });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Unable to save employee permissions.');
       if (mountedRef.current) {
         setSaveMsg('Saved!');
         setTimeout(() => { if (mountedRef.current) setSaveMsg(''); }, 2500);
@@ -207,7 +210,7 @@ export default function EmployeeToolsPage() {
     <div style={{ maxWidth: 1200, margin: '0 auto', paddingBottom: 80, fontFamily: "'Inter', sans-serif" }}>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-        <Link href="/admin-dashboard/tools" style={iconBtnStyle}>
+        <Link href="/admin-dashboard" style={iconBtnStyle}>
           <ArrowLeft size={18} />
         </Link>
         <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg, #0891b2, #0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(8,145,178,0.35)' }}>

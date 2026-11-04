@@ -1,6 +1,6 @@
 ﻿'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { loadGoogleMaps } from '@/components/GoogleMapsView';
+import GoogleMapsView, { loadGoogleMaps } from '@/components/GoogleMapsView';
 import { cleanTripTrack, distanceBetweenGpsPoints } from '@/lib/tripGps';
 
 const STYLE = `
@@ -37,6 +37,7 @@ export default function LiveTripMap({ tripId, isActive, startLocation, endLocati
   const startMarkerRef = useRef(null);
   const destMarkerRef = useRef(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState('');
   const [pings, setPings] = useState([]);
   const [follow, setFollow] = useState(true);
   const [distLeft, setDistLeft] = useState(null);
@@ -129,6 +130,8 @@ export default function LiveTripMap({ tripId, isActive, startLocation, endLocati
       }
 
       setMapReady(true);
+    }).catch(error => {
+      if (!cancelled) setMapError(error.message || 'Google Maps is unavailable; showing the road map.');
     });
     return () => { cancelled = true; };
   }, []);  // run once
@@ -322,6 +325,13 @@ export default function LiveTripMap({ tripId, isActive, startLocation, endLocati
     })();
   }, [mapReady, isActive, endCoords, pings, travelMode]);
 
+  const fallbackTrack = cleanTripTrack(pings).accepted.map(ping => ({ lat: ping.latitude, lng: ping.longitude }));
+  const fallbackLocations = [
+    startCoords ? { ...startCoords, title: `Start: ${startLocation || ''}` } : null,
+    endCoords ? { ...endCoords, title: `Destination: ${endLocation || ''}` } : null,
+    fallbackTrack.length ? { ...fallbackTrack[fallbackTrack.length - 1], title: 'Latest GPS position' } : null,
+  ].filter(Boolean);
+
   return (
     <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.12)' }}>
 
@@ -356,7 +366,12 @@ export default function LiveTripMap({ tripId, isActive, startLocation, endLocati
       )}
 
       {/* Map */}
-      <div ref={divRef} style={{ height: 420, width: '100%' }} />
+      {mapError ? (
+        <div>
+          <GoogleMapsView locations={fallbackLocations} paths={[plannedPath, fallbackTrack].filter(path => path.length > 1)} height={420} defaultCenter={startCoords} />
+          <div style={{ background: '#fff', padding: '5px 12px', color: '#64748b', fontSize: 11 }}>Google Maps unavailable; showing the road map.</div>
+        </div>
+      ) : <div ref={divRef} style={{ height: 420, width: '100%' }} />}
 
       {/* Bottom From → To bar */}
       {(startLocation || endLocation) && (

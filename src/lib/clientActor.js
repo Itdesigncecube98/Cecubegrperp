@@ -11,3 +11,14 @@ export function getClientActor() {
   }
   return 'System User';
 }
+
+export function getClientEmployeeId() {
+  if (typeof window === 'undefined') return null;
+  for (const key of ['employeeData', 'activeEmp']) {
+    try {
+      const data = JSON.parse(localStorage.getItem(key) || sessionStorage.getItem(key) || 'null');
+      if (data?.id) return String(data.id);
+    } catch { /* Ignore stale or malformed local session data. */ }
+  }
+  return null;
+}

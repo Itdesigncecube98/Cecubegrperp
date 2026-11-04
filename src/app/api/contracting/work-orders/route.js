@@ -2,7 +2,15 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { addTaskMasterTask } from '@/lib/siteTaskMaster';
-import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
+import { getDocumentActors, getDocumentEditors, recordDocumentAction, recordDocumentEdit } from '@/lib/documentAudit';
+import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
+
+function readScopeMetadata(scope) {
+  try {
+    const parsed = scope ? JSON.parse(scope) : {};
+    return parsed?.audit && typeof parsed.audit === 'object' ? parsed.audit : {};
+  } catch { return {}; }
+}
 
 // GET /api/contracting/work-orders
 export async function GET(request) {
@@ -27,8 +35,11 @@ export async function GET(request) {
       },
       orderBy: { createdAt: 'desc' }
     });
-    const editors = await getDocumentEditors(prisma, 'WorkOrder', workOrders.map(order => order.id));
-    return NextResponse.json(workOrders.map(order => ({ ...order, ...editors[order.id] })));
+    const [editors, actors] = await Promise.all([
+      getDocumentEditors(prisma, 'WorkOrder', workOrders.map(order => order.id)),
+      getDocumentActors(prisma, 'WorkOrder', workOrders.map(order => order.id)),
+    ]);
+    return NextResponse.json(workOrders.map(order => ({ ...order, ...readScopeMetadata(order.scope), ...actors[order.id], ...editors[order.id] })));
   } catch (error) {
     console.error('Error fetching work orders:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -77,7 +88,7 @@ export async function POST(request) {
         contractorGst:    contractorGst || null,
         contractorPan:    contractorPan || null,
         wbsTask:          wbsTask || null,
-        scope:            JSON.stringify({ scope: scope || null, preview: preview || null, items: items || [], quotationTerms: quotationTerms || {} }),
+        scope:            JSON.stringify({ scope: scope || null, preview: preview || null, items: items || [], quotationTerms: quotationTerms || {}, audit: { madeBy: data.madeBy || data.editedBy || null, approvedBy: null, approvedAt: null } }),
         startDate:        woDate ? new Date(woDate) : startDate ? new Date(startDate) : null,
         endDate:          endDate ? new Date(endDate) : null,
         contractValue:    cv,
@@ -93,6 +104,14 @@ export async function POST(request) {
     });
 
     const legacyProject = await prisma.project.findFirst({ where: { name: project.name }, select: { id: true } });
+    await autoGrantCreatorProjectTools(prisma, request, {
+      requestedEmployeeId: data.creatorEmployeeId,
+      projectId: legacyProject?.id || projectId,
+      projectName: project.name,
+      module: 'Contracting',
+      toolNames: ['Create Work Order', 'View Work Order', 'Edit Work Order', 'Delete Work Order'],
+    });
+    await recordDocumentAction(prisma, { entityType: 'WorkOrder', entityId: workOrder.id, module: 'Contracting', action: 'CREATE', actorName: data.madeBy || data.editedBy });
     if (legacyProject) {
       (Array.isArray(items) ? items : []).forEach(item => {
         addTaskMasterTask(legacyProject.id, {
@@ -121,6 +140,10 @@ export async function PUT(request) {
     const data = await request.json();
     const { id, status, ...fields } = data;
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    const existing = await prisma.workOrder.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: 'Work order not found' }, { status: 404 });
+    const priorScope = (() => { try { return existing.scope ? JSON.parse(existing.scope) : {}; } catch { return {}; } })();
+    const audit = { ...(priorScope.audit || {}) };
 
     const updateData = {};
     if (status) updateData.status = status;
@@ -131,7 +154,13 @@ export async function PUT(request) {
         preview: fields.preview || null,
         items: fields.items || [],
         quotationTerms: fields.quotationTerms || {},
+        audit,
       });
+    }
+    if (status === 'Approved') {
+      audit.approvedBy = fields.approvedBy || data.approvedBy || null;
+      audit.approvedAt = new Date().toISOString();
+      updateData.scope = JSON.stringify({ ...priorScope, ...(updateData.scope ? JSON.parse(updateData.scope) : {}), audit });
     }
     if (fields.wbsTask !== undefined) updateData.wbsTask = fields.wbsTask;
     if (fields.paymentTerms !== undefined) updateData.paymentTerms = fields.paymentTerms;
@@ -151,10 +180,29 @@ export async function PUT(request) {
     await recordDocumentEdit(prisma, {
       entityType: 'WorkOrder', entityId: updated.id, module: 'Contracting', editorName: fields.editedBy,
     });
+    if (status === 'Approved') {
+      await recordDocumentAction(prisma, { entityType: 'WorkOrder', entityId: updated.id, module: 'Contracting', action: 'APPROVE', actorName: data.approvedBy });
+    }
 
-    return NextResponse.json({ ...updated, editedBy: fields.editedBy || null });
+    return NextResponse.json({ ...updated, ...audit, approvedBy: status === 'Approved' ? data.approvedBy || null : audit.approvedBy || null, editedBy: fields.editedBy || null });
   } catch (error) {
     console.error('Error updating work order:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const id = new URL(request.url).searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    const order = await prisma.workOrder.findUnique({ where: { id }, include: { raBills: { select: { id: true } } } });
+    if (!order) return NextResponse.json({ error: 'Work order not found' }, { status: 404 });
+    if (order.status !== 'Draft') return NextResponse.json({ error: 'Only draft work orders can be deleted.' }, { status: 409 });
+    if (order.raBills.length) return NextResponse.json({ error: 'This work order has RA bills and cannot be deleted.' }, { status: 409 });
+    await prisma.workOrder.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting work order:', error);
+    return NextResponse.json({ error: error.message || 'Failed to delete work order' }, { status: 500 });
   }
 }

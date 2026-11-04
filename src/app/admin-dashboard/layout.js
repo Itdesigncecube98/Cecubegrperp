@@ -15,7 +15,6 @@ const NAV_SECTIONS = [
     items: [
       { id: 'overview',    label: 'Overview',        icon: LayoutDashboard, href: '/admin-dashboard' },
       { id: 'users',       label: 'User Management', icon: Users,          href: '/admin-dashboard/users' },
-      { id: 'tools',       label: 'Tool Permissions', icon: Key,           href: '/admin-dashboard/tools' },
       { id: 'employee-tools', label: 'Employee Access', icon: Users,       href: '/admin-dashboard/employee-tools' },
       { id: 'company',     label: 'Company Setup',   icon: Building2,      href: '/admin-dashboard/company' },
       { id: 'security',    label: 'Security Policy', icon: Key,            href: '/admin-dashboard/security' },

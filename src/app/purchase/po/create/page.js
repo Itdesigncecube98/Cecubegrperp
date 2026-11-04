@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { Save, Printer, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
-import { getClientActor } from '@/lib/clientActor';
+import { getClientActor, getClientEmployeeId } from '@/lib/clientActor';
 import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
@@ -327,7 +327,8 @@ function CreatePOContent() {
         items: items.map(item => ({ ...item, transportCharges: 0, otherCharges: 0 })),
         remarks: JSON.stringify(remarksData),
         editedBy: getClientActor(),
-        createdById: JSON.parse(localStorage.getItem('employeeData'))?.id || null
+        preparedByName: editId ? undefined : getClientActor(),
+        createdById: getClientEmployeeId()
       };
       const res = await fetch('/api/purchase/po', {
         method: editId ? 'PUT' : 'POST',

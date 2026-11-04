@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, FileText, Download, Mail } from 'lucide-react';
+import { Search, Filter, Plus, FileText, Download, Mail, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
@@ -12,9 +12,10 @@ export default function PORegister() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [sendingId, setSendingId] = useState('');
+  const [deletingId, setDeletingId] = useState('');
   const { activeEmployee, activeProject, hasRight } = usePermissions();
   const can = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', name)));
-  const canList = can('Purchase Orders View') || can('Purchase Orders Edit') || can('Purchase Orders Approve') || can('Send Purchase Order by Email');
+  const canList = can('Purchase Orders View') || can('Purchase Orders Edit') || can('Purchase Orders Approve') || can('Purchase Orders Delete') || can('Purchase Orders Create') || can('Send Purchase Order by Email');
 
   const sendPOEmail = async po => {
     setSendingId(po.id);
@@ -59,8 +60,21 @@ export default function PORegister() {
   });
 
   const approvePO = async (id) => {
-    const res = await fetch('/api/purchase/po', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'approve' }) });
-    if (res.ok) setPos(current => current.map(po => po.id === id ? { ...po, status: 'Approved' } : po));
+    const approvedBy = getClientActor();
+    const res = await fetch('/api/purchase/po', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'approve', approvedBy, approvedByName: approvedBy }) });
+    if (res.ok) setPos(current => current.map(po => po.id === id ? { ...po, status: 'APPROVED', approvedBy, approvedByName: approvedBy, approvedAt: new Date().toISOString() } : po));
+  };
+
+  const deletePO = async po => {
+    if (!window.confirm(`Delete draft purchase order ${po.poNumber}?`)) return;
+    setDeletingId(po.id);
+    try {
+      const response = await fetch(`/api/purchase/po?id=${encodeURIComponent(po.id)}`, { method: 'DELETE' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Unable to delete purchase order.');
+      setPos(current => current.filter(item => item.id !== po.id));
+    } catch (error) { alert(error.message); }
+    finally { setDeletingId(''); }
   };
 
   return (
@@ -123,6 +137,8 @@ export default function PORegister() {
                   <th>Project / PR Ref</th>
                   <th>Value</th>
                   <th>Exp. Delivery</th>
+                  <th>Made by</th>
+                  <th>Approver</th>
                   <th>Last edited by</th>
                   <th>Status</th>
                   <th className="pur-text-right">Action</th>
@@ -145,6 +161,8 @@ export default function PORegister() {
                     </td>
                     <td className="pur-font-semibold">{formatCurrency(po.totalAmount)}</td>
                     <td>{po.deliveryDate ? new Date(po.deliveryDate).toLocaleDateString() : '—'}</td>
+                    <td>{po.preparedByName || po.preparedBy || '—'}</td>
+                    <td>{po.approvedByName || po.approvedBy || '—'}</td>
                     <td style={{ fontSize: 12, color: '#64748b' }}>{po.editedBy ? <>{po.editedBy}<div>{po.editedAt ? new Date(po.editedAt).toLocaleString('en-IN') : ''}</div></> : '—'}</td>
                     <td>
                       <span className={`pur-badge ${
@@ -164,13 +182,14 @@ export default function PORegister() {
                         <Download size={16} />
                       </Link>}
                       {can('Purchase Orders Edit') && <Link href={`/purchase/po/create?id=${po.id}`} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>Edit</Link>}
+                      {can('Purchase Orders Delete') && po.status === 'DRAFT' && <button type="button" className="pur-icon-btn" title="Delete draft purchase order" disabled={deletingId === po.id} onClick={() => deletePO(po)}><Trash2 size={15} /></button>}
                       {can('Send Purchase Order by Email') && <button className="pur-icon-btn" title="Email purchase order" disabled={sendingId === po.id || !po.supplierEmail} onClick={() => sendPOEmail(po)}><Mail size={15} /></button>}
                     </td>
                   </tr>
                 ))}
                 {filteredPos.length === 0 && (
                   <tr>
-                    <td colSpan="8" className="pur-text-center pur-text-muted pur-py-8">
+                    <td colSpan="10" className="pur-text-center pur-text-muted pur-py-8">
                       No purchase orders found.
                     </td>
                   </tr>

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Home, ChevronRight, Search, RefreshCw, FileText, Printer, Save } from 'lucide-react';
 import '../../contracting.css';
-import { getClientActor } from '@/lib/clientActor';
+import { getClientActor, getClientEmployeeId } from '@/lib/clientActor';
 import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
@@ -163,7 +163,7 @@ export default function RaiseWorkOrder() {
   const editId = searchParams.get('id') || '';
   const printMode = searchParams.get('print') === '1';
   const { activeEmployee, activeProject, hasRight } = usePermissions();
-  const canSaveWorkOrder = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', printMode ? 'Browse Work Order' : editId ? 'Edit Work Order' : 'Raise Work Order')));
+  const canSaveWorkOrder = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', printMode ? 'View Work Order' : editId ? 'Edit Work Order' : 'Create Work Order')));
   const [projects, setProjects] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [quotations, setQuotations] = useState([]);
@@ -476,6 +476,7 @@ export default function RaiseWorkOrder() {
       items,
       quotationTerms: woData.quotationTerms || {},
       editedBy: getClientActor(),
+      creatorEmployeeId: editId ? undefined : getClientEmployeeId(),
     };
     setSaveMessage('');
     try {

@@ -291,7 +291,52 @@ export default function WorkCompletionTask() {
 
   // Print Certificate
   const handlePrintCertificate = () => {
-    window.print();
+    const certificate = document.querySelector('.wcc-certificate-sheet');
+    if (!certificate) return;
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if (!printWindow) {
+      showToast('Allow pop-ups to print the certificate.', 'error');
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+      <html><head><meta charset="utf-8" /><base href="${window.location.origin}/" /><title>Work Completion Certificate</title>
+      <style>
+        @page { size: A4 portrait; margin: 10mm; }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; width: 100%; background: #fff; color: #0f172a; }
+        body { font-family: "Times New Roman", serif; }
+        .wcc-certificate-sheet { width: 100%; max-width: none; margin: 0; padding: 7mm; border: 1pt solid #0f172a; border-radius: 0; font-size: 9pt; }
+        .wcc-header-logo { text-align: center; border-bottom: 1.5pt solid #0f172a; padding-bottom: 3mm; margin-bottom: 4mm; }
+        .wcc-header-logo img { max-height: 30px; margin-bottom: 2mm; }
+        .wcc-cert-title { margin: 0 0 4mm; text-align: center; font-size: 15pt; font-weight: 800; }
+        .wcc-certificate-sheet p { margin: 2mm 0 4mm !important; font-size: 9pt !important; line-height: 1.25 !important; }
+        .wcc-details-table { width: 100%; margin: 0; border-collapse: collapse; }
+        .wcc-details-table tr { break-inside: avoid; page-break-inside: avoid; }
+        .wcc-details-table td { padding: 2mm 2.5mm; border: 0.6pt solid #cbd5e1; font-size: 8pt !important; line-height: 1.15; overflow-wrap: anywhere; }
+        .wcc-details-table td.label-cell { width: 32%; background: #f8fafc; font-weight: 700; }
+        .wcc-signatures { display: flex; justify-content: space-between; margin-top: 8mm; padding-top: 2mm; break-inside: avoid; }
+        .wcc-sig-box { width: 31%; border-top: 1px solid #0f172a; padding-top: 2mm; text-align: center; font-size: 8pt; }
+        @media print { html, body { width: 100%; overflow: visible; } }
+      </style></head><body>${certificate.outerHTML}</body></html>`);
+    printWindow.document.close();
+
+    let printStarted = false;
+    const printWhenReady = async () => {
+      if (printStarted || printWindow.closed) return;
+      printStarted = true;
+      const images = Array.from(printWindow.document.images);
+      await Promise.all(images.map(image => image.complete
+        ? Promise.resolve()
+        : new Promise(resolve => { image.onload = resolve; image.onerror = resolve; })));
+      printWindow.focus();
+      printWindow.print();
+    };
+    printWindow.addEventListener('load', printWhenReady, { once: true });
+    window.setTimeout(() => { if (!printWindow.closed) printWhenReady(); }, 400);
+    printWindow.onafterprint = () => printWindow.close();
   };
 
   return (
@@ -865,7 +910,7 @@ export default function WorkCompletionTask() {
                 <div className="wcc-header-logo">
                   <img src="/logo.png" alt="CeCube Group" style={{ maxHeight: '55px', marginBottom: '8px' }} />
                   <div style={{ fontSize: '18px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
-                    CeCube Engineering India Pvt. Ltd.
+                    CeCube Group
                   </div>
                   <div style={{ fontSize: '12px', color: '#475569' }}>
                     ISO 9001:2015 Certified | Infrastructure, Engineering & EPC Contractors
@@ -900,7 +945,7 @@ export default function WorkCompletionTask() {
                     </tr>
                     <tr>
                       <td className="label-cell">Material / Scope of Work</td>
-                      <td style={{ fontWeight: 700 }}>{selectedTaskForCert.materialName} ({selectedTaskForCert.taskName})</td>
+                      <td style={{ fontWeight: 700 }}>{selectedTaskForCert.taskName || selectedTaskForCert.materialName}</td>
                     </tr>
                     <tr>
                       <td className="label-cell">Material Specification</td>

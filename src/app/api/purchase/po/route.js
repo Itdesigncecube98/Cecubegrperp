@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
+import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 
 async function getVendorFallback(vendorId) {
   if (!vendorId) return null;
@@ -243,6 +244,14 @@ export async function POST(req) {
       }
     });
 
+    await autoGrantCreatorProjectTools(prisma, req, {
+      requestedEmployeeId: body.createdById,
+      projectId: body.projectId,
+      projectName: body.projectName || body.project,
+      module: 'Purchase',
+      toolNames: ['Purchase Orders Create', 'Purchase Orders View', 'Purchase Orders Edit', 'Purchase Orders Delete'],
+    });
+
     return NextResponse.json(po, { status: 201 });
   } catch (error) {
     console.error('Error creating PO:', error);
@@ -324,14 +333,39 @@ export async function PUT(req) {
     else if (status && VALID_STATUSES.includes(status)) newStatus = status;
     else return NextResponse.json({ error: 'Invalid action or status' }, { status: 400 });
 
+    const updateData = { status: newStatus };
+    if (action === 'approve') {
+      updateData.approvedBy = body.approvedBy || null;
+      updateData.approvedByName = body.approvedByName || body.approvedBy || 'Director';
+      updateData.approvedAt = new Date();
+    }
     const po = await prisma.purchaseOrder.update({
       where: { id },
-      data: { status: newStatus },
+      data: updateData,
       include: { items: true }
     });
 
     return NextResponse.json(po);
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Failed to update purchase order' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req) {
+  try {
+    const id = new URL(req.url).searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'PO id is required' }, { status: 400 });
+    const po = await prisma.purchaseOrder.findUnique({ where: { id }, include: { grns: { select: { id: true } } } });
+    if (!po) return NextResponse.json({ error: 'Purchase order not found' }, { status: 404 });
+    if (po.status !== 'DRAFT') return NextResponse.json({ error: 'Only draft purchase orders can be deleted.' }, { status: 409 });
+    if (po.grns?.length) return NextResponse.json({ error: 'This purchase order has GRN records and cannot be deleted.' }, { status: 409 });
+    await prisma.$transaction(async tx => {
+      await tx.purchaseOrderItem.deleteMany({ where: { poId: id } });
+      await tx.purchaseOrder.delete({ where: { id } });
+    });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting purchase order:', error);
+    return NextResponse.json({ error: error.message || 'Failed to delete purchase order' }, { status: 500 });
   }
 }
