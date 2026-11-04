@@ -244,6 +244,9 @@ export async function PUT(request) {
       if (body.action === 'unapprove' && (current.status !== 'UNPAID' || current.voucherId || Number(current.paidAmount || 0) > 0)) {
         return NextResponse.json({ error: 'Approval cannot be removed after payment processing has started.' }, { status: 409 });
       }
+      if (body.action === 'approve' && current.status !== 'UNPAID') {
+        return NextResponse.json({ error: 'Only unpaid purchase bills can be approved.' }, { status: 409 });
+      }
       let existingMeta = {};
       let existingRemarks = current.remarks || '';
       try {

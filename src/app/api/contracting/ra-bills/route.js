@@ -175,6 +175,7 @@ export async function PUT(request) {
     }
     if (action === 'approve' && existing.status !== 'Submitted') return NextResponse.json({ error: 'Only submitted RA bills can be approved.' }, { status: 409 });
     if (action === 'unapprove' && existing.status !== 'Approved') return NextResponse.json({ error: 'Only approved RA bills can be unapproved.' }, { status: 409 });
+    if (status === 'Approved' && action !== 'approve') return NextResponse.json({ error: 'Use the approval action to approve an RA bill.' }, { status: 400 });
     const nextStatus = action === 'approve' ? 'Approved' : action === 'unapprove' ? 'Submitted' : status;
 
     // Preserve task metadata in remarks when task lines are edited.
