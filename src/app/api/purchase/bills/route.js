@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { getPurchaseBillPreview } from '@/lib/purchaseBillAmounts';
 import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
 import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
+import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 
 async function getNextBillNumbers(client = prisma, year = new Date().getFullYear()) {
   const existingBills = await client.vendorBill.findMany({
@@ -235,16 +236,25 @@ export async function PUT(request) {
     const current = await prisma.vendorBill.findUnique({ where: { id: body.id } });
     if (!current) return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
 
-    if (body.action === 'approve') {
+    if (body.action === 'approve' || body.action === 'unapprove') {
+      const po = current.poNo ? await prisma.purchaseOrder.findUnique({ where: { poNumber: current.poNo }, select: { projectId: true, projectName: true } }) : null;
+      const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Purchase', toolName: 'Purchase Bills Approve', projectId: po?.projectId, projectName: po?.projectName });
+      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+      const approvalActor = access.session.type === 'admin' ? 'Administrator' : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      if (body.action === 'unapprove' && (current.status !== 'UNPAID' || current.voucherId || Number(current.paidAmount || 0) > 0)) {
+        return NextResponse.json({ error: 'Approval cannot be removed after payment processing has started.' }, { status: 409 });
+      }
       let existingMeta = {};
       let existingRemarks = current.remarks || '';
       try {
         const match = existingRemarks.match(/^__META__:(\{.*?\})\n?/);
         if (match) { existingMeta = JSON.parse(match[1]); existingRemarks = existingRemarks.slice(match[0].length); }
       } catch { /* Preserve old remarks if metadata is malformed. */ }
-      const metaRemarks = `__META__:${JSON.stringify({ ...existingMeta, approvalStatus: 'APPROVED', approvedBy: body.approvedBy || null, approvedAt: new Date().toISOString() })}\n${existingRemarks}`;
-      const approvedBill = await prisma.vendorBill.update({ where: { id: body.id }, data: { remarks: metaRemarks } });
-      return NextResponse.json({ ...approvedBill, approvalStatus: 'APPROVED', approvedBy: body.approvedBy || null });
+      const approved = body.action === 'approve';
+      const nextMeta = { ...existingMeta, approvalStatus: approved ? 'APPROVED' : 'PENDING', approvedBy: approved ? approvalActor : null, approvedAt: approved ? new Date().toISOString() : null };
+      const metaRemarks = `__META__:${JSON.stringify(nextMeta)}\n${existingRemarks}`;
+      const savedBill = await prisma.vendorBill.update({ where: { id: body.id }, data: { remarks: metaRemarks } });
+      return NextResponse.json({ ...savedBill, ...nextMeta });
     }
 
     let existingMeta = {};

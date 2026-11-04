@@ -1,0 +1,193 @@
+{
+  "groups": [
+    {
+      "id": "group-1793780808976-5hmym",
+      "name": "Work Order WO-2026-0003",
+      "subgroups": [
+        {
+          "id": "subgroup-1793780808983-g5722",
+          "name": "VTECH INDIA POWER SYSTEM",
+          "tasks": [
+            {
+              "id": "task-1793780808995-i5c2y",
+              "name": "Servicing & maintenance of L.T. ACB including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing Schneider make - 1000A ACB - Servicing & maintenance of L.T. ACB including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing Schneider make - 1000A ACB",
+              "description": "Work order WO-2026-0003",
+              "source": "Work Order",
+              "quantity": 8,
+              "plannedQty": 8,
+              "cumulativeQty": 0,
+              "completedQty": 0,
+              "remainingQty": 8,
+              "workPercent": 0,
+              "unit": "Nos",
+              "rate": 5000,
+              "workOrderId": "WO-2026-0003",
+              "contractorName": "VTECH INDIA POWER SYSTEM",
+              "status": "Tentative",
+              "updatedAt": "2026-11-04T08:26:48.983Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-11-04T08:26:48.983Z",
+                  "description": "Work order WO-2026-0003"
+                }
+              ]
+            },
+            {
+              "id": "task-1793780809062-7j7nz",
+              "name": "Servicing & maintenance of L.T. ACB including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing Schneider make - 1600A ACB - Servicing & maintenance of L.T. ACB including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing Schneider make - 1600A ACB",
+              "description": "Work order WO-2026-0003",
+              "source": "Work Order",
+              "quantity": 2,
+              "plannedQty": 2,
+              "cumulativeQty": 0,
+              "completedQty": 0,
+              "remainingQty": 2,
+              "workPercent": 0,
+              "unit": "Nos",
+              "rate": 5000,
+              "workOrderId": "WO-2026-0003",
+              "contractorName": "VTECH INDIA POWER SYSTEM",
+              "status": "Tentative",
+              "updatedAt": "2026-11-04T08:26:49.062Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-11-04T08:26:49.062Z",
+                  "description": "Work order WO-2026-0003"
+                }
+              ]
+            },
+            {
+              "id": "task-1793780809065-5y71f",
+              "name": "Servicing & maintenance of L.T. ACB including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing Schneider make - 800A ACB - Servicing & maintenance of L.T. ACB including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing Schneider make - 1000A ACB",
+              "description": "Work order WO-2026-0003",
+              "source": "Work Order",
+              "quantity": 6,
+              "plannedQty": 6,
+              "cumulativeQty": 0,
+              "completedQty": 0,
+              "remainingQty": 6,
+              "workPercent": 0,
+              "unit": "Nos",
+              "rate": 5000,
+              "workOrderId": "WO-2026-0003",
+              "contractorName": "VTECH INDIA POWER SYSTEM",
+              "status": "Tentative",
+              "updatedAt": "2026-11-04T08:26:49.065Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-11-04T08:26:49.065Z",
+                  "description": "Work order WO-2026-0003"
+                }
+              ]
+            },
+            {
+              "id": "task-1793780809068-da6j8",
+              "name": "Servicing & maintenance of L.T. ACB including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing Schneider make - 1250A ACB - Servicing & maintenance of L.T. ACB including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing Schneider make - 1250A ACB",
+              "description": "Work order WO-2026-0003",
+              "source": "Work Order",
+              "quantity": 4,
+              "plannedQty": 4,
+              "cumulativeQty": 0,
+              "completedQty": 0,
+              "remainingQty": 4,
+              "workPercent": 0,
+              "unit": "Nos",
+              "rate": 5000,
+              "workOrderId": "WO-2026-0003",
+              "contractorName": "VTECH INDIA POWER SYSTEM",
+              "status": "Tentative",
+              "updatedAt": "2026-11-04T08:26:49.068Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-11-04T08:26:49.068Z",
+                  "description": "Work order WO-2026-0003"
+                }
+              ]
+            },
+            {
+              "id": "task-1793780809071-bmmtr",
+              "name": "Servicing & maintenance of 11KV HT VCB Breaker including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing, CG Power make- 800Amps - Servicing & maintenance of 11KV HT VCB Breaker including checking of contacts, lubrication of mechanism, cleaning, tightening, Insulation Resistance Test, Relay testing, CG Power make- 800Amps",
+              "description": "Work order WO-2026-0003",
+              "source": "Work Order",
+              "quantity": 3,
+              "plannedQty": 3,
+              "cumulativeQty": 0,
+              "completedQty": 0,
+              "remainingQty": 3,
+              "workPercent": 0,
+              "unit": "Nos",
+              "rate": 5000,
+              "workOrderId": "WO-2026-0003",
+              "contractorName": "VTECH INDIA POWER SYSTEM",
+              "status": "Tentative",
+              "updatedAt": "2026-11-04T08:26:49.071Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-11-04T08:26:49.071Z",
+                  "description": "Work order WO-2026-0003"
+                }
+              ]
+            },
+            {
+              "id": "task-1793780809090-e1m7d",
+              "name": "Maintenance & Testing of Oil Type, 1000 KVA ,11KV/415V ,Transformer are as following; A) Magnetic balance test B) Ratio Test c) Insulation Resistance Test D)Testing of WTI/OTI E) OLTC maintenance F) BDV test G) Dehydration - Maintenance & Testing of Oil Type, 1000 KVA ,11KV/415V ,Transformer are as following; A) Magnetic balance test B) Ratio Test c) Insulation Resistance Test D)Testing of WTI/OTI E) OLTC maintenance F) BDV test G) Dehydration",
+              "description": "Work order WO-2026-0003",
+              "source": "Work Order",
+              "quantity": 1,
+              "plannedQty": 1,
+              "cumulativeQty": 0,
+              "completedQty": 0,
+              "remainingQty": 1,
+              "workPercent": 0,
+              "unit": "Nos",
+              "rate": 15000,
+              "workOrderId": "WO-2026-0003",
+              "contractorName": "VTECH INDIA POWER SYSTEM",
+              "status": "Tentative",
+              "updatedAt": "2026-11-04T08:26:49.090Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-11-04T08:26:49.090Z",
+                  "description": "Work order WO-2026-0003"
+                }
+              ]
+            },
+            {
+              "id": "task-1793780809097-vbydc",
+              "name": "Maintenance & Testing of Oil Type, 800 KVA ,11KV/415V ,Transformer are as following; A) Magnetic balance test B) Ratio Test c) Insulation Resistance Test D)Testing of WTI/OTI E) OLTC maintenance F) BDV test G) Dehydration - Maintenance & Testing of Oil Type, 800 KVA ,11KV/415V ,Transformer are as following; A) Magnetic balance test B) Ratio Test c) Insulation Resistance Test D)Testing of WTI/OTI E) OLTC maintenance F) BDV test G) Dehydration",
+              "description": "Work order WO-2026-0003",
+              "source": "Work Order",
+              "quantity": 1,
+              "plannedQty": 1,
+              "cumulativeQty": 0,
+              "completedQty": 0,
+              "remainingQty": 1,
+              "workPercent": 0,
+              "unit": "Nos",
+              "rate": 15000,
+              "workOrderId": "WO-2026-0003",
+              "contractorName": "VTECH INDIA POWER SYSTEM",
+              "status": "Tentative",
+              "updatedAt": "2026-11-04T08:26:49.096Z",
+              "history": [
+                {
+                  "status": "Tentative",
+                  "changedAt": "2026-11-04T08:26:49.096Z",
+                  "description": "Work order WO-2026-0003"
+                }
+              ]
+            }
+          ],
+          "subgroups": []
+        }
+      ],
+      "tasks": []
+    }
+  ]
+}

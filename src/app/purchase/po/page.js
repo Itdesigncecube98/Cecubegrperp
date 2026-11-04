@@ -13,6 +13,7 @@ export default function PORegister() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [sendingId, setSendingId] = useState('');
   const [deletingId, setDeletingId] = useState('');
+  const [approvalId, setApprovalId] = useState('');
   const { activeEmployee, activeProject, hasRight } = usePermissions();
   const can = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', name)));
   const canList = can('Purchase Orders View') || can('Purchase Orders Edit') || can('Purchase Orders Approve') || can('Purchase Orders Delete') || can('Purchase Orders Create') || can('Send Purchase Order by Email');
@@ -59,10 +60,16 @@ export default function PORegister() {
     return matchesSearch && matchesStatus;
   });
 
-  const approvePO = async (id) => {
+  const togglePOApproval = async po => {
+    setApprovalId(po.id);
     const approvedBy = getClientActor();
-    const res = await fetch('/api/purchase/po', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'approve', approvedBy, approvedByName: approvedBy }) });
-    if (res.ok) setPos(current => current.map(po => po.id === id ? { ...po, status: 'APPROVED', approvedBy, approvedByName: approvedBy, approvedAt: new Date().toISOString() } : po));
+    try {
+      const res = await fetch('/api/purchase/po', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: po.id, action: po.status === 'APPROVED' ? 'unapprove' : 'approve', approvedBy, approvedByName: approvedBy }) });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Unable to update purchase order approval.');
+      setPos(current => current.map(item => item.id === po.id ? { ...item, ...result } : item));
+    } catch (error) { alert(error.message); }
+    finally { setApprovalId(''); }
   };
 
   const deletePO = async po => {
@@ -177,7 +184,7 @@ export default function PORegister() {
                       </span>
                     </td>
                     <td className="pur-text-right pur-flex" style={{ justifyContent: 'flex-end', gap: '8px' }}>
-                      {po.status === 'DRAFT' && can('Purchase Orders Approve') && <button className="pur-btn pur-btn-outline" onClick={() => approvePO(po.id)}>Approve</button>}
+                      {['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(po.status) && can('Purchase Orders Approve') && <button className="pur-btn pur-btn-outline" disabled={approvalId === po.id} onClick={() => togglePOApproval(po)}>{approvalId === po.id ? 'Saving…' : po.status === 'APPROVED' ? 'Unapprove' : 'Approve'}</button>}
                       {can('Purchase Orders View') && <Link href={`/purchase/po/print?id=${po.id}`} target="_blank" className="pur-icon-btn pur-text-indigo-600" title="Download PDF">
                         <Download size={16} />
                       </Link>}

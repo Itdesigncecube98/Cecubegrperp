@@ -7,8 +7,11 @@ import {
   ShieldCheck, RefreshCw, X, Calendar, Package, ArrowUpRight
 } from 'lucide-react';
 import '../planning.css';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 export default function WorkCompletionTask() {
+  const { activeEmployee, hasRight } = usePermissions();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -48,6 +51,8 @@ export default function WorkCompletionTask() {
   // Certificate Modal state
   const [showCertModal, setShowCertModal] = useState(false);
   const [selectedTaskForCert, setSelectedTaskForCert] = useState(null);
+  const [certificateActionId, setCertificateActionId] = useState('');
+  const canApproveCertificate = !activeEmployee || (!!selectedProjectId && hasRight(employeeToolCode('Site', 'Work Completion Certificate Approve'), selectedProjectId));
 
   // Toast state
   const [toast, setToast] = useState(null);
@@ -287,6 +292,26 @@ export default function WorkCompletionTask() {
   const handleOpenCertModal = (task) => {
     setSelectedTaskForCert(task);
     setShowCertModal(true);
+  };
+
+  const handleCertificateApproval = async () => {
+    if (!selectedTaskForCert || !canApproveCertificate) return;
+    const approved = !selectedTaskForCert.certificateApproved;
+    setCertificateActionId(selectedTaskForCert.id);
+    try {
+      const response = await fetch('/api/engineering/planning/work-completion', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: selectedProjectId, action: 'CERTIFICATE_APPROVAL', taskUpdate: { id: selectedTaskForCert.id, certificateApproved: approved } }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Unable to update certificate approval.');
+      const updated = result.updatedTask;
+      setSelectedTaskForCert(current => ({ ...current, ...updated }));
+      setTasks(current => current.map(task => task.id === updated.id ? { ...task, ...updated } : task));
+      showToast(approved ? 'Certificate approved.' : 'Certificate approval removed.');
+    } catch (error) {
+      showToast(error.message || 'Unable to update certificate approval.', 'error');
+    } finally { setCertificateActionId(''); }
   };
 
   // Print Certificate
@@ -973,6 +998,12 @@ export default function WorkCompletionTask() {
                       <td className="label-cell">Quality Status</td>
                       <td style={{ fontWeight: 700, color: '#15803d' }}>{selectedTaskForCert.verificationStatus}</td>
                     </tr>
+                    <tr>
+                      <td className="label-cell">Certificate Approval</td>
+                      <td style={{ fontWeight: 700, color: selectedTaskForCert.certificateApproved ? '#15803d' : '#b45309' }}>
+                        {selectedTaskForCert.certificateApproved ? `Approved${selectedTaskForCert.certificateApprovedBy ? ` by ${selectedTaskForCert.certificateApprovedBy}` : ''}` : 'Pending Approval'}
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
 
@@ -994,6 +1025,10 @@ export default function WorkCompletionTask() {
             </div>
 
             <div className="planning-modal-footer">
+              {canApproveCertificate && <button
+                type="button" onClick={handleCertificateApproval} disabled={certificateActionId === selectedTaskForCert.id}
+                style={{ background: selectedTaskForCert.certificateApproved ? '#fff7ed' : '#ecfdf5', border: `1px solid ${selectedTaskForCert.certificateApproved ? '#fed7aa' : '#a7f3d0'}`, color: selectedTaskForCert.certificateApproved ? '#c2410c' : '#047857', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
+              >{certificateActionId === selectedTaskForCert.id ? 'Saving…' : selectedTaskForCert.certificateApproved ? 'Unapprove' : 'Approve'}</button>}
               <button 
                 type="button" 
                 onClick={() => setShowCertModal(false)}

@@ -28,7 +28,7 @@ export const PROJECT_TOOL_MODULES = {
     'Brand Master Manage', 'Purchase Advance Manage', 'Purchase Reports View',
   ],
   Site: [
-    'Site Dashboard', 'DPR Create', 'DPR View', 'Work Completion — Log Qty', 'Material Requisition Raise',
+    'Site Dashboard', 'DPR Create', 'DPR View', 'Work Completion — Log Qty', 'Work Completion Certificate Approve', 'Material Requisition Raise',
     'Material Requisition Edit', 'Material Requisition Delete', 'GTN View', 'GTN Edit', 'GRN View', 'GRN Edit',
     'Site Store', 'Task Status Change', 'Quality Control View', 'Quality Control Add', 'Health & Safety View',
     'Health & Safety Add', 'Raise NCR',
@@ -154,7 +154,7 @@ export const LEGACY_PERMISSION_ALIASES = {
   PURCHASE_BILLS_EMAIL: alias('Purchase', 'Send Purchase Bill by Email'),
   SITE_DASHBOARD: alias('Site', 'Site Dashboard'),
   SITE_DPR: alias('Site', 'DPR Create', 'DPR View'),
-  SITE_WORK_COMPLETION: alias('Site', 'Work Completion — Log Qty'),
+  SITE_WORK_COMPLETION: alias('Site', 'Work Completion — Log Qty', 'Work Completion Certificate Approve'),
   SITE_MATERIAL_REQUISITION: alias('Site', 'Material Requisition Raise', 'Material Requisition Edit', 'Material Requisition Delete'),
   SITE_GTN: alias('Site', 'GTN View', 'GTN Edit'),
   SITE_GRN: alias('Site', 'GRN View', 'GRN Edit'),

@@ -588,7 +588,7 @@ export default function RABillsPage() {
       const res = await fetch(RA_BILLS_ENDPOINT, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ id, status, approvedBy: status === 'Approved' ? getClientActor() : undefined, editedBy: getClientActor() }),
+        body: JSON.stringify({ id, ...(status === 'Approved' ? { action: 'approve' } : status === 'Unapproved' ? { action: 'unapprove' } : { status }), approvedBy: status === 'Approved' ? getClientActor() : undefined, editedBy: getClientActor() }),
       });
       const ct = res.headers.get('content-type') || '';
       const data = ct.includes('application/json') ? await res.json() : await res.text();
@@ -600,7 +600,7 @@ export default function RABillsPage() {
           `Failed to update RA bill (${res.status} ${res.statusText})`
         );
       }
-      setSuccess(`RA bill status changed to ${status}.`);
+      setSuccess(status === 'Unapproved' ? 'RA bill approval removed.' : `RA bill status changed to ${status}.`);
       await fetchBills();
     } catch (err) {
       console.error('handleStatusChange error:', err);
@@ -808,6 +808,7 @@ export default function RABillsPage() {
                         onClick={() => handleDelete(b.id)}
                       >{actionId === b.id ? '…' : 'Delete'}</button>}
                       {b.status === 'Approved' && canApprove && (
+                        <>
                         <button
                           type="button"
                           style={{ ...s.actionBtn, color: '#15803d' }}
@@ -816,6 +817,10 @@ export default function RABillsPage() {
                         >
                           {actionId === b.id ? '…' : 'Mark Paid'}
                         </button>
+                        <button type="button" style={{ ...s.actionBtn, color: '#c2410c' }} disabled={actionId === b.id} onClick={() => handleStatusChange(b.id, 'Unapproved')}>
+                          {actionId === b.id ? '…' : 'Unapprove'}
+                        </button>
+                        </>
                       )}
                     </div>
                   </td>

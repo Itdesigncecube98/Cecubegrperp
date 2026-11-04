@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { normalizeTenderDetails } from '@/lib/tenderDetails';
 import { readAuthSession } from '@/lib/authSession';
+import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 
 function validateBoqItems(value) {
   if (!Array.isArray(value) || value.length > 500) {
@@ -117,6 +118,24 @@ export async function PUT(req, { params }) {
   try {
     const { id } = await params;
     const body = await req.json();
+    const currentTender = await prisma.tender.findUnique({ where: { id }, include: { approvals: true } });
+    if (!currentTender) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (body.action === 'approval-toggle') {
+      if (typeof body.approved !== 'boolean') return NextResponse.json({ error: 'Approval state is required.' }, { status: 400 });
+      const access = await checkDocumentApprovalAccess(req, prisma, { module: 'Tender', toolName: 'Tender Approval Manage', projectName: currentTender.projectName, allowAnyProject: true });
+      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+      const prior = currentTender.approvals.find(item => item.stage === 'Tender Approval');
+      const approvalData = {
+        status: body.approved ? 'Approved' : 'Pending',
+        approvedById: body.approved && access.session.type === 'employee' ? access.session.id : null,
+        approvedAt: body.approved ? new Date() : null,
+      };
+      const approval = prior
+        ? await prisma.tenderApproval.update({ where: { id: prior.id }, data: approvalData })
+        : await prisma.tenderApproval.create({ data: { tenderId: id, stage: 'Tender Approval', ...approvalData } });
+      await prisma.tenderAuditLog.create({ data: { tenderId: id, action: body.approved ? 'Approved' : 'Unapproved', remarks: body.approved ? 'Tender approval granted.' : 'Tender approval removed.', userId: access.session.type === 'employee' ? access.session.id : null } });
+      return NextResponse.json({ success: true, approval });
+    }
     const boqValidation = body.boqItems === undefined ? null : validateBoqItems(body.boqItems);
     if (boqValidation?.error) return NextResponse.json({ error: boqValidation.error }, { status: 400 });
     if (boqValidation) {
@@ -125,9 +144,6 @@ export async function PUT(req, { params }) {
         return NextResponse.json({ error: 'BOQ items contain a duplicate ID.' }, { status: 400 });
       }
     }
-
-    const currentTender = await prisma.tender.findUnique({ where: { id } });
-    if (!currentTender) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const data = {};
     let detailUpdate = null;

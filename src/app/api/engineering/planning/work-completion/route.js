@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { addTaskMasterTask, updateTaskMasterTask } from '@/lib/siteTaskMaster';
+import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 import fs from 'fs';
 import path from 'path';
 
@@ -52,7 +53,10 @@ function mapSiteTasks(groups, parentNames = []) {
         cumulativeAmount: Number(task.cumulativeQty ?? completedQty) * Number(task.rate || 0),
         balanceAmount: Math.max(0, plannedQty - Number(task.cumulativeQty ?? completedQty)) * Number(task.rate || 0),
         workOrderId: task.workOrderId || null,
-        contractorName: task.contractorName || ''
+        contractorName: task.contractorName || '',
+        certificateApproved: task.certificateApproved === true,
+        certificateApprovedBy: task.certificateApprovedBy || null,
+        certificateApprovedAt: task.certificateApprovedAt || null,
       });
     });
     rows.push(...mapSiteTasks(group.subgroups, hierarchy));
@@ -270,6 +274,27 @@ export async function POST(req) {
 
     if (!projectId) {
       return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+    }
+
+    if (action === 'CERTIFICATE_APPROVAL') {
+      const access = await checkDocumentApprovalAccess(req, prisma, {
+        module: 'Site', toolName: 'Work Completion Certificate Approve', projectId,
+      });
+      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+      if (!taskUpdate?.id || typeof taskUpdate.certificateApproved !== 'boolean') {
+        return NextResponse.json({ error: 'A task and approval state are required.' }, { status: 400 });
+      }
+      const actor = access.session.type === 'admin'
+        ? 'Administrator'
+        : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      const updatedTask = updateTaskMasterTask(projectId, {
+        id: taskUpdate.id,
+        certificateApproved: taskUpdate.certificateApproved,
+        certificateApprovedBy: taskUpdate.certificateApproved ? actor : null,
+        certificateApprovedAt: taskUpdate.certificateApproved ? new Date().toISOString() : null,
+      });
+      if (!updatedTask) return NextResponse.json({ error: 'Task not found in Site Task Master' }, { status: 404 });
+      return NextResponse.json({ success: true, updatedTask: mapSiteTasks([{ name: 'task', tasks: [updatedTask] }])[0] });
     }
 
     if (taskUpdate?.id) {

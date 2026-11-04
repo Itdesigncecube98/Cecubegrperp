@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getDocumentActors, getDocumentEditors, recordDocumentAction, recordDocumentEdit } from '@/lib/documentAudit';
 import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
+import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 
 const VALID_STATUSES = ['Submitted', 'Approved', 'Paid', 'Rejected'];
 
@@ -150,7 +151,7 @@ export async function POST(request) {
 export async function PUT(request) {
   try {
     const data = await request.json();
-    const { id, status, remarks, taskLines } = data;
+    const { id, status, remarks, taskLines, action } = data;
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 });
@@ -167,6 +168,14 @@ export async function PUT(request) {
     if (!existing) {
       return NextResponse.json({ error: 'RA bill not found' }, { status: 404 });
     }
+    if (action === 'approve' || action === 'unapprove' || status === 'Approved') {
+      const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Contracting', toolName: 'Approve RA Bill', projectId: existing.projectId });
+      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+      data.approvalActor = access.session.type === 'admin' ? 'Administrator' : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+    }
+    if (action === 'approve' && existing.status !== 'Submitted') return NextResponse.json({ error: 'Only submitted RA bills can be approved.' }, { status: 409 });
+    if (action === 'unapprove' && existing.status !== 'Approved') return NextResponse.json({ error: 'Only approved RA bills can be unapproved.' }, { status: 409 });
+    const nextStatus = action === 'approve' ? 'Approved' : action === 'unapprove' ? 'Submitted' : status;
 
     // Preserve task metadata in remarks when task lines are edited.
     let savedRemarks = remarks !== undefined ? (remarks || '') : (existing.remarks || '');
@@ -181,7 +190,7 @@ export async function PUT(request) {
     }
 
     const updateData = {
-      ...(status && { status }),
+      ...(nextStatus && { status: nextStatus }),
       ...(remarks !== undefined || Array.isArray(taskLines)
         ? { remarks: savedRemarks || null }
         : {}),
@@ -227,8 +236,8 @@ export async function PUT(request) {
     await recordDocumentEdit(prisma, {
       entityType: 'WorkOrderRABill', entityId: updated.id, module: 'Contracting', editorName: data.editedBy,
     });
-    if (status === 'Approved') {
-      await recordDocumentAction(prisma, { entityType: 'WorkOrderRABill', entityId: updated.id, module: 'Contracting', action: 'APPROVE', actorName: data.approvedBy || data.editedBy });
+    if (nextStatus === 'Approved' || action === 'unapprove') {
+      await recordDocumentAction(prisma, { entityType: 'WorkOrderRABill', entityId: updated.id, module: 'Contracting', action: action === 'unapprove' ? 'UNAPPROVE' : 'APPROVE', actorName: data.approvalActor || data.editedBy });
     }
 
     return NextResponse.json({ ...updated, editedBy: data.editedBy || null });

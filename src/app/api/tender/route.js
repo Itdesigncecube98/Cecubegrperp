@@ -50,7 +50,8 @@ export async function GET(req) {
     const tenders = await prisma.tender.findMany({
       include: {
         owner: { select: { id: true, name: true } },
-        result: true
+        result: true,
+        approvals: true,
       },
       orderBy: { createdAt: 'desc' }
     });

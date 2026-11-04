@@ -20,12 +20,12 @@ export default function WorkOrderBrowse() {
   const can = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', name)));
   const canList = can('Create Work Order') || can('View Work Order') || can('Edit Work Order') || can('Delete Work Order') || can('Approve Work Order') || can('Send Work Order by Email');
 
-  const updateOrderStatus = async (order, status) => {
+  const updateOrderStatus = async (order, action) => {
     setActionId(order.id);
     try {
       const response = await fetch('/api/contracting/work-orders', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: order.id, status, approvedBy: status === 'Approved' ? getClientActor() : undefined }),
+        body: JSON.stringify({ id: order.id, action }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || 'Unable to update work order.');
@@ -116,7 +116,7 @@ export default function WorkOrderBrowse() {
                     <td style={{ padding: '11px 12px', display: 'flex', gap: 10 }}>
                       {can('Edit Work Order') && <Link href={`/contracting/work-order/raise?id=${order.id}`} title="Edit work order" style={{ color: '#0369a1' }}><Pencil size={16} /></Link>}
                       {can('View Work Order') && <Link href={`/contracting/work-order/raise?id=${order.id}&print=1`} target="_blank" title="Print work order" style={{ color: '#b45309' }}><FileDown size={16} /></Link>}
-                      {can('Approve Work Order') && order.status === 'Draft' && <button type="button" onClick={() => updateOrderStatus(order, 'Approved')} disabled={actionId === order.id} title="Approve work order" style={{ border: 0, background: 'transparent', color: '#15803d', cursor: 'pointer' }}><Check size={16} /></button>}
+                      {can('Approve Work Order') && ['Draft', 'Approved'].includes(order.status) && <button type="button" onClick={() => updateOrderStatus(order, order.status === 'Approved' ? 'unapprove' : 'approve')} disabled={actionId === order.id} title={order.status === 'Approved' ? 'Unapprove work order' : 'Approve work order'} style={{ border: 0, background: 'transparent', color: order.status === 'Approved' ? '#c2410c' : '#15803d', cursor: 'pointer' }}>{order.status === 'Approved' ? 'Unapprove' : <Check size={16} />}</button>}
                       {can('Delete Work Order') && order.status === 'Draft' && <button type="button" onClick={() => deleteOrder(order)} disabled={actionId === order.id} title="Delete work order" style={{ border: 0, background: 'transparent', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={16} /></button>}
                       {can('Send Work Order by Email') && <button type="button" disabled={sendingId === order.id} onClick={() => sendWorkOrderEmail(order)} title="Email work order" style={{ border: 0, background: 'transparent', color: '#047857', cursor: 'pointer' }}><Mail size={16} /></button>}
                     </td>

@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
 import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
+import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
+import { recordDocumentAction } from '@/lib/documentAudit';
 
 async function getVendorFallback(vendorId) {
   if (!vendorId) return null;
@@ -326,8 +328,27 @@ export async function PUT(req) {
       return NextResponse.json(updated);
     }
 
+    const existing = await prisma.purchaseOrder.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: 'Purchase order not found.' }, { status: 404 });
+    if (action === 'approve' || action === 'unapprove' || status === 'APPROVED') {
+      const access = await checkDocumentApprovalAccess(req, prisma, { module: 'Purchase', toolName: 'Purchase Orders Approve', projectId: existing.projectId, projectName: existing.projectName });
+      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+      body.approvalActor = access.session.type === 'admin' ? 'Administrator' : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+    }
+    if (action === 'approve' && !['DRAFT', 'PENDING_APPROVAL'].includes(existing.status)) return NextResponse.json({ error: 'Only draft or pending purchase orders can be approved.' }, { status: 409 });
+    if (action === 'unapprove' && existing.status !== 'APPROVED') return NextResponse.json({ error: 'Only approved purchase orders can be unapproved.' }, { status: 409 });
+    if (action === 'unapprove') {
+      const [grnCount, bill] = await Promise.all([
+        prisma.goodsReceiptNote.count({ where: { poId: existing.id } }).catch(() => 0),
+        prisma.vendorBill.findFirst({ where: { poNo: existing.poNumber }, select: { id: true } }),
+      ]);
+      if (grnCount || bill) return NextResponse.json({ error: 'This PO has a GRN or purchase bill, so its approval cannot be removed.' }, { status: 409 });
+    }
+    if (status === 'APPROVED' && action !== 'approve') return NextResponse.json({ error: 'Use the approve action to approve a purchase order.' }, { status: 400 });
+
     let newStatus;
     if (action === 'approve') newStatus = 'APPROVED';
+    else if (action === 'unapprove') newStatus = 'PENDING_APPROVAL';
     else if (action === 'submit') newStatus = 'PENDING_APPROVAL';
     else if (action === 'reject') newStatus = 'CANCELLED';
     else if (status && VALID_STATUSES.includes(status)) newStatus = status;
@@ -335,15 +356,21 @@ export async function PUT(req) {
 
     const updateData = { status: newStatus };
     if (action === 'approve') {
-      updateData.approvedBy = body.approvedBy || null;
-      updateData.approvedByName = body.approvedByName || body.approvedBy || 'Director';
+      updateData.approvedBy = body.approvalActor;
+      updateData.approvedByName = body.approvalActor;
       updateData.approvedAt = new Date();
+    } else if (action === 'unapprove') {
+      updateData.approvedBy = null;
+      updateData.approvedByName = null;
+      updateData.approvedAt = null;
     }
     const po = await prisma.purchaseOrder.update({
       where: { id },
       data: updateData,
       include: { items: true }
     });
+
+    if (action === 'approve' || action === 'unapprove') await recordDocumentAction(prisma, { entityType: 'PurchaseOrder', entityId: po.id, module: 'Purchase', action: action === 'approve' ? 'APPROVE' : 'UNAPPROVE', actorName: body.approvalActor });
 
     return NextResponse.json(po);
   } catch (error) {

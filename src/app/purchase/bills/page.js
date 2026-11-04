@@ -74,11 +74,12 @@ export default function PurchaseBillsPage() {
     finally { setSendingBillId(''); }
   };
 
-  const approveBill = async bill => {
-    const response = await fetch('/api/purchase/bills', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: bill.id, action: 'approve', approvedBy: getClientActor() }) });
+  const toggleBillApproval = async bill => {
+    const approved = bill.approvalStatus !== 'APPROVED';
+    const response = await fetch('/api/purchase/bills', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: bill.id, action: approved ? 'approve' : 'unapprove', approvedBy: getClientActor() }) });
     const result = await response.json();
-    if (!response.ok) { alert(result.error || 'Unable to approve purchase bill.'); return; }
-    setBills(previous => previous.map(item => item.id === bill.id ? { ...item, approvalStatus: 'APPROVED', approvedBy: result.approvedBy } : item));
+    if (!response.ok) { alert(result.error || 'Unable to update purchase bill approval.'); return; }
+    setBills(previous => previous.map(item => item.id === bill.id ? { ...item, approvalStatus: result.approvalStatus, approvedBy: result.approvedBy, approvedAt: result.approvedAt } : item));
   };
 
   const deleteBill = async bill => {
@@ -555,7 +556,7 @@ export default function PurchaseBillsPage() {
                           <div style={{ display: 'flex', gap: 6 }}>
                             {(canTool('Purchase Bills View') || canEditBills) && <button type="button" onClick={() => openSavedBill(bill, 'view')} title="Open bill" aria-label={`Open bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', color: '#334155', cursor: 'pointer' }}><Eye size={14} /> Open</button>}
                             {canEditBills && <button type="button" onClick={() => openSavedBill(bill, 'edit')} title="Edit bill" aria-label={`Edit bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #bfdbfe', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}><Pencil size={14} /> Edit</button>}
-                            {canApproveBills && bill.approvalStatus !== 'APPROVED' && <button type="button" onClick={() => approveBill(bill)} title="Approve purchase bill" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #a7f3d0', borderRadius: 4, background: '#ecfdf5', color: '#047857', cursor: 'pointer' }}>Approve</button>}
+                            {canApproveBills && bill.status === 'UNPAID' && <button type="button" onClick={() => toggleBillApproval(bill)} title={bill.approvalStatus === 'APPROVED' ? 'Remove purchase bill approval' : 'Approve purchase bill'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: `1px solid ${bill.approvalStatus === 'APPROVED' ? '#fed7aa' : '#a7f3d0'}`, borderRadius: 4, background: bill.approvalStatus === 'APPROVED' ? '#fff7ed' : '#ecfdf5', color: bill.approvalStatus === 'APPROVED' ? '#c2410c' : '#047857', cursor: 'pointer' }}>{bill.approvalStatus === 'APPROVED' ? 'Unapprove' : 'Approve'}</button>}
                             {canDeleteBills && bill.status === 'UNPAID' && !bill.voucherId && <button type="button" onClick={() => deleteBill(bill)} title="Delete unpaid purchase bill" aria-label={`Delete bill ${displayBillNo(bill.billNo, bill.billDate)}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #fecaca', borderRadius: 4, background: '#fef2f2', color: '#b91c1c', cursor: 'pointer' }}><Trash2 size={14} /> Delete</button>}
                             {canEmailBills && <button type="button" onClick={() => emailBill(bill)} title="Email bill" aria-label={`Email bill ${displayBillNo(bill.billNo, bill.billDate)}`} disabled={sendingBillId === bill.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', border: '1px solid #a7f3d0', borderRadius: 4, background: '#ecfdf5', color: '#047857', cursor: 'pointer' }}><Mail size={14} /> Email</button>}
                           </div>

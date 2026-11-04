@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 export default function TenderRegister() {
   const [tenders, setTenders] = useState([]);
@@ -12,6 +14,9 @@ export default function TenderRegister() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [deletingTenderId, setDeletingTenderId] = useState('');
   const [deleteError, setDeleteError] = useState('');
+  const [approvalActionId, setApprovalActionId] = useState('');
+  const { activeEmployee, hasRight } = usePermissions();
+  const canApproveTender = !activeEmployee || hasRight(employeeToolCode('Tender', 'Tender Approval Manage'));
 
   useEffect(() => {
     setIsAdmin(sessionStorage.getItem('isAdmin') === 'true');
@@ -54,6 +59,24 @@ export default function TenderRegister() {
     } finally {
       setDeletingTenderId('');
     }
+  };
+
+  const toggleTenderApproval = async tender => {
+    const approved = !tender.approvals?.some(item => item.stage === 'Tender Approval' && item.status === 'Approved');
+    setApprovalActionId(tender.id);
+    try {
+      const response = await fetch(`/api/tender/${encodeURIComponent(tender.id)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approval-toggle', approved }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to update tender approval.');
+      setTenders(current => current.map(item => item.id === tender.id ? {
+        ...item,
+        approvals: [...(item.approvals || []).filter(a => a.stage !== 'Tender Approval'), result.approval],
+      } : item));
+    } catch (error) { setDeleteError(error.message || 'Unable to update tender approval.'); }
+    finally { setApprovalActionId(''); }
   };
 
   const formatCurrency = (val) => {
@@ -168,6 +191,9 @@ export default function TenderRegister() {
                       <Link href={`/tender/${t.id}/details`} className="tnd-btn tnd-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>
                         Manage
                       </Link>
+                      {canApproveTender && <button type="button" className="tnd-btn tnd-btn-outline" style={{ padding: '4px 8px', marginLeft: 8, color: t.approvals?.some(item => item.stage === 'Tender Approval' && item.status === 'Approved') ? '#c2410c' : '#15803d', fontSize: '0.75rem' }} disabled={approvalActionId === t.id} onClick={() => toggleTenderApproval(t)}>
+                        {t.approvals?.some(item => item.stage === 'Tender Approval' && item.status === 'Approved') ? 'Unapprove' : 'Approve'}
+                      </button>}
                       {isAdmin && (
                         <button
                           type="button"

@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { addTaskMasterTask } from '@/lib/siteTaskMaster';
 import { getDocumentActors, getDocumentEditors, recordDocumentAction, recordDocumentEdit } from '@/lib/documentAudit';
 import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
+import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 
 function readScopeMetadata(scope) {
   try {
@@ -142,6 +143,19 @@ export async function PUT(request) {
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
     const existing = await prisma.workOrder.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: 'Work order not found' }, { status: 404 });
+    if (data.action === 'approve' || data.action === 'unapprove') {
+      const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Contracting', toolName: 'Approve Work Order', projectId: existing.projectId });
+      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+      if (data.action === 'approve' && existing.status !== 'Draft') return NextResponse.json({ error: 'Only draft work orders can be approved.' }, { status: 409 });
+      if (data.action === 'unapprove' && existing.status !== 'Approved') return NextResponse.json({ error: 'Only approved work orders can be unapproved.' }, { status: 409 });
+      const priorScope = (() => { try { return existing.scope ? JSON.parse(existing.scope) : {}; } catch { return {}; } })();
+      const actor = access.session.type === 'admin' ? 'Administrator' : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      const audit = { ...(priorScope.audit || {}), approvedBy: data.action === 'approve' ? actor : null, approvedAt: data.action === 'approve' ? new Date().toISOString() : null };
+      const updated = await prisma.workOrder.update({ where: { id }, data: { status: data.action === 'approve' ? 'Approved' : 'Draft', scope: JSON.stringify({ ...priorScope, audit }) }, include: { project: { select: { id: true, name: true } } } });
+      await recordDocumentAction(prisma, { entityType: 'WorkOrder', entityId: updated.id, module: 'Contracting', action: data.action === 'approve' ? 'APPROVE' : 'UNAPPROVE', actorName: actor });
+      return NextResponse.json({ ...updated, ...audit, approvedBy: audit.approvedBy });
+    }
+    if (status === 'Approved') return NextResponse.json({ error: 'Use the approval action to approve a work order.' }, { status: 400 });
     const priorScope = (() => { try { return existing.scope ? JSON.parse(existing.scope) : {}; } catch { return {}; } })();
     const audit = { ...(priorScope.audit || {}) };
 
@@ -156,11 +170,6 @@ export async function PUT(request) {
         quotationTerms: fields.quotationTerms || {},
         audit,
       });
-    }
-    if (status === 'Approved') {
-      audit.approvedBy = fields.approvedBy || data.approvedBy || null;
-      audit.approvedAt = new Date().toISOString();
-      updateData.scope = JSON.stringify({ ...priorScope, ...(updateData.scope ? JSON.parse(updateData.scope) : {}), audit });
     }
     if (fields.wbsTask !== undefined) updateData.wbsTask = fields.wbsTask;
     if (fields.paymentTerms !== undefined) updateData.paymentTerms = fields.paymentTerms;
@@ -180,11 +189,7 @@ export async function PUT(request) {
     await recordDocumentEdit(prisma, {
       entityType: 'WorkOrder', entityId: updated.id, module: 'Contracting', editorName: fields.editedBy,
     });
-    if (status === 'Approved') {
-      await recordDocumentAction(prisma, { entityType: 'WorkOrder', entityId: updated.id, module: 'Contracting', action: 'APPROVE', actorName: data.approvedBy });
-    }
-
-    return NextResponse.json({ ...updated, ...audit, approvedBy: status === 'Approved' ? data.approvedBy || null : audit.approvedBy || null, editedBy: fields.editedBy || null });
+    return NextResponse.json({ ...updated, ...audit, approvedBy: audit.approvedBy || null, editedBy: fields.editedBy || null });
   } catch (error) {
     console.error('Error updating work order:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
