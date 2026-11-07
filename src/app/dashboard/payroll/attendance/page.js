@@ -4,6 +4,7 @@ import { Upload, Download, RefreshCw, Search, CheckCircle, XCircle, Save } from 
 import ActionToolbar from '@/components/ActionToolbar';
 import MultiSelect from '@/components/MultiSelect';
 import Dialog from '@/components/Dialog';
+import { getEmployeeWeekoffDays } from '@/lib/attendanceCalendar';
 
 export function getLeaveAbbreviation(leaveType) {
   if (!leaveType) return 'CL';
@@ -19,10 +20,22 @@ export function getLeaveAbbreviation(leaveType) {
 export function resolveDayAttendance(emp, col, approvedLeaves = []) {
   const att = emp?.attendances?.find(a => a.date === col.fullDate);
   const rawStatus = att?.status;
+  const employeeWeekoffDays = getEmployeeWeekoffDays(emp, col.weekoffTypes || [], col.workWeeks || []);
+  const isWeekOff = !col.isWorkingDay && employeeWeekoffDays.includes(col.dayName);
 
   // 1. If manually edited by user in this session, respect that edit
   if (att?.isManual) {
     return rawStatus;
+  }
+
+  let slots = [];
+  try { slots = Array.isArray(att?.timeSlots) ? att.timeSlots : JSON.parse(att?.timeSlots || '[]'); } catch { slots = []; }
+  const hasPunch = slots.some(slot => slot?.in || slot?.out);
+  const workedStatus = ['Present', 'P', 'Late', 'Half Day', 'HD', 'C-off', 'COFF', 'COff'].includes(rawStatus);
+  if (!col.isWorkingDay && (col.isHoliday || isWeekOff)) return hasPunch || workedStatus ? 'C-off' : col.isHoliday ? 'H' : 'W-off';
+
+  if (col.isWorkingDay && ['Holiday', 'H', 'Weekly Off', 'W-off', 'Off', 'C-off', 'COFF', 'COff'].includes(rawStatus)) {
+    return hasPunch ? 'P' : col.fullDate < new Date().toISOString().slice(0, 10) ? 'A' : '-';
   }
 
   // 2. Check if there is an approved leave for this employee on this date
@@ -53,7 +66,8 @@ export function resolveDayAttendance(emp, col, approvedLeaves = []) {
 
   // 4. Default rules based on calendar day
   if (col.isHoliday) return 'H';
-  if (col.isSunday) return 'W-off';
+  if (isWeekOff) return 'W-off';
+  if (col.isWorkingDay) return col.fullDate < new Date().toISOString().slice(0, 10) ? 'A' : '-';
   return '-';
 }
 
@@ -173,13 +187,22 @@ export default function PayrollAttendance() {
     let current = new Date(start);
     while (current <= end) {
       const fullDate = current.toISOString().split('T')[0];
-      const isSunday = current.getDay() === 0;
-      const isHoliday = data.holidays?.some(h => h.date === fullDate);
+      const dayName = current.toLocaleDateString('en-US', { weekday: 'long' });
+      const announcement = data.announcements?.find(item => item.date === fullDate);
+      const isWorkingDay = announcement?.isWorkingDay === true;
+      const isHoliday = !isWorkingDay && (data.holidays?.some(h => h.date === fullDate) || announcement?.isHoliday === true);
+      const isWeekOff = !isWorkingDay && getEmployeeWeekoffDays(null, data.weekoffTypes || [], data.workWeeks || []).includes(dayName);
       columns.push({
         fullDate,
         dayLabel: String(current.getDate()).padStart(2, '0'),
-        isSunday,
-        isHoliday
+        isSunday: dayName === 'Sunday',
+        isWeekOff,
+        isHoliday,
+        isWorkingDay,
+        dayName,
+        weekoffTypes: data.weekoffTypes || [],
+        workWeeks: data.workWeeks || [],
+        title: isHoliday ? announcement?.subject || data.holidays?.find(h => h.date === fullDate)?.name : isWorkingDay ? 'Working Day' : isWeekOff ? 'Weekly Off' : '',
       });
       current.setDate(current.getDate() + 1);
     }
@@ -493,7 +516,7 @@ export default function PayrollAttendance() {
                 <th style={{ padding: '6px', background: '#a855f7', width: 35 }}>W</th>
                 <th style={{ padding: '6px', background: '#a855f7', width: 75, borderRight: '1px solid #7e22ce' }}>Not Marked</th>
                 {dateCols.map(col => (
-                  <th key={col.fullDate} style={{ padding: '6px', width: 45, background: '#475569', borderRight: '1px solid #334155', borderBottom: '1px solid #334155' }}>{col.dayLabel}</th>
+                  <th key={col.fullDate} title={`${col.fullDate}${col.title ? ` · ${col.title}` : ''}`} style={{ padding: '6px', width: 45, background: col.isHoliday ? '#b45309' : col.isWorkingDay ? '#1d4ed8' : col.isWeekOff ? '#64748b' : '#475569', borderRight: '1px solid #334155', borderBottom: '1px solid #334155' }}>{col.dayLabel}</th>
                 ))}
               </tr>
             </thead>

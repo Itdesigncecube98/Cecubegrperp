@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
+import { isEmployeeWeekoff } from '../../../../lib/attendanceCalendar';
 
 /**
  * GET /api/attendance/dashboard-summary?days=10
@@ -11,14 +12,18 @@ export async function GET(request) {
     const days = Math.min(parseInt(searchParams.get('days') || '10', 10) || 10, 31);
 
     const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const todayParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(today);
+    const todayPartMap = Object.fromEntries(todayParts.map(part => [part.type, part.value]));
+    const todayStr = `${todayPartMap.year}-${todayPartMap.month}-${todayPartMap.day}`;
 
-    const start = new Date(today);
-    start.setDate(start.getDate() - (days - 1));
-    const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+    const start = new Date(`${todayStr}T12:00:00Z`);
+    start.setUTCDate(start.getUTCDate() - (days - 1));
+    const startStr = start.toISOString().slice(0, 10);
 
-    const [employeeCount, todayRecords, rangeRecords, gpsCount, holidays, allLeaves, workWeeks, announcements] = await Promise.all([
-      prisma.employee.count().catch(() => 0),
+    const [employees, todayRecords, rangeRecords, gpsCount, holidays, allLeaves, workWeeks, weekoffTypes, announcements] = await Promise.all([
+      prisma.employee.findMany({ select: { id: true, offDaysTemplates: true } }).catch(() => []),
       prisma.attendance.findMany({
         where: { date: todayStr },
         select: { employeeId: true, status: true, timeSlots: true }
@@ -41,6 +46,7 @@ export async function GET(request) {
         select: { employeeId: true, startDate: true, endDate: true }
       }).catch(() => []),
       prisma.workWeek.findMany({ select: { day: true, isWorking: true } }),
+      prisma.weekoffType.findMany({ select: { name: true, days: true, assignedTo: true } }).catch(() => []),
       prisma.announcement.findMany({
         where: {
           date: { gte: startStr, lte: todayStr },
@@ -49,9 +55,7 @@ export async function GET(request) {
         select: { date: true, isWorkingDay: true, isHoliday: true },
       }),
     ]);
-    const nonWorkingDays = new Set(
-      workWeeks.length ? workWeeks.filter(day => !day.isWorking).map(day => day.day) : ['Sunday'],
-    );
+    const employeeCount = employees.length;
     const holidayDates = new Set(holidays.map(holiday => holiday.date));
     announcements.forEach(announcement => {
       if (announcement.isHoliday) holidayDates.add(announcement.date);
@@ -98,18 +102,21 @@ export async function GET(request) {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const dailyTrend = [];
     for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const d = new Date(`${todayStr}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - i);
+      const dStr = d.toISOString().slice(0, 10);
       const isWorkingAnnouncement = workingAnnouncementDates.has(dStr);
       const isHol = !isWorkingAnnouncement && holidayDates.has(dStr);
-      const isOffDay = !isWorkingAnnouncement && (isHol || nonWorkingDays.has(dayNames[d.getDay()]));
+      const offEmployees = new Set(!isWorkingAnnouncement && !isHol ? employees
+        .filter(employee => isEmployeeWeekoff(employee, dStr, weekoffTypes, workWeeks))
+        .map(employee => employee.id) : []);
 
       let note = '';
       if (isHol) note = 'Holiday';
-      else if (isOffDay) note = 'Off';
+      else if (offEmployees.size === employeeCount && employeeCount > 0) note = 'Off';
 
-      const dateLabel = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} (${dayNames[d.getDay()]})` + (note ? `||${note}` : '');
+      const dayIndex = d.getUTCDay();
+      const dateLabel = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')} (${dayNames[dayIndex]})` + (note ? `||${note}` : '');
 
       // Workers (physically punched in or marked Present/Late/Half Day)
       const workedSet = workedByDate[dStr] || new Set();
@@ -121,19 +128,23 @@ export async function GET(request) {
       approvedLeavesOnDay.forEach(l => leaveSet.add(l.employeeId));
       // Remove anyone who worked from leave count
       workedSet.forEach(empId => leaveSet.delete(empId));
+      if (isHol) leaveSet.clear();
+      else offEmployees.forEach(empId => leaveSet.delete(empId));
       const leaveCount = leaveSet.size;
 
-      const remainingCount = Math.max(0, employeeCount - workedCount - leaveCount);
-
       let present = 0, coff = 0, absent = 0, holiday = 0, off = 0;
-      if (isOffDay) {
-        coff = workedCount;
-        if (isHol) holiday = remainingCount;
-        else off = remainingCount;
-      } else {
-        present = workedCount;
-        absent = remainingCount;
-      }
+      employees.forEach(employee => {
+        const id = employee.id;
+        if (workedSet.has(id)) {
+          if (isHol || offEmployees.has(id)) coff++;
+          else present++;
+        } else if (isHol) holiday++;
+        else if (offEmployees.has(id)) off++;
+        else if (leaveSet.has(id)) {
+          // leave already counted separately
+        }
+        else absent++;
+      });
 
       dailyTrend.push({
         date: dateLabel,
@@ -157,17 +168,25 @@ export async function GET(request) {
 
     const todayIsWorkingAnnouncement = workingAnnouncementDates.has(todayStr);
     const todayIsHol = !todayIsWorkingAnnouncement && holidayDates.has(todayStr);
-    const todayIsOff = !todayIsWorkingAnnouncement &&
-      (todayIsHol || nonWorkingDays.has(dayNames[today.getDay()]));
-
     const leavesTodayList = allLeaves.filter(l => l.startDate <= todayStr && l.endDate >= todayStr);
-    const employeesOnLeaveCount = new Set(leavesTodayList.map(l => l.employeeId)).size;
+    const leaveTodaySet = new Set(leavesTodayList.map(l => l.employeeId));
+    const workedTodaySet = new Set(presentTodayRecords.map(record => record.employeeId));
+    workedTodaySet.forEach(id => leaveTodaySet.delete(id));
+    const offTodaySet = new Set(!todayIsWorkingAnnouncement && !todayIsHol ? employees
+      .filter(employee => isEmployeeWeekoff(employee, todayStr, weekoffTypes, workWeeks))
+      .map(employee => employee.id) : []);
+    if (todayIsHol) leaveTodaySet.clear();
+    else offTodaySet.forEach(id => leaveTodaySet.delete(id));
+    const employeesOnLeaveCount = leaveTodaySet.size;
+    const todayOffCount = employees.filter(employee => offTodaySet.has(employee.id) && !workedTodaySet.has(employee.id)).length;
+    const todayHolidayCount = todayIsHol ? Math.max(0, employeeCount - workedTodaySet.size) : 0;
+    const todayCoffCount = presentTodayRecords.filter(record => todayIsHol || offTodaySet.has(record.employeeId)).length;
 
     let todayStatus = 'Working';
     if (todayIsHol) todayStatus = 'Holiday';
-    else if (todayIsOff) todayStatus = 'Off';
+    else if (todayOffCount === employeeCount && employeeCount > 0) todayStatus = 'Off';
 
-    const absentToday = todayIsOff ? 0 : Math.max(0, employeeCount - presentToday - employeesOnLeaveCount);
+    const absentToday = todayIsHol ? 0 : Math.max(0, employeeCount - workedTodaySet.size - employeesOnLeaveCount - todayOffCount);
 
     return NextResponse.json({
       totalEmployees: employeeCount,
@@ -179,10 +198,10 @@ export async function GET(request) {
       whoIsIn: [
         { name: 'IN', value: inCount, color: '#22c55e', bg: '#dcfce7', c: '#15803d' },
         { name: 'OUT', value: outCount, color: '#3b82f6', bg: '#dbeafe', c: '#1d4ed8' },
-        { name: 'COFF', value: todayIsOff ? presentToday : 0, color: '#166534', bg: '#dcfce7', c: '#166534' },
-        { name: 'NO PUNCH', value: todayIsOff ? 0 : absentToday, color: '#ef4444', bg: '#fee2e2', c: '#dc2626' },
-        { name: 'OFF', value: todayIsOff && !todayIsHol ? Math.max(0, employeeCount - presentToday - employeesOnLeaveCount) : 0, color: '#93c5fd', bg: '#eff6ff', c: '#2563eb' },
-        { name: 'HOLIDAY', value: todayIsHol ? Math.max(0, employeeCount - presentToday - employeesOnLeaveCount) : 0, color: '#fcd34d', bg: '#fef3c7', c: '#d97706' },
+        { name: 'COFF', value: todayCoffCount, color: '#166534', bg: '#dcfce7', c: '#166534' },
+        { name: 'NO PUNCH', value: absentToday, color: '#ef4444', bg: '#fee2e2', c: '#dc2626' },
+        { name: 'OFF', value: todayOffCount, color: '#93c5fd', bg: '#eff6ff', c: '#2563eb' },
+        { name: 'HOLIDAY', value: todayHolidayCount, color: '#fcd34d', bg: '#fef3c7', c: '#d97706' },
         { name: 'ON LEAVE', value: employeesOnLeaveCount, color: '#10b981', bg: '#ecfdf5', c: '#047857' }
       ],
       statusDistribution: [

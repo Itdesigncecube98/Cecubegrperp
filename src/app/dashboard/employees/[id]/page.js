@@ -650,6 +650,7 @@ export default function EmployeeProfilePage({ initialId }) {
     try {
       const payload = {
         ...form,
+        ...(id === 'new' && currentGeneratedEmpCode ? { empId: currentGeneratedEmpCode } : {}),
         password: String(form.password ?? '').trim() || undefined,
         nationality: String(form.nationality ?? '').trim() === 'Other' && String(form.nationalityOther ?? '').trim()
           ? 'Other'

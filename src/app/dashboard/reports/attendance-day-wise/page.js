@@ -66,7 +66,8 @@ export default function DayWiseAttendance() {
              holiday: day.Holiday,
              wo: day.Off,
              halfDay: day.HalfDay || 0,
-             isHoliday: day.Holiday > 0 || day.Off > 0
+             isHoliday: day.Holiday > 0,
+             isOff: day.Off > 0
            };
         });
         
@@ -233,8 +234,12 @@ export default function DayWiseAttendance() {
                 </tr>
               ) : tableData.length > 0 ? (
                 tableData.map(row => (
-                  <tr key={row.date} style={row.isHoliday ? { background: '#fee2e2' } : {}}>
-                    <td>{row.date.split('-').reverse().join('-')} ({row.dayName})</td>
+                  <tr key={row.date} style={row.isHoliday ? { background: '#fef3c7' } : row.isOff ? { background: '#eff6ff' } : {}}>
+                    <td>
+                      {row.date.split('-').reverse().join('-')} ({row.dayName})
+                      {row.isHoliday && <small style={{ display: 'block', color: '#b45309' }}>Holiday</small>}
+                      {row.isOff && <small style={{ display: 'block', color: '#2563eb' }}>Off</small>}
+                    </td>
                     <td style={{ textAlign: 'center' }}>{row.all}</td>
                     <td style={{ textAlign: 'center', color: '#16a34a', fontWeight: 500 }}>{row.present}</td>
                     <td style={{ textAlign: 'center', color: '#dc2626', fontWeight: 500 }}>{row.absent}</td>

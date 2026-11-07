@@ -1018,7 +1018,7 @@ export default function WorkCompletionTask() {
                   </div>
                   <div className="wcc-sig-box">
                     <div>Authorized Signatory</div>
-                    <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>Client / PMC Representative</div>
+                    <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>{selectedTaskForCert.contractorName || currentContractor || 'Contractor'}</div>
                   </div>
                 </div>
               </div>

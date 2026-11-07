@@ -1811,13 +1811,17 @@ export default function EmployeeDashboard() {
                               {stat.details.map(d => {
                                 const dayName = new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' });
                                 const isSunday = new Date(d.date + 'T00:00:00').getDay() === 0;
-                                const isHoliday = holidays.some(h => h.date === d.date);
-                                const isRedDay = isSunday || isHoliday;
+                                const isWorkingDay = announcements.some(announcement => announcement.isWorkingDay && announcement.date === d.date);
+                                const isHoliday = !isWorkingDay && (holidays.some(h => h.date === d.date) || d.calendarType === 'Holiday');
+                                const isWeeklyOff = !isWorkingDay && d.calendarType === 'Weekly Off';
+                                const isRedDay = !isWorkingDay && (isSunday || isHoliday || isWeeklyOff);
                                 return (
                                   <tr key={d.date} style={{ backgroundColor: isRedDay ? '#fff1f2' : '#ffffff' }}>
                                     <td style={{ padding: '0.75rem 1rem' }}>
                                       <div style={{ fontWeight: 600, color: isRedDay ? '#be123c' : 'inherit' }}>
-                                        {dayName} {isHoliday && <span style={{ fontSize: '0.75rem', fontWeight: 'normal' }}>(Holiday)</span>}
+                                        {dayName} {isWorkingDay
+                                          ? <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#1d4ed8' }}>(Working Day)</span>
+                                          : isHoliday && <span style={{ fontSize: '0.75rem', fontWeight: 'normal' }}>(Holiday)</span>}
                                       </div>
                                       <div style={{ fontSize: '12px', color: isRedDay ? '#e11d48' : '#6b7280' }}>{d.date}</div>
                                     </td>

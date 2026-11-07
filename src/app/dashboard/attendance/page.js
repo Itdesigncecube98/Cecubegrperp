@@ -27,6 +27,7 @@ export default function Attendance() {
   const [cachedAt, setCachedAt] = useState(null);
   const [loading, setLoading] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
+  const [holidayList, setHolidayList] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Time Slots Modal State
@@ -49,8 +50,12 @@ export default function Attendance() {
       }));
       setAttendanceData(parsedData);
       
-      const anns = await getAnnouncements();
+      const [anns, holidays] = await Promise.all([
+        getAnnouncements(),
+        fetch('/api/leaves/holidays', { cache: 'no-store' }).then(response => response.ok ? response.json() : []).catch(() => []),
+      ]);
       setAnnouncements(Array.isArray(anns) ? anns : []);
+      setHolidayList(Array.isArray(holidays) ? holidays : []);
     } catch (err) {
       console.error(err);
       setAttendanceSource('unavailable');
@@ -63,9 +68,10 @@ export default function Attendance() {
     loadData(date);
   }, [date]);
 
-  const holiday = Array.isArray(announcements)
-    ? announcements.find(a => a?.isHoliday && a?.date === date)
-    : null;
+  const workingDayAnnouncement = announcements.find(a => a?.isWorkingDay && a?.date === date);
+  const holiday = !workingDayAnnouncement && (
+    announcements.find(a => a?.isHoliday && a?.date === date) || holidayList.find(item => item.date === date)
+  );
 
   const filteredAttendance = useMemo(() => {
     if (!searchTerm.trim()) return attendanceData;
@@ -251,9 +257,14 @@ export default function Attendance() {
             <Calendar size={24} />
           </div>
           <div>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#14532d', margin: '0 0 4px 0' }}>Holiday: {holiday.subject}</h2>
-            <p style={{ fontSize: '14px', color: '#166534', margin: 0 }}>Attendance is not required for employees today.</p>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#14532d', margin: '0 0 4px 0' }}>Holiday: {holiday.subject || holiday.name}</h2>
+            <p style={{ fontSize: '14px', color: '#166534', margin: 0 }}>Attendance is not required on {date}.</p>
           </div>
+        </div>
+      )}
+      {workingDayAnnouncement && (
+        <div role="status" style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '12px 18px', borderRadius: 12, marginBottom: 20, color: '#1d4ed8', fontWeight: 600 }}>
+          Working day: {workingDayAnnouncement.subject} · Attendance is required on {date}.
         </div>
       )}
 
@@ -318,6 +329,9 @@ export default function Attendance() {
                       <option value="Present">Present</option>
                       <option value="Half Day">Half Day</option>
                       <option value="Absent">Absent</option>
+                      <option value="Holiday">Holiday</option>
+                      <option value="Weekly Off">Weekly Off</option>
+                      <option value="C-off">C-off</option>
                       <option value="EL">EL (Earned Leave)</option>
                       <option value="CL">CL (Casual Leave)</option>
                       <option value="SL">SL (Sick Leave)</option>

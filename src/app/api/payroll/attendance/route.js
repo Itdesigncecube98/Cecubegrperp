@@ -39,6 +39,7 @@ export async function GET(request) {
         empId: true,
         name: true,
         designation: true,
+        offDaysTemplates: true,
         attendances: {
           where: {
             date: {
@@ -67,7 +68,16 @@ export async function GET(request) {
       }
     });
 
-    return NextResponse.json({ cycle, employees, holidays, approvedLeaves });
+    const [announcements, workWeeks, weekoffTypes] = await Promise.all([
+      prisma.announcement.findMany({
+        where: { date: { gte: cycle.startDate, lte: cycle.endDate }, OR: [{ isWorkingDay: true }, { isHoliday: true }] },
+        select: { date: true, isHoliday: true, isWorkingDay: true, subject: true },
+      }),
+      prisma.workWeek.findMany({ select: { day: true, isWorking: true } }),
+      prisma.weekoffType.findMany({ select: { name: true, days: true, assignedTo: true } }),
+    ]);
+
+    return NextResponse.json({ cycle, employees, holidays, approvedLeaves, announcements, workWeeks, weekoffTypes });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

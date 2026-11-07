@@ -4,6 +4,7 @@ import { prisma } from '../../../lib/prisma';
 import { calculateAttendanceStatus } from '../../../lib/attendanceCalculator';
 import { getEffectiveEmployeeShift, getShiftKind, resolveDayShiftAttendanceSlots } from '../../../lib/attendanceShiftPolicy';
 import { getBiometricPunchesByEmployeeDay } from '../../../lib/biometricPunchDisplay';
+import { isEmployeeWeekoff } from '../../../lib/attendanceCalendar';
 import {
   cacheAttendanceRecords,
   getCachedAttendanceRecords,
@@ -46,9 +47,7 @@ export async function GET(request) {
     // Use fixed offset parsing so UTC issues don't shift the day
     const dObj = new Date(`${date}T12:00:00Z`);
     const dayName = dObj.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
-    const offDays = workWeeks.filter(w => !w.isWorking).map(w => w.day);
-    const isSunday = offDays.includes(dayName) || (workWeeks.length === 0 && dayName === 'Sunday');
-    const isWoff = isSunday && !isWorkingAnn;
+    const isWoff = !isWorkingAnn;
 
     const leaves = await prisma.leaveRequest.findMany({
       where: {
@@ -60,10 +59,10 @@ export async function GET(request) {
 
     // Auto-punch out logic based on dynamic shift end time + 1 hour buffer
     const now = new Date();
-    const parts = new Intl.DateTimeFormat('en-GB', { 
-      timeZone: 'Asia/Kolkata', 
-      year: 'numeric', month: '2-digit', day: '2-digit', 
-      hour: '2-digit', minute: '2-digit', hour12: false 
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
     }).formatToParts(now);
     const p = {};
     parts.forEach(part => p[part.type] = part.value);
@@ -167,7 +166,7 @@ export async function GET(request) {
 
       const totalMins = calculateTotalMinutes(slots);
       let newStatus = record.status;
-      
+
       if (totalMins >= 350) {
         newStatus = 'Present';
       } else {
@@ -189,47 +188,35 @@ export async function GET(request) {
 
     const result = employees.map(emp => {
       const record = attendanceRecords.find(a => a.employeeId === emp.id);
-      
+
       let finalStatus = record ? (calculatedStatuses.get(record.id) || record.status) : 'Not Marked';
       if (finalStatus === 'P') finalStatus = 'Present';
       if (finalStatus === 'A') finalStatus = 'Absent';
-      if (isWorkingAnn && ['Off', 'W-off', 'Weekly Off', 'C-off', 'COFF', 'COff'].includes(finalStatus)) {
+      if (finalStatus === 'H') finalStatus = 'Holiday';
+      if (isWorkingAnn && ['Off', 'W-off', 'Weekly Off', 'C-off', 'COFF', 'COff', 'Holiday'].includes(finalStatus)) {
         let slots = [];
         try {
           slots = JSON.parse(record?.timeSlots || '[]');
         } catch {
           slots = [];
         }
-        finalStatus = slots.some(slot => slot?.in || slot?.out) ? 'Present' : 'Not Marked';
+        finalStatus = slots.some(slot => slot?.in || slot?.out) ? 'Present' : date < currentDateStr ? 'Absent' : 'Not Marked';
       }
-      
-      if (!record || record.status === 'Not Marked') {
-        const empLeave = leaves.find(l => l.employeeId === emp.id);
-        
-        let isEmpWoff = isWoff;
-        let hasCeCubeHolidaysTemplate = false;
-        if (emp.offDaysTemplates && emp.offDaysTemplates.length > 0) {
-          let empOffDays = [];
-          for (const templateName of emp.offDaysTemplates) {
-            if (templateName.toLowerCase().includes('cecube group holidays') || templateName.toLowerCase().includes('cecube holidays')) {
-              hasCeCubeHolidaysTemplate = true;
-            }
-            const type = weekoffTypes.find(t => t.name === templateName);
-            if (type && type.days) {
-              empOffDays = empOffDays.concat(type.days);
-            }
-          }
-          isEmpWoff = empOffDays.includes(dayName) && !isWorkingAnn;
-        }
 
-        const isEmpHoliday = isGlobalHoliday && hasCeCubeHolidaysTemplate && !isWorkingAnn;
+      const empLeave = leaves.find(l => l.employeeId === emp.id);
+      const isEmpWoff = isWoff && isEmployeeWeekoff(emp, date, weekoffTypes, workWeeks);
+      const isEmpHoliday = isGlobalHoliday && !isWorkingAnn;
+      let slots = [];
+      try { slots = JSON.parse(record?.timeSlots || '[]'); } catch { slots = []; }
+      const hasPunch = slots.some(slot => slot?.in || slot?.out);
 
-        if (empLeave) {
+      if (!isWorkingAnn && (isEmpHoliday || isEmpWoff)) {
+        finalStatus = hasPunch ? 'C-off' : isEmpHoliday ? 'Holiday' : 'Weekly Off';
+      } else if (!record || record.status === 'Not Marked') {
+        if (empLeave && !isEmpHoliday && !isEmpWoff) {
           finalStatus = empLeave.leaveType === 'Casual' ? 'CL' : empLeave.leaveType === 'Sick' ? 'SL' : empLeave.leaveType === 'Earned' ? 'EL' : empLeave.leaveType === 'Unpaid' ? 'LWP' : 'Leave';
-        } else if (isEmpHoliday) {
-          finalStatus = 'Holiday';
-        } else if (isEmpWoff) {
-          finalStatus = 'Weekly Off';
+        } else if (isWorkingAnn && date < currentDateStr) {
+          finalStatus = 'Absent';
         }
       }
 
@@ -317,7 +304,7 @@ export async function POST(request) {
 
     const totalMinutes = calculateTotalMinutes(parsedSlots);
     const latestSlot = parsedSlots.filter(slot => slot?.in && slot?.out).slice(-1)[0];
-    
+
     if (totalMinutes >= 350) {
       calculatedStatus = 'Present';
     } else if (latestSlot && calculatedStatus !== 'Half Day') {

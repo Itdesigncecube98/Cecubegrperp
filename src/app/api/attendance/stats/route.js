@@ -3,6 +3,7 @@ import { prisma } from '../../../../lib/prisma';
 import { calculateAttendanceStatus } from '../../../../lib/attendanceCalculator';
 import { getEffectiveEmployeeShift, resolveDayShiftAttendanceSlots } from '../../../../lib/attendanceShiftPolicy';
 import { getBiometricPunchesByEmployeeDay } from '../../../../lib/biometricPunchDisplay';
+import { getEmployeeWeekoffDays } from '../../../../lib/attendanceCalendar';
 
 export async function GET(request) {
   try {
@@ -96,22 +97,7 @@ export async function GET(request) {
     const workingAnnouncementDates = new Set(
       announcements.filter(announcement => announcement.isWorkingDay).map(announcement => announcement.date),
     );
-    let nonWorkingDays = new Set(workWeeks.filter(w => !w.isWorking).map(w => w.day));
-    
-    // Default fallback: if no work week settings exist, assume Sunday is an off day
-    if (workWeeks.length === 0) {
-      nonWorkingDays.add('Sunday');
-    }
-    if (employee.offDaysTemplates?.length > 0) {
-      const employeeOffDays = [];
-      for (const templateName of employee.offDaysTemplates) {
-        const weekoffType = weekoffTypes.find(type => type.name === templateName);
-        if (weekoffType?.days) {
-          employeeOffDays.push(...weekoffType.days);
-        }
-      }
-      nonWorkingDays = new Set(employeeOffDays);
-    }
+    const nonWorkingDays = new Set(getEmployeeWeekoffDays(employee, weekoffTypes, workWeeks));
     
     // Calculate leave dates
     const leaveDates = new Set();
@@ -216,6 +202,7 @@ export async function GET(request) {
       const isWorkingAnnouncement = workingAnnouncementDates.has(dateStr);
       const isHoliday = !isWorkingAnnouncement && holidayDates.has(dateStr);
       const isOffDay = !isWorkingAnnouncement && nonWorkingDays.has(dayName);
+      const isNonWorkingDate = isHoliday || isOffDay;
       const isLeave = leaveDates.has(dateStr);
       const record = recordMap.get(dateStr);
 
@@ -263,27 +250,21 @@ export async function GET(request) {
           effStatus = calculateAttendanceStatus(effectiveShift.shift, completedSlot.in, completedSlot.out).status;
         }
         const hasPunch = slots.some(slot => slot?.in || slot?.out);
-        if (!isWorkingAnnouncement && (isHoliday || isOffDay) && hasPunch &&
-            ['Present', 'Late'].includes(effStatus)) {
+        if (!isWorkingAnnouncement && isNonWorkingDate && hasPunch) {
           effStatus = 'COFF';
         }
-        if (isWorkingAnnouncement && ['Off', 'COFF'].includes(effStatus)) {
+        if (isWorkingAnnouncement && ['Off', 'W-off', 'Weekly Off', 'COFF', 'C-off', 'COff', 'Holiday', 'H'].includes(effStatus)) {
           effStatus = hasPunch ? 'Present' : dateStr < todayStr ? 'Absent' : 'No Punch';
         }
-        if (
-          isOffDay &&
-          !isLeave &&
-          !hasPunch &&
-          ['Absent', 'No Punch', 'Not Marked', 'Off'].includes(effStatus)
-        ) {
-          effStatus = 'Off';
+        if (isNonWorkingDate && !hasPunch) {
+          effStatus = isHoliday ? 'Holiday' : 'Off';
         } else if (dateStr < todayStr && effStatus !== 'Present' && effStatus !== 'Late' && effStatus !== 'Night Shift' && effStatus !== 'COFF') {
           if (slots.length === 0 || slots.some(s => !s.out || !s.in)) {
             effStatus = 'Absent';
           }
         }
         
-        if (isLeave && (slots.length === 0 || effStatus === 'Absent' || effStatus === 'No Punch')) {
+        if (isLeave && !isNonWorkingDate && (slots.length === 0 || effStatus === 'Absent' || effStatus === 'No Punch')) {
           effStatus = 'On Leave';
         }
         
@@ -297,13 +278,13 @@ export async function GET(request) {
         if (dayCountsAsNightShift(slots, record.shiftType, effStatus)) mStat['Night Shift']++;
 
       } else {
-        if (isLeave) {
-          statusToPush = 'On Leave';
-          mStat.Leave++;
-        } else if (isHoliday) {
+        if (isHoliday) {
           statusToPush = 'Holiday';
         } else if (isOffDay) {
           statusToPush = 'Off';
+        } else if (isLeave) {
+          statusToPush = 'On Leave';
+          mStat.Leave++;
         } else if (dateStr < todayStr) {
           statusToPush = 'Absent';
           mStat.Absent++;
@@ -316,6 +297,7 @@ export async function GET(request) {
         mStat.details.push({
           date: dateStr,
           status: statusToPush,
+          calendarType: isWorkingAnnouncement ? 'Working Day' : isHoliday ? 'Holiday' : isOffDay ? 'Weekly Off' : 'Working Day',
           shiftType: record ? (record.shiftType || 'Day') : '-',
           timeSlots: record && record.timeSlots ? JSON.parse(record.timeSlots) : [],
           biometricPunches: biometricPunches.get(`${employeeId}|${dateStr}`) || [],

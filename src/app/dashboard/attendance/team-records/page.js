@@ -151,20 +151,29 @@ export default function TeamAttendanceRecords() {
         const dateStr = d.toISOString().split('T')[0];
         const dayName = d.toLocaleDateString('en-IN', { weekday: 'short' });
         const rec = dbMap[dateStr];
+        const isWorkingDay = workingDateSet.has(dateStr);
+        const isHoliday = !isWorkingDay && (!!holMap[dateStr] || rec?.calendarType === 'Holiday');
+        const isWeeklyOff = !isWorkingDay && (rec?.calendarType === 'Weekly Off' || dayName === 'Sun');
         let timeIn = '-', timeOut = '-', workedHours = '-';
         
         let attStatus = 'Absent';
         if (rec) {
           attStatus = rec.status;
-          if (!workingDateSet.has(dateStr) && (attStatus === 'Present' || attStatus === 'Late' || attStatus === 'PRESENT') && (holMap[dateStr] || dayName === 'Sun')) {
+          if (!isWorkingDay && ['Present', 'Late', 'Half Day', 'PRESENT', 'HD'].includes(attStatus) && (isHoliday || isWeeklyOff)) {
             attStatus = 'COff';
           }
-        } else if (holMap[dateStr]) {
+          if (isWorkingDay && ['Holiday', 'Off', 'Weekly Off', 'W-off', 'COff', 'COFF', 'C-off'].includes(attStatus)) {
+            const hasRecordedPunch = rec.timeSlots?.some(slot => slot?.in || slot?.out);
+            attStatus = hasRecordedPunch ? 'Present' : dateStr < todayStr ? 'Absent' : '-';
+          }
+        } else if (isHoliday) {
           attStatus = 'Holiday';
-        } else if (dayName === 'Sun') {
+        } else if (isWeeklyOff) {
           attStatus = 'Week Off';
         } else if (dateStr > todayStr) {
           attStatus = '-';
+        } else if (isWorkingDay) {
+          attStatus = 'Absent';
         }
 
         let shiftType = rec ? (rec.shiftType || 'Day') : '-';
@@ -192,7 +201,7 @@ export default function TeamAttendanceRecords() {
           : biometricPunches.length
             ? 'Biometric (read-only)'
             : '';
-        allRecs.push({ date: dateStr, dayName, timeIn, timeOut, appPunches, biometricPunches, punchSource, workedHours, shiftType, attStatus });
+        allRecs.push({ date: dateStr, dayName, isWorkingDay, isHoliday, isWeeklyOff, appPunches, biometricPunches, punchSource, workedHours, shiftType, attStatus });
       }
       allRecs.sort((a, b) => b.date.localeCompare(a.date));
       setDetailRecords(allRecs);
@@ -388,6 +397,9 @@ export default function TeamAttendanceRecords() {
                 <option value="Present">Present</option>
                 <option value="Late">Late</option>
                 <option value="Absent">Absent</option>
+                <option value="Holiday">Holiday</option>
+                <option value="Week Off">Week Off</option>
+                <option value="COff">C-off</option>
               </select>
             </div>
           </div>
@@ -437,9 +449,9 @@ export default function TeamAttendanceRecords() {
                 ) : detailFiltered.length === 0 ? (
                   <tr><td colSpan="10" style={{textAlign:'center',padding:'2rem'}}>No records found</td></tr>
                 ) : detailFiltered.map((r,i) => (
-                  <tr key={i} style={r.dayName === 'Sun' ? { backgroundColor: '#fee2e2' } : {}}>
-                    <td>{r.date}</td>
-                    <td style={{color: r.dayName === 'Sun' ? '#dc2626' : '#6b7280', fontWeight: r.dayName === 'Sun' ? 600 : 'normal'}}>{r.dayName}</td>
+                  <tr key={i} style={!r.isWorkingDay && (r.dayName === 'Sun' || r.isHoliday) ? { backgroundColor: '#fee2e2' } : {}}>
+                    <td>{r.date}{r.isHoliday && <small style={{display:'block',color:'#b45309'}}>Holiday</small>}{r.isWorkingDay && <small style={{display:'block',color:'#1d4ed8'}}>Working Day</small>}</td>
+                    <td style={{color: !r.isWorkingDay && r.dayName === 'Sun' ? '#dc2626' : '#6b7280', fontWeight: !r.isWorkingDay && r.dayName === 'Sun' ? 600 : 'normal'}}>{r.dayName}</td>
                     <td>{selectedEmployee.empId || '-'}</td>
                     <td style={{color:r.timeIn!=='-'?'#22c55e':'#9ca3af'}}>
                       {r.timeIn}
