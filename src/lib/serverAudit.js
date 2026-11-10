@@ -12,16 +12,21 @@ function normalizeIp(value) {
   return ip.toLowerCase().startsWith('::ffff:') ? ip.slice(7) : ip;
 }
 
+function isLoopbackIp(ip) {
+  const normalized = ip.toLowerCase();
+  return normalized === '::1' || normalized === '0:0:0:0:0:0:0:1' || normalized.startsWith('127.');
+}
+
 export function getClientIp(request) {
   // Prefer headers written by the hosting proxy. The proxy must overwrite these
   // headers; client supplied values cannot be trusted unless the proxy does so.
   const candidates = [
     request.headers.get('cf-connecting-ip'),
-    request.headers.get('x-vercel-forwarded-for'),
+    ...(request.headers.get('x-vercel-forwarded-for') || '').split(','),
     request.headers.get('x-real-ip'),
     ...(request.headers.get('x-forwarded-for') || '').split(','),
   ];
-  return candidates.map(normalizeIp).find(Boolean) || 'unknown';
+  return candidates.map(normalizeIp).find(ip => ip && !isLoopbackIp(ip)) || 'unknown';
 }
 
 export async function writeSessionAudit(prisma, request, session, {

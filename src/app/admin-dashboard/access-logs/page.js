@@ -28,6 +28,22 @@ function getActivityDetails(log) {
   }
 }
 
+function getBrowserLabel(userAgent) {
+  const browserPatterns = [
+    ['Edge', /Edg(?:A|iOS)?\/([\d.]+)/],
+    ['Opera', /(?:OPR|Opera)\/([\d.]+)/],
+    ['Firefox', /(?:Firefox|FxiOS)\/([\d.]+)/],
+    ['Chrome', /(?:Chrome|CriOS)\/([\d.]+)/],
+    ['Safari', /Version\/([\d.]+).*Safari/],
+  ];
+
+  for (const [name, pattern] of browserPatterns) {
+    const match = String(userAgent || '').match(pattern);
+    if (match) return `${name} ${match[1]}`;
+  }
+  return userAgent ? 'Other browser' : 'Unknown browser';
+}
+
 export default function AccessLogsPage() {
   const [logs, setLogs] = useState([]);
   const [totalLogs, setTotalLogs] = useState(0);
@@ -209,7 +225,7 @@ export default function AccessLogsPage() {
                       <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>{describeActivity(log)}</div>
                     </td>
                     <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: '#334155' }}>
-                      {log.ipAddress || 'unknown'}
+                      {log.ipAddress === 'unknown' ? 'Unavailable (proxy not forwarding)' : log.ipAddress || 'unknown'}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <span style={{ 
@@ -221,9 +237,9 @@ export default function AccessLogsPage() {
                       </span>
                     </td>
                     <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '12px', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div title={log.userAgent || undefined} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Laptop size={14} />
-                        {log.userAgent || 'unknown'}
+                        {getBrowserLabel(log.userAgent)}
                       </div>
                     </td>
                     <td style={{ padding: '12px 16px' }}>
