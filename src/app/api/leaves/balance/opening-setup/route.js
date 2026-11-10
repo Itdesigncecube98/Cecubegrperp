@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
 import { readAuthSession } from '../../../../../lib/authSession';
+import { getClientIp } from '@/lib/serverAudit';
 
 const SETUP_ID = 'EL_OPENING_BALANCE_V1';
 const employeeSetupId = employeeId => `${SETUP_ID}:${employeeId}`;
@@ -129,9 +130,7 @@ export async function POST(request) {
           newValues: JSON.stringify({ eligibleLeaves: balance, openingDate }),
           remarks: `Eligible EL corrected once for ${employee.name} by admin session ${session.id}`,
           userAgent: request.headers.get('user-agent'),
-          ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-            request.headers.get('x-real-ip') ||
-            null,
+          ipAddress: getClientIp(request),
         },
       });
       return { success: true, locked: true, completedAt, employeeId, eligibleLeaves: balance };

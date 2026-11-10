@@ -30,27 +30,41 @@ function getActivityDetails(log) {
 
 export default function AccessLogsPage() {
   const [logs, setLogs] = useState([]);
+  const [totalLogs, setTotalLogs] = useState(0);
+  const [loadedPage, setLoadedPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loadError, setLoadError] = useState('');
   const [expandedLogId, setExpandedLogId] = useState(null);
 
-  const fetchLogs = async () => {
-    setLoading(true);
+  const fetchLogs = async (page = 1, append = false) => {
+    if (append) setLoadingMore(true);
     setLoadError('');
     try {
-      const res = await fetch('/api/admin/audit-log?limit=200', { cache: 'no-store' });
+      const res = await fetch(`/api/admin/audit-log?limit=200&page=${page}`, { cache: 'no-store' });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || `Unable to load access logs (${res.status}).`);
       }
       const data = await res.json();
-      setLogs(data.data || []);
+      const incoming = data.data || [];
+      setTotalLogs(Number(data.total || 0));
+      setLogs(current => {
+        if (append) {
+          const existingIds = new Set(current.map(log => log.id));
+          return [...current, ...incoming.filter(log => !existingIds.has(log.id))];
+        }
+        const incomingIds = new Set(incoming.map(log => log.id));
+        return [...incoming, ...current.filter(log => !incomingIds.has(log.id))];
+      });
+      setLoadedPage(current => append ? page : Math.max(current, 1));
     } catch (err) {
       console.error('Failed to fetch access logs', err);
       setLoadError(err.message || 'Unable to load access logs.');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -137,7 +151,7 @@ export default function AccessLogsPage() {
             />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '14px' }}>
-            <Filter size={16} /> Filtered: {filteredLogs.length}
+            <Filter size={16} /> Showing {logs.length} of {totalLogs} · Filtered: {filteredLogs.length}
           </div>
         </div>
 
@@ -254,6 +268,11 @@ export default function AccessLogsPage() {
             </tbody>
           </table>
         </div>
+        {logs.length < totalLogs && <div style={{ display: 'flex', justifyContent: 'center', padding: 16, borderTop: '1px solid #e2e8f0' }}>
+          <button type="button" onClick={() => fetchLogs(loadedPage + 1, true)} disabled={loadingMore} style={{ padding: '9px 16px', border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff', color: '#334155', fontWeight: 600, cursor: loadingMore ? 'wait' : 'pointer' }}>
+            {loadingMore ? 'Loading older logs…' : 'Load older logs'}
+          </button>
+        </div>}
       </div>
     </div>
   );

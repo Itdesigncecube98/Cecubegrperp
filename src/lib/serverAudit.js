@@ -1,6 +1,27 @@
+import { isIP } from 'node:net';
+
+function normalizeIp(value) {
+  let ip = String(value || '').trim().replace(/^"|"$/g, '');
+  if (!ip) return null;
+  if (ip.startsWith('[')) ip = ip.slice(1, ip.indexOf(']') > 0 ? ip.indexOf(']') : undefined);
+  if (isIP(ip) === 0 && ip.includes(':') && !ip.includes('::')) {
+    const [host, port] = ip.split(':');
+    if (/^\d+$/.test(port) && isIP(host) === 4) ip = host;
+  }
+  if (!isIP(ip)) return null;
+  return ip.toLowerCase().startsWith('::ffff:') ? ip.slice(7) : ip;
+}
+
 export function getClientIp(request) {
-  const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return forwarded || request.headers.get('x-real-ip')?.trim() || request.headers.get('cf-connecting-ip')?.trim() || 'unknown';
+  // Prefer headers written by the hosting proxy. The proxy must overwrite these
+  // headers; client supplied values cannot be trusted unless the proxy does so.
+  const candidates = [
+    request.headers.get('cf-connecting-ip'),
+    request.headers.get('x-vercel-forwarded-for'),
+    request.headers.get('x-real-ip'),
+    ...(request.headers.get('x-forwarded-for') || '').split(','),
+  ];
+  return candidates.map(normalizeIp).find(Boolean) || 'unknown';
 }
 
 export async function writeSessionAudit(prisma, request, session, {

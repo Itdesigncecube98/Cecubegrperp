@@ -12,11 +12,6 @@ export async function POST(request) {
     const normalizedEmail = (email || '').trim().toLowerCase();
     const normalizedPassword = (password || '').trim();
     
-    // Extract IP address from request headers
-    const forwardedFor = request.headers.get('x-forwarded-for');
-    const ipAddress = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
-    const userAgent = request.headers.get('user-agent') || 'unknown';
-
     // Bypass DB completely for default employee credentials
     // This allows login on Vercel even if database is not connected
     const EMP_EMAIL = process.env.EMP_EMAIL || 'employee@cecube.com';

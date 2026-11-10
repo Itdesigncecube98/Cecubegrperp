@@ -1,9 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import {
-  Users, Shield, Building2, ClipboardList, Key, AlertTriangle,
-  TrendingUp, Activity, CheckCircle, Lock, UserCheck, FileText,
-  ArrowRight, Zap,
+  ClipboardList, Key, TrendingUp, Activity, UserCheck, ArrowRight, Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -40,24 +38,18 @@ function StatCard({ icon: Icon, label, value, color, bg, sub }) {
 }
 
 export default function AdminOverviewPage() {
-  const [stats, setStats]   = useState({ users: 0, roles: 0, companies: 0, permissions: 0, auditToday: 0 });
+  const [stats, setStats]   = useState({ permissions: 0, auditToday: 0 });
   const [loading, setLoading] = useState(true);
   const [recentLogs, setRecentLogs] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetch('/api/admin/users').then(r => r.json()).catch(() => ({ total: 0 })),
-      fetch('/api/admin/roles').then(r => r.json()).catch(() => ({ data: [] })),
-      fetch('/api/admin/company-setup').then(r => r.json()).catch(() => ({ data: [] })),
       fetch('/api/admin/permissions').then(r => r.json()).catch(() => ({ total: 0 })),
       fetch('/api/admin/audit-log?limit=5').then(r => r.json()).catch(() => ({ data: [], total: 0 })),
-    ]).then(([users, roles, companies, perms, audit]) => {
+    ]).then(([perms, audit]) => {
       if (cancelled) return;
       setStats({
-        users:       users.total       || 0,
-        roles:       (roles.data       || []).length,
-        companies:   (companies.data   || []).length,
         permissions: perms.total       || 0,
         auditToday:  audit.total       || 0,
       });
@@ -83,15 +75,12 @@ export default function AdminOverviewPage() {
           Admin Overview
         </h1>
         <p style={{ color: '#64748b', fontSize: 14, margin: 0 }}>
-          Manage users, roles, permissions, and system configuration across all modules.
+          Manage employee project access and review system activity.
         </p>
       </div>
 
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
-        <StatCard icon={Users}       label="System Users"  value={stats.users}       color="#6366f1" bg="#eef2ff" sub="Active accounts" />
-        <StatCard icon={Shield}      label="Roles"         value={stats.roles}       color="#0ea5e9" bg="#e0f2fe" sub="Permission groups" />
-        <StatCard icon={Building2}   label="Companies"     value={stats.companies}   color="#10b981" bg="#ecfdf5" sub="Registered" />
         <StatCard icon={Key}         label="Permissions"   value={stats.permissions} color="#f59e0b" bg="#fffbeb" sub="Granular rights" />
         <StatCard icon={ClipboardList} label="Audit Events" value={stats.auditToday} color="#8b5cf6" bg="#f5f3ff" sub="All time" />
       </div>
@@ -105,11 +94,8 @@ export default function AdminOverviewPage() {
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[
-              { label: 'Add New User',          href: '/admin-dashboard/users',          icon: Users,         color: '#6366f1' },
               { label: 'Employee Project Access', href: '/admin-dashboard/employee-tools', icon: UserCheck,     color: '#0891b2' },
               { label: 'Access Logs',             href: '/admin-dashboard/access-logs',    icon: ClipboardList, color: '#8b5cf6' },
-              { label: 'Add Company',             href: '/admin-dashboard/company',        icon: Building2,     color: '#10b981' },
-              { label: 'Security Settings',       href: '/admin-dashboard/security',       icon: Lock,          color: '#ef4444' },
             ].map(a => (
               <Link key={a.href} href={a.href} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 10, border: '1px solid #e2e8f0', textDecoration: 'none', color: '#0f172a', fontSize: 13, fontWeight: 600, background: '#fafafa', transition: 'all 0.15s' }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = a.color; e.currentTarget.style.background = '#f8fafc'; }}

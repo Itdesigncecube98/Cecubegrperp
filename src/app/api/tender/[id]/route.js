@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { normalizeTenderDetails } from '@/lib/tenderDetails';
 import { readAuthSession } from '@/lib/authSession';
 import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
+import { getClientIp } from '@/lib/serverAudit';
 
 function validateBoqItems(value) {
   if (!Array.isArray(value) || value.length > 500) {
@@ -95,9 +96,7 @@ export async function DELETE(request, { params }) {
           entityType: 'Tender',
           entityId: tender.id,
           oldValues: JSON.stringify(tender),
-          ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-            request.headers.get('x-real-ip') ||
-            null,
+          ipAddress: getClientIp(request),
           userAgent: request.headers.get('user-agent'),
           remarks: `Deleted by admin session ${session.id}`,
         },

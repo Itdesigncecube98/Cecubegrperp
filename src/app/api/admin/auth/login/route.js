@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { attachAuthSession } from '@/lib/authSession';
+import { getClientIp } from '@/lib/serverAudit';
 // ─── POST /api/admin/auth/login ───────────────────────────────────────────────
 // Body: { username (or email), password, ipAddress?, userAgent? }
 export async function POST(request) {
@@ -10,8 +11,9 @@ export async function POST(request) {
   try {
     const body = await request.json();
     usernameOrEmail = body.username || body.email;
-    const { password, userAgent } = body;
-    ipAddress = body.ipAddress || request.headers.get('x-forwarded-for') || 'unknown';
+    const { password } = body;
+    ipAddress = getClientIp(request);
+    const userAgent = request.headers.get('user-agent') || 'unknown';
 
     if (!usernameOrEmail || !password) {
       return NextResponse.json(

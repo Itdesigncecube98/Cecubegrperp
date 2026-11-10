@@ -76,9 +76,6 @@ export async function POST(request) {
     if (!session && body.action === 'MODULE_OPEN' && !body.employeeId) {
       return new Response(null, { status: 204 });
     }
-    if (!session && body.employeeId) {
-      session = { type: 'employee', id: body.employeeId };
-    }
     if (!session) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
     const moduleRoutes = [
       ['/admin-dashboard', 'Admin'], ['/engineering', 'Engineering'], ['/marketing', 'Marketing'],

@@ -3,8 +3,8 @@ import React, { Suspense, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Shield, LayoutDashboard, LogOut, Users, Building2, Key,
-  ClipboardList, Settings, FileText, ChevronLeft, ChevronRight,
+  Shield, LayoutDashboard, LogOut, Users,
+  ClipboardList, Settings, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import TopHeader from '../../components/TopHeader';
 import './admin-dashboard.css';
@@ -14,12 +14,8 @@ const NAV_SECTIONS = [
     group: 'System',
     items: [
       { id: 'overview',    label: 'Overview',        icon: LayoutDashboard, href: '/admin-dashboard' },
-      { id: 'users',       label: 'User Management', icon: Users,          href: '/admin-dashboard/users' },
       { id: 'employee-tools', label: 'Employee Access', icon: Users,       href: '/admin-dashboard/employee-tools' },
-      { id: 'company',     label: 'Company Setup',   icon: Building2,      href: '/admin-dashboard/company' },
-      { id: 'security',    label: 'Security Policy', icon: Key,            href: '/admin-dashboard/security' },
       { id: 'access-logs', label: 'Access Logs',     icon: ClipboardList,  href: '/admin-dashboard/access-logs' },
-      { id: 'license',     label: 'License',         icon: FileText,       href: '/admin-dashboard/license' },
       { id: 'settings',    label: 'System Settings', icon: Settings,       href: '/admin-dashboard/settings' },
     ],
   },
