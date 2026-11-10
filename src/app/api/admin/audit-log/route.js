@@ -21,8 +21,14 @@ export async function GET(request) {
     const status     = searchParams.get('status');
     const dateFrom   = searchParams.get('dateFrom');
     const dateTo     = searchParams.get('dateTo');
-    const page       = parseInt(searchParams.get('page') || '1', 10);
-    const limit      = parseInt(searchParams.get('limit') || '50', 10);
+    const requestedPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const requestedLimit = Number.parseInt(searchParams.get('limit') || '50', 10);
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0 ? requestedLimit : 50;
+    const skip = (page - 1) * limit;
+    if (!Number.isSafeInteger(skip)) {
+      return NextResponse.json({ error: 'Invalid page number.' }, { status: 400 });
+    }
 
     const where = {
       ...(userId     && { userId }),
@@ -46,7 +52,7 @@ export async function GET(request) {
       prisma.auditLog.count({ where }),
       prisma.auditLog.findMany({
         where,
-        skip: (page - 1) * limit,
+        skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
