@@ -50,7 +50,9 @@ public class PunchTrackingService extends Service {
 
     private static final String TAG = "PunchTrackingService";
     private static final String CHANNEL_ID = "attendance_tracking";
+    private static final String UPDATE_CHANNEL_ID = "attendance_updates";
     private static final int NOTIFICATION_ID = 2002;
+    private static final int ATTENDANCE_UPDATE_NOTIFICATION_ID = 2003;
     private static final int MAX_QUEUED_POINTS = 2000;
     private static final int MAX_POINTS_PER_UPLOAD = 100;
     private static final long STATUS_CHECK_INTERVAL_MS = 20000L;
@@ -176,8 +178,12 @@ public class PunchTrackingService extends Service {
             boolean shouldTrack = status.optBoolean("tracking", false);
             if (shouldTrack) {
                 String nextAttendanceDate = status.optString("date", null);
+                String punchIn = status.optString("punchIn", null);
                 attendanceDate = nextAttendanceDate;
                 startLocationUpdates();
+                if (tracking && nextAttendanceDate != null && punchIn != null) {
+                    notifyAttendanceUpdated(nextAttendanceDate, punchIn);
+                }
                 flushQueuedPoints();
             } else {
                 stopLocationUpdates();
@@ -383,6 +389,25 @@ public class PunchTrackingService extends Service {
                 .build();
     }
 
+    private void notifyAttendanceUpdated(String date, String punchIn) {
+        String punchKey = employeeId + "|" + date + "|" + punchIn;
+        SharedPreferences preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        if (punchKey.equals(preferences.getString("lastNotifiedPunch", null))) return;
+
+        Notification notification = new NotificationCompat.Builder(this, UPDATE_CHANNEL_ID)
+                .setContentTitle("Attendance updated")
+                .setContentText("Your attendance punch is recorded. Live location sharing has started.")
+                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .build();
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.notify(ATTENDANCE_UPDATE_NOTIFICATION_ID, notification);
+            preferences.edit().putString("lastNotifiedPunch", punchKey).apply();
+        }
+    }
+
     private void updateNotification(String text) {
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Attendance monitoring active")
@@ -403,7 +428,15 @@ public class PunchTrackingService extends Service {
                     NotificationManager.IMPORTANCE_LOW
             );
             NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) manager.createNotificationChannel(channel);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+                NotificationChannel updateChannel = new NotificationChannel(
+                        UPDATE_CHANNEL_ID,
+                        "Attendance updates",
+                        NotificationManager.IMPORTANCE_DEFAULT
+                );
+                manager.createNotificationChannel(updateChannel);
+            }
         }
     }
 

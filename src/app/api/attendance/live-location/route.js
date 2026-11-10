@@ -55,6 +55,18 @@ function hasOpenPunch(timeSlots) {
   }
 }
 
+function getOpenPunchTime(timeSlots) {
+  try {
+    const slots = JSON.parse(timeSlots || '[]');
+    if (!Array.isArray(slots)) return null;
+    const openSlots = slots.filter(slot => typeof slot?.in === 'string' && !slot.out);
+    return openSlots.length ? openSlots[openSlots.length - 1].in : null;
+  } catch (error) {
+    console.error('Could not parse attendance slots while reading open punch time:', error);
+    return null;
+  }
+}
+
 async function canViewAllLocations(session) {
   if (!session) return false;
   if (session.type === 'admin') return true;
@@ -100,6 +112,7 @@ export async function GET(request) {
         tracking: Boolean(activeAttendance),
         employeeId: trackingEmpId,
         date: activeAttendance?.date || null,
+        punchIn: activeAttendance ? getOpenPunchTime(activeAttendance.timeSlots) : null,
       });
     } catch (error) {
       console.error('Could not check attendance tracking status:', error);

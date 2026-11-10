@@ -19,6 +19,7 @@ export const PROJECT_TOOL_MODULES = {
     'Billing Workspace View',
   ],
   Purchase: [
+    'Purchase Dashboard View',
     'Purchase Indent Create', 'Purchase Indent View', 'Purchase Indent Edit', 'Purchase Indent Approve', 'Send Purchase Indent by Email',
     'Vendor Master Create', 'Vendor Master View', 'Vendor Master Edit', 'Vendor Master Approve', 'Send Vendor Master by Email',
     'Enquiry Generation', 'Enquiry Browse',
@@ -115,7 +116,7 @@ export const LEGACY_PERMISSION_ALIASES = {
   ENGG_MB_CREATE: alias('Engineering', 'Measurement Book Create'),
   ENGG_MB_CERTIFY: alias('Engineering', 'Measurement Book Certify'),
   ENGG_BILLING_DASHBOARD: alias('Engineering', 'Billing Workspace View'),
-  PURCHASE_DASHBOARD: alias('Purchase', ...PROJECT_TOOL_MODULES.Purchase),
+  PURCHASE_DASHBOARD: alias('Purchase', 'Purchase Dashboard View'),
   PURCHASE_PR: alias('Purchase', 'Purchase Indent Create', 'Purchase Indent View', 'Purchase Indent Edit', 'Purchase Indent Approve', 'Send Purchase Indent by Email'),
   PURCHASE_PR_CREATE: alias('Purchase', 'Purchase Indent Create'),
   PURCHASE_PR_VIEW: alias('Purchase', 'Purchase Indent View'),

@@ -1,406 +1,74 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { 
-  ShoppingCart, FileText, CheckCircle, Clock, 
-  AlertCircle, Truck, Package, IndianRupee,
-  BarChart3, Send, RefreshCw, ChevronDown, ChevronUp
-} from 'lucide-react';
-import Link from 'next/link';
+
+import { useCallback, useEffect, useState } from 'react';
+import { BarChart3, CalendarDays, PackageCheck, Search, Users } from 'lucide-react';
+
+const today = new Date().toISOString().slice(0, 10);
+const money = value => `₹${(Number(value || 0) / 100000).toFixed(2)}`;
+const number = value => Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 1 });
+const colors = ['#62b4d2', '#9d60d6', '#5f8edc', '#626bd5', '#8063d6'];
 
 export default function PurchaseDashboard() {
   const [data, setData] = useState(null);
-  const [approvedPOs, setApprovedPOs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showBillForm, setShowBillForm] = useState(null);
-  
-  const [form, setForm] = useState({
-    billDate: new Date().toISOString().split('T')[0],
-    grossAmount: '',
-    tdsAmount: '0',
-    vendorInvoiceNo: '',
-    remarks: ''
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+  const [project, setProject] = useState('ALL');
+  const [from, setFrom] = useState('2016-01-01');
+  const [to, setTo] = useState(today);
+  const [billingMode, setBillingMode] = useState('count');
+  const [error, setError] = useState('');
 
-  const fetchData = async () => {
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
     try {
-      const [res, posRes] = await Promise.all([
-        fetch('/api/purchase/dashboard'),
-        fetch('/api/purchase/po?status=APPROVED')
-      ]);
-      if (res.ok) setData(await res.json());
-      if (posRes.ok) setApprovedPOs(await posRes.json());
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+      const query = new URLSearchParams({ project, from, to });
+      const response = await fetch(`/api/purchase/dashboard?${query}`, { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Dashboard could not be loaded');
+      setData(result);
+    } catch (err) { setError(err.message || 'Dashboard could not be loaded'); }
+    finally { setLoading(false); }
+  }, [project, from, to]);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const openBillForm = (po) => {
-    setShowBillForm(po);
-    setForm({
-      billDate: new Date().toISOString().split('T')[0],
-      grossAmount: String(po.totalAmount || ''),
-      tdsAmount: '0',
-      vendorInvoiceNo: '',
-      remarks: `Bill for PO ${po.poNumber} — ${po.supplierName}`
-    });
-    setErrorMsg('');
-  };
+  const maxMonth = Math.max(1, ...(data?.monthlyPO || []).map(row => row.value));
+  const maxSupplier = Math.max(1, ...(data?.topSuppliers || []).map(row => row.amount));
+  const funnelMax = Math.max(1, data?.poStats?.[0]?.value || 0);
+  const billedValue = billingMode === 'count' ? data?.grnBilling?.billedCount : data?.grnBilling?.amountBilled;
+  const unbilledValue = billingMode === 'count' ? data?.grnBilling?.unbilledCount : data?.grnBilling?.amountUnbilled;
 
-  const submitBill = async () => {
-    if (!showBillForm || !form.billDate || !form.grossAmount) {
-      setErrorMsg('Bill Date and Gross Amount are required.');
-      return;
-    }
-    try {
-      setSubmitting(true);
-      setErrorMsg('');
-      const res = await fetch('/api/purchase/bills', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          poNumber:    showBillForm.poNumber,
-          supplierId:  showBillForm.supplierId,
-          supplierName: showBillForm.supplierName,
-          companyId:   showBillForm.companyId,
-          billDate:    form.billDate,
-          grossAmount: parseFloat(form.grossAmount),
-          tdsAmount:   parseFloat(form.tdsAmount) || 0,
-          vendorInvoiceNo: form.vendorInvoiceNo,
-          remarks:     form.remarks
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSuccessMsg(`Bill ${data.bill.billNo} created and sent to accounts!`);
-        setTimeout(() => setSuccessMsg(''), 5000);
-        setShowBillForm(null);
-        fetchData();
-      } else {
-        setErrorMsg(data.error || 'Failed to create bill');
-      }
-    } catch { setErrorMsg('Network error. Please try again.'); }
-    finally { setSubmitting(false); }
-  };
-
-  const formatCurrency = (val) => {
-    if (!val) return '₹0';
-    if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)} Cr`;
-    if (val >= 100000) return `₹${(val / 100000).toFixed(2)} L`;
-    return `₹${Number(val).toLocaleString('en-IN')}`;
-  };
-
-  const fmt = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
-  const gross = parseFloat(form.grossAmount) || 0;
-  const tds   = parseFloat(form.tdsAmount) || 0;
-  const net   = gross - tds;
-
-  if (loading) {
-    return (
-      <div className="pur-page-container">
-        <div className="pur-loading"><div className="pur-spinner"></div></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="pur-page-container">
-      <div className="pur-header">
-        <div>
-          <h1 className="pur-title">Purchase Dashboard</h1>
-          <p className="pur-subtitle">Overview of procurement and supply chain activities</p>
-        </div>
-        <div className="pur-flex" style={{ gap: '12px' }}>
-          <Link href="/purchase/pr/create" className="pur-btn pur-btn-outline">
-            + New PR
-          </Link>
-          <Link href="/purchase/po/create" className="pur-btn pur-btn-outline" style={{ borderColor: '#f59e0b', color: '#f59e0b' }}>
-            + Create PO
-          </Link>
-          <Link href="/purchase/bills" className="pur-btn pur-btn-primary" style={{ backgroundColor: '#6366f1', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            🧾 Purchase Bills
-          </Link>
-        </div>
-      </div>
-
-      <div className="pur-grid-4">
-        <div className="pur-card pur-kpi-card">
-          <div className="pur-kpi-icon" style={{ backgroundColor: '#fef3c7', color: '#d97706' }}>
-            <FileText size={24} />
-          </div>
-          <div className="pur-kpi-info">
-            <p className="pur-kpi-label">Pending PRs</p>
-            <h3 className="pur-kpi-value">{data?.pendingPrs || 0}</h3>
-          </div>
-        </div>
-        
-        <div className="pur-card pur-kpi-card">
-          <div className="pur-kpi-icon" style={{ backgroundColor: '#e0e7ff', color: '#4f46e5' }}>
-            <ShoppingCart size={24} />
-          </div>
-          <div className="pur-kpi-info">
-            <p className="pur-kpi-label">Open POs</p>
-            <h3 className="pur-kpi-value">{data?.openPos || 0}</h3>
-          </div>
-        </div>
-        
-        <div className="pur-card pur-kpi-card">
-          <div className="pur-kpi-icon" style={{ backgroundColor: '#d1fae5', color: '#059669' }}>
-            <IndianRupee size={24} />
-          </div>
-          <div className="pur-kpi-info">
-            <p className="pur-kpi-label">Total PO Value</p>
-            <h3 className="pur-kpi-value">{formatCurrency(data?.totalPoValue)}</h3>
-          </div>
-        </div>
-
-        <div className="pur-card pur-kpi-card">
-          <div className="pur-kpi-icon" style={{ backgroundColor: '#fee2e2', color: '#dc2626' }}>
-            <Truck size={24} />
-          </div>
-          <div className="pur-kpi-info">
-            <p className="pur-kpi-label">Pending Delivery / GRN</p>
-            <h3 className="pur-kpi-value">{data?.pendingGrns || 0}</h3>
-          </div>
-        </div>
-      </div>
-
-      <div className="pur-card pur-mt-6">
-        <div className="pur-card-header" style={{ padding: '24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="pur-card-title pur-flex pur-items-center pur-gap-2"><BarChart3 size={20} className="pur-text-amber-600" /> Recent Purchase Indents</h2>
-          <Link href="/purchase/pr" className="pur-btn pur-btn-outline">View All</Link>
-        </div>
-        
-        <div className="pur-table-wrapper">
-          <table className="pur-table">
-            <thead>
-              <tr>
-                <th>PR No</th>
-                <th>Project / Site</th>
-                <th>Requested By</th>
-                <th>Required Date</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data?.recentPrs?.map(pr => (
-                <tr key={pr.id}>
-                  <td className="pur-font-semibold">{pr.prNo}</td>
-                  <td>
-                    <div className="pur-font-medium">{pr.project || '-'}</div>
-                    <div className="pur-text-xs pur-text-muted">{pr.site || '-'}</div>
-                  </td>
-                  <td>{pr.requestedBy?.name || '-'}</td>
-                  <td>{pr.requiredDate ? new Date(pr.requiredDate).toLocaleDateString() : '-'}</td>
-                  <td>
-                    <span className={`pur-badge ${pr.status === 'Approved' ? 'pur-badge-emerald' : 'pur-badge-amber'}`}>
-                      {pr.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {(!data?.recentPrs || data.recentPrs.length === 0) && (
-                <tr>
-                  <td colSpan="5" className="pur-text-center pur-text-muted pur-py-8">No recent PRs found.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Success message */}
-      {successMsg && (
-        <div style={{ background: '#d1fae5', border: '1px solid #6ee7b7', borderRadius: '8px', padding: '12px 16px', color: '#047857', fontSize: '14px', fontWeight: 500, marginTop: '24px' }}>
-          ✅ {successMsg}
-        </div>
-      )}
-
-      {/* Pending Purchase Bills */}
-      <div className="pur-card pur-mt-6">
-        <div className="pur-card-header" style={{ padding: '24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="pur-card-title pur-flex pur-items-center pur-gap-2"><FileText size={20} className="pur-text-emerald-600" /> Pending Purchase Bills (Approved POs)</h2>
-          <Link href="/purchase/bills" className="pur-btn pur-btn-outline">View All</Link>
-        </div>
-        
-        <div className="pur-table-wrapper">
-          <table className="pur-table">
-            <thead>
-              <tr>
-                <th>PO Number</th>
-                <th>Supplier</th>
-                <th>Date</th>
-                <th style={{ textAlign: 'right' }}>Total Amount</th>
-                <th style={{ textAlign: 'center' }}>Status</th>
-                <th style={{ textAlign: 'right' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {approvedPOs.slice(0, 5).map(po => (
-                <tr key={po.id}>
-                  <td className="pur-font-semibold">{po.poNumber}</td>
-                  <td className="pur-font-medium">{po.supplierName}</td>
-                  <td>{new Date(po.poDate).toLocaleDateString()}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#059669' }}>₹{fmt(po.totalAmount)}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <span className="pur-badge pur-badge-emerald">Approved</span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button
-                      className="pur-btn pur-btn-primary"
-                      style={{ fontSize: '12px', padding: '6px 12px', gap: '6px', background: '#6366f1' }}
-                      onClick={() => openBillForm(po)}
-                    >
-                      Generate Bill
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {(!approvedPOs || approvedPOs.length === 0) && (
-                <tr>
-                  <td colSpan="6" className="pur-text-center pur-text-muted pur-py-8">No pending purchase bills found.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="pur-card pur-mt-6">
-        <div className="pur-card-header" style={{ padding: '24px', borderBottom: '1px solid #e2e8f0' }}>
-          <h2 className="pur-card-title pur-flex pur-items-center pur-gap-2">
-            <BarChart3 size={20} className="pur-text-amber-600" /> Reports &amp; Analytics
-          </h2>
-          <p className="pur-subtitle" style={{ marginTop: '6px' }}>Supplier performance, purchase orders, and payment tracking</p>
-        </div>
-        <div className="pur-grid-4" style={{ padding: '24px' }}>
-          {[
-            { title: 'Supplier Summary', description: 'Compare supplier purchase orders, billed amounts, payments, and outstanding balances.', href: '/purchase/reports/supplier/summary', color: '#f59e0b' },
-            { title: 'Payment Summary', description: 'Review payment status and outstanding purchase liabilities.', href: '/purchase/reports/payment/summary', color: '#0ea5e9' },
-            { title: 'Payment Details', description: 'Open detailed payment transactions and invoice records.', href: '/purchase/reports/payment/details', color: '#10b981' },
-            { title: 'Payment Ageing', description: 'Track overdue payments by ageing buckets and due dates.', href: '/purchase/reports/payment/ageing', color: '#ef4444' },
-          ].map((report) => (
-            <Link key={report.href} href={report.href} className="pur-card" style={{ padding: '18px', textDecoration: 'none', borderTop: `3px solid ${report.color}` }}>
-              <h3 style={{ margin: 0, color: '#0f172a', fontSize: '15px' }}>{report.title}</h3>
-              <p className="pur-text-sm pur-text-muted" style={{ margin: '8px 0 0', lineHeight: 1.5 }}>{report.description}</p>
-              <span style={{ display: 'inline-block', marginTop: '14px', color: report.color, fontSize: '12px', fontWeight: 700 }}>Open report &rarr;</span>
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* ─── Bill Form Modal ─── */}
-      {showBillForm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowBillForm(null); }}>
-          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '520px', padding: '28px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
-
-            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1e293b', margin: '0 0 4px' }}>🧾 Generate Purchase Bill</h2>
-            <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px' }}>Enter final invoice details and send to accounts</p>
-
-            {/* PO Summary */}
-            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '16px', marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontSize: '16px', fontWeight: 700, color: '#059669' }}>{showBillForm.poNumber}</div>
-                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '3px' }}>{showBillForm.supplierName}</div>
-                  {showBillForm.projectName && <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>🏗 {showBillForm.projectName}</div>}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em' }}>PO Value</div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>₹{fmt(showBillForm.totalAmount)}</div>
-                </div>
-              </div>
-            </div>
-
-            {errorMsg && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px 14px', color: '#b91c1c', fontSize: '13px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <AlertCircle size={13} /> {errorMsg}
-              </div>
-            )}
-
-            {/* Form */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              <div className="pur-form-group" style={{ marginBottom: 0 }}>
-                <label className="pur-label">Bill Date <span style={{ color: '#ef4444' }}>*</span></label>
-                <input type="date" className="pur-input" value={form.billDate}
-                  onChange={e => setForm(f => ({ ...f, billDate: e.target.value }))} />
-              </div>
-              <div className="pur-form-group" style={{ marginBottom: 0 }}>
-                <label className="pur-label">Vendor Invoice No.</label>
-                <input type="text" className="pur-input" value={form.vendorInvoiceNo}
-                  placeholder="Supplier's invoice ref"
-                  onChange={e => setForm(f => ({ ...f, vendorInvoiceNo: e.target.value }))} />
-              </div>
-            </div>
-
-            <div className="pur-form-group" style={{ marginTop: '14px' }}>
-              <label className="pur-label">Final Bill Amount (₹) <span style={{ color: '#ef4444' }}>*</span></label>
-              <input type="number" className="pur-input" value={form.grossAmount}
-                placeholder="Enter actual invoice amount"
-                style={{ fontSize: '16px', fontWeight: 600 }}
-                onChange={e => setForm(f => ({ ...f, grossAmount: e.target.value }))} />
-              {showBillForm.totalAmount && form.grossAmount && Math.abs(parseFloat(form.grossAmount) - showBillForm.totalAmount) > 1 && (
-                <div style={{ fontSize: '12px', color: '#d97706', marginTop: '4px' }}>
-                  ⚠ Differs from PO value by ₹{fmt(Math.abs(parseFloat(form.grossAmount) - showBillForm.totalAmount))}
-                </div>
-              )}
-            </div>
-
-            <div className="pur-form-group">
-              <label className="pur-label">TDS Deduction (₹)</label>
-              <input type="number" className="pur-input" value={form.tdsAmount} min="0"
-                placeholder="0.00"
-                onChange={e => setForm(f => ({ ...f, tdsAmount: e.target.value }))} />
-            </div>
-
-            <div className="pur-form-group">
-              <label className="pur-label">Remarks</label>
-              <input type="text" className="pur-input" value={form.remarks}
-                onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
-            </div>
-
-            {/* Amount Summary */}
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px', marginBottom: '20px' }}>
-              {[
-                { label: 'Gross Amount', val: `₹${fmt(gross)}`, color: '#1e293b' },
-                { label: 'TDS Deduction', val: `− ₹${fmt(tds)}`, color: '#ef4444' },
-              ].map(r => (
-                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>
-                  <span>{r.label}</span><span style={{ color: r.color, fontWeight: 500 }}>{r.val}</span>
-                </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '10px', marginTop: '4px' }}>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: '#1e293b' }}>Net Payable to Accounts</span>
-                <span style={{ fontSize: '18px', fontWeight: 800, color: '#059669' }}>₹{fmt(net)}</span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button className="pur-btn pur-btn-outline" onClick={() => setShowBillForm(null)} disabled={submitting}>
-                Cancel
-              </button>
-              <button
-                className="pur-btn pur-btn-primary"
-                onClick={submitBill}
-                disabled={submitting || !form.billDate || !form.grossAmount}
-                style={{ gap: '8px', opacity: (submitting || !form.billDate || !form.grossAmount) ? 0.5 : 1 }}
-              >
-                <Send size={13} />
-                {submitting ? 'Sending...' : 'Send Bill to Accounts'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <main className="pdb-page">
+    <header className="pdb-heading"><h1><BarChart3 size={22}/> Purchase Dashboard</h1><div className="pdb-filters">
+      <select aria-label="Project" value={project} onChange={event => setProject(event.target.value)}><option value="ALL">All projects</option>{data?.projects?.map(name => <option key={name} value={name}>{name}</option>)}</select>
+      <label><CalendarDays size={15}/><input aria-label="From date" type="date" value={from} onChange={event => setFrom(event.target.value)}/></label><span>–</span>
+      <label><CalendarDays size={15}/><input aria-label="To date" type="date" value={to} onChange={event => setTo(event.target.value)}/></label>
+      <button onClick={load} disabled={loading}><Search size={15}/>{loading ? 'Loading' : 'Search'}</button>
+    </div></header>
+    {error && <div className="pdb-error">{error}</div>}
+    <section className="pdb-kpis">
+      <Kpi title="TOTAL SUPPLIER" value={data?.suppliers?.total} icon={<Users/>} tone="blue"/>
+      <Kpi title="ACTIVE SUPPLIER" value={data?.suppliers?.active} icon={<PackageCheck/>} tone="green"/>
+      <Kpi title="INACTIVE SUPPLIER" value={data?.suppliers?.inactive} icon={<Users/>} tone="red"/>
+    </section>
+    <section className="pdb-overview">
+      <article className="pdb-panel pdb-funnel-panel"><PanelTitle>Purchase Order Statistics</PanelTitle><div className="pdb-funnel">
+        <div className="pdb-funnel-shapes">{(data?.poStats || []).map((row, index) => <div key={row.name} className="pdb-funnel-row" style={{ width: `${Math.max(28, ((row.value || 0) / funnelMax) * 100)}%`, background: colors[index] }}>{row.name} <b>{number(row.value)}</b></div>)}</div>
+      </div></article>
+      <article className="pdb-panel pdb-colored pdb-amber"><PanelTitle>Top 10 Supplier</PanelTitle><div className="pdb-table-head"><span>SUPPLIERS</span><span>AMOUNT IN LACS</span></div>{(data?.topSuppliers || []).map(row => <div className="pdb-rank" key={row.name}><span>{row.name}</span><b>{money(row.amount)}</b></div>)}{!data?.topSuppliers?.length && <Empty/>}</article>
+      <article className="pdb-panel pdb-colored pdb-indigo"><PanelTitle>Top 10 Material Category</PanelTitle><div className="pdb-table-head"><span>CATEGORY NAME</span><span>AMOUNT IN LACS</span></div>{(data?.topMaterials || []).map(row => <div className="pdb-rank" key={row.name}><span>{row.name}</span><b>{money(row.amount)}</b></div>)}{!data?.topMaterials?.length && <Empty/>}</article>
+    </section>
+    <section className="pdb-panel pdb-monthly"><PanelTitle>Monthly PO Cost <small>Amount in lacs</small></PanelTitle><div className="pdb-chart" aria-label="Monthly PO cost chart">{(data?.monthlyPO || []).map(row => <div className="pdb-bar-column" key={row.month}><b>{money(row.value)}</b><div className="pdb-bar" style={{ height: `${Math.max(2, row.value / maxMonth * 80)}%` }}/><span>{new Date(`${row.month}-01T00:00:00`).toLocaleDateString('en', { month: 'short', year: '2-digit' })}</span></div>)}{!data?.monthlyPO?.length && <Empty/>}</div></section>
+    <section className="pdb-bottom">
+      <article className="pdb-panel"><PanelTitle>Average Procurement Cycle</PanelTitle><div className="pdb-cycle">{['Requisition', 'PO Confirmation', 'GRN', 'Bill', 'Payment'].map((name, index) => <div key={name} className="pdb-cycle-step"><div className="pdb-cycle-peak" style={{ background: colors[index] }}/><span>{name}</span></div>)}</div><div className="pdb-cycle-caption"><strong>{number(data?.avgCycleDays)} days</strong><span>Average PO approval cycle (created to approved)</span></div></article>
+      <article className="pdb-panel"><PanelTitle>GRN Billing Status</PanelTitle><div className="pdb-toggle"><button className={billingMode === 'count' ? 'selected' : ''} onClick={() => setBillingMode('count')}>Count Wise</button><button className={billingMode === 'amount' ? 'selected' : ''} onClick={() => setBillingMode('amount')}>Amount Wise</button></div><div className="pdb-billing"><div className="pdb-donut" style={{ '--billed': `${(Number(billedValue || 0) / Math.max(1, Number(billedValue || 0) + Number(unbilledValue || 0))) * 100}%` }}><div><b>{number(data?.grnBilling?.grnCount)}</b><small>Total GRN</small></div></div><div className="pdb-legend"><span><i/>Billed <b>{billingMode === 'amount' ? money(billedValue) : number(billedValue)}</b></span><span><i/>Unbilled <b>{billingMode === 'amount' ? money(unbilledValue) : number(unbilledValue)}</b></span></div></div><div className="pdb-billing-foot"><span>Total GRN <b>{number(data?.grnBilling?.grnCount)}</b></span><span>Billed <b>{billingMode === 'amount' ? money(billedValue) : number(billedValue)}</b></span><span>Unbilled <b>{billingMode === 'amount' ? money(unbilledValue) : number(unbilledValue)}</b></span></div></article>
+    </section>
+    <style jsx>{`
+      .pdb-page{padding:24px;background:#f1f1f1;min-height:100vh;color:#26364a}.pdb-heading{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:18px}.pdb-heading h1{display:flex;align-items:center;gap:8px;font-size:24px;margin:0;color:#3c4652}.pdb-filters{display:flex;align-items:center;gap:7px}.pdb-filters select,.pdb-filters label{height:36px;border:1px solid #cbd5e1;border-radius:7px;background:white;padding:0 9px;display:flex;align-items:center;gap:6px;color:#64748b}.pdb-filters input{width:145px;border:0;outline:0;color:#354256;background:transparent}.pdb-filters select{min-width:180px}.pdb-filters button{height:36px;border:0;border-radius:7px;background:#3555c8;color:white;padding:0 13px;display:flex;align-items:center;gap:6px;cursor:pointer}.pdb-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin-bottom:18px}.pdb-kpi,.pdb-panel{background:white;border:1px solid #e1e5eb;border-radius:7px;box-shadow:0 2px 5px #0f172a0b}.pdb-kpi{height:92px;padding:16px;display:flex;align-items:center;justify-content:space-between}.pdb-kpi h3{margin:0 0 8px;color:#5599d1;font-size:14px;letter-spacing:.04em}.pdb-kpi strong{font-size:23px;color:#263442}.pdb-kpi-icon{height:48px;width:48px;display:grid;place-items:center;color:white;border-radius:5px}.blue .pdb-kpi-icon{background:#2875bd}.green .pdb-kpi-icon{background:#28af4a}.red .pdb-kpi-icon{background:#d83d41}.pdb-overview{display:grid;grid-template-columns:1.38fr .94fr .94fr;gap:22px;align-items:stretch}.pdb-panel{padding:12px;min-width:0}.pdb-panel-title{padding:14px 10px;background:#d8f0fa;color:#4265a5;font-size:15px;font-weight:700;border-radius:4px;margin-bottom:12px}.pdb-panel-title small{display:block;font-size:12px;font-weight:400;color:#718096;margin-top:3px}.pdb-funnel{height:405px;display:flex;align-items:center;justify-content:center}.pdb-funnel-shapes{width:82%;display:flex;align-items:center;flex-direction:column;gap:0}.pdb-funnel-row{height:54px;display:flex;justify-content:center;align-items:center;gap:10px;color:white;clip-path:polygon(0 0,100% 0,82% 100%,18% 100%);font-size:13px;min-width:30%;transition:width .2s}.pdb-colored{padding:12px;background:var(--tone);color:white}.pdb-amber{--tone:#ffb900}.pdb-indigo{--tone:#6379cc}.pdb-colored .pdb-panel-title{background:transparent;color:white;padding:14px 8px 20px;border-bottom:1px solid #ffffff55}.pdb-table-head,.pdb-rank{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 8px}.pdb-table-head{background:#fff;color:#687180;font-size:12px;font-weight:700}.pdb-rank{border-bottom:1px solid #ffffff66;font-size:14px;min-height:36px}.pdb-rank span{overflow:hidden;text-overflow:ellipsis}.pdb-rank b{white-space:nowrap}.pdb-monthly{margin-top:20px}.pdb-chart{height:305px;display:flex;align-items:flex-end;gap:14px;padding:25px 12px 4px;border-bottom:1px solid #b9c0c9;overflow-x:auto}.pdb-bar-column{flex:1;min-width:54px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:7px;color:#697586;font-size:12px}.pdb-bar-column b{font-size:12px;font-weight:500}.pdb-bar{background:#6481d5;border-radius:5px 5px 0 0;width:min(60%,42px)}.pdb-bottom{display:grid;grid-template-columns:1.9fr 1fr;gap:22px;margin-top:20px}.pdb-cycle{height:255px;display:flex;align-items:flex-end;justify-content:space-around;padding:0 12px 16px;border-bottom:1px solid #d2d7df}.pdb-cycle-step{height:100%;display:flex;flex:1;flex-direction:column;justify-content:flex-end;align-items:center;gap:8px;color:#6c7c92;font-size:12px}.pdb-cycle-peak{width:70%;height:72%;clip-path:polygon(0 100%,50% 0,100% 100%);opacity:.8}.pdb-cycle-step:nth-child(2) .pdb-cycle-peak{height:56%}.pdb-cycle-step:nth-child(4) .pdb-cycle-peak{height:50%}.pdb-cycle-step:nth-child(5) .pdb-cycle-peak{height:44%}.pdb-cycle-caption{padding:12px 5px;display:flex;justify-content:space-between;color:#6b7280;font-size:13px}.pdb-cycle-caption strong{color:#3c526e}.pdb-toggle{display:flex;border-bottom:1px solid #e2e8f0}.pdb-toggle button{border:0;background:white;padding:11px 15px;color:#64748b;cursor:pointer}.pdb-toggle button.selected{border:1px solid #e2e8f0;border-bottom:0;border-radius:5px 5px 0 0;color:#27364b;font-weight:700}.pdb-billing{height:245px;display:flex;align-items:center;justify-content:center;gap:30px}.pdb-donut{height:168px;width:168px;border-radius:50%;background:conic-gradient(#15c6ca 0 var(--billed),#2680c9 var(--billed) 100%);display:grid;place-items:center}.pdb-donut>div{height:104px;width:104px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;flex-direction:column}.pdb-donut b{font-size:22px}.pdb-donut small{font-size:11px;color:#697586}.pdb-legend{display:grid;gap:12px;font-size:12px;color:#64748b}.pdb-legend span{display:grid;grid-template-columns:10px auto;align-items:center;gap:6px}.pdb-legend b{grid-column:2;color:#29384b}.pdb-legend i{height:10px;width:10px;background:#15c6ca;border-radius:2px}.pdb-legend span+span i{background:#2680c9}.pdb-billing-foot{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid #e2e2e2;text-align:center}.pdb-billing-foot span{padding:10px 4px;font-size:11px;border-right:1px solid #ddd}.pdb-billing-foot span:last-child{border:0}.pdb-billing-foot b{display:block;margin-top:5px;font-size:15px}.pdb-error{background:#fff1f2;color:#b42318;padding:12px;border-radius:6px;margin-bottom:15px}.pdb-empty{padding:16px 8px;text-align:center;color:#fff9;font-size:13px}
+      @media(max-width:1050px){.pdb-overview{grid-template-columns:1fr 1fr}.pdb-funnel-panel{grid-column:1/-1}.pdb-bottom{grid-template-columns:1fr}}@media(max-width:700px){.pdb-page{padding:14px}.pdb-heading{align-items:flex-start;flex-direction:column}.pdb-filters{flex-wrap:wrap}.pdb-filters select{width:100%}.pdb-kpis{grid-template-columns:1fr;gap:10px}.pdb-overview{grid-template-columns:1fr}.pdb-funnel-panel{grid-column:auto}.pdb-funnel{height:280px}.pdb-cycle-caption{gap:8px;flex-direction:column}.pdb-billing{gap:16px}.pdb-donut{width:138px;height:138px}.pdb-donut>div{width:86px;height:86px}}
+    `}</style>
+  </main>;
 }
+
+function PanelTitle({ children }) { return <div className="pdb-panel-title">{children}</div>; }
+function Empty() { return <div className="pdb-empty">No records in this period</div>; }
+function Kpi({ title, value, icon, tone }) { return <article className={`pdb-kpi ${tone}`}><div><h3>{title}</h3><strong>{value ?? '—'}</strong></div><span className="pdb-kpi-icon">{icon}</span></article>; }

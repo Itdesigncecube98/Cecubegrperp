@@ -1,262 +1,307 @@
 'use client';
+
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, AlertTriangle, Building2, Clock, HardHat, Receipt } from 'lucide-react';
 import Link from 'next/link';
+import { AlertCircle, BarChart3, Building2, IndianRupee, Layers3, PackageCheck, RefreshCw, Search } from 'lucide-react';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
-  Tooltip, XAxis, YAxis
+  Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 
-const EMPTY_DASHBOARD = {
-  projects: [],
-  projectSummary: [],
-  upcomingMilestones: [],
-  financials: { contractValue: 0, certifiedValue: 0, billedValue: 0, netPayable: 0 }
+const EMPTY = {
+  projects: [], totals: {}, budgetByHead: [], monthlyMovement: [], estimateVersions: [],
+  consumptionHistory: [], wbsGroups: [], materialPerArea: [], materialRequisitions: [], projectSummary: [],
 };
 
-const money = value => {
-  const amount = Number(value || 0);
-  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
-  if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
-  return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-};
+const COLORS = ['#369bb2', '#7776e8', '#df567f', '#38a3f1', '#e9aa3b', '#15a579', '#9b66cf'];
+const amount = value => Number(value || 0);
+const lakhs = value => Number((amount(value) / 100000).toFixed(2));
+const money = value => `₹${amount(value).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+const lakhsLabel = value => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })} L`;
+const monthLabel = value => value ? new Date(`${value}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '—';
+const dateLabel = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
-const crore = value => Number((Number(value || 0) / 10000000).toFixed(2));
-const shortDate = value => value ? new Date(value).toLocaleDateString('en-IN') : '-';
-const formatNumber = value => Number(value || 0).toLocaleString('en-IN');
+function Panel({ title, subtitle, children, action }) {
+  return (
+    <section className="eng-dash-panel">
+      <header className="eng-dash-panel-head">
+        <div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>
+        {action}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function Empty({ children = 'No records found for this selection.' }) {
+  return <div className="eng-dash-empty">{children}</div>;
+}
+
+function DataTable({ columns, rows, emptyText }) {
+  if (!rows?.length) return <Empty>{emptyText}</Empty>;
+  return (
+    <div className="eng-dash-table-wrap">
+      <table className="eng-dash-table">
+        <thead><tr>{columns.map(column => <th key={column.key}>{column.label}</th>)}</tr></thead>
+        <tbody>{rows.map((row, index) => (
+          <tr key={row.id || `${row.name || row.month || row.version || 'row'}-${index}`}>
+            {columns.map(column => <td key={column.key}>{column.render ? column.render(row[column.key], row) : (row[column.key] ?? '—')}</td>)}
+          </tr>
+        ))}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function ChartFrame({ data, children, emptyText }) {
+  if (!data?.length) return <Empty>{emptyText}</Empty>;
+  return <div className="eng-dash-chart"><ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer></div>;
+}
 
 export default function EngineeringDashboard() {
-  const [data, setData] = useState(EMPTY_DASHBOARD);
-  const [selectedProjectId, setSelectedProjectId] = useState('ALL');
+  const [data, setData] = useState(EMPTY);
+  const [projectId, setProjectId] = useState('ALL');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [applied, setApplied] = useState({ projectId: 'ALL', fromDate: '', toDate: '' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    let active = true;
-    fetch(`/api/engineering/dashboard?projectId=${encodeURIComponent(selectedProjectId)}`, { cache: 'no-store' })
+    let live = true;
+    const params = new URLSearchParams(applied);
+    setLoading(true);
+    fetch(`/api/engineering/dashboard?${params.toString()}`, { cache: 'no-store' })
       .then(async response => {
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Unable to load project dashboard.');
+        if (!response.ok) throw new Error(result.error || 'Could not load engineering dashboard.');
         return result;
       })
-      .then(result => {
-        if (active) {
-          setData(result);
-          setError('');
-        }
-      })
-      .catch(loadError => {
-        if (active) setError(loadError.message || 'Unable to load project dashboard.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
-  }, [selectedProjectId]);
+      .then(result => { if (live) { setData(result); setError(''); } })
+      .catch(loadError => { if (live) setError(loadError.message || 'Could not load engineering dashboard.'); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [applied]);
 
-  const chartData = useMemo(() => [
-    { name: 'Contract', value: crore(data.financials?.contractValue) },
-    { name: 'Certified MB', value: crore(data.financials?.certifiedValue) },
-    { name: 'RA Billed', value: crore(data.financials?.billedValue) },
-    { name: 'Net Payable', value: crore(data.financials?.netPayable) }
-  ], [data]);
+  const budgetChart = useMemo(() => (data.budgetByHead || []).slice(0, 12).map(item => ({
+    ...item, approvedL: lakhs(item.approved), estimatedL: lakhs(item.estimated), actualL: lakhs(item.actual),
+  })), [data.budgetByHead]);
+  const monthlyChart = useMemo(() => (data.monthlyMovement || []).map(item => ({
+    ...item, monthName: monthLabel(item.month), allocatedL: lakhs(item.allocated), estimateL: lakhs(item.estimated), expendedL: lakhs(item.expended),
+  })), [data.monthlyMovement]);
+  const estimateChart = useMemo(() => (data.estimateVersions || []).map(item => ({
+    ...item, estimatedL: lakhs(item.estimatedCost), label: item.version,
+  })), [data.estimateVersions]);
+  const consumptionChart = useMemo(() => (data.consumptionHistory || []).map(item => ({
+    ...item, monthName: monthLabel(item.month), allocatedL: lakhs(item.allocated), releasedL: lakhs(item.released), consumedL: lakhs(item.consumed),
+  })), [data.consumptionHistory]);
+  const wbsChart = useMemo(() => (data.wbsGroups || []).slice(0, 15).map(item => ({ ...item, estimateL: lakhs(item.estimatedCost) })), [data.wbsGroups]);
+  const totalBudget = amount(data.totals?.approved);
 
-  const progressData = useMemo(() => [
-    { name: 'Completed work', value: Number(data.overallProgressPct || 0) },
-    { name: 'Remaining work', value: Math.max(0, 100 - Number(data.overallProgressPct || 0)) }
-  ], [data.overallProgressPct]);
-
-  const hasFinancialData = chartData.some(item => item.value > 0);
-  const hasProjects = data.projectSummary.length > 0;
+  const search = event => {
+    event.preventDefault();
+    setApplied({ projectId, fromDate, toDate });
+  };
 
   return (
-    <div style={{ padding: 24, maxWidth: 1500, margin: '0 auto', color: '#1e293b' }}>
+    <main className="engineering-analytics-dashboard">
       <style>{`
-        .engineering-dashboard-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
-        .engineering-dashboard-content { display:grid; grid-template-columns:minmax(0,2fr) minmax(300px,1fr); gap:20px; margin-top:20px; }
-        .engineering-dashboard-project-table { width:100%; border-collapse:collapse; min-width:850px; }
-        @media (max-width: 900px) {
-          .engineering-dashboard-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-          .engineering-dashboard-content { grid-template-columns:1fr; }
-        }
-        @media (max-width: 560px) {
-          .engineering-dashboard-grid { grid-template-columns:1fr; }
-        }
+        .engineering-analytics-dashboard { --eng-blue:#228fa7; --eng-blue-dark:#315b9a; --eng-ink:#263548; --eng-muted:#748196; --eng-border:#dfe5eb; color:var(--eng-ink); max-width:1700px; margin:0 auto; padding:22px 24px 36px; }
+        .eng-dash-titlebar { display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap; margin-bottom:18px; }
+        .eng-dash-title { display:flex; align-items:center; gap:10px; }
+        .eng-dash-title h1 { margin:0; font-size:25px; letter-spacing:-.35px; }
+        .eng-dash-title p { margin:5px 0 0; color:var(--eng-muted); font-size:13px; }
+        .eng-dash-filters { display:flex; align-items:end; flex-wrap:wrap; gap:9px; }
+        .eng-dash-field { display:grid; gap:4px; font-size:11px; font-weight:700; color:#64748b; }
+        .eng-dash-field select,.eng-dash-field input { height:39px; border:1px solid #cbd5df; border-radius:7px; padding:0 10px; color:#334155; background:#fff; min-width:145px; }
+        .eng-dash-field select { min-width:230px; }
+        .eng-dash-search { height:39px; display:inline-flex; align-items:center; gap:7px; border:0; border-radius:7px; background:#168eae; color:#fff; font-weight:700; padding:0 15px; cursor:pointer; }
+        .eng-dash-search:hover { background:#0f7896; }
+        .eng-dash-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+        .eng-dash-kpi { display:flex; gap:12px; align-items:center; min-width:0; background:#fff; border:1px solid var(--eng-border); border-radius:9px; padding:15px; box-shadow:0 1px 3px #12263a0b; }
+        .eng-dash-kpi-icon { width:39px; height:39px; border-radius:9px; display:grid; place-items:center; flex:none; background:#e8f6fa; color:#168eae; }
+        .eng-dash-kpi-label { color:#66778c; font-size:11px; font-weight:750; text-transform:uppercase; letter-spacing:.4px; }
+        .eng-dash-kpi-value { margin-top:4px; font-size:20px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .eng-dash-panel { background:#fff; border:1px solid var(--eng-border); border-radius:9px; overflow:hidden; min-width:0; box-shadow:0 1px 3px #12263a0b; }
+        .eng-dash-panel-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 15px; background:#eaf7fb; border-bottom:1px solid #c9e0e9; min-height:51px; }
+        .eng-dash-panel-head h2 { margin:0; color:#315b9a; font-size:15px; font-weight:750; }
+        .eng-dash-panel-head p { margin:4px 0 0; color:#728198; font-size:11px; }
+        .eng-dash-panel-body { padding:12px 14px; }
+        .eng-dash-row { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(340px,1fr); gap:15px; margin-bottom:15px; }
+        .eng-dash-dual { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:15px; margin-bottom:15px; }
+        .eng-dash-chart { height:300px; padding:10px 8px 0; }
+        .eng-dash-chart.tall { height:350px; }
+        .eng-dash-empty { min-height:100px; display:grid; place-items:center; text-align:center; padding:18px; color:#8793a3; font-size:13px; }
+        .eng-dash-table-wrap { overflow:auto; max-height:420px; }
+        .eng-dash-table { width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap; }
+        .eng-dash-table th { position:sticky; top:0; z-index:1; background:#f2f4f6; color:#687588; font-size:10px; text-align:left; letter-spacing:.35px; text-transform:uppercase; }
+        .eng-dash-table th,.eng-dash-table td { padding:10px 11px; border-bottom:1px solid #e9edf1; }
+        .eng-dash-table tbody tr:hover { background:#f7fbfc; }
+        .eng-dash-num { text-align:right; font-variant-numeric:tabular-nums; }
+        .eng-dash-progress { min-width:100px; }
+        .eng-dash-progress-track { height:6px; background:#e7edf1; border-radius:99px; overflow:hidden; margin-top:5px; }
+        .eng-dash-progress-track span { display:block; height:100%; background:#24b98a; border-radius:99px; }
+        .eng-dash-alert { display:flex; gap:9px; align-items:center; padding:12px 14px; margin-bottom:14px; border:1px solid #fecaca; border-radius:8px; color:#991b1b; background:#fff5f5; font-size:13px; }
+        .eng-dash-loading { padding:28px; text-align:center; color:#708095; }
+        .eng-dash-footer { display:flex; justify-content:flex-end; padding-top:12px; }
+        .eng-dash-footer a { display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border-radius:7px; color:#246b9d; background:#eef6fb; text-decoration:none; font-weight:650; font-size:12px; }
+        @media(max-width:1050px) { .eng-dash-row { grid-template-columns:1fr; } }
+        @media(max-width:760px) { .engineering-analytics-dashboard { padding:16px 12px 28px; } .eng-dash-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .eng-dash-dual { grid-template-columns:1fr; } .eng-dash-title h1 { font-size:21px; } }
+        @media(max-width:460px) { .eng-dash-kpis { grid-template-columns:1fr; } .eng-dash-field select,.eng-dash-field input { min-width:120px; } }
       `}</style>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 750, margin: 0 }}>Project Execution Dashboard</h1>
-          <p style={{ color: '#64748b', margin: '6px 0 0' }}>Live project, site progress, measurement book, and RA billing summary.</p>
+      <div className="eng-dash-titlebar">
+        <div className="eng-dash-title">
+          <BarChart3 size={24} color="#315b9a" />
+          <div><h1>Project Management Dashboard</h1><p>Project budgets, estimates, WBS costs, and material requirements</p></div>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label htmlFor="engineering-dashboard-project" style={{ fontSize: 13, fontWeight: 600, color: '#475569' }}>Project</label>
-          <select
-            id="engineering-dashboard-project"
-            value={selectedProjectId}
-            onChange={event => {
-              setLoading(true);
-              setError('');
-              setSelectedProjectId(event.target.value);
-            }}
-            style={{ minWidth: 260, padding: '9px 12px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff' }}
-          >
-            <option value="ALL">All Projects</option>
-            {data.projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
-          </select>
-          <Link href="/engineering/projects" style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#7c3aed', color: '#fff', padding: '9px 14px', borderRadius: 8, fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
-            <Building2 size={16} /> Project Master
-          </Link>
-        </div>
+        <form className="eng-dash-filters" onSubmit={search}>
+          <label className="eng-dash-field">PROJECT
+            <select value={projectId} onChange={event => setProjectId(event.target.value)}>
+              <option value="ALL">All accessible projects</option>
+              {data.projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
+            </select>
+          </label>
+          <label className="eng-dash-field">FROM<input type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} /></label>
+          <label className="eng-dash-field">TO<input type="date" value={toDate} onChange={event => setToDate(event.target.value)} /></label>
+          <button className="eng-dash-search" type="submit"><Search size={16} /> Search</button>
+        </form>
       </div>
 
-      {error && (
-        <div role="alert" style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 14, marginBottom: 18, border: '1px solid #fecaca', borderRadius: 8, color: '#991b1b', background: '#fef2f2' }}>
-          <AlertCircle size={18} /> {error}
+      {error && <div className="eng-dash-alert" role="alert"><AlertCircle size={17} />{error}</div>}
+      {loading && <div className="eng-dash-loading"><RefreshCw size={17} style={{ verticalAlign: 'middle', marginRight: 7 }} />Loading project data…</div>}
+
+      {!loading && !error && <>
+        <div className="eng-dash-kpis">
+          <Kpi icon={<IndianRupee size={20} />} label="Approved budget" value={money(data.totals?.approved)} />
+          <Kpi icon={<BarChart3 size={20} />} label="Estimated cost" value={money(data.totals?.estimated)} />
+          <Kpi icon={<Layers3 size={20} />} label="Allocated / expended" value={`${money(data.totals?.allocated)} / ${money(data.totals?.expended)}`} />
+          <Kpi icon={<PackageCheck size={20} />} label="Material requested / approved" value={`${amount(data.totals?.materialRequired).toLocaleString('en-IN')} / ${amount(data.totals?.materialApproved).toLocaleString('en-IN')}`} />
         </div>
-      )}
 
-      <div className="engineering-dashboard-grid">
-        <KpiCard icon={<Building2 size={22} />} tone="#7c3aed" label="Active Projects" value={`${formatNumber(data.activeProjects)} / ${formatNumber(data.totalProjects)}`} />
-        <KpiCard icon={<AlertTriangle size={22} />} tone="#b91c1c" label="Activities Past Planned Finish" value={formatNumber(data.delayedActivities)} detail="Past plan date and below planned quantity" />
-        <KpiCard icon={<HardHat size={22} />} tone="#0369a1" label="Today's Manpower" value={formatNumber(data.manpowerToday)} detail={`Across ${formatNumber(data.dprsToday)} site reports`} />
-        <KpiCard icon={<Receipt size={22} />} tone="#15803d" label="RA Billed" value={money(data.financials?.billedValue)} detail="Current bill totals, excluding drafts" />
-      </div>
-
-      {loading && <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Loading project data...</div>}
-
-      {!loading && !error && !hasProjects && (
-        <div style={{ marginTop: 20, padding: 28, textAlign: 'center', border: '1px dashed #cbd5e1', borderRadius: 10, background: '#fff', color: '#64748b' }}>
-          No Engineering projects found. Add a project in Project Master to see execution data here.
-        </div>
-      )}
-
-      {!loading && !error && hasProjects && (
-        <>
-          <div className="engineering-dashboard-content">
-            <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, minWidth: 0 }}>
-              <div style={{ padding: '18px 20px', borderBottom: '1px solid #e2e8f0' }}>
-                <h2 style={{ margin: 0, fontSize: 16 }}>Contract, Certification & Billing (₹ crore)</h2>
-                <p style={{ color: '#64748b', fontSize: 13, margin: '5px 0 0' }}>Amounts are summed from project contracts, certified MBs, and submitted RA bills.</p>
+        {data.projects.length === 0 ? <Panel title="Engineering projects"><Empty>No projects are available for your account.</Empty></Panel> : <>
+          <div className="eng-dash-row">
+            <Panel title="Budget vs Estimate vs Actual" subtitle="WBS budget totals grouped by budget head (₹ lakh)">
+              <ChartFrame data={budgetChart} emptyText="No WBS budget heads have been entered for this project.">
+                <BarChart data={budgetChart} margin={{ top: 12, right: 15, left: 5, bottom: 45 }}>
+                  <CartesianGrid stroke="#e4eaf0" vertical={false} />
+                  <XAxis dataKey="name" angle={-20} textAnchor="end" interval={0} height={62} tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={value => [lakhsLabel(value), '']} />
+                  <Legend />
+                  <Bar dataKey="approvedL" name="Budget" fill="#7776e8" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="estimatedL" name="Estimated" fill="#9b9bec" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="actualL" name="Actual" fill="#cc3c62" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ChartFrame>
+            </Panel>
+            <Panel title="Budget Head wise" subtitle="Approved, estimated, and expended totals">
+              <DataTable rows={data.budgetByHead} emptyText="No WBS budget entries found." columns={[
+                { key: 'name', label: 'Head name' },
+                { key: 'approved', label: 'Budgeted cost', render: value => <span className="eng-dash-num">{money(value)}</span> },
+                { key: 'estimated', label: 'Estimated cost', render: value => money(value) },
+                { key: 'actual', label: 'Actual cost', render: value => money(value) },
+              ]} />
+              <div className="eng-dash-panel-body" style={{ borderTop: '1px solid #e9edf1', color: '#6c7b8e', fontSize: 11 }}>
+                Budget utilization: <b style={{ color: '#334155' }}>{totalBudget > 0 ? `${Math.min(100, amount(data.totals?.expended) / totalBudget * 100).toFixed(1)}%` : '—'}</b>
               </div>
-              <div style={{ height: 320, padding: 16 }}>
-                {hasFinancialData ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 16, right: 12, left: 12, bottom: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} />
-                      <Tooltip formatter={value => [`₹${Number(value).toLocaleString('en-IN')} Cr`, 'Amount']} />
-                      <Bar dataKey="value" fill="#7c3aed" radius={[4, 4, 0, 0]} barSize={48} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <EmptyChartMessage>No contract, certified MB, or RA billing amounts have been recorded for this selection.</EmptyChartMessage>
-                )}
-              </div>
-            </section>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 20 }}>
-                <h2 style={{ margin: '0 0 10px', fontSize: 16 }}>Physical Progress</h2>
-                {data.overallProgressPct === null ? (
-                  <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>Progress is unavailable until activities have planned quantities and site DPR quantities.</p>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <div style={{ width: 120, height: 120, flexShrink: 0 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={progressData} cx="50%" cy="50%" innerRadius={38} outerRadius={54} dataKey="value" startAngle={90} endAngle={-270}>
-                            <Cell fill="#7c3aed" />
-                            <Cell fill="#e2e8f0" />
-                          </Pie>
-                          <Tooltip formatter={value => [`${value}%`, 'Weighted progress']} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 750, fontSize: 28, color: '#7c3aed' }}>{data.overallProgressPct}%</div>
-                      <div style={{ color: '#64748b', fontSize: 13 }}>Activity progress weighted by planned importance</div>
-                    </div>
-                  </div>
-                )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 16, paddingTop: 14, borderTop: '1px solid #f1f5f9', color: data.delayedActivities ? '#b91c1c' : '#475569', fontSize: 13 }}>
-                  <AlertTriangle size={15} /> {formatNumber(data.delayedActivities)} activities past planned finish
-                </div>
-              </section>
-
-              <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10 }}>
-                <div style={{ padding: '16px 18px', borderBottom: '1px solid #e2e8f0' }}>
-                  <h2 style={{ margin: 0, fontSize: 16 }}>Upcoming Planned Activities</h2>
-                </div>
-                {data.upcomingMilestones.length ? data.upcomingMilestones.map(activity => (
-                  <div key={activity.id} style={{ padding: '13px 18px', borderBottom: '1px solid #f1f5f9' }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{activity.name}</div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 5, color: '#64748b', fontSize: 12 }}>
-                      <span>{activity.projectName}</span>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}><Clock size={12} />{shortDate(activity.date)}</span>
-                    </div>
-                  </div>
-                )) : (
-                  <p style={{ padding: '16px 18px', margin: 0, color: '#64748b', fontSize: 13 }}>No upcoming planned activities found.</p>
-                )}
-              </section>
-            </div>
+            </Panel>
           </div>
 
-          <section style={{ marginTop: 20, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '18px 20px', borderBottom: '1px solid #e2e8f0' }}>
-              <h2 style={{ margin: 0, fontSize: 16 }}>Project Portfolio</h2>
-              <p style={{ color: '#64748b', fontSize: 13, margin: '5px 0 0' }}>Progress and financial values use recorded project activity, MB, and RA data.</p>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="engineering-dashboard-project-table">
-                <thead>
-                  <tr style={{ textAlign: 'left', background: '#f8fafc', color: '#475569', fontSize: 12 }}>
-                    {['Project', 'Status', 'Contract Value', 'Certified MB', 'RA Billed', 'Physical Progress', 'Activities', 'Past Plan'].map(label => (
-                      <th key={label} style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0' }}>{label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.projectSummary.map(project => (
-                    <tr key={project.id} style={{ borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-                      <td style={{ padding: '13px 14px' }}>
-                        <div style={{ fontWeight: 650 }}>{project.name}</div>
-                        <div style={{ color: '#64748b', fontSize: 11 }}>{[project.projectId, project.location].filter(Boolean).join(' · ') || '—'}</div>
-                      </td>
-                      <td style={{ padding: '13px 14px' }}>{project.status || '—'}</td>
-                      <td style={{ padding: '13px 14px', whiteSpace: 'nowrap' }}>{money(project.contractValue)}</td>
-                      <td style={{ padding: '13px 14px', whiteSpace: 'nowrap' }}>{money(project.certifiedValue)}</td>
-                      <td style={{ padding: '13px 14px', whiteSpace: 'nowrap' }}>{money(project.billedValue)}</td>
-                      <td style={{ padding: '13px 14px' }}>{project.physicalProgressPct === null ? 'No quantity data' : `${project.physicalProgressPct}%`}</td>
-                      <td style={{ padding: '13px 14px' }}>{formatNumber(project.activityCount)}</td>
-                      <td style={{ padding: '13px 14px', color: project.delayedActivities ? '#b91c1c' : '#475569' }}>{formatNumber(project.delayedActivities)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </>
-      )}
-    </div>
+          <div className="eng-dash-dual">
+            <Panel title="Monthly Budget Movement" subtitle="Changes recorded in WBS budget history during the selected date range">
+              <ChartFrame data={monthlyChart} emptyText="No budget change history was recorded in this date range.">
+                <ComposedChart data={monthlyChart} margin={{ top: 12, right: 12, left: 2, bottom: 4 }}>
+                  <CartesianGrid stroke="#e4eaf0" vertical={false} /><XAxis dataKey="monthName" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={value => [lakhsLabel(value), '']} /><Legend />
+                  <Bar dataKey="allocatedL" name="Allocated change" fill="#4e83d5" />
+                  <Bar dataKey="estimateL" name="Estimate change" fill="#a49be8" />
+                  <Line dataKey="expendedL" name="Expended change" stroke="#d94f76" strokeWidth={2} />
+                </ComposedChart>
+              </ChartFrame>
+            </Panel>
+            <Panel title="Version wise Estimated Cost" subtitle="Estimate revisions reconstructed from saved WBS history">
+              <ChartFrame data={estimateChart} emptyText="No estimate revision history is available yet.">
+                <LineChart data={estimateChart} margin={{ top: 14, right: 18, left: 5, bottom: 12 }}>
+                  <CartesianGrid stroke="#e4eaf0" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={value => [lakhsLabel(value), 'Estimated cost']} labelFormatter={(label, rows) => rows?.[0]?.payload?.date ? `${label} · ${dateLabel(rows[0].payload.date)}` : label} />
+                  <Line dataKey="estimatedL" name="Estimated cost" stroke="#2fa6bb" strokeWidth={3} dot={{ r: 4 }} />
+                </LineChart>
+              </ChartFrame>
+              <DataTable rows={data.estimateVersions} emptyText="No revisions found." columns={[
+                { key: 'version', label: 'Version' }, { key: 'date', label: 'Date', render: value => dateLabel(value) },
+                { key: 'estimatedCost', label: 'Estimated cost', render: value => money(value) },
+              ]} />
+            </Panel>
+          </div>
+
+          <div className="eng-dash-dual">
+            <Panel title="Budget vs Consumption" subtitle="Recorded allocation and expenditure changes by month">
+              <ChartFrame data={consumptionChart} emptyText="No monthly allocation or expenditure revisions are available.">
+                <ComposedChart data={consumptionChart} margin={{ top: 12, right: 12, left: 2, bottom: 4 }}>
+                  <CartesianGrid stroke="#e4eaf0" vertical={false} /><XAxis dataKey="monthName" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={value => [lakhsLabel(value), '']} /><Legend />
+                  <Bar dataKey="allocatedL" name="Allocated" fill="#8274d9" />
+                  <Bar dataKey="releasedL" name="Released" fill="#5bb7c7" />
+                  <Line dataKey="consumedL" name="Expended" stroke="#dc5a83" strokeWidth={3} />
+                </ComposedChart>
+              </ChartFrame>
+              <DataTable rows={consumptionChart} emptyText="No consumption history found." columns={[
+                { key: 'monthName', label: 'Month' }, { key: 'allocated', label: 'Allocated', render: value => money(value) },
+                { key: 'released', label: 'Released', render: value => money(value) }, { key: 'consumed', label: 'Expended', render: value => money(value) },
+              ]} />
+            </Panel>
+            <Panel title="WBS Group wise Estimated Cost" subtitle="Material and labour estimates from project WBS quantities">
+              <ChartFrame data={wbsChart} emptyText="No WBS groups or cost estimates found.">
+                <BarChart data={wbsChart} layout="vertical" margin={{ top: 8, right: 18, left: 15, bottom: 2 }}>
+                  <CartesianGrid stroke="#e4eaf0" horizontal={false} /><XAxis type="number" tick={{ fontSize: 10 }} /><YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={value => [lakhsLabel(value), 'Estimated cost']} /><Bar dataKey="estimateL" name="Estimated cost" fill="#6e79d7" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ChartFrame>
+              <DataTable rows={data.wbsGroups} emptyText="No WBS group records." columns={[
+                { key: 'name', label: 'WBS group' }, { key: 'taskCount', label: 'Tasks' },
+                { key: 'material', label: 'Material estimate', render: value => money(value) },
+                { key: 'labour', label: 'Labour estimate', render: value => money(value) },
+                { key: 'estimatedCost', label: 'Total estimate', render: value => money(value) },
+              ]} />
+            </Panel>
+          </div>
+
+          <div className="eng-dash-dual">
+            <Panel title="Material Estimated Quantity per Sq. Ft." subtitle="WBS material volume divided by the project built-up area">
+              <DataTable rows={data.materialPerArea} emptyText="Material volume or built-up area is not entered for this project." columns={[
+                { key: 'name', label: 'Material category / WBS group' },
+                { key: 'quantity', label: 'Material volume', render: value => amount(value).toLocaleString('en-IN', { maximumFractionDigits: 2 }) },
+                { key: 'area', label: 'Built-up area (sq. ft.)', render: value => amount(value).toLocaleString('en-IN', { maximumFractionDigits: 2 }) },
+                { key: 'quantityPerSqFt', label: 'Qty / sq. ft.', render: value => value == null ? 'Area missing' : Number(value).toLocaleString('en-IN', { maximumFractionDigits: 4 }) },
+              ]} />
+            </Panel>
+            <Panel title="Top Material Requisitions" subtitle="Requested quantity compared with approved quantity (top 20 materials)">
+              <DataTable rows={data.materialRequisitions} emptyText="No material requisitions were found in the selected date range." columns={[
+                { key: 'name', label: 'Material' }, { key: 'unit', label: 'Unit' },
+                { key: 'requested', label: 'Requested', render: value => amount(value).toLocaleString('en-IN', { maximumFractionDigits: 2 }) },
+                { key: 'approved', label: 'Approved', render: value => amount(value).toLocaleString('en-IN', { maximumFractionDigits: 2 }) },
+                { key: 'requests', label: 'Requests' },
+              ]} />
+            </Panel>
+          </div>
+
+          <Panel title="Project Portfolio" subtitle="Approved WBS budget, current estimate, expenditure, and available task count">
+            <DataTable rows={data.projectSummary} emptyText="No accessible project records found." columns={[
+              { key: 'name', label: 'Project', render: (value, row) => <><b>{value}</b><div style={{ color: '#7b8797', fontSize: 10 }}>{[row.company, row.location].filter(Boolean).join(' · ')}</div></> },
+              { key: 'status', label: 'Status' }, { key: 'approved', label: 'Approved budget', render: value => money(value) },
+              { key: 'estimated', label: 'Estimate', render: value => money(value) }, { key: 'expended', label: 'Expended', render: value => money(value) },
+              { key: 'progressPct', label: 'Budget consumed', render: value => value == null ? '—' : <div className="eng-dash-progress">{value}%<div className="eng-dash-progress-track"><span style={{ width: `${value}%` }} /></div></div> },
+              { key: 'taskCount', label: 'WBS tasks' },
+            ]} />
+            <div className="eng-dash-footer"><Link href="/engineering/projects/wbs-budget"><Layers3 size={14} /> Open WBS Budget</Link></div>
+          </Panel>
+        </>}
+      </>}
+    </main>
   );
 }
 
-function KpiCard({ icon, tone, label, value, detail }) {
-  return (
-    <div style={{ background: '#fff', borderRadius: 10, padding: 18, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 14, minHeight: 88 }}>
-      <div style={{ width: 46, height: 46, flexShrink: 0, borderRadius: 9, background: `${tone}16`, color: tone, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>{icon}</div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ color: '#64748b', fontSize: 13 }}>{label}</div>
-        <div style={{ color: '#0f172a', fontSize: 21, fontWeight: 750, marginTop: 3 }}>{value}</div>
-        {detail && <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 3 }}>{detail}</div>}
-      </div>
-    </div>
-  );
-}
-
-function EmptyChartMessage({ children }) {
-  return <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center', color: '#64748b', fontSize: 14 }}>{children}</div>;
+function Kpi({ icon, label, value }) {
+  return <div className="eng-dash-kpi"><div className="eng-dash-kpi-icon">{icon}</div><div style={{ minWidth: 0 }}><div className="eng-dash-kpi-label">{label}</div><div className="eng-dash-kpi-value">{value}</div></div></div>;
 }

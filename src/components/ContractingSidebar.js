@@ -13,6 +13,14 @@ import './sidebar.css';
 
 const menuConfig = [
   {
+    id: 'dashboard',
+    label: 'Dashboard',
+    icon: FileSearch,
+    items: [
+      { name: 'Contract Dashboard', path: '/contracting/dashboard' },
+    ],
+  },
+  {
     id: 'contractors',
     label: 'Contractors',
     icon: Users,
@@ -86,6 +94,7 @@ export default function ContractingSidebar({ isCollapsed: propCollapsed, setIsCo
   const setIsCollapsed = propSetIsCollapsed || setLocalCollapsed;
 
   const [expanded, setExpanded] = useState({
+    dashboard: true,
     contractors: true,
     labour: false,
     workOrder: false,
