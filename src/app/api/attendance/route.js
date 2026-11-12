@@ -43,7 +43,6 @@ export async function GET(request) {
     const isWorkingAnn = workingAnns.length > 0;
 
     const workWeeks = await prisma.workWeek.findMany();
-    const weekoffTypes = await prisma.weekoffType.findMany();
     // Use fixed offset parsing so UTC issues don't shift the day
     const dObj = new Date(`${date}T12:00:00Z`);
     const dayName = dObj.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
@@ -193,24 +192,18 @@ export async function GET(request) {
       if (finalStatus === 'P') finalStatus = 'Present';
       if (finalStatus === 'A') finalStatus = 'Absent';
       if (finalStatus === 'H') finalStatus = 'Holiday';
-      if (isWorkingAnn && ['Off', 'W-off', 'Weekly Off', 'C-off', 'COFF', 'COff', 'Holiday'].includes(finalStatus)) {
-        let slots = [];
-        try {
-          slots = JSON.parse(record?.timeSlots || '[]');
-        } catch {
-          slots = [];
-        }
-        finalStatus = slots.some(slot => slot?.in || slot?.out) ? 'Present' : date < currentDateStr ? 'Absent' : 'Not Marked';
-      }
 
       const empLeave = leaves.find(l => l.employeeId === emp.id);
-      const isEmpWoff = isWoff && isEmployeeWeekoff(emp, date, weekoffTypes, workWeeks);
+      const isEmpWoff = isWoff && isEmployeeWeekoff(date, workWeeks);
       const isEmpHoliday = isGlobalHoliday && !isWorkingAnn;
       let slots = [];
       try { slots = JSON.parse(record?.timeSlots || '[]'); } catch { slots = []; }
       const hasPunch = slots.some(slot => slot?.in || slot?.out);
+      const isWorkingDay = isWorkingAnn || (!isEmpHoliday && !isEmpWoff);
 
-      if (!isWorkingAnn && (isEmpHoliday || isEmpWoff)) {
+      if (isWorkingDay && ['Off', 'W-off', 'Weekly Off', 'C-off', 'COFF', 'COff', 'Holiday'].includes(finalStatus)) {
+        finalStatus = hasPunch ? 'Present' : date < currentDateStr ? 'Absent' : 'Not Marked';
+      } else if (isEmpHoliday || isEmpWoff) {
         finalStatus = hasPunch ? 'C-off' : isEmpHoliday ? 'Holiday' : 'Weekly Off';
       } else if (!record || record.status === 'Not Marked') {
         if (empLeave && !isEmpHoliday && !isEmpWoff) {

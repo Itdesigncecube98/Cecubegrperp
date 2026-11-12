@@ -68,7 +68,7 @@ export async function GET(request) {
     });
     const biometricPunches = await getBiometricPunchesByEmployeeDay([employee], startDate, endDate);
 
-    const [holidays, workWeeks, approvedLeaves, employeeShifts, weekoffTypes, announcements] = await Promise.all([
+    const [holidays, workWeeks, approvedLeaves, employeeShifts, announcements] = await Promise.all([
       prisma.holiday.findMany({ where: { date: { gte: startDate, lte: endDate } } }),
       prisma.workWeek.findMany(),
       prisma.leaveRequest.findMany({
@@ -79,7 +79,6 @@ export async function GET(request) {
         include: { shift: true },
         orderBy: { effectiveFrom: 'desc' }
       }),
-      prisma.weekoffType.findMany(),
       prisma.announcement.findMany({
         where: {
           date: { gte: startDate, lte: endDate },
@@ -97,7 +96,7 @@ export async function GET(request) {
     const workingAnnouncementDates = new Set(
       announcements.filter(announcement => announcement.isWorkingDay).map(announcement => announcement.date),
     );
-    const nonWorkingDays = new Set(getEmployeeWeekoffDays(employee, weekoffTypes, workWeeks));
+    const nonWorkingDays = new Set(getEmployeeWeekoffDays(workWeeks));
     
     // Calculate leave dates
     const leaveDates = new Set();

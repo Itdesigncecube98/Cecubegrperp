@@ -22,8 +22,8 @@ export async function GET(request) {
     start.setUTCDate(start.getUTCDate() - (days - 1));
     const startStr = start.toISOString().slice(0, 10);
 
-    const [employees, todayRecords, rangeRecords, gpsCount, holidays, allLeaves, workWeeks, weekoffTypes, announcements] = await Promise.all([
-      prisma.employee.findMany({ select: { id: true, offDaysTemplates: true } }).catch(() => []),
+    const [employees, todayRecords, rangeRecords, gpsCount, holidays, allLeaves, workWeeks, announcements] = await Promise.all([
+      prisma.employee.findMany({ select: { id: true } }).catch(() => []),
       prisma.attendance.findMany({
         where: { date: todayStr },
         select: { employeeId: true, status: true, timeSlots: true }
@@ -46,7 +46,6 @@ export async function GET(request) {
         select: { employeeId: true, startDate: true, endDate: true }
       }).catch(() => []),
       prisma.workWeek.findMany({ select: { day: true, isWorking: true } }),
-      prisma.weekoffType.findMany({ select: { name: true, days: true, assignedTo: true } }).catch(() => []),
       prisma.announcement.findMany({
         where: {
           date: { gte: startStr, lte: todayStr },
@@ -107,9 +106,10 @@ export async function GET(request) {
       const dStr = d.toISOString().slice(0, 10);
       const isWorkingAnnouncement = workingAnnouncementDates.has(dStr);
       const isHol = !isWorkingAnnouncement && holidayDates.has(dStr);
-      const offEmployees = new Set(!isWorkingAnnouncement && !isHol ? employees
-        .filter(employee => isEmployeeWeekoff(employee, dStr, weekoffTypes, workWeeks))
-        .map(employee => employee.id) : []);
+      const isWeekoff = isEmployeeWeekoff(dStr, workWeeks);
+      const offEmployees = new Set(!isWorkingAnnouncement && !isHol && isWeekoff
+        ? employees.map(employee => employee.id)
+        : []);
 
       let note = '';
       if (isHol) note = 'Holiday';
@@ -172,9 +172,10 @@ export async function GET(request) {
     const leaveTodaySet = new Set(leavesTodayList.map(l => l.employeeId));
     const workedTodaySet = new Set(presentTodayRecords.map(record => record.employeeId));
     workedTodaySet.forEach(id => leaveTodaySet.delete(id));
-    const offTodaySet = new Set(!todayIsWorkingAnnouncement && !todayIsHol ? employees
-      .filter(employee => isEmployeeWeekoff(employee, todayStr, weekoffTypes, workWeeks))
-      .map(employee => employee.id) : []);
+    const isTodayWeekoff = isEmployeeWeekoff(todayStr, workWeeks);
+    const offTodaySet = new Set(!todayIsWorkingAnnouncement && !todayIsHol && isTodayWeekoff
+      ? employees.map(employee => employee.id)
+      : []);
     if (todayIsHol) leaveTodaySet.clear();
     else offTodaySet.forEach(id => leaveTodaySet.delete(id));
     const employeesOnLeaveCount = leaveTodaySet.size;

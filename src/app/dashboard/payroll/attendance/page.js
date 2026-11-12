@@ -20,8 +20,9 @@ export function getLeaveAbbreviation(leaveType) {
 export function resolveDayAttendance(emp, col, approvedLeaves = []) {
   const att = emp?.attendances?.find(a => a.date === col.fullDate);
   const rawStatus = att?.status;
-  const employeeWeekoffDays = getEmployeeWeekoffDays(emp, col.weekoffTypes || [], col.workWeeks || []);
+  const employeeWeekoffDays = getEmployeeWeekoffDays(col.workWeeks || []);
   const isWeekOff = !col.isWorkingDay && employeeWeekoffDays.includes(col.dayName);
+  const isScheduledWorkingDay = col.isWorkingDay || (!col.isHoliday && !isWeekOff);
 
   // 1. If manually edited by user in this session, respect that edit
   if (att?.isManual) {
@@ -34,7 +35,7 @@ export function resolveDayAttendance(emp, col, approvedLeaves = []) {
   const workedStatus = ['Present', 'P', 'Late', 'Half Day', 'HD', 'C-off', 'COFF', 'COff'].includes(rawStatus);
   if (!col.isWorkingDay && (col.isHoliday || isWeekOff)) return hasPunch || workedStatus ? 'C-off' : col.isHoliday ? 'H' : 'W-off';
 
-  if (col.isWorkingDay && ['Holiday', 'H', 'Weekly Off', 'W-off', 'Off', 'C-off', 'COFF', 'COff'].includes(rawStatus)) {
+  if (isScheduledWorkingDay && ['Holiday', 'H', 'Weekly Off', 'W-off', 'Off', 'C-off', 'COFF', 'COff'].includes(rawStatus)) {
     return hasPunch ? 'P' : col.fullDate < new Date().toISOString().slice(0, 10) ? 'A' : '-';
   }
 
@@ -191,7 +192,7 @@ export default function PayrollAttendance() {
       const announcement = data.announcements?.find(item => item.date === fullDate);
       const isWorkingDay = announcement?.isWorkingDay === true;
       const isHoliday = !isWorkingDay && (data.holidays?.some(h => h.date === fullDate) || announcement?.isHoliday === true);
-      const isWeekOff = !isWorkingDay && getEmployeeWeekoffDays(null, data.weekoffTypes || [], data.workWeeks || []).includes(dayName);
+      const isWeekOff = !isWorkingDay && getEmployeeWeekoffDays(data.workWeeks || []).includes(dayName);
       columns.push({
         fullDate,
         dayLabel: String(current.getDate()).padStart(2, '0'),

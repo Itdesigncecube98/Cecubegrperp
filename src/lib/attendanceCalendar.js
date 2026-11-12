@@ -1,22 +1,22 @@
 const normalizeName = value => String(value || '').trim().toLowerCase();
 
-/** Resolve weekly off days from global settings and employee-assigned templates. */
-export function getEmployeeWeekoffDays(employee, weekoffTypes = [], workWeeks = []) {
-  const assignedNames = new Set((employee?.offDaysTemplates || []).map(normalizeName));
-  const applicableTypes = weekoffTypes.filter(type =>
-    normalizeName(type.assignedTo) === 'all employees' || assignedNames.has(normalizeName(type.name))
-  );
-  const templateDays = [...new Set(applicableTypes.flatMap(type => Array.isArray(type.days) ? type.days : []))];
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-  if (templateDays.length) return templateDays;
-  const configuredDays = workWeeks.filter(day => !day.isWorking).map(day => day.day);
-  return configuredDays.length || workWeeks.length ? configuredDays : ['Sunday'];
+/** Resolve weekly offs from WorkWeek; dated holiday/workday announcements override them. */
+export function getEmployeeWeekoffDays(workWeeks = []) {
+  const configuredDays = new Set(
+    workWeeks
+      .filter(day => !day.isWorking)
+      .map(day => WEEKDAYS.find(weekday => normalizeName(weekday) === normalizeName(day.day)))
+      .filter(Boolean),
+  );
+  return workWeeks.length ? WEEKDAYS.filter(day => configuredDays.has(day)) : ['Sunday'];
 }
 
-export function isEmployeeWeekoff(employee, date, weekoffTypes = [], workWeeks = []) {
+export function isEmployeeWeekoff(date, workWeeks = []) {
   const dayName = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
     weekday: 'long',
     timeZone: 'UTC',
   });
-  return getEmployeeWeekoffDays(employee, weekoffTypes, workWeeks).includes(dayName);
+  return getEmployeeWeekoffDays(workWeeks).includes(dayName);
 }

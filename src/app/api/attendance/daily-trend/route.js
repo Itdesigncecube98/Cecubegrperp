@@ -22,8 +22,8 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Date range cannot exceed 366 days' }, { status: 400 });
     }
 
-    const [employees, rangeRecords, holidays, leaves, workWeeks, weekoffTypes, announcements] = await Promise.all([
-      prisma.employee.findMany({ select: { id: true, offDaysTemplates: true } }).catch(() => []),
+    const [employees, rangeRecords, holidays, leaves, workWeeks, announcements] = await Promise.all([
+      prisma.employee.findMany({ select: { id: true } }).catch(() => []),
       prisma.attendance.findMany({
         where: { date: { gte: startDateStr, lte: endDateStr } },
         select: { date: true, status: true, employeeId: true }
@@ -41,7 +41,6 @@ export async function GET(request) {
         select: { employeeId: true, startDate: true, endDate: true }
       }).catch(() => []),
       prisma.workWeek.findMany({ select: { day: true, isWorking: true } }),
-      prisma.weekoffType.findMany({ select: { name: true, days: true, assignedTo: true } }).catch(() => []),
       prisma.announcement.findMany({
         where: {
           date: { gte: startDateStr, lte: endDateStr },
@@ -92,9 +91,10 @@ export async function GET(request) {
       const dStr = d.toISOString().slice(0, 10);
       const isWorkingAnnouncement = workingAnnouncementDates.has(dStr);
       const isHol = !isWorkingAnnouncement && holidayDates.has(dStr);
-      const offEmployees = new Set(!isWorkingAnnouncement && !isHol ? employees
-        .filter(employee => isEmployeeWeekoff(employee, dStr, weekoffTypes, workWeeks))
-        .map(employee => employee.id) : []);
+      const isWeekoff = isEmployeeWeekoff(dStr, workWeeks);
+      const offEmployees = new Set(!isWorkingAnnouncement && !isHol && isWeekoff
+        ? employees.map(employee => employee.id)
+        : []);
 
       let note = '';
       if (isHol) note = 'Holiday';
