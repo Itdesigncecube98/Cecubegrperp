@@ -65,7 +65,7 @@ const ROUTE_RIGHTS = [
   ['/marketing/won-lost', 'MARKETING_HANDOVER'],
   ['/site/dashboard', 'SITE_DASHBOARD'], ['/site/dpr', 'SITE_DPR'], ['/site/work-completion', 'SITE_WORK_COMPLETION'],
   ['/site/material', 'SITE_MATERIAL_REQUISITION'], ['/site/material/gtn', 'SITE_GTN'], ['/site/material/grn', 'SITE_GRN'],
-  ['/site/store', 'SITE_STORE'], ['/site/task-status', 'SITE_TASK_STATUS'], ['/site/quality', 'SITE_QUALITY'],
+  ['/site/store', 'SITE_STORE'], ['/site/task-status', 'SITE_TASK_STATUS'],
   ['/site/dpr/new-dpr', 'SITE_DPR'], ['/site/dpr/', 'SITE_DPR'],
   ['/site/gtn', 'SITE_GTN'], ['/site/grn', 'SITE_GRN'], ['/site/material/new-requisition', 'SITE_MATERIAL_REQUISITION'],
   ['/marketing/enquiries/create', 'MARKETING_PROJECT_ENQUIRY_CREATE'],

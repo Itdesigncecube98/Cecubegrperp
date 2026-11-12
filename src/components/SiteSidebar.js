@@ -24,7 +24,6 @@ const menuConfig = [
       { name: 'GRN Register',           path: '/site/material/grn',    permissionCode: 'SITE_GRN' },
       { name: 'Site Store',             path: '/site/store',           permissionCode: 'SITE_STORE' },
       { name: 'Task Status',            path: '/site/task-status',     permissionCode: 'SITE_TASK_STATUS' },
-      { name: 'Quality & Safety',       path: '/site/quality',         permissionCode: 'SITE_QUALITY' },
     ],
   },
 ];

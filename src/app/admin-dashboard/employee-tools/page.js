@@ -152,6 +152,8 @@ export default function EmployeeToolsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           employeeId: selectedEmp.id,
+          employeeCode: selectedEmp.empId || '',
+          employeeName: selectedEmp.name || '',
           projectId: selectedProject.id,
           ...(accessScope === 'employee' ? { module: activeModule } : {}),
           toolIds: Array.from(granted),
@@ -235,9 +237,34 @@ export default function EmployeeToolsPage() {
     <div style={{ maxWidth: 1200, margin: '0 auto', paddingBottom: 80, fontFamily: "'Inter', sans-serif" }}>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-        <Link href="/admin-dashboard" style={iconBtnStyle}>
-          <ArrowLeft size={18} />
-        </Link>
+        {step === STEP_EMPLOYEE ? (
+          <Link href="/admin-dashboard" aria-label="Back to Admin Overview" title="Back to Admin Overview" style={iconBtnStyle}>
+            <ArrowLeft size={18} />
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (step === STEP_TOOLS) {
+                setStep(STEP_PROJECT);
+                setSelectedProject(null);
+                setGranted(new Set());
+                setDbTools([]);
+              } else {
+                setStep(STEP_EMPLOYEE);
+                setSelectedEmp(null);
+                setSelectedProject(null);
+                setGranted(new Set());
+                setDbTools([]);
+              }
+            }}
+            aria-label={step === STEP_TOOLS ? 'Back to access scope' : 'Back to employee selection'}
+            title={step === STEP_TOOLS ? 'Back to access scope' : 'Back to employee selection'}
+            style={{ ...iconBtnStyle, cursor: 'pointer' }}
+          >
+            <ArrowLeft size={18} />
+          </button>
+        )}
         <div style={{ width: 48, height: 48, borderRadius: 12, background: 'linear-gradient(135deg, #0891b2, #0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(8,145,178,0.35)' }}>
           <UserCheck size={24} color="#fff" />
         </div>
@@ -405,6 +432,15 @@ export default function EmployeeToolsPage() {
               <FolderOpen size={13} /> {accessScope === 'employee' ? `${activeModule} · Employee-wide` : selectedProject?.name}
               <button onClick={() => { setStep(STEP_PROJECT); setSelectedProject(null); setGranted(new Set()); setDbTools([]); }} style={chipXStyle}><X size={11} /></button>
             </div>
+            {accessScope === 'employee' && (
+              <button
+                type="button"
+                onClick={() => { setStep(STEP_PROJECT); setSelectedProject(null); setGranted(new Set()); setDbTools([]); }}
+                style={{ ...smallBtnStyle, background: '#fff', color: '#0891b2', border: '1px solid #a5f3fc' }}
+              >
+                <ArrowLeft size={12} /> Change module
+              </button>
+            )}
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
               {saveMsg && <span style={{ fontSize: 12, color: '#10b981', fontWeight: 700 }}>✅ {saveMsg}</span>}
               <button onClick={() => loadGrants(selectedEmp.id, selectedProject.id, accessScope === 'employee' ? activeModule : '')}

@@ -379,7 +379,7 @@ export async function POST(request) {
       }
     }
 
-    return NextResponse.json(record);
+    return NextResponse.json({ ...record, activityAction: existing ? 'UPDATE' : 'CREATE' });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

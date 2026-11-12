@@ -165,6 +165,17 @@ export async function POST(request: Request) {
   }
 
   try {
+    const incomingDeviceIds = [...new Set(rows.map((row) => row.deviceId))];
+    const existingPunches = await prisma.attendancePunch.findMany({
+      where: {
+        deviceId: { in: incomingDeviceIds },
+        punchTime: { in: rows.map((row) => row.punchTime) },
+      },
+      select: { deviceId: true, deviceLogId: true, punchTime: true },
+    });
+    const punchKey = (punch: { deviceId: string; deviceLogId: number; punchTime: Date }) =>
+      `${punch.deviceId}|${punch.deviceLogId}|${punch.punchTime.toISOString()}`;
+    const existingPunchKeys = new Set(existingPunches.map(punchKey));
     const result = await prisma.attendancePunch.createMany({
       data: rows.map(({ rawPunchesOnly: _rawPunchesOnly, missingAttendanceOnly: _missingAttendanceOnly, ...row }) => row),
       skipDuplicates: true,
@@ -225,7 +236,6 @@ export async function POST(request: Request) {
         }
       }
 
-      const incomingDeviceIds = [...new Set(attendanceRows.map(row => row.deviceId))];
       const savedMappings = await prisma.attendanceDeviceEmployeeMap.findMany({
         where: { deviceId: { in: incomingDeviceIds } },
         select: { deviceId: true, userId: true, employeeId: true },
@@ -267,6 +277,38 @@ export async function POST(request: Request) {
       }
       unmatchedEmployeeCodes = employeeCodes.filter(code => !attendanceRows.some(row =>
         row.employeeCode === code && employeeByIdentity.has(identityForPunch(row))));
+
+      const punchAuditRows = rows
+        .filter((row) => !row.rawPunchesOnly && !existingPunchKeys.has(punchKey(row)))
+        .flatMap((row) => {
+          const employeeId = employeeByIdentity.get(identityForPunch(row));
+          if (!employeeId) return [];
+          const { date, time } = getIndiaDateAndTime(row.punchTime);
+          const direction = String(row.direction || '').trim().toUpperCase();
+          return [{
+            employeeId,
+            module: 'Attendance',
+            subModule: 'Biometric Sync',
+            action: 'CREATE',
+            status: 'SUCCESS',
+            entityType: 'Attendance Punch',
+            entityId: `${employeeId}|${date}|${row.deviceLogId}`,
+            newValues: JSON.stringify({
+              employeeCode: row.employeeCode,
+              date,
+              direction: direction || 'UNKNOWN',
+              punchTime: time,
+              location: row.location,
+              source: row.source,
+            }),
+            remarks: 'Biometric Sync',
+          }];
+        });
+      if (punchAuditRows.length) {
+        await prisma.auditLog.createMany({ data: punchAuditRows }).catch((auditError) => {
+          console.error('Unable to write biometric punch audit entries:', auditError);
+        });
+      }
 
       const dayKeys = [...affectedDays].map((key) => {
         const separator = key.lastIndexOf("|");

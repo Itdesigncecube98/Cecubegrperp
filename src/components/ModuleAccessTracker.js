@@ -63,6 +63,7 @@ export default function ModuleAccessTracker() {
         }
         const endpoint = url.pathname.toLowerCase();
         const requestedAction = String(payload.action || '').toUpperCase();
+        if (endpoint === '/api/admin/employee-tools' && method === 'POST') return;
         if ((endpoint === '/api/admin/tools' && requestedAction === 'SEED') ||
             /^\/api\/(?:admin\/)?auth\/(?:login|logout)$/.test(endpoint)) return;
         const apiParts = endpoint.split('/').filter(Boolean);
@@ -90,13 +91,31 @@ export default function ModuleAccessTracker() {
 
         const sensitiveKey = /(password|token|secret|email|phone|mobile|contact|address|gst|pan|aadhaar|document|attachment|file|remark|note|description|requirement|cookie|authorization)/i;
         const requestRecord = { ...payload, ...(payload.task || {}), ...(payload.taskUpdate || {}), ...(payload.project || {}), ...(payload.lead || {}), ...(payload.enquiry || {}) };
-        const details = Object.fromEntries(Object.entries(requestRecord).filter(([key, value]) => !sensitiveKey.test(key) && ['string', 'number', 'boolean'].includes(typeof value)).slice(0, 18).map(([key, value]) => [key, String(value).slice(0, 120)]));
-        let id = requestRecord.id || requestRecord.taskId || requestRecord.leadId || requestRecord.enquiryId || requestRecord.projectId || null;
+        const details = Object.fromEntries(Object.entries(requestRecord).filter(([key, value]) => !sensitiveKey.test(key) && ['string', 'number', 'boolean'].includes(typeof value)).slice(0, 18).map(([key, value]) => [key, String(value).slice(0, key.toLowerCase() === 'timeslots' ? 2000 : 120)]));
+        if (/attendance/.test(endpoint) && requestRecord.timeSlots) {
+          let slots = requestRecord.timeSlots;
+          if (typeof slots === 'string') {
+            try { slots = JSON.parse(slots); } catch { slots = []; }
+          }
+          if (Array.isArray(slots)) {
+            slots.forEach((slot, index) => {
+              if (slot?.in) details[`slot${index + 1}In`] = String(slot.in).slice(0, 20);
+              if (slot?.out) details[`slot${index + 1}Out`] = String(slot.out).slice(0, 20);
+            });
+          }
+        }
+        let id = requestRecord.id || requestRecord.taskId || requestRecord.leadId || requestRecord.enquiryId || requestRecord.projectId || (method === 'DELETE' && apiParts.length > 2 ? decodeURIComponent(apiParts.at(-1)) : null);
         if (response.ok) {
           try {
             const result = await response.clone().json();
             const record = result?.data || result?.task || result?.lead || result?.enquiry || result?.project || result;
             id = id || record?.id || null;
+            if (/attendance/.test(endpoint) && ['CREATE', 'UPDATE'].includes(record?.activityAction)) action = record.activityAction;
+            if (Array.isArray(record?.grantedTools)) details.grantedTools = record.grantedTools.join(', ') || 'None';
+            if (Array.isArray(record?.revokedTools)) details.revokedTools = record.revokedTools.join(', ') || 'None';
+            for (const key of ['projectName', 'libraryName']) {
+              if (typeof record?.[key] === 'string' && record[key].trim()) details[key] = record[key].slice(0, 180);
+            }
             for (const key of ['name', 'title', 'projectName', 'taskName', 'companyName', 'customerName', 'vendorName', 'supplierName', 'contractorName', 'employeeName', 'leadId', 'enquiryId', 'poNo', 'woNo', 'billNo', 'raBillNo', 'invoiceNumber']) {
               if (!details[key] && ['string', 'number'].includes(typeof record?.[key])) details[key] = String(record[key]).slice(0, 180);
             }
