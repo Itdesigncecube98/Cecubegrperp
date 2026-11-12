@@ -14,7 +14,7 @@ export default function Synchronisation2Layout({ children }) {
     { name: 'Bank Names', path: '/dashboard/synchronisation2/bank-names' },
     { name: 'Weekoff Types', path: '/dashboard/synchronisation2/weekoff-types' },
     { name: 'Leave Type', path: '/dashboard/synchronisation2/leave-type' },
-    { name: 'Muster Status', path: '/dashboard/synchronisation2/muster-status' },
+    { name: 'Leaving Reasons (Termination)', path: '/dashboard/synchronisation2/leaving-reasons' },
     { name: 'Shift', path: '/dashboard/synchronisation2/shift' },
     { name: 'Document Types', path: '/dashboard/synchronisation2/document-types' },
     { name: 'LTA Setup', path: '/dashboard/synchronisation2/lta-setup' },

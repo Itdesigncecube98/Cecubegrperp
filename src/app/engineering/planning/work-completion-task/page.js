@@ -195,10 +195,9 @@ export default function WorkCompletionTask() {
       ? Math.min(100, Math.round((newCompleted / selectedTaskForLog.plannedQty) * 100))
       : 0;
 
-    let finalStatus = logForm.newStatus || selectedTaskForLog.verificationStatus;
-    if (newPercent >= 100 && finalStatus !== 'Quality Approved') {
-      finalStatus = 'Ready for Inspection';
-    }
+    // Preserve the status explicitly selected in the progress form. Completing
+    // the planned quantity must not silently replace the user's status choice.
+    const finalStatus = logForm.newStatus || selectedTaskForLog.verificationStatus;
 
     const newLogEntry = {
       id: `log-${Date.now()}`,

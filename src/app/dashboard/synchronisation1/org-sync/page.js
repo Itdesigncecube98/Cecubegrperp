@@ -22,7 +22,6 @@ export default function SynchronizationPage() {
     department: '',
     grade: '',
     designation: '',
-    imprestHead: '',
     textColor: '#1f2937',
     bgColor: '#f3f4f6'
   });
@@ -30,7 +29,6 @@ export default function SynchronizationPage() {
   const [departments, setDepartments] = useState([]);
   const [grades, setGrades] = useState([]);
   const [designations, setDesignations] = useState([]);
-  const [imprestHeads, setImprestHeads] = useState([]);
 
   const [employees, setEmployees] = useState([]);
   const [workflowConfig, setWorkflowConfig] = useState({
@@ -43,7 +41,8 @@ export default function SynchronizationPage() {
   // Sync tab from URL ?tab= param
   useEffect(() => {
     const tab = searchParams?.get('tab');
-    if (tab) setActiveTab(tab);
+    if (tab === 'impresttypes') setActiveTab('departments');
+    else if (tab) setActiveTab(tab);
   }, [searchParams]);
 
   useEffect(() => {
@@ -54,7 +53,6 @@ export default function SynchronizationPage() {
       fetchItems();
       fetchOrganizations();
       if (activeTab === 'grades') fetchDesignations();
-      if (activeTab === 'impresttypes') fetchImprestHeads();
     }
   }, [activeTab]);
 
@@ -174,18 +172,6 @@ export default function SynchronizationPage() {
     }
   };
 
-  const fetchImprestHeads = async () => {
-    try {
-      const res = await fetch('/api/synchronization?type=imprestheads');
-      if (res.ok) {
-        const data = await res.json();
-        setImprestHeads(data);
-      }
-    } catch (err) {
-      console.error('Error fetching imprest heads:', err);
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -203,7 +189,7 @@ export default function SynchronizationPage() {
       if (res.ok) {
         setIsModalOpen(false);
         setEditingItem(null);
-        setFormData({ name: '', code: '', organization: '', description: '', department: '', grade: '', designation: '', imprestHead: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
+        setFormData({ name: '', code: '', organization: '', description: '', department: '', grade: '', designation: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
         fetchItems();
       }
     } catch (err) {
@@ -239,7 +225,6 @@ export default function SynchronizationPage() {
       department: item.department || '',
       grade: item.grade || '',
       designation: item.designation || '',
-      imprestHead: item.imprestHead || '',
       textColor: item.textColor || '#1f2937',
       bgColor: item.bgColor || '#f3f4f6'
     });
@@ -248,7 +233,7 @@ export default function SynchronizationPage() {
 
   const handleAdd = () => {
     setEditingItem(null);
-    setFormData({ name: '', code: '', organization: '', description: '', department: '', grade: '', designation: '', imprestHead: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
+    setFormData({ name: '', code: '', organization: '', description: '', department: '', grade: '', designation: '', textColor: '#1f2937', bgColor: '#f3f4f6' });
     setIsModalOpen(true);
   };
 
@@ -258,7 +243,6 @@ export default function SynchronizationPage() {
     { id: 'siteoffices', label: 'Site Offices', icon: MapPin },
     { id: 'organizations', label: 'Organizations', icon: Briefcase },
     { id: 'imprestheads', label: 'Imprest Heads', icon: Briefcase },
-    { id: 'impresttypes', label: 'Imprest Types', icon: Briefcase },
     { id: 'grades', label: 'Grades', icon: Briefcase },
     { id: 'designations', label: 'Designations', icon: Briefcase },
     { id: 'imprestworkflow', label: 'Imprest Workflow', icon: Network }
@@ -271,7 +255,6 @@ export default function SynchronizationPage() {
       siteoffices: 'Site Office',
       organizations: 'Organization',
       imprestheads: 'Imprest Head',
-      impresttypes: 'Imprest Type',
       grades: 'Grade',
       designations: 'Designation',
       imprestworkflow: 'Imprest Workflow'
@@ -422,7 +405,7 @@ export default function SynchronizationPage() {
                   <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Name
                   </th>
-                  {activeTab !== 'organizations' && activeTab !== 'imprestheads' && activeTab !== 'grades' && activeTab !== 'designations' && activeTab !== 'impresttypes' && (
+                  {activeTab !== 'organizations' && activeTab !== 'imprestheads' && activeTab !== 'grades' && activeTab !== 'designations' && (
                     <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                       Organization
                     </th>
@@ -430,11 +413,6 @@ export default function SynchronizationPage() {
                   {activeTab === 'grades' && (
                     <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                       Designation
-                    </th>
-                  )}
-                  {activeTab === 'impresttypes' && (
-                    <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Imprest Head
                     </th>
                   )}
                   <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -464,7 +442,7 @@ export default function SynchronizationPage() {
                         item.name
                       )}
                     </td>
-                    {activeTab !== 'organizations' && activeTab !== 'imprestheads' && activeTab !== 'grades' && activeTab !== 'designations' && activeTab !== 'impresttypes' && (
+                    {activeTab !== 'organizations' && activeTab !== 'imprestheads' && activeTab !== 'grades' && activeTab !== 'designations' && (
                       <td style={{ padding: '1rem', fontSize: '0.9rem', color: '#6b7280' }}>
                         {item.organization || '—'}
                       </td>
@@ -473,13 +451,6 @@ export default function SynchronizationPage() {
                       <td style={{ padding: '1rem', fontSize: '0.9rem' }}>
                         <span style={{ background: '#eff6ff', color: '#3b82f6', padding: '2px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 600 }}>
                           {item.designation || '—'}
-                        </span>
-                      </td>
-                    )}
-                    {activeTab === 'impresttypes' && (
-                      <td style={{ padding: '1rem', fontSize: '0.9rem' }}>
-                        <span style={{ background: '#eff6ff', color: '#3b82f6', padding: '2px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 600 }}>
-                          {item.imprestHead || '—'}
                         </span>
                       </td>
                     )}
@@ -556,33 +527,6 @@ export default function SynchronizationPage() {
             </div>
             
             <form onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
-              {/* For Imprest Types: Imprest Head selector first */}
-              {activeTab === 'impresttypes' && (
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
-                    Imprest Head *
-                  </label>
-                  <select
-                    required
-                    value={formData.imprestHead}
-                    onChange={e => setFormData({ ...formData, imprestHead: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '8px',
-                      fontSize: '0.95rem',
-                      outline: 'none'
-                    }}
-                  >
-                    <option value="">-- Select Imprest Head --</option>
-                    {imprestHeads.map(d => (
-                      <option key={d.id} value={d.name}>{d.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               {/* For Grades: Designation selector first */}
               {activeTab === 'grades' && (
                 <div style={{ marginBottom: '1.25rem' }}>
@@ -649,7 +593,7 @@ export default function SynchronizationPage() {
                 </div>
               )}
 
-              {activeTab !== 'organizations' && activeTab !== 'imprestheads' && activeTab !== 'grades' && activeTab !== 'designations' && activeTab !== 'impresttypes' && (
+              {activeTab !== 'organizations' && activeTab !== 'imprestheads' && activeTab !== 'grades' && activeTab !== 'designations' && (
                 <div style={{ marginBottom: '1.25rem' }}>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
                     Organization(s)

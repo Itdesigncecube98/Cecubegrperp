@@ -45,7 +45,9 @@ function mapSiteTasks(groups, parentNames = []) {
         percentComplete: plannedQty > 0 ? Math.min(100, Math.round((completedQty / plannedQty) * 100)) : 0,
         targetDate: task.requiredDate || '',
         actualDate: task.completedDate || '',
-        verificationStatus: task.status === 'Completed' || task.status === 'Closed' ? 'Quality Approved' : task.status === 'Started' ? 'Site Incharge Signed' : 'Pending Verification',
+        // Work completion has its own verification state. Keep it when quantity
+        // logs or status changes are saved; derive a legacy default only for old tasks.
+        verificationStatus: task.verificationStatus || (task.status === 'Completed' || task.status === 'Closed' ? 'Quality Approved' : task.status === 'Started' ? 'Site Incharge Signed' : 'Pending Verification'),
         mbRef: task.mbRef || '',
         siteRemarks: task.description || '',
         logs: Array.isArray(task.logs) ? task.logs : [],

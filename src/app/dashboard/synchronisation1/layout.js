@@ -17,11 +17,8 @@ export default function SynchronisationLayout({ children }) {
     { name: 'Designations', path: '/dashboard/synchronisation1/org-sync?tab=designations' },
     { name: 'Grades', path: '/dashboard/synchronisation1/org-sync?tab=grades' },
     { name: 'Imprest Heads', path: '/dashboard/synchronisation1/org-sync?tab=imprestheads' },
-    { name: 'Imprest Types', path: '/dashboard/synchronisation1/org-sync?tab=impresttypes' },
     { name: 'Imprest Workflow', path: '/dashboard/synchronisation1/org-sync?tab=imprestworkflow' },
-    { name: 'Bonus/Incentive Setup', path: '/dashboard/synchronisation1/bonus-incentive-setup' },
-    { name: 'Gratuity Setup', path: '/dashboard/synchronisation1/gratuity-setup' },
-    { name: 'Leaving Reasons', path: '/dashboard/synchronisation1/leaving-reasons' },
+    { name: 'Leaving Reasons', path: '/dashboard/synchronisation2/leaving-reasons' },
     { name: 'Doc Workflow Config', path: '/dashboard/synchronisation1/doc-workflow' },
     { name: 'HR Docs Placeholders', path: '/dashboard/synchronisation1/hrdocs-placeholders' },
   ];
