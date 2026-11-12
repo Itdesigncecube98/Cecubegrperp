@@ -68,7 +68,7 @@ export function getEarnedLeaveAccrual(
   return { monthsSinceJoining, accruedLeaves };
 }
 
-export function getCasualLeaveAccrual(joinedDate, asOnMonth, leavesPerYear = 12) {
+export function getCasualLeaveAccrual(joinedDate, asOnMonth, leavesPerMonth = 1) {
   const joinDate = parseDateOnly(joinedDate);
   const cutoff = monthEnd(asOnMonth);
   if (!joinDate || !cutoff || joinDate > cutoff) return { monthsSinceJoining: 0, accruedLeaves: 0 };
@@ -79,8 +79,10 @@ export function getCasualLeaveAccrual(joinedDate, asOnMonth, leavesPerYear = 12)
       + cutoff.getUTCMonth() - joinDate.getUTCMonth()
   );
   let accruedLeaves = 0;
-  for (let creditDate = joinDate; creditDate <= cutoff; creditDate = addMonthsClamped(creditDate, 12)) {
-    accruedLeaves += leavesPerYear;
+  for (let serviceMonth = 1; ; serviceMonth += 1) {
+    const creditDate = addMonthsClamped(joinDate, serviceMonth);
+    if (creditDate > cutoff) break;
+    accruedLeaves += leavesPerMonth;
   }
   return {
     monthsSinceJoining,

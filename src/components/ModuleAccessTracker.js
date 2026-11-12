@@ -63,7 +63,15 @@ export default function ModuleAccessTracker() {
         }
         const endpoint = url.pathname.toLowerCase();
         const requestedAction = String(payload.action || '').toUpperCase();
+        if ((endpoint === '/api/admin/tools' && requestedAction === 'SEED') ||
+            /^\/api\/(?:admin\/)?auth\/(?:login|logout)$/.test(endpoint)) return;
         const apiParts = endpoint.split('/').filter(Boolean);
+        const isExistingAdminRecordUpdate = method === 'POST' && (
+          endpoint === '/api/admin/employee-tools' ||
+          endpoint === '/api/admin/data-rights' ||
+          endpoint === '/api/admin/system-settings' ||
+          endpoint.startsWith('/api/admin/module/')
+        );
         const moduleApiRoots = new Set(['admin', 'marketing', 'purchase', 'site', 'engineering', 'contracting', 'accounts', 'tender', 'hrms', 'auth']);
         const entityName = apiParts[moduleApiRoots.has(apiParts[1]) ? 2 : 1] || apiParts.at(-1) || 'record';
         let action;
@@ -75,6 +83,7 @@ export default function ModuleAccessTracker() {
         else if (requestedAction.includes('DELETE')) action = 'DELETE';
         else if (requestedAction.includes('UPDATE') || requestedAction.includes('EDIT') || requestedAction.includes('SAVE')) action = 'UPDATE';
         else if (requestedAction.includes('CREATE') || requestedAction.includes('ADD')) action = 'CREATE';
+        else if (method === 'PUT' || method === 'PATCH' || isExistingAdminRecordUpdate) action = 'UPDATE';
         else if (method === 'POST') action = 'CREATE';
         else if (method === 'DELETE') action = 'DELETE';
         else action = 'UPDATE';

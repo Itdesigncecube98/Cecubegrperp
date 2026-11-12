@@ -1,26 +1,9 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import {
-  ClipboardList, Key, TrendingUp, Activity, UserCheck, ArrowRight, Zap,
+  ClipboardList, Key, Activity, UserCheck, ArrowRight, Zap,
 } from 'lucide-react';
 import Link from 'next/link';
-
-const MODULES = [
-  { label: 'HR',              color: '#6366f1', bg: '#eef2ff', key: 'HR' },
-  { label: 'Engineering',     color: '#0ea5e9', bg: '#e0f2fe', key: 'Engineering' },
-  { label: 'Purchase',        color: '#f59e0b', bg: '#fffbeb', key: 'Purchase' },
-  { label: 'Store',           color: '#10b981', bg: '#ecfdf5', key: 'Store' },
-  { label: 'Planning',        color: '#8b5cf6', bg: '#f5f3ff', key: 'Planning' },
-  { label: 'Site',            color: '#ef4444', bg: '#fef2f2', key: 'Site' },
-  { label: 'Contracting',     color: '#0891b2', bg: '#ecfeff', key: 'Contracting' },
-  { label: 'Accounts',        color: '#14b8a6', bg: '#f0fdfa', key: 'Accounts' },
-  { label: 'Marketing',       color: '#f97316', bg: '#fff7ed', key: 'Marketing' },
-  { label: 'Tender',          color: '#06b6d4', bg: '#ecfeff', key: 'Tender' },
-  { label: 'Quality',         color: '#22c55e', bg: '#f0fdf4', key: 'Quality' },
-  { label: 'Safety',          color: '#dc2626', bg: '#fef2f2', key: 'Safety' },
-  { label: 'Project Billing', color: '#7c3aed', bg: '#faf5ff', key: 'Project Billing' },
-  { label: 'Subcontractor',   color: '#0891b2', bg: '#ecfeff', key: 'Subcontractor' },
-];
 
 function StatCard({ icon: Icon, label, value, color, bg, sub }) {
   return (
@@ -75,7 +58,7 @@ export default function AdminOverviewPage() {
           Admin Overview
         </h1>
         <p style={{ color: '#64748b', fontSize: 14, margin: 0 }}>
-          Manage employee project access and review system activity.
+          Manage project and employee-wide permissions, and review system activity.
         </p>
       </div>
 
@@ -138,26 +121,6 @@ export default function AdminOverviewPage() {
         </div>
       </div>
 
-      {/* Module Grid */}
-      <div style={{ background: '#fff', borderRadius: 14, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <TrendingUp size={18} color="#10b981" /> ERP Modules
-        </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
-          {MODULES.map(mod => (
-            <Link key={mod.key} href={`/admin-dashboard/module/${mod.key.toLowerCase().replace(/\s+/g, '-')}`}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', borderRadius: 12, border: `1px solid ${mod.bg === '#fff' ? '#e2e8f0' : mod.color + '30'}`, background: mod.bg, textDecoration: 'none', gap: 8, cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${mod.color}20`; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: mod.color, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 4px 12px ${mod.color}40` }}>
-                <UserCheck size={18} color="#fff" />
-              </div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: mod.color, textAlign: 'center', lineHeight: 1.3 }}>{mod.label}</span>
-              <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500 }}>Manage Access</span>
-            </Link>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

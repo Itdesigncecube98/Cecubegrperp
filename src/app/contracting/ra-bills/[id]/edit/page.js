@@ -8,7 +8,7 @@ import { getClientActor } from '@/lib/clientActor';
 const num = v => { const n = parseFloat(v); return Number.isNaN(n) ? 0 : n; };
 const inr = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const box = { border: '1px solid #cbd5e1', borderRadius: 4, padding: '6px 8px', width: '100%', boxSizing: 'border-box' };
+const box = { border: '1px solid #cbd5e1', borderRadius: 6, padding: '10px 11px', width: '100%', boxSizing: 'border-box', fontSize: 14 };
 const label = { display: 'block', fontSize: 12, color: '#475569', marginBottom: 4 };
 
 export default function EditRABillPage() {
@@ -146,19 +146,19 @@ export default function EditRABillPage() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
                         <thead>
                             <tr style={{ background: '#f1f5f9' }}>
-                                <th style={{ textAlign: 'left', padding: 6, border: '1px solid #cbd5e1' }}>Description</th>
-                                <th style={{ padding: 6, border: '1px solid #cbd5e1', width: 110 }}>Qty</th>
-                                <th style={{ padding: 6, border: '1px solid #cbd5e1', width: 110 }}>Rate</th>
-                                <th style={{ padding: 6, border: '1px solid #cbd5e1', width: 130 }}>Amount</th>
+                                <th style={{ textAlign: 'left', padding: '10px 8px', border: '1px solid #cbd5e1' }}>Description</th>
+                                <th style={{ padding: '10px 8px', border: '1px solid #cbd5e1', width: 110 }}>Qty</th>
+                                <th style={{ padding: '10px 8px', border: '1px solid #cbd5e1', width: 110 }}>Rate</th>
+                                <th style={{ padding: '10px 8px', border: '1px solid #cbd5e1', width: 130 }}>Amount</th>
                             </tr>
                         </thead>
                         <tbody>
                             {lines.map((l, i) => (
                                 <tr key={i}>
-                                    <td style={{ border: '1px solid #cbd5e1', padding: 4 }}><input style={box} value={l.description} onChange={e => setLine(i, 'description', e.target.value)} /></td>
-                                    <td style={{ border: '1px solid #cbd5e1', padding: 4 }}><input type="number" style={box} value={l.qty} onChange={e => setLine(i, 'qty', e.target.value)} /></td>
-                                    <td style={{ border: '1px solid #cbd5e1', padding: 4 }}><input type="number" style={box} value={l.rate} onChange={e => setLine(i, 'rate', e.target.value)} /></td>
-                                    <td style={{ border: '1px solid #cbd5e1', padding: 6, textAlign: 'right' }}>{inr(num(l.qty) * num(l.rate))}</td>
+                                    <td style={{ border: '1px solid #cbd5e1', padding: 8 }}><textarea rows={3} style={{ ...box, minHeight: 82, resize: 'vertical', lineHeight: 1.45 }} value={l.description} onChange={e => setLine(i, 'description', e.target.value)} /></td>
+                                    <td style={{ border: '1px solid #cbd5e1', padding: 8 }}><input type="number" style={box} value={l.qty} onChange={e => setLine(i, 'qty', e.target.value)} /></td>
+                                    <td style={{ border: '1px solid #cbd5e1', padding: 8 }}><input type="number" style={box} value={l.rate} onChange={e => setLine(i, 'rate', e.target.value)} /></td>
+                                    <td style={{ border: '1px solid #cbd5e1', padding: 8, textAlign: 'right' }}>{inr(num(l.qty) * num(l.rate))}</td>
                                 </tr>
                             ))}
                         </tbody>

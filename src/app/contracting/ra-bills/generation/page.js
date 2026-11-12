@@ -226,23 +226,23 @@ const s = {
 
   taskHeader: {
     display: 'grid',
-    gridTemplateColumns: '5fr 2fr 2fr 2fr auto',
-    gap: '8px',
-    marginBottom: '4px',
+    gridTemplateColumns: 'minmax(0, 5fr) repeat(3, minmax(75px, 2fr)) auto',
+    gap: '12px',
+    marginBottom: '8px',
   },
-  taskHeaderCell: { fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' },
+  taskHeaderCell: { fontSize: '12px', fontWeight: 650, color: '#64748b', textTransform: 'uppercase' },
   taskRow: {
     display: 'grid',
-    gridTemplateColumns: '5fr 2fr 2fr 2fr auto',
-    gap: '8px',
-    marginBottom: '8px',
-    alignItems: 'center',
+    gridTemplateColumns: 'minmax(0, 5fr) repeat(3, minmax(75px, 2fr)) auto',
+    gap: '12px',
+    marginBottom: '12px',
+    alignItems: 'start',
   },
   taskInput: {
     border: '1px solid #cbd5e1',
-    borderRadius: '6px',
-    padding: '6px 8px',
-    fontSize: '12px',
+    borderRadius: '8px',
+    padding: '10px 11px',
+    fontSize: '14px',
     boxSizing: 'border-box',
     width: '100%',
   },
@@ -1054,8 +1054,9 @@ export default function RABillsPage() {
 
                 {form.taskLines.map((line, i) => (
                   <div key={i} style={s.taskRow}>
-                    <input
-                      style={s.taskInput}
+                    <textarea
+                      rows={3}
+                      style={{ ...s.taskInput, minHeight: 82, resize: 'vertical', lineHeight: 1.45 }}
                       placeholder="Description"
                       value={line.description}
                       onChange={e => updateTaskLine(i, 'description', e.target.value)}

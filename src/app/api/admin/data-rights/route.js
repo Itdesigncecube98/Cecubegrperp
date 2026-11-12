@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { readAuthSession } from '@/lib/authSession';
 // ─── GET /api/admin/data-rights?userId=&roleId=&module= ──────────────────────
 export async function GET(request) {
   try {
+    if (readAuthSession(request)?.type !== 'admin') return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
     const roleId = searchParams.get('roleId');
@@ -13,10 +15,10 @@ export async function GET(request) {
     if (roleId) where.roleId = roleId;
     if (module) where.module = module;
 
-    const scopes = await prisma.dataScopeAccess.findMany({
-      where,
-      orderBy: [{ scopeType: 'asc' }, { createdAt: 'desc' }],
-    });
+    const [scopes, users] = await Promise.all([
+      prisma.dataScopeAccess.findMany({ where, orderBy: [{ scopeType: 'asc' }, { createdAt: 'desc' }] }),
+      prisma.systemUser.findMany({ where: { status: { not: 'Deleted' } }, select: { id: true, username: true, displayName: true }, orderBy: { displayName: 'asc' } }),
+    ]);
 
     // Group by scopeType
     const grouped = {};
@@ -25,7 +27,7 @@ export async function GET(request) {
       grouped[s.scopeType].push(s);
     });
 
-    return NextResponse.json({ data: scopes, grouped });
+    return NextResponse.json({ data: scopes, grouped, users });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

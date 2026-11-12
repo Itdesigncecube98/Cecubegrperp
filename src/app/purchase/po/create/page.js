@@ -365,8 +365,10 @@ function CreatePOContent() {
         .doc-table { width: 100%; border-collapse: collapse; }
         .doc-table th, .doc-table td { border: 1px solid #000; padding: 6px 6px; vertical-align: middle; }
         .doc-table th { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #1e3a8a; text-align: center; white-space: nowrap; }
-        .items-table td { vertical-align: middle; }
+        .items-table td { vertical-align: middle; padding: 10px 8px; }
         .items-table td:nth-child(2) { vertical-align: top; }
+        .items-table td:nth-child(2) textarea { display: block; min-height: 76px !important; padding: 8px !important; font-size: 13px !important; line-height: 1.45; border-radius: 5px; }
+        .items-table td:nth-child(2) textarea[name="specification"] { min-height: 58px !important; margin-top: 7px; color: #475569; font-size: 12px !important; }
         .items-table td:nth-child(3), .items-table td:nth-child(4), .items-table td:nth-child(5), .items-table td:nth-child(6), .items-table td:nth-child(7), .items-table td:nth-child(8), .items-table td:nth-child(9) { white-space: nowrap; text-align: center; }
         .items-table td:nth-child(6), .items-table td:nth-child(7), .items-table td:nth-child(9) { text-align: right; }
         .print-value { display: none; }
@@ -542,8 +544,8 @@ function CreatePOContent() {
                   <tr key={idx}>
                     <td style={{ textAlign: 'center' }}>{idx + 1}</td>
                     <td>
-                      <textarea name="item" value={item.item} onChange={e => handleItemChange(idx, e)} className="doc-input" placeholder="Item Name..." style={{ fontWeight: 'bold', minHeight: '28px', resize: 'vertical' }} required />
-                      <textarea name="specification" value={item.specification} onChange={e => handleItemChange(idx, e)} className="doc-input" placeholder="Specifications..." style={{ fontSize: '10px', minHeight: '24px', resize: 'vertical' }} />
+                      <textarea name="item" value={item.item} onChange={e => handleItemChange(idx, e)} className="doc-input" placeholder="Item name and description..." style={{ fontWeight: 'bold', resize: 'vertical' }} required />
+                      <textarea name="specification" value={item.specification} onChange={e => handleItemChange(idx, e)} className="doc-input" placeholder="Specifications, dimensions, or notes..." style={{ resize: 'vertical' }} />
                       <span className="print-value">{item.item}{item.specification ? `\n${item.specification}` : ''}</span>
                     </td>
                     <td><input type="text" name="hsnCode" value={item.hsnCode || generateHsnSacCode(item.item, idx)} readOnly className="doc-input" style={{ textAlign: 'center' }} /><span className="print-value" style={{ textAlign: 'center' }}>{item.hsnCode || generateHsnSacCode(item.item, idx)}</span></td>

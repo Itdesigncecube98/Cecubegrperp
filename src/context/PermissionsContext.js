@@ -1,12 +1,13 @@
 'use client';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Shield, ChevronDown, Check, X, User } from 'lucide-react';
-import { LEGACY_PERMISSION_ALIASES } from '../lib/employeeToolCatalog';
+import { EMPLOYEE_WIDE_PROJECT_ID, LEGACY_PERMISSION_ALIASES } from '../lib/employeeToolCatalog';
 
 const PermissionsContext = createContext({
   activeEmployee: null,
   activeProject: null,
   grantedTools: [],
+  employeeWideGrantedTools: [],
   hasRight: () => false,
   setActiveEmployee: () => {},
   setActiveProject: () => {}
@@ -21,6 +22,7 @@ export function PermissionsProvider({ children }) {
   const [activeProject, setActiveProject] = useState(null);
   const [grantedTools, setGrantedTools] = useState([]);
   const [projectGrantedTools, setProjectGrantedTools] = useState({});
+  const [employeeWideGrantedTools, setEmployeeWideGrantedTools] = useState([]);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [isAdminSession, setIsAdminSession] = useState(false);
   
@@ -92,14 +94,18 @@ export function PermissionsProvider({ children }) {
             if (!grant.projectId || !grant.code) continue;
             (byProject[grant.projectId] ||= []).push(grant.code);
           }
+          const employeeWide = byProject[EMPLOYEE_WIDE_PROJECT_ID] || [];
+          delete byProject[EMPLOYEE_WIDE_PROJECT_ID];
           setProjectGrantedTools(byProject);
-          setGrantedTools([...new Set(Object.values(byProject).flat())]);
+          setEmployeeWideGrantedTools(employeeWide);
+          setGrantedTools([...new Set([...employeeWide, ...Object.values(byProject).flat()])]);
         })
         .catch(error => { if (!cancelled) console.error(error); })
         .finally(() => { if (!cancelled) setPermissionsLoaded(true); });
     } else {
       setGrantedTools([]);
       setProjectGrantedTools({});
+      setEmployeeWideGrantedTools([]);
       setPermissionsLoaded(false);
     }
     return () => { cancelled = true; };
@@ -120,15 +126,15 @@ export function PermissionsProvider({ children }) {
   const hasRight = (toolCode, projectId = null) => {
     if (!activeEmployee) return false;
     const codes = projectId
-      ? (projectGrantedTools[projectId] || [])
-      : (isAdminSession && activeProject?.id ? projectGrantedTools[activeProject.id] || [] : grantedTools);
+      ? [...employeeWideGrantedTools, ...(projectGrantedTools[projectId] || [])]
+      : (isAdminSession && activeProject?.id ? [...employeeWideGrantedTools, ...(projectGrantedTools[activeProject.id] || [])] : grantedTools);
     if (Array.isArray(toolCode)) return toolCode.some(code => hasRight(code, projectId));
     const aliases = LEGACY_PERMISSION_ALIASES[toolCode];
     return aliases ? aliases.some(code => codes.includes(code)) : codes.includes(toolCode);
   };
 
   return (
-    <PermissionsContext.Provider value={{ activeEmployee, activeProject, grantedTools, projectGrantedTools, permissionsLoaded, hasRight, openProjectSelector, setActiveEmployee: handleSetEmp, setActiveProject: handleSetProj }}>
+    <PermissionsContext.Provider value={{ activeEmployee, activeProject, grantedTools, projectGrantedTools, employeeWideGrantedTools, permissionsLoaded, hasRight, openProjectSelector, setActiveEmployee: handleSetEmp, setActiveProject: handleSetProj }}>
       {children}
 
       {/* Floating Active Context Widget */}

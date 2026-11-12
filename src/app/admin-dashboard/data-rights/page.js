@@ -18,14 +18,13 @@ export default function DataRightsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [rightsRes, usersRes, rolesRes] = await Promise.all([
+      const [rightsRes, rolesRes] = await Promise.all([
         fetch('/api/admin/data-rights').then(r => r.json()).catch(() => ({ data: [], grouped: {} })),
-        fetch('/api/admin/users').then(r => r.json()).catch(() => ({ data: [] })),
         fetch('/api/admin/roles').then(r => r.json()).catch(() => ({ data: [] })),
       ]);
       setData(rightsRes.data || []);
       setGrouped(rightsRes.grouped || {});
-      setUsers(usersRes.data || []);
+      setUsers(rightsRes.users || []);
       setRoles(rolesRes.data || []);
     } catch (e) { console.error(e); }
     setLoading(false);

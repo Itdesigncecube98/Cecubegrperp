@@ -1,10 +1,12 @@
+import { EMPLOYEE_WIDE_PROJECT_ID, EMPLOYEE_WIDE_TOOL_MODULES } from '@/lib/employeeToolCatalog';
+
 export async function getEmployeeGrantedProjectIds(prisma, employeeId) {
   const grants = await prisma.employeeProjectToolAccess.findMany({
     where: { employeeId: String(employeeId), granted: true },
     select: { projectId: true },
     distinct: ['projectId'],
   });
-  return grants.map(grant => grant.projectId);
+  return grants.map(grant => grant.projectId).filter(projectId => projectId !== EMPLOYEE_WIDE_PROJECT_ID);
 }
 
 // Access grants normally reference `Project.id` (the project selector does too),
@@ -49,12 +51,15 @@ export async function employeeHasProjectTool(prisma, employeeId, projectId, tool
 
 export async function employeeHasProjectModuleTool(prisma, employeeId, projectId, module, toolName) {
   if (!employeeId || !projectId) return false;
+  const employeeWide = (EMPLOYEE_WIDE_TOOL_MODULES[module] || []).includes(toolName);
   const grant = await prisma.employeeProjectToolAccess.findFirst({
     where: {
       employeeId: String(employeeId),
-      projectId: String(projectId),
       granted: true,
       tool: { is: { module, name: toolName } },
+      ...(employeeWide
+        ? { OR: [{ projectId: String(projectId) }, { projectId: EMPLOYEE_WIDE_PROJECT_ID }] }
+        : { projectId: String(projectId) }),
     },
     select: { id: true },
   });

@@ -3,6 +3,49 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { readAuthSession } from '../../../../lib/authSession';
 import { writeSessionAudit } from '../../../../lib/serverAudit';
+
+function readJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function getOwnerIds(logs) {
+  const ids = new Set();
+  for (const log of logs) {
+    if (log.employeeId) ids.add(String(log.employeeId));
+    for (const values of [readJsonObject(log.oldValues), readJsonObject(log.newValues)]) {
+      if (!values) continue;
+      for (const [key, value] of Object.entries(values)) {
+        if (['ownerid', 'employeeid'].includes(key.toLowerCase()) && typeof value === 'string' && value.trim()) ids.add(value.trim());
+      }
+    }
+  }
+  return [...ids];
+}
+
+function replaceOwnerIdsWithEmployeeCodes(log, employeeCodes) {
+  const next = { ...log };
+  for (const field of ['oldValues', 'newValues']) {
+    const values = readJsonObject(next[field]);
+    if (!values) continue;
+    let changed = false;
+    for (const [key, value] of Object.entries(values)) {
+      if (!['ownerid', 'employeeid'].includes(key.toLowerCase()) || typeof value !== 'string') continue;
+      const employeeCode = employeeCodes.get(value.trim());
+      if (employeeCode) {
+        values[key] = employeeCode;
+        changed = true;
+      }
+    }
+    if (changed) next[field] = JSON.stringify(values);
+  }
+  return next;
+}
+
 // ─── GET /api/admin/audit-log ─────────────────────────────────────────────────
 // Query: userId, module, subModule, action, entityType, entityId,
 //        status, dateFrom, dateTo, page, limit
@@ -16,6 +59,7 @@ export async function GET(request) {
     const module     = searchParams.get('module');
     const subModule  = searchParams.get('subModule');
     const action     = searchParams.get('action');
+    const actions    = (searchParams.get('actions') || '').split(',').map(value => value.trim()).filter(Boolean);
     const entityType = searchParams.get('entityType');
     const entityId   = searchParams.get('entityId');
     const status     = searchParams.get('status');
@@ -34,7 +78,7 @@ export async function GET(request) {
       ...(userId     && { userId }),
       ...(module     && { module }),
       ...(subModule  && { subModule }),
-      ...(action     && { action }),
+      ...(actions.length ? { action: { in: actions } } : action && { action }),
       ...(entityType && { entityType }),
       ...(entityId   && { entityId }),
       ...(status     && { status }),
@@ -63,7 +107,20 @@ export async function GET(request) {
       }),
     ]);
 
-    return NextResponse.json({ data: logs, total, page, limit });
+    const ownerIds = getOwnerIds(logs);
+    const employees = ownerIds.length
+      ? await prisma.employee.findMany({
+          where: { id: { in: ownerIds } },
+          select: { id: true, empId: true },
+        })
+      : [];
+    const employeeCodes = new Map(employees.filter(employee => employee.empId).map(employee => [employee.id, employee.empId]));
+
+    const data = logs.map(log => ({
+      ...replaceOwnerIdsWithEmployeeCodes(log, employeeCodes),
+      actorEmployeeCode: log.employeeId ? employeeCodes.get(String(log.employeeId)) || null : null,
+    }));
+    return NextResponse.json({ data, total, page, limit });
   } catch (err) {
     console.error('[GET /api/admin/audit-log]', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -104,6 +161,21 @@ export async function POST(request) {
     const detailFields = body.details && typeof body.details === 'object'
       ? Object.fromEntries(Object.entries(body.details).slice(0, 18))
       : {};
+    const employeeIdKeys = Object.keys(detailFields).filter(key => ['ownerid', 'employeeid'].includes(key.toLowerCase()));
+    const internalEmployeeIds = employeeIdKeys
+      .map(key => detailFields[key])
+      .filter(value => typeof value === 'string' && value.trim());
+    if (internalEmployeeIds.length) {
+      const employees = await prisma.employee.findMany({
+        where: { id: { in: internalEmployeeIds } },
+        select: { id: true, empId: true },
+      }).catch(() => []);
+      const employeeCodes = new Map(employees.filter(employee => employee.empId).map(employee => [employee.id, employee.empId]));
+      for (const key of employeeIdKeys) {
+        const employeeCode = employeeCodes.get(detailFields[key]);
+        if (employeeCode) detailFields[key] = employeeCode;
+      }
+    }
     const newValues = JSON.stringify({ apiPath, ...detailFields });
     const log = await writeSessionAudit(prisma, request, session, {
       module: inferredModule,

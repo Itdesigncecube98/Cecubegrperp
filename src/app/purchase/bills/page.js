@@ -581,8 +581,9 @@ export default function PurchaseBillsPage() {
             .inv-doc-input:focus { border-color: #3b82f6; background: #fff; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
 
             .inv-table { width: 100%; max-width: 100%; table-layout: fixed; border-collapse: collapse; box-sizing: border-box; }
-            .inv-table th, .inv-table td { border: 1px solid #000; padding: 4px; vertical-align: top; box-sizing: border-box; overflow-wrap: anywhere; }
+            .inv-table th, .inv-table td { border: 1px solid #000; padding: 8px 6px; vertical-align: top; box-sizing: border-box; overflow-wrap: anywhere; }
             .inv-table th { font-weight: bold; text-align: center; font-size: 11px; }
+            .invoice-item-description { padding: 12px 9px !important; font-size: 12px; line-height: 1.5; }
             .invoice-footer { display: grid; grid-template-columns: 60% 40%; min-height: 140px; border: 1px solid #000; border-top: 0; box-sizing: border-box; font-size: 10px; }
             .invoice-footer-left, .invoice-footer-right { min-width: 0; box-sizing: border-box; padding: 6px; }
             .invoice-footer-left { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; }
@@ -744,7 +745,7 @@ export default function PurchaseBillsPage() {
                 {(showBillForm.items || []).map((item, idx) => (
                   <tr key={idx}>
                     <td style={{ textAlign: 'center', borderBottom: 'none', borderTop: 'none' }}>{idx + 1}</td>
-                    <td style={{ borderBottom: 'none', borderTop: 'none', fontWeight: 'bold' }}>{item.description}</td>
+                    <td className="invoice-item-description" style={{ borderBottom: 'none', borderTop: 'none', fontWeight: 'bold' }}>{item.description}</td>
                     <td style={{ textAlign: 'center', borderBottom: 'none', borderTop: 'none' }}>{item.hsnCode || '—'}</td>
                     <td style={{ textAlign: 'right', borderBottom: 'none', borderTop: 'none' }}>{fmt(item.quantity)} {item.unit}</td>
                     <td style={{ textAlign: 'right', borderBottom: 'none', borderTop: 'none' }}>{item.rate?.toFixed(2)}</td>

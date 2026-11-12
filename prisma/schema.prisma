@@ -1259,14 +1259,6 @@ model Requisition {
   project   Project? @relation(fields: [projectId], references: [id])
 }
 
-model IssuingAuthority {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  status    String   @default("Active")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 model Skill {
   id          Int      @id @default(autoincrement())
   name        String   @unique
@@ -1334,14 +1326,6 @@ model BankName {
   status    String   @default("Active")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-model Religion {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 }
 
 model WeekoffType {

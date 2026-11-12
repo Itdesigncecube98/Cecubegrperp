@@ -10,10 +10,10 @@ import {
 } from '../earnedLeaveAccrual';
 
 describe('getCasualLeaveAccrual', () => {
-  test('credits 12 CL on joining and each joining-date anniversary', () => {
+  test('credits 1 CL for each completed service month and carries the balance forward', () => {
     expect(getCasualLeaveAccrual('2025-04-15', '2026-10')).toMatchObject({
       monthsSinceJoining: 18,
-      accruedLeaves: 24,
+      accruedLeaves: 18,
     });
   });
 
@@ -101,10 +101,10 @@ describe('getEarnedLeaveAccrual', () => {
         { date: '2026-09-02', status: 'EL' },
       ],
     })).toMatchObject({
-      accruedLeaves: 24,
+      accruedLeaves: 18,
       leavesTaken: 1,
       leavesEncashed: 2,
-      availableLeaves: 21,
+      availableLeaves: 15,
     });
   });
 

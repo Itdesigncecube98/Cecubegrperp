@@ -122,7 +122,6 @@ export default function EmployeeProfilePage({ initialId }) {
   const [grades, setGrades] = useState([]);
   const [designations, setDesignations] = useState([]);
   const [showAddSalaryModal, setShowAddSalaryModal] = useState(false);
-  const [religions, setReligions] = useState([]);
   const [availableShifts, setAvailableShifts] = useState([]);
   const [salaryRevisions, setSalaryRevisions] = useState([]);
   const [activeRevisionIndex, setActiveRevisionIndex] = useState(0);
@@ -153,15 +152,14 @@ export default function EmployeeProfilePage({ initialId }) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [supRes, deptRes, branchRes, siteRes, orgRes, gradeRes, desigRes, relRes] = await Promise.all([
+      const [supRes, deptRes, branchRes, siteRes, orgRes, gradeRes, desigRes] = await Promise.all([
         fetch('/api/employees'),
         fetch('/api/synchronization?type=departments'),
         fetch('/api/synchronization?type=branches'),
         fetch('/api/synchronization?type=siteoffices'),
         fetch('/api/synchronization?type=organizations'),
         fetch('/api/synchronization?type=grades'),
-        fetch('/api/synchronization?type=designations'),
-        fetch('/api/synchronisation2/religion')
+        fetch('/api/synchronization?type=designations')
       ]);
       
       const sups = await supRes.json();
@@ -186,9 +184,6 @@ export default function EmployeeProfilePage({ initialId }) {
       
       const desigs = await desigRes.json();
       setDesignations(Array.isArray(desigs) ? desigs : []);
-
-      const rels = await relRes.json();
-      setReligions(Array.isArray(rels) ? rels : []);
 
       // Fetch Master Salary Data
       const [headsRes, headTypesRes, leavingReasonsRes, relationshipsRes, docTypesRes, shiftsRes, weekoffTypesRes] = await Promise.all([

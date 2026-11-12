@@ -796,11 +796,11 @@ export default function RaiseWorkOrder() {
             <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #334155', borderTop: 'none', fontSize: '0.8rem' }}>
               <colgroup>
                 <col style={{ width: '5%' }} />
-                <col style={{ width: '31%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '14%' }} />
+                <col style={{ width: '36%' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '13%' }} />
                 <col style={{ width: '8%' }} />
                 <col style={{ width: '14%' }} />
               </colgroup>
@@ -818,11 +818,11 @@ export default function RaiseWorkOrder() {
                   return (
                     <tr key={item.id}>
                       <td style={{ border: '1px solid #334155', padding: '8px 5px', textAlign: 'center', overflowWrap: 'anywhere' }}>{idx + 1}</td>
-                      <td style={{ border: '1px solid #334155', padding: '8px 5px', minWidth: 0, overflowWrap: 'anywhere' }}>
+                      <td style={{ border: '1px solid #334155', padding: '12px 8px', minWidth: 0, overflowWrap: 'anywhere' }}>
                         <textarea 
-                          rows={2}
+                          rows={3}
                           className="screen-editable"
-                          style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', overflowWrap: 'anywhere', resize: 'vertical', font: 'inherit', color: 'inherit' }} 
+                          style={{ width: '100%', minWidth: 0, minHeight: 76, boxSizing: 'border-box', border: '1px solid #dbe1ea', borderRadius: 6, outline: 'none', background: '#fff', overflowWrap: 'anywhere', resize: 'vertical', font: 'inherit', fontSize: 13, lineHeight: 1.45, color: 'inherit', padding: '8px 9px' }}
                           value={item.description} 
                           onChange={(e) => {
                             const newItems = [...items];

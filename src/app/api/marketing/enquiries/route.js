@@ -14,9 +14,12 @@ export async function GET(request) {
         where: { employeeId: String(session.id), granted: true, tool: { is: { module: 'Marketing', name: 'Project Enquiry View' } } },
         select: { projectId: true }, distinct: ['projectId'],
       });
-      const grantedIds = grants.map(grant => grant.projectId);
+      const employeeWideAccess = grants.some(grant => grant.projectId === '__EMPLOYEE_WIDE__');
+      const grantedIds = grants.map(grant => grant.projectId).filter(projectId => projectId !== '__EMPLOYEE_WIDE__');
       const projects = await prisma.project.findMany({ where: { id: { in: grantedIds } }, select: { id: true, name: true } });
-      where = { OR: [{ projectId: { in: projects.map(project => project.id) } }, { projectId: null, projectName: { in: projects.map(project => project.name) } }] };
+      if (!employeeWideAccess) {
+        where = { OR: [{ projectId: { in: projects.map(project => project.id) } }, { projectId: null, projectName: { in: projects.map(project => project.name) } }] };
+      }
     }
     const rows = await prisma.marketingLead.findMany({ where, include: { leadOwner: { select: { id: true, name: true } }, client: true, opportunities: true }, orderBy: { createdAt: 'desc' } });
     const projectIds = [...new Set(rows.filter(row => !row.projectId).map(row => row.projectName).filter(Boolean))];

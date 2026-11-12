@@ -23,8 +23,8 @@ export function getClientIp(request) {
   const candidates = [
     request.headers.get('cf-connecting-ip'),
     ...(request.headers.get('x-vercel-forwarded-for') || '').split(','),
-    request.headers.get('x-real-ip'),
     ...(request.headers.get('x-forwarded-for') || '').split(','),
+    request.headers.get('x-real-ip'),
   ];
   return candidates.map(normalizeIp).find(ip => ip && !isLoopbackIp(ip)) || 'unknown';
 }

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { getPunchRequests, updatePunchRequestStatus, getImprestApprovals, updateImprestRequest } from '../../../lib/data';
 import { Check, X, Clock, ArrowLeft, CalendarCheck, Map as MapIcon, RefreshCw, IndianRupee, FileText } from 'lucide-react';
 import { useAutoRefresh, formatRefreshTime } from '../../../lib/useAutoRefresh';
+import { getLeaveAttachmentLink } from '../../../lib/leaveAttachmentLink';
 import DocApprovalsPanel from '../../../components/DocApprovalsPanel';
 import './supervisor.css';
 
@@ -355,15 +356,16 @@ export default function SupervisorDashboard() {
                 <th style={{ padding: '1rem' }}>Leave Type</th>
                 <th style={{ padding: '1rem' }}>Duration</th>
                 <th style={{ padding: '1rem' }}>Reason</th>
+                <th style={{ padding: '1rem' }}>Supporting Document</th>
                 <th style={{ padding: '1rem' }}>Applied On</th>
                 <th style={{ padding: '1rem', textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {leaveLoading && leaveRequests.length === 0 ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>Loading...</td></tr>
               ) : leaveRequests.length === 0 ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No leave request history yet.</td></tr>
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No leave request history yet.</td></tr>
               ) : (
                 leaveRequests.map(req => (
                   <tr key={req.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
@@ -382,6 +384,14 @@ export default function SupervisorDashboard() {
                       {req.isHalfDay && <span style={{ fontSize: '0.75rem', color: '#d97706' }}>Half Day</span>}
                     </td>
                     <td style={{ padding: '1rem', color: '#4b5563', maxWidth: 200, fontSize: '0.875rem' }}>{req.reason || '-'}</td>
+                    <td style={{ padding: '1rem', fontSize: '0.875rem' }}>
+                      {(() => {
+                        const attachment = getLeaveAttachmentLink(req.attachment);
+                        return attachment
+                          ? <a href={attachment.href} target="_blank" rel="noopener noreferrer" download={attachment.download}>Open document</a>
+                          : '—';
+                      })()}
+                    </td>
                     <td style={{ padding: '1rem', color: '#6b7280', fontSize: '0.875rem' }}>{new Date(req.appliedOn).toLocaleDateString('en-IN')}</td>
                     <td style={{ padding: '1rem', textAlign: 'right' }}>
                       {req.status === 'PENDING_SUPERVISOR' ? (

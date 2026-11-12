@@ -20,9 +20,7 @@ export default function Synchronisation2Layout({ children }) {
     { name: 'LTA Setup', path: '/dashboard/synchronisation2/lta-setup' },
     { name: 'TDS Category', path: '/dashboard/synchronisation2/tds-category' },
     { name: 'PF/NSSF Setup', path: '/dashboard/synchronisation2/pf-nssf-setup' },
-    { name: 'Issuing Authority', path: '/dashboard/synchronisation2/issuing-authority' },
     { name: 'Skills', path: '/dashboard/synchronisation2/skills' },
-    { name: 'Religion', path: '/dashboard/synchronisation2/religion' },
     { name: 'Relationship', path: '/dashboard/synchronisation2/relationship' },
   ];
 

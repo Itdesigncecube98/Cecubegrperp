@@ -19,11 +19,11 @@ describe('getClientIp', () => {
     }))).toBe('198.51.100.10');
   });
 
-  test('prefers a valid real IP over a forwarded chain', () => {
+  test('uses a sanitized forwarded client IP before the proxy address', () => {
     expect(getClientIp(makeRequest({
       'x-real-ip': '198.51.100.20',
       'x-forwarded-for': '203.0.113.99',
-    }))).toBe('198.51.100.20');
+    }))).toBe('203.0.113.99');
   });
 
   test('does not report loopback as the visitor IP', () => {

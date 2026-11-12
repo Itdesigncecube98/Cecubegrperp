@@ -46,6 +46,23 @@ export const PROJECT_TOOL_MODULES = {
   ],
 };
 
+// These tools apply to the employee's entire workspace. Engineering's
+// operational/project tools remain scoped to a single project.
+export const EMPLOYEE_WIDE_TOOL_MODULES = {
+  Engineering: [
+    'Task Library Create', 'Task Library Edit', 'Task Library Delete',
+    'Material Library Create', 'Material Library Edit', 'Material Library Delete',
+    'Labour Library Create', 'Labour Library Edit', 'Labour Library Delete',
+    'Unit Master Create', 'Unit Master Edit', 'Unit Master Delete',
+    'Project Category 1 Create/Edit/Delete', 'Project Category 2 Create/Edit/Delete',
+    'Company Library Manage', 'Project Status Manage',
+  ],
+  Marketing: [...PROJECT_TOOL_MODULES.Marketing],
+  Tender: [...PROJECT_TOOL_MODULES.Tender],
+};
+
+export const EMPLOYEE_WIDE_PROJECT_ID = '__EMPLOYEE_WIDE__';
+
 export function employeeToolCode(module, name) {
   const slug = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').toUpperCase();

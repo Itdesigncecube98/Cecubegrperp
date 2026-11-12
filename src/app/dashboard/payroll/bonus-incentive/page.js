@@ -7,7 +7,6 @@ export default function BonusIncentive() {
   const [departments, setDepartments] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);
-  const [religions, setReligions] = useState([]);
   
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [selectedEmployees, setSelectedEmployees] = useState([]);

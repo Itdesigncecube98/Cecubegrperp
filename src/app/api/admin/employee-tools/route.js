@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { readAuthSession } from '@/lib/authSession';
-import { employeeToolCode, PROJECT_TOOL_MODULES } from '@/lib/employeeToolCatalog';
+import { employeeToolCode, PROJECT_TOOL_MODULES, EMPLOYEE_WIDE_TOOL_MODULES, EMPLOYEE_WIDE_PROJECT_ID } from '@/lib/employeeToolCatalog';
 
 /**
  * GET /api/admin/employee-tools?employeeId=xxx&projectId=yyy
@@ -30,7 +30,9 @@ export async function GET(req) {
       return NextResponse.json({ error: 'You can only view your own tool permissions.' }, { status: 403 });
     }
 
-    const where = module ? { module } : {};
+    const where = projectId === EMPLOYEE_WIDE_PROJECT_ID
+      ? { module, name: { in: EMPLOYEE_WIDE_TOOL_MODULES[module] || [] } }
+      : { ...(module ? { module } : {}) };
 
     if (!projectId && searchParams.get('allProjects') === 'true') {
       const grants = await prisma.employeeProjectToolAccess.findMany({
@@ -88,23 +90,39 @@ export async function POST(req) {
       return NextResponse.json({ error: 'employeeId, projectId and toolIds[] are required' }, { status: 400 });
     }
 
-    if (module && (!Object.hasOwn(PROJECT_TOOL_MODULES, module) || !['Purchase', 'Marketing'].includes(module))) {
-      return NextResponse.json({ error: 'Employee-scoped saving is only enabled for Purchase and Marketing.' }, { status: 400 });
+    const employeeWideScope = projectId === EMPLOYEE_WIDE_PROJECT_ID;
+    const employeeWideNames = EMPLOYEE_WIDE_TOOL_MODULES[module] || [];
+    if (employeeWideScope && (!module || employeeWideNames.length === 0)) {
+      return NextResponse.json({ error: 'Employee-wide access is available only for Engineering masters and Marketing.' }, { status: 400 });
+    }
+    if (!employeeWideScope && module && module !== 'Purchase') {
+      return NextResponse.json({ error: 'Only Purchase permissions can be saved module-wise by project.' }, { status: 400 });
     }
 
-    if (module) {
-      const moduleTools = await prisma.adminTool.findMany({ where: { module }, select: { id: true } });
+    if (module === 'Purchase' || employeeWideScope) {
+      const scopeNames = employeeWideScope ? employeeWideNames : PROJECT_TOOL_MODULES.Purchase;
+      const moduleTools = await prisma.adminTool.findMany({ where: { module, name: { in: scopeNames } }, select: { id: true } });
       const allowedIds = new Set(moduleTools.map(tool => tool.id));
       if (toolIds.some(toolId => !allowedIds.has(toolId))) {
-        return NextResponse.json({ error: `Only ${module} tools can be saved in this request.` }, { status: 400 });
+        return NextResponse.json({ error: `Only tools allowed for ${module} ${employeeWideScope ? 'employee-wide' : 'project-wise'} access can be saved.` }, { status: 400 });
       }
 
       await prisma.$transaction(async tx => {
-        // Scope replacement to this module so another module's grants for the
-        // same employee and project remain intact.
-        await tx.employeeProjectToolAccess.deleteMany({
-          where: { employeeId, projectId, tool: { is: { module } } },
-        });
+        if (employeeWideScope) {
+          await tx.employeeProjectToolAccess.deleteMany({
+            where: {
+              employeeId,
+              OR: [
+                { projectId: EMPLOYEE_WIDE_PROJECT_ID, tool: { is: { module } } },
+                { projectId: { not: EMPLOYEE_WIDE_PROJECT_ID }, tool: { is: { module, name: { in: employeeWideNames } } } },
+              ],
+            },
+          });
+        } else {
+          await tx.employeeProjectToolAccess.deleteMany({
+            where: { employeeId, projectId, tool: { is: { module } } },
+          });
+        }
         if (toolIds.length > 0) {
           await tx.employeeProjectToolAccess.createMany({
             data: toolIds.map(toolId => ({ employeeId, projectId, toolId, granted: true })),
@@ -112,13 +130,22 @@ export async function POST(req) {
           });
         }
       });
-      return NextResponse.json({ saved: toolIds.length, module });
+      return NextResponse.json({ saved: toolIds.length, module, scope: employeeWideScope ? 'employee' : 'project' });
     }
 
-    // Remove all existing grants for this employee+project
-    await prisma.employeeProjectToolAccess.deleteMany({
-      where: { employeeId, projectId },
-    });
+    const projectScopedIds = new Set((await prisma.adminTool.findMany({
+      where: { OR: [
+        { module: { notIn: Object.keys(EMPLOYEE_WIDE_TOOL_MODULES) } },
+        { module: 'Engineering', name: { notIn: EMPLOYEE_WIDE_TOOL_MODULES.Engineering } },
+      ] },
+      select: { id: true },
+    })).map(tool => tool.id));
+    if (toolIds.some(toolId => !projectScopedIds.has(toolId))) {
+      return NextResponse.json({ error: 'Engineering masters and Marketing permissions must be assigned employee-wide.' }, { status: 400 });
+    }
+
+    // Replace only project-scoped grants; employee-wide grants stay intact.
+    await prisma.employeeProjectToolAccess.deleteMany({ where: { employeeId, projectId } });
 
     // Re-insert granted ones
     if (toolIds.length > 0) {
