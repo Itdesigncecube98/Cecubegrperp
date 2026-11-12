@@ -1,5 +1,7 @@
 'use client';
 import React, { useState, useEffect, useMemo } from 'react';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 import { 
   Search, Plus, ChevronRight, ChevronDown as ExpandIcon, ChevronRight as CollapseIcon, 
   Home, Folder, Layers, Edit, Trash2, Save, X, Check, AlertCircle, Loader2,
@@ -25,6 +27,7 @@ const RERA_STAGES = [
 ];
 
 export default function DefineWBS() {
+  const { activeEmployee, hasRight } = usePermissions();
   // Projects state
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -187,6 +190,7 @@ export default function DefineWBS() {
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
   const selectedGroup = groups.find(g => g.id === selectedGroupId) || groups[0] || null;
+  const canWbsAction = (permission) => !activeEmployee || hasRight(employeeToolCode('Engineering', permission), selectedProjectId);
 
   // --- Group Handlers ---
   const handleOpenAddGroup = () => {
@@ -549,6 +553,7 @@ export default function DefineWBS() {
           
           {/* Action Buttons: Add Group & Add Task */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+            {canWbsAction('WBS Add Group') && (
             <button 
               className="premium-btn-primary" 
               onClick={handleOpenAddGroup}
@@ -556,6 +561,8 @@ export default function DefineWBS() {
             >
               <Plus size={15} /> Add Group
             </button>
+            )}
+            {canWbsAction('WBS Add Task') && (
             <button 
               className="premium-btn-primary" 
               onClick={() => handleOpenAddTask(selectedGroup)}
@@ -574,6 +581,7 @@ export default function DefineWBS() {
             >
               <Layers size={15} /> Add Task
             </button>
+            )}
           </div>
           
           {/* Search Bar */}
@@ -698,7 +706,7 @@ export default function DefineWBS() {
 
                         {/* Quick Group Actions */}
                         <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
-                          <button
+                          {canWbsAction('WBS Add Task') && <button
                             type="button"
                             title="Add Task to Group"
                             onClick={(e) => {
@@ -708,23 +716,23 @@ export default function DefineWBS() {
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#be123c' }}
                           >
                             <Plus size={14} />
-                          </button>
-                          <button
+                          </button>}
+                          {canWbsAction('WBS Edit Group') && <button
                             type="button"
                             title="Edit Group"
                             onClick={(e) => handleOpenEditGroup(group, e)}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#64748b' }}
                           >
                             <Edit size={13} />
-                          </button>
-                          <button
+                          </button>}
+                          {canWbsAction('WBS Delete Group') && <button
                             type="button"
                             title="Delete Group"
                             onClick={(e) => handleDeleteGroup(group.id, group.name, e)}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#ef4444' }}
                           >
                             <Trash2 size={13} />
-                          </button>
+                          </button>}
                         </div>
                       </div>
 
@@ -840,7 +848,7 @@ export default function DefineWBS() {
               </div>
 
               {/* Add Task Button for Bifurcation */}
-              <div style={{ display: 'flex', gap: '10px' }}>
+              {canWbsAction('WBS Add Task') && <div style={{ display: 'flex', gap: '10px' }}>
                 <button 
                   className="premium-btn-primary" 
                   onClick={() => handleOpenAddTask(selectedGroup)}
@@ -858,7 +866,7 @@ export default function DefineWBS() {
                 >
                   <Plus size={16} /> Add Task to {selectedGroup.name}
                 </button>
-              </div>
+              </div>}
             </div>
           ) : (
             <div style={{ 
@@ -930,22 +938,22 @@ export default function DefineWBS() {
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                          <button
+                          {canWbsAction('WBS Edit Task') && <button
                             type="button"
                             title="Edit Task"
                             onClick={() => handleOpenEditTask(task)}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#be123c' }}
                           >
                             <Edit size={16} />
-                          </button>
-                          <button
+                          </button>}
+                          {canWbsAction('WBS Delete Task') && <button
                             type="button"
                             title="Delete Task"
                             onClick={() => handleDeleteTask(task.id, task.name)}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#ef4444' }}
                           >
                             <Trash2 size={16} />
-                          </button>
+                          </button>}
                         </div>
                       </td>
                     </tr>

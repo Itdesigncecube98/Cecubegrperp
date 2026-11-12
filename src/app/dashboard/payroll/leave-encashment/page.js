@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, RefreshCw } from 'lucide-react';
 import MultiSelect from '@/components/MultiSelect';
+import EmployeePayrollHistory from '../EmployeePayrollHistory';
 import {
   EARNED_LEAVE_ENCASHMENT_MAX_DAYS,
   EARNED_LEAVE_ENCASHMENT_MIN_BALANCE,
@@ -262,13 +263,14 @@ export default function LeaveEncashment() {
               <th style={{ padding: '10px' }}>MESSAGE</th>
               <th style={{ padding: '10px' }}>SALARY STATUS</th>
               <th style={{ padding: '10px', textAlign: 'center' }}>ACTION</th>
+              <th style={{ padding: '10px', textAlign: 'center' }}>PAYROLL HISTORY</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={17} style={{ textAlign: 'center', padding: '2rem' }}>Loading records...</td></tr>
+              <tr><td colSpan={18} style={{ textAlign: 'center', padding: '2rem' }}>Loading records...</td></tr>
             ) : filteredEmployees.length === 0 ? (
-              <tr><td colSpan={17} style={{ textAlign: 'center', padding: '2rem' }}>No records found.</td></tr>
+              <tr><td colSpan={18} style={{ textAlign: 'center', padding: '2rem' }}>No records found.</td></tr>
             ) : filteredEmployees.map((row, idx) => {
               const edit = edits[row.id] || { leaveType: 'Earned Leave', encashedDays: '', amountPerDay: '0', message: '' };
               const encDays = parseFloat(edit.encashedDays) || 0;
@@ -417,6 +419,7 @@ export default function LeaveEncashment() {
                       Encash
                     </button>
                   </td>
+                  <td style={{ padding: '8px', textAlign: 'center' }}><EmployeePayrollHistory employeeId={row.id} employeeName={`${row.name} (${row.empId})`} /></td>
                 </tr>
               );
             })}

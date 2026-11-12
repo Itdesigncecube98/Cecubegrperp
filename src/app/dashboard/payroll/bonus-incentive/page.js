@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, RefreshCw, Calculator, FileDown } from 'lucide-react';
 import MultiSelect from '@/components/MultiSelect';
+import EmployeePayrollHistory from '../EmployeePayrollHistory';
 
 export default function BonusIncentive() {
   const [departments, setDepartments] = useState([]);
@@ -286,6 +287,7 @@ export default function BonusIncentive() {
               <th>amount</th>
               <th>message</th>
               <th>saved status</th>
+              <th>history</th>
             </tr>
           </thead>
           <tbody>
@@ -333,11 +335,12 @@ export default function BonusIncentive() {
                 <td style={{ fontWeight: 600, color: row.bonusStatus === 'ADDED_TO_SALARY' ? '#10b981' : (row.bonusStatus === 'SAVED' ? '#3b82f6' : '#94a3b8') }}>
                   {row.bonusStatus === 'ADDED_TO_SALARY' ? 'Salary Added' : (row.bonusStatus === 'SAVED' ? 'Draft' : 'Not Saved')}
                 </td>
+                <td><EmployeePayrollHistory employeeId={row.id} employeeName={`${row.name} (${row.empNo})`} /></td>
               </tr>
             ))}
             {data.length === 0 && (
               <tr>
-                <td colSpan={12} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                <td colSpan={13} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
                   No employees found matching the filters.
                 </td>
               </tr>

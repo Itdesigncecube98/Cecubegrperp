@@ -1,5 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 import { 
   Search, FileText, Home, ChevronRight, ChevronDown,
   Lock, Unlock, History, X, Loader2, CheckCircle, Eye, EyeOff, Edit
@@ -7,6 +9,9 @@ import {
 import '../../engineering-ui.css';
 
 export default function WBSBudget() {
+  const { activeEmployee, hasRight } = usePermissions();
+  const canBudgetEdit = projectId => !activeEmployee || hasRight(employeeToolCode('Engineering', 'WBS Budget / Estimate Allocation'), projectId);
+  const canBudgetLock = projectId => !activeEmployee || hasRight(employeeToolCode('Engineering', 'WBS Budget Lock'), projectId);
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState('ALL');
   const [tasks, setTasks] = useState([]);
@@ -644,7 +649,7 @@ export default function WBSBudget() {
                           <td style={{ padding: '8px', textAlign: 'center' }}>
                             {!isMaterial && (
                               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                                {isGroup && (
+                                {isGroup && canBudgetEdit(task.projectId) && (
                                   <button
                                     onClick={() => toggleRow(task)}
                                     title="Edit Group Budget"
@@ -653,13 +658,13 @@ export default function WBSBudget() {
                                     <Edit size={15} color="#0ea5e9" />
                                   </button>
                                 )}
-                                <button
+                                {canBudgetLock(task.projectId) && <button
                                   onClick={() => handleToggleLock(task)}
                                   title={task.isLocked ? 'Unlock Budget' : 'Lock Budget'}
                                   style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                                 >
                                   {task.isLocked ? <Lock size={15} color="#ef4444" /> : <Unlock size={15} color="#0ea5e9" />}
-                                </button>
+                                </button>}
                               </div>
                             )}
                           </td>
@@ -669,7 +674,7 @@ export default function WBSBudget() {
                         {isExpanded && (
                           <tr>
                             <td colSpan={showAmount ? 15 : 9} style={{ padding: '20px', background: 'white', borderBottom: '2px solid #38bdf8' }}>
-                              <div style={{ border: '1px solid #bae6fd', borderRadius: '10px', padding: '24px', background: '#f8fafc', position: 'relative', opacity: isProject || isBudgetLocked ? 0.8 : 1, pointerEvents: isProject || isBudgetLocked ? 'none' : 'auto' }}>
+                              <div style={{ border: '1px solid #bae6fd', borderRadius: '10px', padding: '24px', background: '#f8fafc', position: 'relative', opacity: isProject || isBudgetLocked || !canBudgetEdit(task.projectId) ? 0.8 : 1, pointerEvents: isProject || isBudgetLocked || !canBudgetEdit(task.projectId) ? 'none' : 'auto' }}>
                                 
                                 <div 
                                   style={{ position: 'absolute', top: '14px', right: '14px', cursor: 'pointer', color: '#0284c7', background: '#e0f2fe', borderRadius: '50%', padding: '4px', pointerEvents: 'auto' }} 

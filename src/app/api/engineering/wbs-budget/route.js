@@ -1,6 +1,8 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { readAuthSession } from '@/lib/authSession';
+import { employeeHasProjectModuleTool } from '@/lib/projectAccess';
 import fs from 'fs';
 import path from 'path';
 
@@ -212,18 +214,42 @@ async function syncProjectsWithTasks() {
 
 export async function GET(req) {
   try {
+    const session = readAuthSession(req);
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get('projectId');
     const sync = searchParams.get('sync');
 
     // Run sync only when explicitly requested
     if (sync === 'true') {
+      if (session.type !== 'admin') return NextResponse.json({ error: 'Only admins can sync WBS budgets.' }, { status: 403 });
       await syncProjectsWithTasks();
     }
 
     let where = {};
     if (projectId && projectId !== 'ALL') {
+      if (session.type === 'employee') {
+        const [canView, canLock] = await Promise.all([
+          employeeHasProjectModuleTool(prisma, session.id, projectId, 'Engineering', 'WBS Budget / Estimate Allocation'),
+          employeeHasProjectModuleTool(prisma, session.id, projectId, 'Engineering', 'WBS Budget Lock'),
+        ]);
+        if (!canView && !canLock) return NextResponse.json({ error: 'No WBS Budget access for this project.' }, { status: 403 });
+      }
       where.projectId = projectId;
+    } else if (session.type === 'employee') {
+      const grants = await prisma.employeeProjectToolAccess.findMany({
+        where: {
+          employeeId: session.id,
+          granted: true,
+          projectId: { not: '__EMPLOYEE_WIDE__' },
+          tool: { is: { module: 'Engineering', name: { in: ['WBS Budget / Estimate Allocation', 'WBS Budget Lock'] } } },
+        },
+        select: { projectId: true },
+        distinct: ['projectId'],
+      });
+      const projectIds = grants.map(grant => grant.projectId);
+      if (!projectIds.length) return NextResponse.json({ tasks: [], isProjectLocked: false });
+      where.projectId = { in: projectIds };
     }
 
     let tasks = await prisma.projectWbsTask.findMany({
@@ -243,7 +269,7 @@ export async function GET(req) {
     });
 
     // If specific project was requested but has no task yet, sync it
-    if (tasks.length === 0 && projectId && projectId !== 'ALL') {
+    if (session.type === 'admin' && tasks.length === 0 && projectId && projectId !== 'ALL') {
       await syncProjectsWithTasks();
       tasks = await prisma.projectWbsTask.findMany({
         where: { projectId },
@@ -277,10 +303,13 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    const session = readAuthSession(req);
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const data = await req.json();
 
     // Special action to trigger sync from frontend
     if (data.action === 'sync') {
+      if (session.type !== 'admin') return NextResponse.json({ error: 'Only admins can sync WBS budgets.' }, { status: 403 });
       await syncProjectsWithTasks();
       const allTasks = await prisma.projectWbsTask.findMany({
         orderBy: { createdAt: 'asc' },
@@ -302,6 +331,8 @@ export async function POST(req) {
 
 export async function PUT(req) {
   try {
+    const session = readAuthSession(req);
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const data = await req.json();
     const { id, project, ...updateData } = data;
 
@@ -312,6 +343,19 @@ export async function PUT(req) {
     const existingTask = await prisma.projectWbsTask.findUnique({ where: { id } });
     if (!existingTask) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
+
+    if (session.type === 'employee') {
+      const changesBudget = Object.keys(updateData).some(field => field !== 'isLocked');
+      const [canLock, canEdit] = await Promise.all([
+        updateData.isLocked !== undefined
+          ? employeeHasProjectModuleTool(prisma, session.id, existingTask.projectId, 'Engineering', 'WBS Budget Lock')
+          : Promise.resolve(true),
+        changesBudget
+          ? employeeHasProjectModuleTool(prisma, session.id, existingTask.projectId, 'Engineering', 'WBS Budget / Estimate Allocation')
+          : Promise.resolve(true),
+      ]);
+      if (!canLock || !canEdit) return NextResponse.json({ error: 'You do not have the required WBS Budget permission for this project.' }, { status: 403 });
     }
 
     const isGroupRow = Boolean(existingTask.wbsGroupId && !existingTask.wbsTaskId);

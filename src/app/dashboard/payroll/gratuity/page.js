@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import MultiSelect from '@/components/MultiSelect';
+import EmployeePayrollHistory from '../EmployeePayrollHistory';
 import '../../leaves/leaves.css';
 
 export default function GratuityCalculatorPage() {
@@ -115,16 +116,17 @@ export default function GratuityCalculatorPage() {
               <th>Gratuity Amount</th>
               <th>Eligibility</th>
               <th>Status</th>
+              <th>Payroll History</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>Loading auto-calculated gratuity data...</td>
+                <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>Loading auto-calculated gratuity data...</td>
               </tr>
             ) : filteredList.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>No employees found.</td>
+                <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>No employees found.</td>
               </tr>
             ) : (
               filteredList.map((emp) => (
@@ -166,6 +168,7 @@ export default function GratuityCalculatorPage() {
                       {emp.status}
                     </span>
                   </td>
+                  <td><EmployeePayrollHistory employeeId={emp.employeeId} employeeName={`${emp.employeeName} (${emp.employeeCode})`} /></td>
                 </tr>
               ))
             )}
