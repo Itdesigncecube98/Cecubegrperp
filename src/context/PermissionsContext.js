@@ -125,9 +125,10 @@ export function PermissionsProvider({ children }) {
 
   const hasRight = (toolCode, projectId = null) => {
     if (!activeEmployee) return false;
-    const codes = projectId
-      ? [...employeeWideGrantedTools, ...(projectGrantedTools[projectId] || [])]
-      : (isAdminSession && activeProject?.id ? [...employeeWideGrantedTools, ...(projectGrantedTools[activeProject.id] || [])] : grantedTools);
+    const selectedProjectId = projectId || activeProject?.id;
+    const codes = selectedProjectId
+      ? [...employeeWideGrantedTools, ...(projectGrantedTools[selectedProjectId] || [])]
+      : employeeWideGrantedTools;
     if (Array.isArray(toolCode)) return toolCode.some(code => hasRight(code, projectId));
     const aliases = LEGACY_PERMISSION_ALIASES[toolCode];
     return aliases ? aliases.some(code => codes.includes(code)) : codes.includes(toolCode);
@@ -138,7 +139,7 @@ export function PermissionsProvider({ children }) {
       {children}
 
       {/* Floating Active Context Widget */}
-      <div style={{ display: 'none', position: 'fixed', bottom: 20, right: 20, zIndex: 9999, fontFamily: 'var(--font-inter)' }}>
+      <div style={{ display: 'block', position: 'fixed', bottom: 20, right: 20, zIndex: 9999, fontFamily: 'var(--font-inter)' }}>
         {!isOpen && (
           <button 
             onClick={() => setIsOpen(true)}
@@ -188,8 +189,19 @@ export function PermissionsProvider({ children }) {
                   <option value="">-- Select Project --</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
-              </div> : <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f8fafc', borderRadius: 6, fontSize: 12, color: '#475569' }}>
-                {projects.length} assigned project{projects.length === 1 ? '' : 's'} · access is checked separately for each project
+              </div> : <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 4 }}>ACTIVE PROJECT</label>
+                <select
+                  value={activeProject?.id || ''}
+                  onChange={e => handleSetProj(projects.find(project => project.id === e.target.value) || null)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, background: '#f8fafc' }}
+                >
+                  <option value="">-- Select Project --</option>
+                  {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+                <div style={{ marginTop: 5, fontSize: 11, color: '#64748b' }}>
+                  {projects.length} assigned project{projects.length === 1 ? '' : 's'} · permissions apply to the selected project
+                </div>
               </div>}
               
               <div style={{ marginTop: 16, padding: '10px 12px', background: (activeEmployee && activeProject) ? '#ecfdf5' : '#f1f5f9', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
