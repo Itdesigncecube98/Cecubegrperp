@@ -45,7 +45,9 @@ export default function WBSBudget() {
           setProjects(data);
         }
       }
-      await fetchTasks('ALL', true);
+      // Employee loads are already scoped by the WBS grants in the API. The
+      // sync action is admin-only, so requesting it here would hide all rows.
+      await fetchTasks('ALL', !activeEmployee);
     } catch (err) {
       console.error('Failed to load projects/tasks:', err);
     } finally {
@@ -58,7 +60,8 @@ export default function WBSBudget() {
       if (isSync) setSyncing(true);
       else setLoading(true);
 
-      const url = `/api/engineering/wbs-budget?projectId=${projId}${isSync ? '&sync=true' : ''}`;
+      const shouldSync = isSync && !activeEmployee;
+      const url = `/api/engineering/wbs-budget?projectId=${projId}${shouldSync ? '&sync=true' : ''}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -68,6 +71,15 @@ export default function WBSBudget() {
         // Initialize form data for each task
         const initialForm = {};
         const taskList = data.tasks || data;
+        if (activeEmployee) {
+          const permittedProjects = [...new Map(
+            taskList.filter(task => task.project).map(task => [task.project.id, task.project])
+          ).values()];
+          setProjects(permittedProjects);
+          if (selectedProjectId !== 'ALL' && !permittedProjects.some(project => project.id === selectedProjectId)) {
+            setSelectedProjectId('ALL');
+          }
+        }
         taskList.forEach(t => {
           initialForm[t.id] = {
             approvedBuiltUpArea: t.approvedBuiltUpArea ?? 1,
@@ -378,7 +390,7 @@ export default function WBSBudget() {
           <button
             className="premium-btn-primary"
             style={{ background: '#0ea5e9', height: '40px', padding: '0 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
-            onClick={() => fetchTasks(selectedProjectId, true)}
+            onClick={() => fetchTasks(selectedProjectId, !activeEmployee)}
             title="Search & Sync Tasks"
           >
             {(loading || syncing) ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}

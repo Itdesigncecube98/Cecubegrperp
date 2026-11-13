@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Save, Trash2, Search } from 'lucide-react';
 import Dialog from '@/components/Dialog';
-import ActionToolbar from '@/components/ActionToolbar';
 
 export default function SkillsPage() {
   const [skills, setSkills] = useState([]);
@@ -130,8 +129,6 @@ export default function SkillsPage() {
 
   return (
     <div>
-      <ActionToolbar onReset={() => setSearchTerm('')} shareTitle="Skills Configuration" />
-
       <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
         {/* Left List Pane */}
         <div style={{ width: '45%', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '600px' }}>

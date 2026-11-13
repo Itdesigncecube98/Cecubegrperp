@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Search, Users } from 'lucide-react';
 import AppModal from '@/components/AppModal';
-import ActionToolbar from '@/components/ActionToolbar';
 
 const EMPTY = { name: '', days: [], assignedTo: 'All Employees' };
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -108,8 +107,6 @@ export default function WeekoffTypes() {
 
   return (
     <div>
-      <ActionToolbar onReset={() => setSearchTerm('')} shareTitle="Weekoff Types Configuration" />
-      
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: '#fff', padding: '0.4rem 0.6rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
           <Search size={16} color="#94a3b8" />

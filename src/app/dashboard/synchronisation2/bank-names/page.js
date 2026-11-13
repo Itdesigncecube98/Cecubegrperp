@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import AppModal from '@/components/AppModal';
-import ActionToolbar from '@/components/ActionToolbar';
 
 const EMPTY = { name: '', status: 'Active' };
 
@@ -93,8 +92,6 @@ export default function BankNames() {
 
   return (
     <div>
-      <ActionToolbar onReset={() => setSearchTerm('')} shareTitle="Bank Names Configuration" />
-      
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: '#fff', padding: '0.4rem 0.6rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
           <Search size={16} color="#94a3b8" />
