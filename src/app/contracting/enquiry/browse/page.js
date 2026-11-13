@@ -201,12 +201,13 @@ export default function EnquiryBrowse() {
                   <thead><tr style={{ background: '#f8fafc' }}>
                     <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>#</th>
                     <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>Task</th>
+                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>Item Description</th>
                     <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>Unit</th>
                     <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>Qty</th>
                   </tr></thead>
                   <tbody>
                     {(viewEnquiry.tasks || []).map((t, i) => (
-                      <tr key={t.id}><td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9' }}>{i + 1}</td><td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', fontWeight: 500 }}>{t.taskName}</td><td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>{t.unit || '—'}</td><td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>{t.qty}</td></tr>
+                      <tr key={t.id}><td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9' }}>{i + 1}</td><td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', fontWeight: 500 }}>{t.taskName}</td><td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{t.description || '—'}</td><td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>{t.unit || '—'}</td><td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>{t.qty}</td></tr>
                     ))}
                   </tbody>
                 </table>

@@ -6,6 +6,8 @@ import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
 import { getClientActor } from '@/lib/clientActor';
 
+const withinApprovalWindow = value => !!value && Date.now() - new Date(value).getTime() <= 2 * 24 * 60 * 60 * 1000;
+
 export default function PORegister() {
   const [pos, setPos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -184,11 +186,12 @@ export default function PORegister() {
                       </span>
                     </td>
                     <td className="pur-text-right pur-flex" style={{ justifyContent: 'flex-end', gap: '8px' }}>
-                      {['DRAFT', 'PENDING_APPROVAL', 'APPROVED'].includes(po.status) && can('Purchase Orders Approve') && <button className="pur-btn pur-btn-outline" disabled={approvalId === po.id} onClick={() => togglePOApproval(po)}>{approvalId === po.id ? 'Saving…' : po.status === 'APPROVED' ? 'Unapprove' : 'Approve'}</button>}
+                      {['DRAFT', 'PENDING_APPROVAL'].includes(po.status) && can('Purchase Orders Approve') && <button className="pur-btn pur-btn-outline" disabled={approvalId === po.id} onClick={() => togglePOApproval(po)}>{approvalId === po.id ? 'Saving…' : 'Approve'}</button>}
+                      {po.status === 'APPROVED' && withinApprovalWindow(po.approvedAt) && can('Purchase Orders Approve') && <button className="pur-btn pur-btn-outline" disabled={approvalId === po.id} onClick={() => togglePOApproval(po)}>{approvalId === po.id ? 'Saving…' : 'Unapprove (2 day window)'}</button>}
                       {can('Purchase Orders View') && <Link href={`/purchase/po/print?id=${po.id}`} target="_blank" className="pur-icon-btn pur-text-indigo-600" title="Download PDF">
                         <Download size={16} />
                       </Link>}
-                      {can('Purchase Orders Edit') && <Link href={`/purchase/po/create?id=${po.id}`} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>Edit</Link>}
+                      {can('Purchase Orders Edit') && !po.approvedAt && <Link href={`/purchase/po/create?id=${po.id}`} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>Edit</Link>}
                       {can('Purchase Orders Delete') && po.status === 'DRAFT' && <button type="button" className="pur-icon-btn" title="Delete draft purchase order" disabled={deletingId === po.id} onClick={() => deletePO(po)}><Trash2 size={15} /></button>}
                       {can('Send Purchase Order by Email') && <button className="pur-icon-btn" title="Email purchase order" disabled={sendingId === po.id || !po.supplierEmail} onClick={() => sendPOEmail(po)}><Mail size={15} /></button>}
                     </td>

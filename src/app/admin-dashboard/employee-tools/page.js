@@ -353,10 +353,10 @@ export default function EmployeeToolsPage() {
 
       {step === STEP_PROJECT && (
         <div style={cardStyle}>
-          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between' }}>
+            <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <FolderOpen size={20} color="#0891b2" />
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Choose Access Scope</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Choose Access for {selectedEmp?.name || 'Employee'}</span>
               <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 4 }}>{projectsLoading ? 'Loading projects…' : `${projects.length} projects`}</span>
             </div>
             <button onClick={() => { setStep(STEP_EMPLOYEE); setSelectedEmp(null); }}
@@ -374,18 +374,18 @@ export default function EmployeeToolsPage() {
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
-              { module: 'Engineering', title: 'Engineering Masters', detail: 'Assign master permissions to this employee across projects.', color: '#7c3aed', bg: '#f5f3ff' },
-              { module: 'Marketing', title: 'Marketing', detail: 'Assign individual permissions to this employee, independent of project.', color: '#f97316', bg: '#fff7ed' },
-              { module: 'Tender', title: 'Tender', detail: 'Assign tender permissions to this employee, independent of project.', color: '#0891b2', bg: '#ecfeff' },
+              { module: 'Engineering', title: 'Engineering Masters', detail: 'For this employee across all projects.', color: '#7c3aed', bg: '#f5f3ff' },
+              { module: 'Marketing', title: 'Marketing', detail: 'For this employee across all projects.', color: '#f97316', bg: '#fff7ed' },
+              { module: 'Tender', title: 'Tender', detail: 'For this employee across all projects.', color: '#0891b2', bg: '#ecfeff' },
             ].map(scope => (
               <button key={scope.module} type="button" onClick={() => selectEmployeeWideScope(scope.module)}
                 style={{ textAlign: 'left', padding: '16px 18px', borderRadius: 10, border: '1.5px solid #e2e8f0', cursor: 'pointer', background: scope.bg, display: 'flex', gap: 12, alignItems: 'center' }}>
                 <span style={{ width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center', background: '#fff', color: scope.color }}><Layers size={19}/></span>
-                <span><strong style={{ display: 'block', color: scope.color, fontSize: 14 }}>{scope.title} · Employee-wide</strong><small style={{ color: '#64748b', display: 'block', marginTop: 4 }}>{scope.detail}</small></span>
+                <span><strong style={{ display: 'block', color: scope.color, fontSize: 14 }}>{scope.title} · This employee</strong><small style={{ color: '#64748b', display: 'block', marginTop: 4 }}>{scope.detail}</small></span>
               </button>
             ))}
           </div>
-          <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', margin: '4px 0 10px' }}>Project-specific module access</div>
+          <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', margin: '4px 0 10px' }}>Project-specific access for this employee</div>
           <div style={{ position: 'relative', marginBottom: 16 }}>
             <Search size={14} style={{ position: 'absolute', left: 12, top: 11, color: '#94a3b8' }} />
             <input value={projSearch} onChange={e => setProjSearch(e.target.value)}
@@ -429,7 +429,7 @@ export default function EmployeeToolsPage() {
               <button onClick={() => { setStep(STEP_EMPLOYEE); setSelectedEmp(null); setSelectedProject(null); setGranted(new Set()); setDbTools([]); }} style={chipXStyle}><X size={11} /></button>
             </div>
             <div style={{ ...chipStyle, background: '#ecfdf5', borderColor: '#6ee7b7', color: '#059669' }}>
-              <FolderOpen size={13} /> {accessScope === 'employee' ? `${activeModule} · Employee-wide` : selectedProject?.name}
+              <FolderOpen size={13} /> {accessScope === 'employee' ? `${activeModule} · This employee (all projects)` : selectedProject?.name}
               <button onClick={() => { setStep(STEP_PROJECT); setSelectedProject(null); setGranted(new Set()); setDbTools([]); }} style={chipXStyle}><X size={11} /></button>
             </div>
             {accessScope === 'employee' && (

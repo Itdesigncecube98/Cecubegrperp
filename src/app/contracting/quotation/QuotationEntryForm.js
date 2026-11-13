@@ -82,7 +82,7 @@ export default function QuotationEntryForm({ quotationId = '', embedded = false,
           otherConditions: quotation.otherConditions || '',
         });
         setItems((quotation.items || []).map(item => ({
-          taskName: item.taskName, unit: item.unit || '', qty: item.qty || 1,
+          taskName: item.taskName, description: item.description || '', unit: item.unit || '', qty: item.qty || 1,
           rate: item.rate || 0, gstPercent: item.gstPercent || 18,
         })));
         try { setDocs(quotation.documents ? JSON.parse(quotation.documents) : []); } catch { setDocs([]); }
@@ -98,7 +98,7 @@ export default function QuotationEntryForm({ quotationId = '', embedded = false,
     const timer = setTimeout(() => {
       if (!selectedEnquiry) { setItems([]); return; }
       setItems((selectedEnquiry.tasks || []).map(t => ({
-        taskName: t.taskName, unit: t.unit || '', qty: t.qty || 1, rate: 0, gstPercent: 18,
+        taskName: t.taskName, description: t.description || '', unit: t.unit || '', qty: t.qty || 1, rate: 0, gstPercent: 18,
       })));
       if (selectedEnquiry.contractors?.length === 1) {
         const ec = selectedEnquiry.contractors[0];
@@ -263,7 +263,7 @@ export default function QuotationEntryForm({ quotationId = '', embedded = false,
                       return (
                         <tr key={idx} style={{ background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
                           <td style={{ padding: '8px', textAlign: 'center', color: '#94a3b8', borderBottom: '1px solid #f1f5f9' }}>{idx + 1}</td>
-                          <td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', fontWeight: 500, color: '#334155' }}>{item.taskName}</td>
+                          <td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', fontWeight: 500, color: '#334155' }}>{item.taskName}{item.description && <div style={{ marginTop: 3, fontSize: '0.76rem', color: '#64748b', fontWeight: 400 }}>{item.description}</div>}</td>
                           <td style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{item.unit || '—'}</td>
                           <td style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{item.qty}</td>
                           <td style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9' }}>

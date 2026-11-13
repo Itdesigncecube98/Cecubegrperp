@@ -24,12 +24,12 @@ export async function GET(request) {
         vendorCode: true,
         name: true,
         contactPerson: true,
-        mobileNo: true,
+        mobile: true,
         email: true,
         address: true,
         city: true,
         state: true,
-        gstNo: true
+        gstin: true
       }
     });
 
@@ -51,20 +51,20 @@ export async function POST(request) {
       data: {
         vendorCode: body.vendorCode,
         name: body.name,
+        type: body.type,
         contactPerson: body.contactPerson,
-        mobileNo: body.mobileNo,
+        mobile: body.mobile || body.mobileNo,
         email: body.email,
         address: body.address,
         city: body.city,
         state: body.state,
-        pincode: body.pincode,
-        gstNo: body.gstNo,
-        panNo: body.panNo,
+        gstin: body.gstin || body.gstNo,
+        pan: body.pan || body.panNo,
         bankName: body.bankName,
-        bankAccountNo: body.bankAccountNo,
-        bankIFSC: body.bankIFSC,
+        accountNo: body.accountNo || body.bankAccountNo,
+        ifsc: body.ifsc || body.bankIFSC,
         paymentTerms: body.paymentTerms,
-        creditLimit: body.creditLimit ? parseFloat(body.creditLimit) : null,
+        creditDays: body.creditDays ? parseInt(body.creditDays, 10) : 0,
         status: body.status || 'Active'
       }
     });

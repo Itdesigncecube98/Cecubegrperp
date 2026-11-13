@@ -139,7 +139,7 @@ export default function QuotationCompare() {
                   <tbody>
                     {allTasks.map((task, tidx) => (
                       <tr key={task.id} style={{ background: tidx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                        <td style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', fontWeight: 500, color: '#334155', position: 'sticky', left: 0, background: tidx % 2 === 0 ? '#fff' : '#fafafa', zIndex: 1 }}>{task.taskName}</td>
+                        <td style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', fontWeight: 500, color: '#334155', position: 'sticky', left: 0, background: tidx % 2 === 0 ? '#fff' : '#fafafa', zIndex: 1 }}>{task.taskName}{task.description && <div style={{ marginTop: 3, fontSize: '0.74rem', color: '#64748b', fontWeight: 400 }}>{task.description}</div>}</td>
                         <td style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', color: '#64748b' }}>{task.unit || '—'}</td>
                         <td style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', color: '#64748b' }}>{task.qty}</td>
                         {quotations.map(q => {

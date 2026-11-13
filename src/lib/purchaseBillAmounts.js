@@ -61,6 +61,19 @@ export async function getPurchaseBillPreview(prisma, poNumber) {
     include: { items: true }
   });
 
+  const passedGtnQuantity = (poItem, grn = null) => gtns.reduce((total, gtn) => {
+    if (String(gtn.status || '').toLowerCase() !== 'completed' || gtn.purchaseOrderNo !== poNumber) return total;
+    const passedForGtn = gtn.items
+      .filter(gtnItem => {
+        if (String(gtnItem.testStatus || '').toLowerCase() !== 'pass') return false;
+        if (grn && gtnItem.grnSrNo) return gtnItem.grnSrNo === grn.grnNo;
+        if (gtnItem.requisitionId && poItem.requisitionId) return gtnItem.requisitionId === poItem.requisitionId;
+        return materialNamesMatch(gtnItem.materialName, poItem.description);
+      })
+      .reduce((sum, gtnItem) => sum + (Number(gtnItem.quantity) || 0), 0);
+    return total + passedForGtn;
+  }, 0);
+
   const items = po.items.map((poItem, index) => {
     let quantity = 0;
 
@@ -73,7 +86,9 @@ export async function getPurchaseBillPreview(prisma, poNumber) {
       for (const { grn, item } of matchingRows) {
         if (remainingPoQty <= 0) break;
         const received = Number(item.quantity) || 0;
-        const accepted = acceptedQuantity(item.acceptedQty, received, item.rejectedQty, item.retainedQty);
+        const grnAccepted = acceptedQuantity(item.acceptedQty, received, item.rejectedQty, item.retainedQty);
+        const receivable = Math.max(0, received - (Number(item.rejectedQty) || 0) - (Number(item.retainedQty) || 0));
+        const accepted = Math.min(receivable, Math.max(grnAccepted, passedGtnQuantity(poItem, grn)));
         const failedGtnQty = item.testRequired
           ? gtns.flatMap(gtn => gtn.items
             .filter(gtnItem => {
@@ -93,8 +108,12 @@ export async function getPurchaseBillPreview(prisma, poNumber) {
       const receivedQty = po.grns.flatMap(grn => grn.items)
         .filter(item => item.poItemId === poItem.id)
         .reduce((sum, item) => sum + acceptedQuantity(item.acceptedQty, item.receivedQty, item.rejectedQty), 0);
-      quantity = Math.min(Math.max(0, Number(poItem.quantity) || 0), receivedQty);
+      quantity = Math.min(Math.max(0, Number(poItem.quantity) || 0), Math.max(receivedQty, passedGtnQuantity(poItem)));
     }
+
+    // A completed passing GTN is the acceptance record for tested material,
+    // including older GTNs whose GRN acceptedQty was not synced from testing.
+    quantity = Math.min(Math.max(0, Number(poItem.quantity) || 0), Math.max(quantity, passedGtnQuantity(poItem)));
 
     const rate = Math.max(0, Number(poItem.rate) || 0);
     const discountPercent = Math.min(100, Math.max(0, Number(poItem.discountPercent) || 0));

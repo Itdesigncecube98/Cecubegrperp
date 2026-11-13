@@ -758,6 +758,34 @@ export default function WorkCompletionTask() {
                   </div>
                 </div>
 
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', marginBottom: '1.25rem', overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 12px', background: '#f8fafc', fontWeight: 700, color: '#334155' }}>
+                    Quantity History ({(selectedTaskForLog.logs || []).length})
+                  </div>
+                  {(selectedTaskForLog.logs || []).length === 0 ? (
+                    <div style={{ padding: '12px', color: '#64748b', fontSize: '13px' }}>No quantity has been logged yet.</div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <thead><tr style={{ background: '#fff' }}>
+                          {['Date', 'Quantity Logged', 'Shift', 'Engineer', 'Remark'].map(label => <th key={label} style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>{label}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {selectedTaskForLog.logs.map((entry, index) => (
+                            <tr key={entry.id || `${entry.date}-${index}`}>
+                              <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{entry.date ? new Date(entry.date).toLocaleString('en-IN') : '—'}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', fontWeight: 700 }}>{entry.qty ?? '—'} {selectedTaskForLog.unit}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9' }}>{entry.shift || '—'}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9' }}>{entry.engineer || '—'}</td>
+                              <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9' }}>{entry.remark || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '1.25rem', textAlign: 'center' }}>
                   <div style={{ padding: '10px', background: '#ecfdf5', borderRadius: '8px' }}>
                     <div style={{ fontSize: '11px', color: '#047857', fontWeight: 600 }}>Completed Amount</div>

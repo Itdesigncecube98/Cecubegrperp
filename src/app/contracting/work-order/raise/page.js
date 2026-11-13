@@ -305,6 +305,15 @@ export default function RaiseWorkOrder() {
     return matchingItem && Number(matchingItem.rate) > 0 ? matchingItem : null;
   };
 
+  const selectedQuotation = quotations.find(quotation => quotation.id === selectedQuotationId) || null;
+  const selectableTasks = woSource === 'quotation' && selectedQuotation
+    ? (selectedQuotation.items || []).map(item => ({
+        id: item.id,
+        name: item.taskName,
+        quotationItem: item,
+      }))
+    : tasks;
+
   const applyBulkRates = () => {
     const rates = bulkRates.split(/\r?\n/).map(rate => rate.trim()).filter(Boolean);
     if (rates.length !== items.length || rates.some(rate => !Number.isFinite(Number(rate)) || Number(rate) < 0)) {
@@ -322,11 +331,11 @@ export default function RaiseWorkOrder() {
     const q = quotations.find(x => x.id === quotationId);
     if (!q) return;
     // Auto-fill contractor
-    setFilters(f => ({ ...f, contractorId: q.contractorId }));
+    setFilters(f => ({ ...f, contractorId: q.contractorId, taskIds: (q.items || []).map(item => item.id) }));
     // Auto-fill items from quotation
     setItems(q.items.map((item, idx) => ({
       id: idx + 1,
-      description: item.taskName,
+      description: [item.taskName, item.description].filter(Boolean).join(' — '),
       qty: item.qty,
       unit: item.unit || 'Job',
       rate: item.rate,
@@ -344,10 +353,18 @@ export default function RaiseWorkOrder() {
     // Map data for preview
     const project = projects.find(p => p.id === filters.projectId) || {};
     const contractor = contractors.find(c => c.id === filters.contractorId) || {};
-    const selectedTasks = tasks.filter(task => filters.taskIds.includes(task.id));
-    const selectedQuotation = quotations.find(q => q.id === selectedQuotationId);
+    const selectedTasks = selectableTasks.filter(task => filters.taskIds.includes(task.id));
 
-    const newItems = selectedTasks.flatMap((task, taskIndex) => {
+    const newItems = selectedQuotation
+      ? selectedTasks.map((task, taskIndex) => ({
+          id: `quotation-${taskIndex}`,
+          description: [task.quotationItem.taskName, task.quotationItem.description].filter(Boolean).join(' — '),
+          qty: Number(task.quotationItem.qty) || 1,
+          unit: task.quotationItem.unit || 'Job',
+          rate: Number(task.quotationItem.rate) || 0,
+          gstPercent: Number(task.quotationItem.gstPercent) || 18,
+        }))
+      : selectedTasks.flatMap((task, taskIndex) => {
       const taskMaterials = (task.materials || []).map((material, itemIndex) => ({
         id: `mat-${taskIndex}-${itemIndex}`,
         description: material.name,
@@ -370,8 +387,8 @@ export default function RaiseWorkOrder() {
         ),
         gstPercent: 18
       }));
-      return [...taskMaterials, ...taskLabours];
-    });
+        return [...taskMaterials, ...taskLabours];
+      });
 
     if (newItems.length === 0) {
       newItems.push({ id: 1, description: selectedTasks.map(task => task.name).join(', '), qty: 1.00, unit: 'Job', rate: 0, gstPercent: 18 });
@@ -600,7 +617,7 @@ export default function RaiseWorkOrder() {
                   >
                     {filters.taskIds.length === 0
                       ? '- Select Task -'
-                      : filters.taskIds.length === tasks.length
+                      : selectableTasks.length > 0 && filters.taskIds.length === selectableTasks.length
                         ? 'All tasks selected'
                         : `${filters.taskIds.length} task${filters.taskIds.length === 1 ? '' : 's'} selected`}
                   </button>
@@ -620,13 +637,13 @@ export default function RaiseWorkOrder() {
                       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 10px', borderBottom: '1px solid #e2e8f0', fontWeight: 600, cursor: 'pointer', background: '#f8fafc' }}>
                         <input
                           type="checkbox"
-                          checked={tasks.length > 0 && filters.taskIds.length === tasks.length}
-                          onChange={e => setFilters(f => ({ ...f, taskIds: e.target.checked ? tasks.map(task => task.id) : [] }))}
+                          checked={selectableTasks.length > 0 && filters.taskIds.length === selectableTasks.length}
+                          onChange={e => setFilters(f => ({ ...f, taskIds: e.target.checked ? selectableTasks.map(task => task.id) : [] }))}
                         />
-                        Select All ({tasks.length})
+                        Select All ({selectableTasks.length})
                       </label>
                       <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                        {tasks.map(task => (
+                        {selectableTasks.map(task => (
                           <label key={task.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', cursor: 'pointer' }}>
                             <input
                               type="checkbox"

@@ -24,7 +24,7 @@ export default function EnquiryGenerationForm({ embedded = false, onSaved }) {
   const [selectedContractorIds, setSelectedContractorIds] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [enquiryTasks, setEnquiryTasks] = useState([
-    { id: 0, selectedTaskId: '', taskName: '', unit: '', qty: 1 }
+    { id: 0, selectedTaskId: '', taskName: '', description: '', unit: '', qty: 1 }
   ]);
 
   const [saving, setSaving] = useState(false);
@@ -55,12 +55,47 @@ export default function EnquiryGenerationForm({ embedded = false, onSaved }) {
     );
   };
 
-  const addTaskRow = () => setEnquiryTasks(prev => [...prev, { id: Date.now(), selectedTaskId: '', taskName: '', unit: '', qty: 1 }]);
+  const addTaskRow = () => setEnquiryTasks(prev => [...prev, { id: Date.now(), selectedTaskId: '', taskName: '', description: '', unit: '', qty: 1 }]);
   const removeTaskRow = (id) => setEnquiryTasks(prev => prev.filter(t => t.id !== id));
   const updateTaskRow = (id, field, value) => setEnquiryTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
   
   const fillFromLibrary = (rowId, taskId) => {
-    setEnquiryTasks(prev => prev.map(t => t.id === rowId ? { ...t, selectedTaskId: taskId, taskName: '', unit: '', qty: 1 } : t));
+    const task = tasks.find(item => item.id === taskId);
+    setEnquiryTasks(prev => {
+      const rowIndex = prev.findIndex(row => row.id === rowId);
+      if (rowIndex < 0) return prev;
+      const next = [...prev];
+      if (!task) {
+        next[rowIndex] = { ...next[rowIndex], selectedTaskId: '', taskName: '', description: '', unit: '', qty: 1 };
+        return next;
+      }
+      const taskRow = {
+        ...next[rowIndex], selectedTaskId: task.id, taskName: task.name,
+        description: task.description || '', unit: task.unit || '', qty: task.quantity || 1,
+      };
+      const resourceRows = [
+        ...(task.materials || []).map((material, index) => ({
+          id: `${rowId}-material-${material.id || index}-${Date.now()}`,
+          selectedTaskId: task.id,
+          resourceType: 'Material',
+          taskName: `${task.name} - ${material.name}`,
+          description: material.specification || material.name,
+          unit: material.unit || 'Nos',
+          qty: material.quantity || 1,
+        })),
+        ...(task.labours || []).map((labour, index) => ({
+          id: `${rowId}-labour-${labour.id || index}-${Date.now()}`,
+          selectedTaskId: task.id,
+          resourceType: 'Labour',
+          taskName: `${task.name} - ${labour.name}`,
+          description: labour.specification || labour.name,
+          unit: labour.unit || 'Manday',
+          qty: labour.quantity || 1,
+        })),
+      ];
+      next.splice(rowIndex, 1, taskRow, ...resourceRows);
+      return next;
+    });
   };
 
   const handleSave = async (e) => {
@@ -92,7 +127,7 @@ export default function EnquiryGenerationForm({ embedded = false, onSaved }) {
       setSavedEnquiry(data);
       onSaved?.(data);
       setSelectedContractorIds([]);
-      setEnquiryTasks([{ id: Date.now(), taskName: '', unit: '', qty: 1 }]);
+      setEnquiryTasks([{ id: Date.now(), selectedTaskId: '', taskName: '', description: '', unit: '', qty: 1 }]);
       setForm(EMPTY_FORM);
       setSelectedProjectId('');
     } catch (err) {
@@ -105,7 +140,7 @@ export default function EnquiryGenerationForm({ embedded = false, onSaved }) {
   const handleReset = () => {
     setSelectedProjectId('');
     setSelectedContractorIds([]);
-    setEnquiryTasks([{ id: Date.now(), taskName: '', unit: '', qty: 1 }]);
+    setEnquiryTasks([{ id: Date.now(), selectedTaskId: '', taskName: '', description: '', unit: '', qty: 1 }]);
     setForm(EMPTY_FORM);
     setSaveError('');
     setSavedEnquiry(null);
@@ -225,7 +260,8 @@ export default function EnquiryGenerationForm({ embedded = false, onSaved }) {
                   <tr>
                     <th style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', textAlign: 'center', width: '50px', color: '#64748b', fontWeight: 600 }}>#</th>
                     <th style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>From Task Library</th>
-                    <th style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>Task / Work Description</th>
+                    <th style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>Task / Labour</th>
+                    <th style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b', fontWeight: 600 }}>Item Description</th>
                     <th style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', textAlign: 'center', width: '100px', color: '#64748b', fontWeight: 600 }}>Unit</th>
                     <th style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', textAlign: 'center', width: '80px', color: '#64748b', fontWeight: 600 }}>Qty</th>
                     <th style={{ padding: '10px', borderBottom: '1px solid #e2e8f0', textAlign: 'center', width: '50px', color: '#64748b', fontWeight: 600 }}></th>
@@ -233,16 +269,11 @@ export default function EnquiryGenerationForm({ embedded = false, onSaved }) {
                 </thead>
                 <tbody>
                   {enquiryTasks.map((row, idx) => {
-                    const selectedTask = row.selectedTaskId ? tasks.find(t => t.id === row.selectedTaskId) : null;
-                    const subItems = selectedTask ? [
-                      ...(selectedTask.labours || []).map(l => ({ name: `${selectedTask.name} - ${l.name}`, unit: l.unit || 'Manday', qty: l.quantity || 1 })),
-                    ] : [];
-                    
                     return (
                     <tr key={row.id}>
                       <td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', color: '#94a3b8' }}>{idx + 1}</td>
                       <td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9' }}>
-                        <select
+                        {row.resourceType ? <span style={{ paddingLeft: 8, color: '#64748b', fontSize: '0.78rem' }}>↳ {row.resourceType}</span> : <select
                           className="contracting-input"
                           style={{ width: '100%', fontSize: '0.8rem' }}
                           onChange={e => fillFromLibrary(row.id, e.target.value)}
@@ -250,41 +281,13 @@ export default function EnquiryGenerationForm({ embedded = false, onSaved }) {
                         >
                           <option value="">Pick from library...</option>
                           {tasks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
+                        </select>}
                       </td>
                       <td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9' }}>
-                        {selectedTask && subItems.length > 0 ? (
-                          <select
-                            className="contracting-input"
-                            style={{ width: '100%', fontSize: '0.8rem' }}
-                            value={row.taskName}
-                            onChange={e => {
-                              const val = e.target.value;
-                              if (!val) {
-                                setEnquiryTasks(prev => prev.map(t => t.id === row.id ? { ...t, taskName: '', unit: '', qty: 1 } : t));
-                                return;
-                              }
-                              const picked = subItems.find(s => s.name === val);
-                              if (picked) {
-                                setEnquiryTasks(prev => prev.map(t => t.id === row.id ? { ...t, taskName: picked.name, unit: picked.unit, qty: picked.qty } : t));
-                              }
-                            }}
-                          >
-                            <option value="">- Select Labour -</option>
-                            {subItems.map((s, i) => (
-                              <option key={i} value={s.name}>{s.name}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            className="contracting-input"
-                            style={{ width: '100%' }}
-                            placeholder="Task / work description"
-                            value={row.taskName}
-                            onChange={e => updateTaskRow(row.id, 'taskName', e.target.value)}
-                          />
-                        )}
+                        <input type="text" className="contracting-input" style={{ width: '100%', paddingLeft: row.resourceType ? 18 : 10 }} placeholder="Task / material / labour" value={row.taskName} onChange={e => updateTaskRow(row.id, 'taskName', e.target.value)} />
+                      </td>
+                      <td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9' }}>
+                        <input type="text" className="contracting-input" style={{ width: '100%' }} placeholder="Item description" value={row.description || ''} onChange={e => updateTaskRow(row.id, 'description', e.target.value)} />
                       </td>
                       <td style={{ padding: '8px', borderBottom: '1px solid #f1f5f9' }}>
                         <input

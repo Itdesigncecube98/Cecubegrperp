@@ -236,11 +236,23 @@ export async function PUT(request) {
     const current = await prisma.vendorBill.findUnique({ where: { id: body.id } });
     if (!current) return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
 
+    let approvalMeta = {};
+    try {
+      const match = String(current.remarks || '').match(/^__META__:(\{.*?\})\n?/);
+      if (match) approvalMeta = JSON.parse(match[1]);
+    } catch { /* Keep legacy bill metadata readable. */ }
+    if (approvalMeta.approvalStatus === 'APPROVED' && body.action !== 'unapprove') {
+      return NextResponse.json({ error: 'Unapprove this purchase bill within 2 days before editing it.' }, { status: 409 });
+    }
+
     if (body.action === 'approve' || body.action === 'unapprove') {
       const po = current.poNo ? await prisma.purchaseOrder.findUnique({ where: { poNumber: current.poNo }, select: { projectId: true, projectName: true } }) : null;
       const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Purchase', toolName: 'Purchase Bills Approve', projectId: po?.projectId, projectName: po?.projectName });
       if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
       const approvalActor = access.session.type === 'admin' ? 'Administrator' : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      if (body.action === 'unapprove' && (approvalMeta.approvalStatus !== 'APPROVED' || !approvalMeta.approvedAt || Date.now() - new Date(approvalMeta.approvedAt).getTime() > 2 * 24 * 60 * 60 * 1000)) {
+        return NextResponse.json({ error: 'Purchase bill approval can only be removed within 2 days.' }, { status: 409 });
+      }
       if (body.action === 'unapprove' && (current.status !== 'UNPAID' || current.voucherId || Number(current.paidAmount || 0) > 0)) {
         return NextResponse.json({ error: 'Approval cannot be removed after payment processing has started.' }, { status: 409 });
       }

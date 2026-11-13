@@ -65,6 +65,35 @@ export default async function RABillPrintPage({ params }) {
     notFound();
   }
 
+  const billAudit = await prisma.auditLog.findMany({
+    where: { entityType: 'WorkOrderRABill', entityId: id, action: { in: ['CREATE', 'EDIT', 'CHECK', 'APPROVE'] } },
+    orderBy: { createdAt: 'asc' },
+    select: { action: true, remarks: true, createdAt: true },
+  });
+  let preparedBy = '';
+  let approvedBy = '';
+  const billEditors = [];
+  for (const entry of billAudit) {
+    try {
+      const payload = JSON.parse(entry.remarks || '{}');
+      if (entry.action === 'CREATE') preparedBy = payload.actorName || preparedBy;
+      if (entry.action === 'CHECK') billEditors.push(payload.actorName || '');
+      if (entry.action === 'EDIT' && payload.editedBy) billEditors.push(payload.editedBy);
+      if (entry.action === 'APPROVE') approvedBy = payload.actorName || approvedBy;
+    } catch { /* Ignore older audit entries without structured names. */ }
+  }
+  let checkedBy = billEditors.reverse().find(actor => actor !== preparedBy && actor !== approvedBy) || '';
+  if (!['Approved', 'Paid'].includes(bill.status)) approvedBy = '';
+  const formatBillActor = (actor) => {
+    const name = String(actor || '').trim();
+    if (!name) return '';
+    if (/^(admin|administrator)$/i.test(name)) return 'Admin';
+    return `${name} (Employee)`;
+  };
+  preparedBy = formatBillActor(preparedBy);
+  checkedBy = formatBillActor(checkedBy);
+  approvedBy = formatBillActor(approvedBy);
+
   // Parse task lines
   let taskLines = [];
   let remarksText = bill.remarks || '';
@@ -422,9 +451,9 @@ export default async function RABillPrintPage({ params }) {
               <td style={{ width: '25%', textAlign: 'center' }}>Contractor Signature</td>
             </tr>
             <tr>
-              <td style={{ height: '80px', verticalAlign: 'bottom' }}></td>
-              <td style={{ height: '80px' }}></td>
-              <td style={{ height: '80px' }}></td>
+              <td style={{ height: '80px', verticalAlign: 'bottom', textAlign: 'center' }}>{preparedBy}</td>
+              <td style={{ height: '80px', verticalAlign: 'bottom', textAlign: 'center' }}>{checkedBy}</td>
+              <td style={{ height: '80px', verticalAlign: 'bottom', textAlign: 'center' }}>{approvedBy}</td>
               <td style={{ height: '80px', verticalAlign: 'bottom', textAlign: 'right' }}>{bill.workOrder?.contractorName?.toUpperCase() || ''}</td>
             </tr>
           </tbody>

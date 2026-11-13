@@ -7,6 +7,7 @@ import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 const RA_BILLS_ENDPOINT = '/api/contracting/ra-bills';
 const WORK_ORDERS_ENDPOINT = '/api/contracting/work-orders';
+const withinApprovalWindow = value => !!value && Date.now() - new Date(value).getTime() <= 2 * 24 * 60 * 60 * 1000;
 
 const STATUS_COLORS = {
   Submitted: { bg: '#fef3c7', text: '#92400e', border: '#fde68a' },
@@ -311,8 +312,9 @@ export default function RABillsPage() {
   const canView = canTool('View RA Bill');
   const canEdit = canTool('Edit RA Bill');
   const canDelete = canTool('Delete RA Bill');
+  const canCheck = canTool('Check RA Bill');
   const canApprove = canTool('Approve RA Bill');
-  const canList = canView || canEdit || canDelete || canApprove || canCreate;
+  const canList = canView || canEdit || canDelete || canCheck || canApprove || canCreate;
   // ── Data ──────────────────────────────────────────────────────────────────
   const [bills, setBills]             = useState([]);
   const [workOrders, setWorkOrders]   = useState([]);
@@ -610,6 +612,28 @@ export default function RABillsPage() {
     }
   }
 
+  async function handleCheckBill(id) {
+    if (!canCheck) { setError('You do not have permission to check RA bills for this project.'); return; }
+    setActionId(id);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch(RA_BILLS_ENDPOINT, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ id, action: 'check' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Failed to check RA bill (${res.status}).`);
+      setSuccess('RA bill checked successfully.');
+      await fetchBills();
+    } catch (err) {
+      setError(err.message || 'Failed to check RA bill.');
+    } finally {
+      setActionId(null);
+    }
+  }
+
   async function handleDelete(id) {
     if (activeEmployee && !canDelete) { setError('You do not have permission to delete RA bills for this project.'); return; }
     if (!window.confirm('Delete this RA bill? This cannot be undone.')) return;
@@ -711,6 +735,7 @@ export default function RABillsPage() {
               <th style={s.th}>Work Order</th>
               <th style={s.th}>Bill Date</th>
                   <th style={s.th}>Made by</th>
+                  <th style={s.th}>Checked by</th>
                   <th style={s.th}>Approver</th>
                   <th style={s.th}>Last edited by</th>
               <th style={{ ...s.th, textAlign: 'right' }}>Current Bill</th>
@@ -723,9 +748,9 @@ export default function RABillsPage() {
           </thead>
           <tbody>
             {loadingBills ? (
-              <tr><td colSpan={12} style={s.emptyCell}>Loading…</td></tr>
+              <tr><td colSpan={13} style={s.emptyCell}>Loading…</td></tr>
             ) : bills.length === 0 ? (
-              <tr><td colSpan={12} style={s.emptyCell}>No RA bills found.</td></tr>
+              <tr><td colSpan={13} style={s.emptyCell}>No RA bills found.</td></tr>
             ) : bills.map(b => {
               const c = STATUS_COLORS[b.status] || { bg: '#f1f5f9', text: '#334155', border: '#e2e8f0' };
               return (
@@ -745,6 +770,7 @@ export default function RABillsPage() {
                   <td style={{ ...s.td, fontSize: '12px', color: '#64748b' }}>
                     {b.madeBy || '—'}
                   </td>
+                  <td style={{ ...s.td, fontSize: '12px', color: '#64748b' }}>{b.checkedBy || '—'}</td>
                   <td style={{ ...s.td, fontSize: '12px', color: '#64748b' }}>
                     {b.approvedBy || '—'}
                   </td>
@@ -780,7 +806,13 @@ export default function RABillsPage() {
                       >
                         Print
                       </button>}
-                      {canEdit && b.status !== 'Paid' && <a href={`/contracting/ra-bills/${b.id}/edit`} style={{ ...s.actionBtn, color: '#1d4ed8', textDecoration: 'none' }}>Edit</a>}
+                      {canEdit && !['Approved', 'Paid'].includes(b.status) && <a href={`/contracting/ra-bills/${b.id}/edit`} style={{ ...s.actionBtn, color: '#1d4ed8', textDecoration: 'none' }}>Edit</a>}
+                      {b.status === 'Submitted' && canCheck && !b.checkedBy && <button
+                        type="button"
+                        style={{ ...s.actionBtn, color: '#7c3aed' }}
+                        disabled={actionId === b.id}
+                        onClick={() => handleCheckBill(b.id)}
+                      >{actionId === b.id ? '…' : 'Check'}</button>}
                       {b.status === 'Submitted' && canApprove && (
                         <>
                           <button
@@ -817,9 +849,9 @@ export default function RABillsPage() {
                         >
                           {actionId === b.id ? '…' : 'Mark Paid'}
                         </button>
-                        <button type="button" style={{ ...s.actionBtn, color: '#c2410c' }} disabled={actionId === b.id} onClick={() => handleStatusChange(b.id, 'Unapproved')}>
+                        {withinApprovalWindow(b.approvedAt) && <button type="button" style={{ ...s.actionBtn, color: '#c2410c' }} disabled={actionId === b.id} onClick={() => handleStatusChange(b.id, 'Unapproved')}>
                           {actionId === b.id ? '…' : 'Unapprove'}
-                        </button>
+                        </button>}
                         </>
                       )}
                     </div>

@@ -9,6 +9,21 @@ const inputStyle = {
 };
 const labelStyle = { display: 'block', marginBottom: 6, color: '#334155', fontSize: 13, fontWeight: 700 };
 
+async function readApiJson(response, endpoint) {
+  const text = await response.text();
+  if (!text.trim()) {
+    throw new Error(`${endpoint} returned an empty response (HTTP ${response.status}).`);
+  }
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`${endpoint} returned an invalid response (HTTP ${response.status}).`);
+  }
+  if (!response.ok) throw new Error(data?.error || `${endpoint} failed (HTTP ${response.status}).`);
+  return data;
+}
+
 const STATES = [
   'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana',
   'Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur',
@@ -51,12 +66,18 @@ function CreateGTNContent() {
   ]);
 
   useEffect(() => {
-    fetch('/api/projects').then(r => r.json()).then(d => setProjects(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch('/api/vendors').then(r => r.json()).then(d => setSuppliers(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch('/api/purchase/po', { cache: 'no-store' }).then(r => r.json()).then(d => setPurchaseOrders(Array.isArray(d) ? d : [])).catch(() => {});
+    Promise.all([
+      fetch('/api/projects').then(response => readApiJson(response, 'Projects')),
+      fetch('/api/vendors').then(response => readApiJson(response, 'Vendors')),
+      fetch('/api/purchase/po', { cache: 'no-store' }).then(response => readApiJson(response, 'Purchase orders')),
+    ]).then(([projectData, vendorData, poData]) => {
+      setProjects(Array.isArray(projectData) ? projectData : []);
+      setSuppliers(Array.isArray(vendorData) ? vendorData : []);
+      setPurchaseOrders(Array.isArray(poData) ? poData : []);
+    }).catch(error => setMessage(error.message || 'Could not load GTN form data.'));
     if (editId) {
       fetch(`/api/engineering/site/gtn?id=${editId}`)
-        .then(r => r.json())
+        .then(response => readApiJson(response, 'GTN details'))
         .then(d => {
           if (d && d.id) {
             setForm({
@@ -85,7 +106,7 @@ function CreateGTNContent() {
               remarks: i.remarks || i.testRemark || '',
             })) : [{ materialName: '', quantity: '', unit: '', testParameters: '', testStatus: '', remarks: '' }]);
           }
-        }).catch(() => {});
+        }).catch(error => setMessage(error.message || 'Could not load GTN details.'));
     }
   }, [editId]);
 
@@ -113,8 +134,10 @@ function CreateGTNContent() {
         fetch(`/api/engineering/site/gtn?purchaseOrderNo=${encodeURIComponent(po.poNumber)}`, { cache: 'no-store' }),
         fetch(`/api/engineering/site/grn?poNo=${encodeURIComponent(po.poNumber)}`, { cache: 'no-store' }),
       ]);
-      if (!gtnResponse.ok || !grnResponse.ok) throw new Error('Could not load received materials pending GTN testing.');
-      const [existingGtns, projectGrns] = await Promise.all([gtnResponse.json(), grnResponse.json()]);
+      const [existingGtns, projectGrns] = await Promise.all([
+        readApiJson(gtnResponse, 'Existing GTNs'),
+        readApiJson(grnResponse, 'Received GRNs'),
+      ]);
       previouslyRecordedItems = (Array.isArray(existingGtns) ? existingGtns : [])
         .filter(gtn => gtn.id !== editId)
         .flatMap(gtn => (gtn.items || []).map(item => ({ ...item, _purchaseOrderNo: gtn.purchaseOrderNo || '' })));
@@ -159,13 +182,15 @@ function CreateGTNContent() {
     setSaving(true);
     setMessage('');
     try {
-      const res = await fetch('/api/engineering/site/gtn', {
+      const url = editId
+        ? `/api/engineering/site/gtn/${encodeURIComponent(editId)}`
+        : '/api/engineering/site/gtn';
+      const res = await fetch(url, {
         method: editId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, id: editId, items })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save GTN');
+      const data = await readApiJson(res, 'Save GTN');
       setMessage(`GTN ${editId ? 'updated' : 'created'} successfully: ${data.gtnNo || data.gtnSrNo || ''}`);
       setTimeout(() => router.push('/site/material/gtn'), 1500);
     } catch (err) {

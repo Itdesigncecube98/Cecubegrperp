@@ -1,9 +1,10 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
 import { 
-  Search, FileText, Home, ChevronRight, ChevronDown,
+  Search, FileText, FileSpreadsheet, Download, Home, ChevronRight, ChevronDown,
   Lock, Unlock, History, X, Loader2, CheckCircle, Eye, EyeOff, Edit
 } from 'lucide-react';
 import '../../engineering-ui.css';
@@ -24,6 +25,7 @@ export default function WBSBudget() {
   const [amountMode, setAmountMode] = useState('Show Amount');
   const [savingTaskId, setSavingTaskId] = useState(null);
   const [saveSuccessId, setSaveSuccessId] = useState(null);
+  const [reportsOpen, setReportsOpen] = useState(false);
 
   // Form state for all budget columns in expanded row
   const [formData, setFormData] = useState({});
@@ -289,6 +291,62 @@ export default function WBSBudget() {
     }
   };
 
+  const handleExportReport = (reportType = 'ALL') => {
+    const reportTasks = sortedTasks;
+    if (!reportTasks.length) return;
+
+    const baseRows = reportTasks.map(task => ({
+      Project: task.project?.name || projects.find(project => project.id === task.projectId)?.name || '',
+      Company: task.project?.company || '',
+      'WBS Item': task.taskName,
+      'Row Type': task.wbsTaskId ? 'Task' : task.wbsGroupId ? 'WBS Group' : 'Project Total',
+      'Built-Up Area': Number(task.approvedBuiltUpArea) || 0,
+      'Approved Rate': Number(task.approvedRate) || 0,
+      'Approved Amount': Number(task.approvedAmount) || 0,
+      'Allocated Rate': Number(task.allocatedRate) || 0,
+      'Allocated Amount': Number(task.allocatedAmount) || 0,
+      'Allocated Estimate Rate': Number(task.allocatedEstimateRate) || 0,
+      'Allocated Estimate Amount': Number(task.allocatedEstimateAmount) || 0,
+      'Unallocated Rate': Number(task.unallocatedRate) || 0,
+      'Unallocated Amount': Number(task.unallocatedAmount) || 0,
+      'Estimate Rate': Number(task.estimateRate) || 0,
+      'Estimate Amount': Number(task.estimateAmount) || 0,
+      'Expended Rate': Number(task.expendedRate) || 0,
+      'Expended Amount': Number(task.expendedAmount) || 0,
+      'Budget Head': task.budgetHeadCategory || '',
+      Status: task.isLocked ? 'Locked' : 'Open',
+      Remark: task.remark || '',
+    }));
+    const wb = XLSX.utils.book_new();
+    const addSheet = (name, rows) => {
+      const sheet = XLSX.utils.json_to_sheet(rows);
+      if (rows.length) sheet['!cols'] = Object.keys(rows[0]).map(key => ({ wch: Math.min(32, Math.max(14, key.length + 2)) }));
+      XLSX.utils.book_append_sheet(wb, sheet, name);
+    };
+
+    if (reportType === 'ALL' || reportType === 'WBS') addSheet('WBS Budget', baseRows);
+    const budgetRows = reportTasks.filter(task => !task.wbsTaskId).map(task => ({
+      Project: task.project?.name || '', Company: task.project?.company || '', 'WBS Item': task.taskName,
+      'Approved Amount': Number(task.approvedAmount) || 0, 'Allocated Amount': Number(task.allocatedAmount) || 0,
+      'Expended Amount': Number(task.expendedAmount) || 0,
+      'Variance Amount': (Number(task.approvedAmount) || 0) - (Number(task.expendedAmount) || 0),
+      'Utilization %': Number(task.approvedAmount) > 0 ? Number(((Number(task.expendedAmount || 0) / Number(task.approvedAmount)) * 100).toFixed(2)) : 0,
+    }));
+    if (reportType === 'ALL' || reportType === 'ACTUAL') addSheet('Budget vs Actual', budgetRows);
+    const estimateRows = reportTasks.filter(task => !task.wbsTaskId).map(task => ({
+      Project: task.project?.name || '', Company: task.project?.company || '', 'WBS Item': task.taskName,
+      'Approved Rate': Number(task.approvedRate) || 0, 'Estimate Rate': Number(task.estimateRate) || 0,
+      'Rate Variance': (Number(task.estimateRate) || 0) - (Number(task.approvedRate) || 0),
+      'Approved Amount': Number(task.approvedAmount) || 0, 'Estimate Amount': Number(task.estimateAmount) || 0,
+      'Amount Variance': (Number(task.estimateAmount) || 0) - (Number(task.approvedAmount) || 0),
+    }));
+    if (reportType === 'ALL' || reportType === 'ESTIMATE') addSheet('Estimate Variance', estimateRows);
+
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `WBS_${reportType === 'ALL' ? 'Reports' : reportType === 'ACTUAL' ? 'Budget_vs_Actual' : reportType === 'ESTIMATE' ? 'Estimate_Variance' : 'Budget'}_${today}.xlsx`);
+    setReportsOpen(false);
+  };
+
   // Format helpers
   const formatRate = (val) => {
     if (val === undefined || val === null || isNaN(val)) return '0.00';
@@ -378,15 +436,6 @@ export default function WBSBudget() {
             </select>
           </div>
 
-          <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#0ea5e9', marginBottom: '8px' }}>View Mode</label>
-            <div style={{ display: 'flex', alignItems: 'center', height: '40px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem', color: '#334155' }}>
-                <input type="radio" name="viewMode" defaultChecked style={{ accentColor: '#0ea5e9', width: '16px', height: '16px' }} /> WBS
-              </label>
-            </div>
-          </div>
-          
           <button
             className="premium-btn-primary"
             style={{ background: '#0ea5e9', height: '40px', padding: '0 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
@@ -419,10 +468,22 @@ export default function WBSBudget() {
 
         {/* Action Bar */}
         <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <button className="premium-btn-primary" style={{ background: '#0ea5e9', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              Reports <ChevronDown size={14} />
-            </button>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative' }}>
+              <button type="button" className="premium-btn-primary" style={{ background: reportsOpen ? '#0369a1' : '#0ea5e9', display: 'flex', alignItems: 'center', gap: '8px', minHeight: 40, padding: '0 14px', borderRadius: 8, boxShadow: reportsOpen ? '0 3px 10px rgba(2,132,199,.2)' : 'none' }} onClick={() => setReportsOpen(open => !open)} aria-expanded={reportsOpen}>
+                <FileSpreadsheet size={16} /> Reports <ChevronDown size={14} />
+              </button>
+              {reportsOpen && <div style={{ position: 'absolute', zIndex: 20, top: 'calc(100% + 7px)', left: 0, minWidth: 230, padding: 6, border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', boxShadow: '0 12px 30px rgba(15,23,42,.16)' }}>
+                {[
+                  ['ALL', 'Full WBS reports workbook'],
+                  ['WBS', 'WBS budget sheet'],
+                  ['ACTUAL', 'Budget vs actual sheet'],
+                  ['ESTIMATE', 'Estimate variance sheet'],
+                ].map(([type, label]) => <button key={type} type="button" onClick={() => handleExportReport(type)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '10px 11px', border: 0, borderRadius: 7, background: 'transparent', color: '#334155', fontSize: 13, textAlign: 'left', cursor: 'pointer' }} onMouseEnter={event => { event.currentTarget.style.background = '#f0f9ff'; }} onMouseLeave={event => { event.currentTarget.style.background = 'transparent'; }}>
+                  <Download size={15} color="#0284c7" /> {label}
+                </button>)}
+              </div>}
+            </div>
             <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
               Showing {tasks.length} project task{tasks.length === 1 ? '' : 's'}
             </span>
@@ -580,7 +641,6 @@ export default function WBSBudget() {
                             ) : (
                               <div style={{ width: '16px' }} />
                             )}
-                            <input type="checkbox" defaultChecked style={{ accentColor: '#0ea5e9' }} />
                             {icon}
                             <div>
                               <span style={{ fontSize: '0.85rem', fontWeight: isProject ? 700 : (isGroup ? 600 : 500), color: isProject ? '#0f172a' : (isGroup ? '#1e293b' : '#334155'), whiteSpace: 'nowrap' }}>
@@ -943,12 +1003,12 @@ export default function WBSBudget() {
                                       </button>
                                       <button
                                         className="premium-btn-primary"
-                                        style={{ background: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 20px', fontWeight: 600 }}
+                                        style={{ background: saveSuccessId === task.id ? '#15803d' : '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', minHeight: 42, padding: '0 20px', borderRadius: 8, fontWeight: 700, boxShadow: saveSuccessId === task.id ? '0 3px 9px rgba(21,128,61,.2)' : '0 3px 9px rgba(2,132,199,.18)', opacity: savingTaskId === task.id || isBudgetLocked ? .7 : 1, cursor: savingTaskId === task.id || isBudgetLocked ? 'not-allowed' : 'pointer' }}
                                         onClick={() => handleSaveBudget(task)}
                                         disabled={savingTaskId === task.id || isBudgetLocked}
                                       >
-                                        {savingTaskId === task.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-                                        Save Group Budget
+                                        {savingTaskId === task.id ? <Loader2 size={17} className="animate-spin" /> : <CheckCircle size={17} strokeWidth={2.5} />}
+                                        {savingTaskId === task.id ? 'Saving…' : saveSuccessId === task.id ? 'Saved' : 'Save Group Budget'}
                                       </button>
                                     </div>
                                   )}

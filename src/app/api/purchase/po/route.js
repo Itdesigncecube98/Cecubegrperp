@@ -270,6 +270,9 @@ export async function PUT(req) {
     const VALID_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'SENT', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED', 'CLOSED', 'CANCELLED'];
 
     if (!action && !status) {
+      const existingForEdit = await prisma.purchaseOrder.findUnique({ where: { id }, select: { id: true, approvedAt: true } });
+      if (!existingForEdit) return NextResponse.json({ error: 'Purchase order not found.' }, { status: 404 });
+      if (existingForEdit.approvedAt) return NextResponse.json({ error: 'Unapprove this purchase order within 2 days before editing it.' }, { status: 409 });
       const vendor = await getVendorFallback(body.supplierId);
       const projectLocation = await getProjectLocation(body.projectId, body.projectName);
       const items = body.items || [];
@@ -337,6 +340,9 @@ export async function PUT(req) {
     }
     if (action === 'approve' && !['DRAFT', 'PENDING_APPROVAL'].includes(existing.status)) return NextResponse.json({ error: 'Only draft or pending purchase orders can be approved.' }, { status: 409 });
     if (action === 'unapprove' && existing.status !== 'APPROVED') return NextResponse.json({ error: 'Only approved purchase orders can be unapproved.' }, { status: 409 });
+    if (action === 'unapprove' && (!existing.approvedAt || Date.now() - new Date(existing.approvedAt).getTime() > 2 * 24 * 60 * 60 * 1000)) {
+      return NextResponse.json({ error: 'Purchase order approval can only be removed within 2 days.' }, { status: 409 });
+    }
     if (action === 'unapprove') {
       const [grnCount, bill] = await Promise.all([
         prisma.goodsReceiptNote.count({ where: { poId: existing.id } }).catch(() => 0),

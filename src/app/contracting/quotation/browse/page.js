@@ -40,6 +40,7 @@ export default function QuotationBrowse() {
       quotation.status,
       quotation.enquiry?.enquiryNo,
       quotation.enquiry?.projectName,
+      ...(quotation.items || []).flatMap(item => [item.taskName, item.description]),
     ].some(value => String(value || '').toLowerCase().includes(query));
   });
 
@@ -106,7 +107,7 @@ export default function QuotationBrowse() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead style={{ background: '#f1f5f9' }}>
-                <tr>{['Quotation No.', 'Contractor', 'Quotation Date', 'Valid Till', 'Items', 'Total', 'Status', 'Actions'].map(header => <th key={header} style={{ padding: '12px', textAlign: header === 'Total' ? 'right' : 'left', borderBottom: '1px solid #e2e8f0', color: '#334155' }}>{header}</th>)}</tr>
+                <tr>{['Quotation No.', 'Contractor', 'Quotation Date', 'Valid Till', 'Items / Description', 'Total', 'Status', 'Actions'].map(header => <th key={header} style={{ padding: '12px', textAlign: header === 'Total' ? 'right' : 'left', borderBottom: '1px solid #e2e8f0', color: '#334155' }}>{header}</th>)}</tr>
               </thead>
               <tbody>
                 {loading ? <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>Loading quotations...</td></tr> : filteredQuotations.length === 0 ? <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>{search ? 'No quotations match your search.' : 'No quotations found.'}</td></tr> : filteredQuotations.map((quotation, index) => {
@@ -116,7 +117,7 @@ export default function QuotationBrowse() {
                     <td style={{ padding: '11px 12px' }}>{quotation.contractorName}</td>
                     <td style={{ padding: '11px 12px' }}>{formatDate(quotation.quotationDate)}</td>
                     <td style={{ padding: '11px 12px' }}>{formatDate(quotation.validTill)}</td>
-                    <td style={{ padding: '11px 12px' }}>{quotation.items?.length || 0}</td>
+                    <td style={{ padding: '11px 12px', minWidth: 240 }}>{quotation.items?.length || 0}{(quotation.items || []).map(item => <div key={item.id} style={{ marginTop: 5, fontSize: '0.78rem', color: '#475569' }}><strong>{item.taskName}</strong>{item.description && <div style={{ color: '#64748b' }}>{item.description}</div>}</div>)}</td>
                     <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 600 }}>{formatMoney(total)}</td>
                     <td style={{ padding: '11px 12px' }}>{quotation.status}</td>
                     <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>

@@ -58,7 +58,7 @@ export default function AdminOverviewPage() {
           Admin Overview
         </h1>
         <p style={{ color: '#64748b', fontSize: 14, margin: 0 }}>
-          Manage project and employee-wide permissions, and review system activity.
+          Manage permissions for individual employees by project or across all projects, and review system activity.
         </p>
       </div>
 

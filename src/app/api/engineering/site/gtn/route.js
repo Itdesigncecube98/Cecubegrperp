@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { PUT as updateGTNById } from './[id]/route';
 
 async function resolveProjectMaster(projectId) {
   const projectMaster = await prisma.projectMaster.findUnique({
@@ -115,85 +116,98 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Selected project could not be found.' }, { status: 400 });
     }
 
-    // Generate GTN Number
-    const lastGTN = await prisma.siteGTN.findFirst({
-      orderBy: { gtnNo: 'desc' }
-    });
-    
-    let gtnNo = 'GTN001';
-    if (lastGTN) {
-      const num = parseInt(lastGTN.gtnNo.replace('GTN', '')) + 1;
-      gtnNo = `GTN${num.toString().padStart(3, '0')}`;
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: 'Add at least one item before creating a GTN.' }, { status: 400 });
     }
 
-    // Generate GTN Serial Number (unique format)
     const year = new Date().getFullYear();
-    const lastSerial = await prisma.siteGTN.findFirst({
-      where: {
-        gtnSrNo: {
-          startsWith: `GTN/${year}/`
-        }
-      },
-      orderBy: { gtnSrNo: 'desc' }
-    });
-
-    let serialNum = 1;
-    if (lastSerial) {
-      const lastNum = parseInt(lastSerial.gtnSrNo.split('/')[2]);
-      serialNum = lastNum + 1;
-    }
-    const gtnSrNo = `GTN/${year}/${serialNum.toString().padStart(4, '0')}`;
-
-    // Create GTN with items
-    const gtn = await prisma.siteGTN.create({
-      data: {
-        gtnNo,
-        gtnSrNo,
-        projectId: projectMaster.id,
-        supplierId,
-        supplierName,
-        purchaseOrderNo,
-        challanNo,
-        challanDate: challanDate ? new Date(challanDate) : null,
-        gtnDate: gtnDate ? new Date(gtnDate) : new Date(),
-        fromDate: fromDate ? new Date(fromDate) : null,
-        toDate: toDate ? new Date(toDate) : null,
-        materialCategory,
-        fromLocation,
-        toLocation,
-        vehicleNo,
-        remarks,
-        status: 'Draft',
-        items: {
-          create: items.map(item => ({
-            requisitionId: item.requisitionId || null,
-            poSrNo: item.poSrNo,
-            materialName: item.materialName,
-            materialCategory: item.materialCategory,
-            testName: item.testName || item.testParameters,
-            testDescription: item.testDescription || item.testParameters,
-            goodMin: item.goodMin ? parseFloat(item.goodMin) : null,
-            goodMax: item.goodMax ? parseFloat(item.goodMax) : null,
-            testResult: item.testResult,
-            testStatus: item.testStatus || 'Pending',
-            testRemark: item.testRemark || item.remarks,
-            testQty: item.testQty ? parseFloat(item.testQty) : null,
-            reqQty: item.reqQty ? parseFloat(item.reqQty) : null,
-            quantity: parseFloat(item.quantity),
-            unit: item.unit,
-            grnSrNo: item.grnSrNo
-          }))
-        }
-      },
-      include: {
-        project: true,
-        items: true
+    // Lock number allocation until the insert commits so simultaneous GTN
+    // requests cannot read and claim the same next number.
+    const gtn = await prisma.$transaction(async tx => {
+      let lockAcquired = false;
+      while (!lockAcquired) {
+        const [lockResult] = await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(hashtext('site-gtn-number')) AS acquired`;
+        lockAcquired = lockResult.acquired;
+        if (!lockAcquired) await new Promise(resolve => setTimeout(resolve, 50));
       }
+
+      const existingNumbers = await tx.siteGTN.findMany({ select: { gtnNo: true } });
+      const existingSerials = await tx.siteGTN.findMany({
+        where: { gtnSrNo: { startsWith: `GTN/${year}/` } },
+        select: { gtnSrNo: true },
+      });
+      const nextGtnNumber = existingNumbers.reduce((highest, row) => {
+        const match = /^GTN(\d+)$/.exec(row.gtnNo || '');
+        return match ? Math.max(highest, Number(match[1])) : highest;
+      }, 0) + 1;
+      const nextSerialNumber = existingSerials.reduce((highest, row) => {
+        const match = new RegExp(`^GTN/${year}/(\\d+)$`).exec(row.gtnSrNo || '');
+        return match ? Math.max(highest, Number(match[1])) : highest;
+      }, 0) + 1;
+      const gtnNo = `GTN${String(nextGtnNumber).padStart(3, '0')}`;
+      const gtnSrNo = `GTN/${year}/${String(nextSerialNumber).padStart(4, '0')}`;
+
+      return tx.siteGTN.create({
+        data: {
+          gtnNo,
+          gtnSrNo,
+          projectId: projectMaster.id,
+          supplierId,
+          supplierName,
+          purchaseOrderNo,
+          challanNo,
+          challanDate: challanDate ? new Date(challanDate) : null,
+          gtnDate: gtnDate ? new Date(gtnDate) : new Date(),
+          fromDate: fromDate ? new Date(fromDate) : null,
+          toDate: toDate ? new Date(toDate) : null,
+          materialCategory,
+          fromLocation,
+          toLocation,
+          vehicleNo,
+          remarks,
+          status: 'Draft',
+          items: {
+            create: items.map(item => ({
+              requisitionId: item.requisitionId || null,
+              poSrNo: item.poSrNo,
+              materialName: item.materialName,
+              materialCategory: item.materialCategory,
+              testName: item.testName || item.testParameters,
+              testDescription: item.testDescription || item.testParameters,
+              goodMin: item.goodMin ? parseFloat(item.goodMin) : null,
+              goodMax: item.goodMax ? parseFloat(item.goodMax) : null,
+              testResult: item.testResult,
+              testStatus: item.testStatus || 'Pending',
+              testRemark: item.testRemark || item.remarks,
+              testQty: item.testQty ? parseFloat(item.testQty) : null,
+              reqQty: item.reqQty ? parseFloat(item.reqQty) : null,
+              quantity: parseFloat(item.quantity),
+              unit: item.unit,
+              grnSrNo: item.grnSrNo,
+            })),
+          },
+        },
+        include: { project: true, items: true },
+      });
     });
 
     return NextResponse.json(gtn, { status: 201 });
   } catch (error) {
     console.error('Error creating GTN:', error);
     return NextResponse.json({ error: 'Failed to create GTN' }, { status: 500 });
+  }
+}
+
+// Backward compatibility for GTN edit clients that still PUT to the collection URL.
+export async function PUT(request) {
+  try {
+    const body = await request.clone().json();
+    if (!body?.id) {
+      return NextResponse.json({ error: 'GTN id is required to update a GTN.' }, { status: 400 });
+    }
+    return updateGTNById(request, { params: Promise.resolve({ id: String(body.id) }) });
+  } catch (error) {
+    console.error('Error forwarding GTN update:', error);
+    return NextResponse.json({ error: 'Failed to update GTN' }, { status: 500 });
   }
 }

@@ -168,13 +168,36 @@ export async function PUT(request) {
     if (!existing) {
       return NextResponse.json({ error: 'RA bill not found' }, { status: 404 });
     }
-    if (action === 'approve' || action === 'unapprove' || status === 'Approved') {
-      const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Contracting', toolName: 'Approve RA Bill', projectId: existing.projectId });
+    if (existing.status === 'Paid') return NextResponse.json({ error: 'Paid RA bills cannot be edited.' }, { status: 409 });
+    if (existing.status === 'Approved' && action !== 'unapprove' && status !== 'Paid') return NextResponse.json({ error: 'Unapprove this RA bill within 2 days before editing it.' }, { status: 409 });
+    if (existing.status === 'Approved' && status === 'Paid' && ['date', 'measuredValue', 'retentionPercent', 'advanceRecovery', 'otherDeductions', 'tdsPercent', 'remarks', 'taskLines'].some(field => data[field] !== undefined)) {
+      return NextResponse.json({ error: 'Approved RA bill values cannot be edited. Unapprove it within 2 days first.' }, { status: 409 });
+    }
+    if (action === 'check' || action === 'approve' || action === 'unapprove' || status === 'Approved') {
+      const toolName = action === 'check' ? 'Check RA Bill' : 'Approve RA Bill';
+      const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Contracting', toolName, projectId: existing.projectId });
       if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
-      data.approvalActor = access.session.type === 'admin' ? 'Administrator' : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      const actorName = access.session.type === 'admin' ? 'Administrator' : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      if (action === 'check') data.checkActor = actorName;
+      else data.approvalActor = actorName;
+    }
+    if (action === 'check') {
+      if (existing.status !== 'Submitted') return NextResponse.json({ error: 'Only submitted RA bills can be checked.' }, { status: 409 });
+      await recordDocumentAction(prisma, { entityType: 'WorkOrderRABill', entityId: existing.id, module: 'Contracting', action: 'CHECK', actorName: data.checkActor });
+      return NextResponse.json({ ...existing, checkedBy: data.checkActor });
     }
     if (action === 'approve' && existing.status !== 'Submitted') return NextResponse.json({ error: 'Only submitted RA bills can be approved.' }, { status: 409 });
+    if (action === 'approve') {
+      const checkRecord = await prisma.auditLog.findFirst({ where: { entityType: 'WorkOrderRABill', entityId: id, action: 'CHECK' }, select: { id: true } });
+      if (!checkRecord) return NextResponse.json({ error: 'Check the RA bill before approving it.' }, { status: 409 });
+    }
     if (action === 'unapprove' && existing.status !== 'Approved') return NextResponse.json({ error: 'Only approved RA bills can be unapproved.' }, { status: 409 });
+    if (action === 'unapprove') {
+      const approval = await prisma.auditLog.findFirst({ where: { entityType: 'WorkOrderRABill', entityId: id, action: 'APPROVE' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
+      if (!approval || Date.now() - new Date(approval.createdAt).getTime() > 2 * 24 * 60 * 60 * 1000) {
+        return NextResponse.json({ error: 'RA bill approval can only be removed within 2 days.' }, { status: 409 });
+      }
+    }
     if (status === 'Approved' && action !== 'approve') return NextResponse.json({ error: 'Use the approval action to approve an RA bill.' }, { status: 400 });
     const nextStatus = action === 'approve' ? 'Approved' : action === 'unapprove' ? 'Submitted' : status;
 

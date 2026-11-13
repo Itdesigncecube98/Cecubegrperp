@@ -9,6 +9,7 @@ import { getClientActor } from '@/lib/clientActor';
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : '-';
 const formatMoney = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+const withinApprovalWindow = value => !!value && Date.now() - new Date(value).getTime() <= 2 * 24 * 60 * 60 * 1000;
 
 export default function WorkOrderBrowse() {
   const [workOrders, setWorkOrders] = useState([]);
@@ -114,9 +115,10 @@ export default function WorkOrderBrowse() {
                     <td style={{ padding: '11px 12px' }}>{order.approvedBy || '—'}</td>
                     <td style={{ padding: '11px 12px', fontSize: 12, color: '#64748b' }}>{order.editedBy ? <>{order.editedBy}<div>{order.editedAt ? new Date(order.editedAt).toLocaleString('en-IN') : ''}</div></> : '—'}</td>
                     <td style={{ padding: '11px 12px', display: 'flex', gap: 10 }}>
-                      {can('Edit Work Order') && <Link href={`/contracting/work-order/raise?id=${order.id}`} title="Edit work order" style={{ color: '#0369a1' }}><Pencil size={16} /></Link>}
+                      {can('Edit Work Order') && !order.approvedAt && <Link href={`/contracting/work-order/raise?id=${order.id}`} title="Edit work order" style={{ color: '#0369a1' }}><Pencil size={16} /></Link>}
                       {can('View Work Order') && <Link href={`/contracting/work-order/raise?id=${order.id}&print=1`} target="_blank" title="Print work order" style={{ color: '#b45309' }}><FileDown size={16} /></Link>}
-                      {can('Approve Work Order') && ['Draft', 'Approved'].includes(order.status) && <button type="button" onClick={() => updateOrderStatus(order, order.status === 'Approved' ? 'unapprove' : 'approve')} disabled={actionId === order.id} title={order.status === 'Approved' ? 'Unapprove work order' : 'Approve work order'} style={{ border: 0, background: 'transparent', color: order.status === 'Approved' ? '#c2410c' : '#15803d', cursor: 'pointer' }}>{order.status === 'Approved' ? 'Unapprove' : <Check size={16} />}</button>}
+                      {can('Approve Work Order') && order.status === 'Draft' && <button type="button" onClick={() => updateOrderStatus(order, 'approve')} disabled={actionId === order.id} title="Approve work order" style={{ border: 0, background: 'transparent', color: '#15803d', cursor: 'pointer' }}><Check size={16} /></button>}
+                      {can('Approve Work Order') && order.status === 'Approved' && withinApprovalWindow(order.approvedAt) && <button type="button" onClick={() => updateOrderStatus(order, 'unapprove')} disabled={actionId === order.id} title="Unapprove to edit within 2 days" style={{ border: 0, background: 'transparent', color: '#c2410c', cursor: 'pointer' }}>Unapprove</button>}
                       {can('Delete Work Order') && order.status === 'Draft' && <button type="button" onClick={() => deleteOrder(order)} disabled={actionId === order.id} title="Delete work order" style={{ border: 0, background: 'transparent', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={16} /></button>}
                       {can('Send Work Order by Email') && <button type="button" disabled={sendingId === order.id} onClick={() => sendWorkOrderEmail(order)} title="Email work order" style={{ border: 0, background: 'transparent', color: '#047857', cursor: 'pointer' }}><Mail size={16} /></button>}
                     </td>

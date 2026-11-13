@@ -3,6 +3,18 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+function addEnquiryItemDescriptions(quotation) {
+  if (!quotation) return quotation;
+  const enquiryTasks = quotation.enquiry?.tasks || [];
+  return {
+    ...quotation,
+    items: (quotation.items || []).map(item => ({
+      ...item,
+      description: item.description || enquiryTasks.find(task => task.taskName === item.taskName)?.description || null,
+    })),
+  };
+}
+
 // GET /api/contracting/quotation?enquiryId=xxx
 export async function GET(req) {
   try {
@@ -13,18 +25,18 @@ export async function GET(req) {
     if (id) {
       const q = await prisma.contractingQuotation.findUnique({
         where: { id },
-        include: { items: true }
+        include: { items: true, enquiry: { include: { tasks: true } } }
       });
-      return NextResponse.json(q);
+      return NextResponse.json(addEnquiryItemDescriptions(q));
     }
 
     const where = enquiryId ? { enquiryId } : {};
     const quotations = await prisma.contractingQuotation.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: { items: true }
+      include: { items: true, enquiry: { include: { tasks: true } } }
     });
-    return NextResponse.json(quotations);
+    return NextResponse.json(quotations.map(addEnquiryItemDescriptions));
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -75,10 +87,10 @@ export async function POST(req) {
           })
         }
       },
-      include: { items: true }
+      include: { items: true, enquiry: { include: { tasks: true } } }
     });
 
-    return NextResponse.json(quotation);
+    return NextResponse.json(addEnquiryItemDescriptions(quotation));
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -130,11 +142,11 @@ export async function PUT(req) {
             })
           }
         },
-        include: { items: true }
+        include: { items: true, enquiry: { include: { tasks: true } } }
       });
     });
 
-    return NextResponse.json(quotation);
+    return NextResponse.json(addEnquiryItemDescriptions(quotation));
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });
