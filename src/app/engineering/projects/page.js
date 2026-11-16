@@ -341,7 +341,7 @@ export default function ProjectMaster() {
             </div>
             <h3 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', fontWeight: 800, color: '#1c1917' }}>Delete Project?</h3>
             <p style={{ margin: '0 0 24px 0', color: '#78716c', fontSize: '0.875rem', lineHeight: 1.6 }}>
-              Are you sure you want to delete <strong>"{deleteTarget.name}"</strong>? This action cannot be undone.
+              Are you sure you want to delete <strong>&quot;{deleteTarget.name}&quot;</strong>? This action cannot be undone.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button

@@ -22,7 +22,7 @@ export default function AuditLogPage() {
     setLoading(false);
   }, [filters, page]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { React.startTransition(() => load()); }, [load]);
 
   const setFilter = (k, v) => { setFilters(f => ({ ...f, [k]: v })); setPage(1); };
 

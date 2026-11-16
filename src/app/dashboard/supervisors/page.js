@@ -239,7 +239,7 @@ export default function SupervisorsPage() {
         <div className="modal-overlay">
           <div className="modal-content glass-panel" style={{ maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
-              <h2>{selectedEmpName}'s Attendance Stats</h2>
+              <h2>{selectedEmpName}&apos;s Attendance Stats</h2>
               <button className="icon-btn" onClick={() => setIsStatsModalOpen(false)}><X size={20} /></button>
             </div>
             

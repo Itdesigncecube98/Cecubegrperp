@@ -19,7 +19,6 @@ const menuConfig = [
       { name: 'Site Dashboard',         path: '/site/dashboard',       permissionCode: 'SITE_DASHBOARD' },
       { name: 'Daily Progress (DPR)',   path: '/site/dpr',             permissionCode: 'SITE_DPR' },
       { name: 'Work Completion',        path: '/site/work-completion', permissionCode: 'SITE_WORK_COMPLETION' },
-      { name: 'Material Requisition',   path: '/site/material',        permissionCode: 'SITE_MATERIAL_REQUISITION' },
       { name: 'GTN (Testing Note)',     path: '/site/material/gtn',    permissionCode: 'SITE_GTN' },
       { name: 'GRN Register',           path: '/site/material/grn',    permissionCode: 'SITE_GRN' },
       { name: 'Site Store',             path: '/site/store',           permissionCode: 'SITE_STORE' },

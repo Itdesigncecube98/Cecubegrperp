@@ -16,9 +16,8 @@ export default function GRNListPage() {
     fetchGRNs();
   }, [filters.status]);
 
-  const fetchGRNs = async () => {
+  async function fetchGRNs() {
     try {
-      setLoading(true);
       const params = new URLSearchParams();
       if (filters.status) params.append('status', filters.status);
       
@@ -30,7 +29,7 @@ export default function GRNListPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const getStatusBadge = (status) => {
     const styles = {

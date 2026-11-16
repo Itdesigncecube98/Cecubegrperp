@@ -4,18 +4,18 @@ import GoogleMapsView from './GoogleMapsView';
 
 export default function LocationPicker({ defaultPosition, onChange }) {
   const [position, setPosition] = useState(defaultPosition || { lat: 28.6139, lng: 77.2090 });
+  const [previousDefaultPosition, setPreviousDefaultPosition] = useState(defaultPosition);
+
+  if (defaultPosition?.lat !== previousDefaultPosition?.lat || defaultPosition?.lng !== previousDefaultPosition?.lng) {
+    setPreviousDefaultPosition(defaultPosition);
+    if (defaultPosition) setPosition(defaultPosition);
+  }
 
   useEffect(() => {
     if (position && onChange) {
       onChange(position);
     }
   }, [position]);
-
-  useEffect(() => {
-    if (defaultPosition && (!position || defaultPosition.lat !== position.lat || defaultPosition.lng !== position.lng)) {
-      setPosition(defaultPosition);
-    }
-  }, [defaultPosition?.lat, defaultPosition?.lng]);
 
   const handleLatChange = (e) => {
     const val = parseFloat(e.target.value);

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { usePathname } from 'next/navigation';
 import { usePermissions } from '@/context/PermissionsContext';
 
@@ -64,10 +64,10 @@ const ROUTE_RIGHTS = [
   ['/marketing/opportunities', 'MARKETING_OPP_PIPELINE'], ['/marketing/proposals', 'MARKETING_TENDER_PROPOSAL'],
   ['/marketing/won-lost', 'MARKETING_HANDOVER'],
   ['/site/dashboard', 'SITE_DASHBOARD'], ['/site/dpr', 'SITE_DPR'], ['/site/work-completion', 'SITE_WORK_COMPLETION'],
-  ['/site/material', 'SITE_MATERIAL_REQUISITION'], ['/site/material/gtn', 'SITE_GTN'], ['/site/material/grn', 'SITE_GRN'],
+  ['/site/material/gtn', 'SITE_GTN'], ['/site/material/grn', 'SITE_GRN'],
   ['/site/store', 'SITE_STORE'], ['/site/task-status', 'SITE_TASK_STATUS'],
   ['/site/dpr/new-dpr', 'SITE_DPR'], ['/site/dpr/', 'SITE_DPR'],
-  ['/site/gtn', 'SITE_GTN'], ['/site/grn', 'SITE_GRN'], ['/site/material/new-requisition', 'SITE_MATERIAL_REQUISITION'],
+  ['/site/gtn', 'SITE_GTN'], ['/site/grn', 'SITE_GRN'],
   ['/marketing/enquiries/create', 'MARKETING_PROJECT_ENQUIRY_CREATE'],
   ['/marketing/enquiries/', 'MARKETING_PROJECT_ENQUIRY_EDIT'],
   ['/marketing/enquiries', 'MARKETING_PROJECT_ENQUIRIES'],
@@ -87,11 +87,14 @@ const TENDER_DETAIL_RIGHTS = {
   approval: 'TENDER_APPROVAL',
 };
 
+const subscribeToNothing = () => () => {};
+const getClientMountedSnapshot = () => true;
+const getServerMountedSnapshot = () => false;
+
 export default function ProjectRoutePermissionGate({ children }) {
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(subscribeToNothing, getClientMountedSnapshot, getServerMountedSnapshot);
   const { activeEmployee, permissionsLoaded, hasRight } = usePermissions();
-  useEffect(() => setMounted(true), []);
   const matchedRight = ROUTE_RIGHTS.slice().sort((a, b) => b[0].length - a[0].length)
     .find(([path]) => path.endsWith('/') ? pathname.startsWith(path) : pathname === path || pathname.startsWith(`${path}/`))?.[1];
   const tenderDetail = pathname.match(/^\/tender\/[^/]+\/([^/]+)/)?.[1];

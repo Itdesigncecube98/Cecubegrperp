@@ -21,7 +21,7 @@ export default function NewGRNPage() {
     fetchPurchaseOrders();
   }, []);
 
-  const fetchPurchaseOrders = async () => {
+  async function fetchPurchaseOrders() {
     try {
       const res = await fetch('/api/purchase-orders?status=APPROVED');
       const data = await res.json();
@@ -29,7 +29,7 @@ export default function NewGRNPage() {
     } catch (error) {
       console.error('Error fetching POs:', error);
     }
-  };
+  }
 
   const handlePOSelect = async (poId) => {
     if (!poId) {

@@ -34,11 +34,7 @@ export default function AppraisalConfiguration() {
     }).catch(console.error);
   }, []);
 
-  useEffect(() => {
-    fetchAssignments();
-  }, [selectedProcess]);
-
-  const fetchAssignments = () => {
+  const fetchAssignments = React.useCallback(() => {
     if (!selectedProcess) return;
     setLoading(true);
     const query = new URLSearchParams({
@@ -57,7 +53,11 @@ export default function AppraisalConfiguration() {
         console.error(err);
         setLoading(false);
       });
-  };
+  }, [selectedProcess, department, employeeIdFilter]);
+
+  useEffect(() => {
+    queueMicrotask(fetchAssignments);
+  }, [fetchAssignments]);
 
   const handleReset = () => {
     setDepartment('Select');

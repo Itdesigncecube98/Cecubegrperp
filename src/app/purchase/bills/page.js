@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { startTransition, useState, useEffect } from 'react';
 import { FileText, Send, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Eye, Pencil, Mail, Trash2 } from 'lucide-react';
 import '../purchase.css';
 import { getClientActor, getClientEmployeeId } from '@/lib/clientActor';
@@ -58,8 +58,10 @@ export default function PurchaseBillsPage() {
   const canEmailBills = canTool('Send Purchase Bill by Email');
 
   useEffect(() => {
-    if (!canCreateBill && canViewBills) setActiveTab('history');
-    else if (canCreateBill && !canViewBills) setActiveTab('create');
+    startTransition(() => {
+      if (!canCreateBill && canViewBills) setActiveTab('history');
+      else if (canCreateBill && !canViewBills) setActiveTab('create');
+    });
   }, [canCreateBill, canViewBills]);
 
   const emailBill = async bill => {

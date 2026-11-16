@@ -54,7 +54,7 @@ export default function ModuleAccessPage({ params }) {
     setLoading(false);
   }, [moduleName]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { React.startTransition(() => loadData()); }, [loadData]);
 
   const handleSave = async () => {
     setSaving(true);

@@ -56,7 +56,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
 
     const userId     = searchParams.get('userId');
-    const module     = searchParams.get('module');
+    const moduleName = searchParams.get('module');
     const subModule  = searchParams.get('subModule');
     const action     = searchParams.get('action');
     const actions    = (searchParams.get('actions') || '').split(',').map(value => value.trim()).filter(Boolean);
@@ -76,7 +76,7 @@ export async function GET(request) {
 
     const where = {
       ...(userId     && { userId }),
-      ...(module     && { module }),
+      ...(moduleName && { module: moduleName }),
       ...(subModule  && { subModule }),
       ...(actions.length ? { action: { in: actions } } : action && { action }),
       ...(entityType && { entityType }),

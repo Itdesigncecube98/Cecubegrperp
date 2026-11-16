@@ -19,7 +19,7 @@ export default function SiteGTNListPage() {
     fetchGTNs();
   }, [filters.status, filters.projectId]);
 
-  const fetchProjects = async () => {
+  async function fetchProjects() {
     try {
       const res = await fetch('/api/projects');
       if (res.ok) {
@@ -29,9 +29,9 @@ export default function SiteGTNListPage() {
     } catch (error) {
       console.error('Error fetching projects:', error);
     }
-  };
+  }
 
-  const fetchGTNs = async () => {
+  async function fetchGTNs() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -46,7 +46,7 @@ export default function SiteGTNListPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const getBadge = (status) => {
     const map = {

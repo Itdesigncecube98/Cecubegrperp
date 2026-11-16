@@ -20,9 +20,7 @@ export default function TripMap(props) {
     : null);
   const ratePerKm = props.ratePerKm ?? trip.vehicle?.ratePerKm ?? 0;
   const travelMode = props.travelMode ?? (trip.vehicle?.vehicleType === 'Two Wheeler' ? 'TWO_WHEELER' : 'DRIVING');
-  const [pings, setPings] = useState(initialPings || []);
-
-  useEffect(() => { setPings(initialPings || []); }, [initialPings]);
+  const pings = initialPings || [];
 
   // Use Ola/Uber style live map for active trips
   if (isActive) {

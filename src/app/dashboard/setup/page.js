@@ -344,7 +344,7 @@ export default function SetupPage() {
                     </label>
                     <label className="block-radio">
                       <input type="radio" checked={!newLeave.includeWeeklyOff} onChange={() => setNewLeave({...newLeave, includeWeeklyOff: false})} />
-                      Exclude <span className="light">(Don't deduct leave balance)</span>
+                      Exclude <span className="light">(Don&apos;t deduct leave balance)</span>
                     </label>
                   </div>
                   <div>
@@ -355,7 +355,7 @@ export default function SetupPage() {
                     </label>
                     <label className="block-radio">
                       <input type="radio" checked={!newLeave.includeHoliday} onChange={() => setNewLeave({...newLeave, includeHoliday: false})} />
-                      Exclude <span className="light">(Don't deduct leave balance)</span>
+                      Exclude <span className="light">(Don&apos;t deduct leave balance)</span>
                     </label>
                   </div>
                 </div>
@@ -367,7 +367,7 @@ export default function SetupPage() {
                   <label><input type="radio" checked={newLeave.considerAsPresent} onChange={() => setNewLeave({...newLeave, considerAsPresent: true})} /> Yes</label>
                   <label><input type="radio" checked={!newLeave.considerAsPresent} onChange={() => setNewLeave({...newLeave, considerAsPresent: false})} /> No</label>
                 </div>
-                <p className="help-text">Choose 'Yes' for leave types like Business Trip, On-Duty. This will mark the attendance status of leave day as Present automatically after approval.</p>
+                <p className="help-text">Choose &apos;Yes&apos; for leave types like Business Trip, On-Duty. This will mark the attendance status of leave day as Present automatically after approval.</p>
               </div>
 
             </div>

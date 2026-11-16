@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 export default function Schedule3Page() {
@@ -9,28 +9,46 @@ export default function Schedule3Page() {
   const [fromDate, setFromDate] = useState("2026-04-01");
   const [toDate, setToDate] = useState("2027-03-31");
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchData = useCallback(async (startDate = fromDate, endDate = toDate) => {
     try {
       const res = await fetch(
-        `/api/schedule3?companyId=${companyId}&fromDate=${fromDate}&toDate=${toDate}`
+        `/api/schedule3?companyId=${companyId}&fromDate=${startDate}&toDate=${endDate}`
       );
       if (!res.ok) throw new Error("Failed to load Schedule III");
+      setError(null);
       setData(await res.json());
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [companyId]);
 
   useEffect(() => {
-    if (companyId) fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!companyId) return;
+    let active = true;
+    async function loadInitialData() {
+      try {
+        const res = await fetch(
+          `/api/schedule3?companyId=${companyId}&fromDate=2026-04-01&toDate=2027-03-31`
+        );
+        if (!res.ok) throw new Error("Failed to load Schedule III");
+        const result = await res.json();
+        if (active) {
+          setError(null);
+          setData(result);
+        }
+      } catch (loadError) {
+        if (active) setError(loadError.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadInitialData();
+    return () => { active = false; };
   }, [companyId]);
 
   const fmt = (n) =>
@@ -49,7 +67,7 @@ export default function Schedule3Page() {
           <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>To Date</label>
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '8px 12px', fontSize: '13px' }} />
         </div>
-        <button onClick={fetchData} disabled={loading} style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '6px', background: '#0ea5e9', color: '#fff', border: 'none', cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>
+        <button onClick={() => { setLoading(true); fetchData(fromDate, toDate); }} disabled={loading} style={{ padding: '8px 16px', fontSize: '13px', borderRadius: '6px', background: '#0ea5e9', color: '#fff', border: 'none', cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>
           {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>

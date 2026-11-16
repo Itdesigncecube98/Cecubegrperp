@@ -17,7 +17,6 @@ export default function BalanceSheetPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const res = await fetch(`/api/accounts/balance-sheet?fromDate=${filters.fromDate}&toDate=${filters.toDate}`);
       const json = await res.json();

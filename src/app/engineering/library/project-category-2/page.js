@@ -14,14 +14,14 @@ export default function ProjectCategory2() {
     fetchCategories();
   }, []);
 
-  const fetchCategories = async () => {
+  async function fetchCategories() {
     try {
       const res = await fetch('/api/project-categories-2');
       if (res.ok) setCategories(await res.json());
     } catch (err) {
       console.error(err);
     }
-  };
+  }
 
   // Form State
   const [isEditing, setIsEditing] = useState(false);

@@ -60,7 +60,7 @@ export default function RequisitionBrowse() {
   };
 
   useEffect(() => {
-    fetchRequisitions();
+    React.startTransition(() => fetchRequisitions());
   }, [selectedProjectId]);
 
   const handleOpenAdd = () => {
@@ -238,7 +238,7 @@ export default function RequisitionBrowse() {
             {loading ? (
               <tr><td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Loading requisitions...</td></tr>
             ) : requisitions.length === 0 ? (
-              <tr><td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No requisitions found. Click 'Add Requisition' to create one.</td></tr>
+              <tr><td colSpan="10" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>No requisitions found. Click &apos;Add Requisition&apos; to create one.</td></tr>
             ) : (
               requisitions.map((req, idx) => (
                 <tr key={req.id || idx} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8f9fa' }}>

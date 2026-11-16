@@ -13,7 +13,10 @@ export function useAutoRefresh(fetcher, { intervalMs = 10000, enabled = true } =
   const [autoRefresh, setAutoRefresh] = useState(enabled);
   const busy = useRef(false);
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
 
   const refresh = useCallback(async () => {
     if (busy.current) return;

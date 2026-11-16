@@ -36,17 +36,17 @@ export default function QuotationPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    React.startTransition(() => load());
   }, [load]);
 
   useEffect(() => {
     if (!selectedId) {
-      setComparison(null);
+      React.startTransition(() => setComparison(null));
       return undefined;
     }
 
     let active = true;
-    setDetailLoading(true);
+    React.startTransition(() => setDetailLoading(true));
 
     getComparison(selectedId)
       .then((data) => {

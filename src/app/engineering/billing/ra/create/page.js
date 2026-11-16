@@ -80,12 +80,14 @@ export default function CreateRABill() {
     let net = cumulative - previous - retentionAmt - adv - other;
     if (net < 0) net = 0;
 
-    setFormData(prev => ({
-      ...prev,
-      retentionAmount: retentionAmt,
-      netPayable: net,
-      currentBill: currentGross
-    }));
+    React.startTransition(() => {
+      setFormData(prev => ({
+        ...prev,
+        retentionAmount: retentionAmt,
+        netPayable: net,
+        currentBill: currentGross
+      }));
+    });
   }, [formData.cumulative, formData.previousCertified, formData.retentionPercent, formData.advanceRecovery, formData.otherDeductions]);
 
   const handleInputChange = (e) => {

@@ -169,7 +169,7 @@ export default function SupervisorTripsPage() {
           </button>
           <div>
             <h1 style={{ fontSize: '1.875rem', fontWeight: 800, margin: 0, color: '#0f172a', letterSpacing: '-0.025em' }}>Team Trips</h1>
-            <p style={{ color: '#64748b', margin: '0.25rem 0 0 0', fontSize: '0.95rem' }}>Manage and track your direct reports' trips</p>
+            <p style={{ color: '#64748b', margin: '0.25rem 0 0 0', fontSize: '0.95rem' }}>Manage and track your direct reports&apos; trips</p>
           </div>
         </div>
         <button 

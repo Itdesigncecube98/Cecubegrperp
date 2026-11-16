@@ -39,9 +39,9 @@ const MODULE_MAP = {
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const module = searchParams.get('module');
+    const moduleName = searchParams.get('module');
 
-    const where = module ? { module } : {};
+    const where = moduleName ? { module: moduleName } : {};
 
     const permissions = await prisma.permission.findMany({
       where,

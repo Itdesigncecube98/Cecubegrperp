@@ -39,7 +39,7 @@ export default function EnquiryBrowse() {
   }, []);
 
   useEffect(() => {
-    load();
+    React.startTransition(() => load());
   }, [load]);
 
   const filtered = useMemo(() => {

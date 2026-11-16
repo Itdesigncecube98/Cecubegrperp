@@ -43,8 +43,10 @@ export default function SupplierList() {
   };
 
   useEffect(() => {
-    fetchSuppliers();
-    fetchGroups();
+    React.startTransition(() => {
+      fetchSuppliers();
+      fetchGroups();
+    });
   }, []);
 
   const filteredSuppliers = selectedGroup ? suppliers.filter(s => s.group === selectedGroup) : suppliers;

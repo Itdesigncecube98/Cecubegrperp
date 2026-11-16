@@ -62,15 +62,17 @@ export default function PunchLiveLocationMap({ active = true, refreshInterval = 
 
   useEffect(() => {
     if (!active || authExpired) return undefined;
-    
-    // Initial fetch
-    refreshLocations();
+    const initialFetchId = window.setTimeout(refreshLocations, 0);
     
     // Only auto-refresh if we are in live view (no historyDate)
     if (!historyDate) {
       const intervalId = window.setInterval(refreshLocations, refreshInterval);
-      return () => window.clearInterval(intervalId);
+      return () => {
+        window.clearTimeout(initialFetchId);
+        window.clearInterval(intervalId);
+      };
     }
+    return () => window.clearTimeout(initialFetchId);
   }, [active, authExpired, refreshInterval, refreshLocations, historyDate]);
 
   if (!active) return null;

@@ -325,7 +325,7 @@ export default function HRReportsPage() {
           <tr>
             <th>Emp ID</th>
             <th>Name</th>
-            <th>Father's Name</th>
+            <th>Father&apos;s Name</th>
             <th>Joining Date</th>
             <th>Designation</th>
             <th>Department</th>
@@ -888,7 +888,7 @@ export default function HRReportsPage() {
                   <th style={{ width: '60px' }}>Sr. No.</th>
                   <th>Emp No.</th>
                   <th>Employee Name</th>
-                  <th>Father's Name</th>
+                  <th>Father&apos;s Name</th>
                   <th>Joining Date</th>
                   <th>Position Name</th>
                   <th style={{ textAlign: 'right' }}>Gross Salary</th>

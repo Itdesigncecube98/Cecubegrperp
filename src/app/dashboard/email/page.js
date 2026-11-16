@@ -734,7 +734,7 @@ function CelebrationsTab({ employees, holidays, senderEmail, senderName }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#111827' }}>Today's Celebrations</h2>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#111827' }}>Today&apos;s Celebrations</h2>
           <p style={{ margin: '4px 0 0 0', color: '#6b7280', fontSize: '0.9rem' }}>
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>

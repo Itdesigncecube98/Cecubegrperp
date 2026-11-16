@@ -77,7 +77,7 @@ export default function EmployeeToolsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setSeeding(true);
+    React.startTransition(() => setSeeding(true));
     syncCatalog()
       .then(result => {
         if (!cancelled && result.purged) setSaveMsg(`Permissions synced; ${result.migratedEmployeeGrants || 0} previous grants kept as View.`);
@@ -98,8 +98,10 @@ export default function EmployeeToolsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setProjectsLoading(true);
-    setProjectLoadError('');
+    React.startTransition(() => {
+      setProjectsLoading(true);
+      setProjectLoadError('');
+    });
     fetch('/api/admin/employee-tools/projects', { cache: 'no-store' })
       .then(async response => {
         const data = await response.json().catch(() => ({}));
@@ -192,7 +194,7 @@ export default function EmployeeToolsPage() {
   const moduleGrantedCount = (module) =>
     scopedTools.filter(t => t.module === module && granted.has(t.id)).length;
 
-  const filteredTools = useMemo(() => {
+  const filteredTools = (() => {
     const sq = search.toLowerCase();
     return scopedTools.filter(t => {
       if (t.module !== activeModule) return false;
@@ -203,7 +205,7 @@ export default function EmployeeToolsPage() {
         || (filterMode === 'denied' && !isGranted);
       return matchSearch && matchFilter;
     });
-  }, [scopedTools, activeModule, search, filterMode, granted]);
+  })();
 
   const filteredEmployees = employees.filter(e =>
     (e.name || '').toLowerCase().includes(empSearch.toLowerCase()) ||

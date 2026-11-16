@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { startTransition, useState, useEffect, useCallback } from 'react';
 import '../purchase.css';
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
@@ -62,7 +62,7 @@ export default function PurchaseAdvancePage() {
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { startTransition(() => loadData()); }, [loadData]);
 
   // ── PO selection handler ──────────────────────────────────────────────────
   const handlePoSelect = (poId) => {

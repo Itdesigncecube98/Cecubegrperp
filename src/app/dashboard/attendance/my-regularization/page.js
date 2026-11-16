@@ -10,7 +10,7 @@ export default function MyRegularizationRequests() {
   
   useEffect(() => {
     const empData = localStorage.getItem('employeeData');
-    if (empData) setEmployee(JSON.parse(empData));
+    if (empData) queueMicrotask(() => setEmployee(JSON.parse(empData)));
   }, []);
 
   const [requests, setRequests] = useState([]);
@@ -21,13 +21,7 @@ export default function MyRegularizationRequests() {
     endDate: ''
   });
 
-  useEffect(() => {
-    if (employee && employee.id) {
-      fetchRequests();
-    }
-  }, [employee]);
-
-  const fetchRequests = async () => {
+  const fetchRequests = React.useCallback(async () => {
     setLoading(true);
     try {
       const data = await getPunchRequests(null, employee.id);
@@ -37,7 +31,13 @@ export default function MyRegularizationRequests() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [employee]);
+
+  useEffect(() => {
+    if (employee && employee.id) {
+      queueMicrotask(fetchRequests);
+    }
+  }, [employee, fetchRequests]);
 
   const filteredRequests = requests.filter(req => {
     if (filters.status !== 'All' && req.status.toUpperCase() !== filters.status.toUpperCase()) return false;

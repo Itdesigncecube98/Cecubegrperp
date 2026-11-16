@@ -30,7 +30,7 @@ export default function BrandMaster() {
   }, []);
 
   useEffect(() => {
-    load();
+    React.startTransition(() => load());
   }, [load]);
 
   const dismissToast = useCallback(() => setToast(null), []);

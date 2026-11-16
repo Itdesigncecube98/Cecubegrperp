@@ -998,7 +998,7 @@ export default function EmployeeProfilePage() {
               
               {(!form.dependents || form.dependents.length === 0) ? (
                 <div style={{ padding: '40px', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', color: '#64748b' }}>
-                  No dependents added yet. Click "Add Dependent" to add one.
+                  No dependents added yet. Click &quot;Add Dependent&quot; to add one.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1049,7 +1049,7 @@ export default function EmployeeProfilePage() {
               
               {!(f('educations') && f('educations').length > 0) ? (
                 <div style={{ padding: '40px', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', color: '#64748b' }}>
-                  No education records found. Click "Add Education" to add one.
+                  No education records found. Click &quot;Add Education&quot; to add one.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -1115,7 +1115,7 @@ export default function EmployeeProfilePage() {
               
               {!(f('workExperiences') && f('workExperiences').length > 0) ? (
                 <div style={{ padding: '40px', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', color: '#64748b' }}>
-                  No experience records found. Click "Add Experience" to add one.
+                  No experience records found. Click &quot;Add Experience&quot; to add one.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>

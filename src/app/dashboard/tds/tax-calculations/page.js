@@ -187,7 +187,7 @@ export default function TaxCalculations() {
             </div>
           </div>
           <div className="calc-row">
-            <div className="calc-label">Income Chargeable under the Head 'Salaries'</div>
+            <div className="calc-label">Income Chargeable under the Head &apos;Salaries&apos;</div>
             <div className="calc-input-wrap">
               <input type="text" className="calc-input" defaultValue="0" />
               <div style={{ width: '14px' }}></div>

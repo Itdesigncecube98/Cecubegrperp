@@ -64,8 +64,19 @@ export default function DefineWBS() {
   const [libraryTasks, setLibraryTasks] = useState([]);
   const [loadingLibraryTasks, setLoadingLibraryTasks] = useState(false);
   const [selectedLibraryTaskId, setSelectedLibraryTaskId] = useState('');
+  const [libraryTaskSearch, setLibraryTaskSearch] = useState('');
   const [selectedMaterialId, setSelectedMaterialId] = useState('');
   const [selectedLabourId, setSelectedLabourId] = useState('');
+
+  const filteredLibraryTasks = useMemo(() => {
+    const query = libraryTaskSearch.trim().toLowerCase();
+    const matches = libraryTasks.filter(task =>
+      `${task.name} ${task.libraryGroupName || ''} ${task.libraryName || ''}`.toLowerCase().includes(query)
+    );
+    if (!selectedLibraryTaskId || matches.some(task => task.id === selectedLibraryTaskId)) return matches;
+    const selectedTask = libraryTasks.find(task => task.id === selectedLibraryTaskId);
+    return selectedTask ? [selectedTask, ...matches] : matches;
+  }, [libraryTasks, libraryTaskSearch, selectedLibraryTaskId]);
 
   // Selected library task and attached material/labour
   const selectedLibraryTask = useMemo(() => {
@@ -140,8 +151,10 @@ export default function DefineWBS() {
         setLoadingProjects(false);
       }
     };
-    fetchProjects();
-    fetchLibraryTasks();
+    React.startTransition(() => {
+      fetchProjects();
+      fetchLibraryTasks();
+    });
   }, []);
 
   // 2. Fetch WBS when selected project changes
@@ -180,7 +193,7 @@ export default function DefineWBS() {
 
   useEffect(() => {
     if (selectedProjectId) {
-      fetchWbs(selectedProjectId);
+      React.startTransition(() => fetchWbs(selectedProjectId));
     }
   }, [selectedProjectId]);
 
@@ -283,6 +296,7 @@ export default function DefineWBS() {
     }
     setEditingTaskId(null);
     setSelectedLibraryTaskId('');
+    setLibraryTaskSearch('');
     setSelectedMaterialId('');
     setSelectedLabourId('');
     setTaskForm({
@@ -301,6 +315,7 @@ export default function DefineWBS() {
     // Find matching library task if name matches
     const matched = libraryTasks.find(lt => lt.name?.toLowerCase().trim() === task.name?.toLowerCase().trim());
     setSelectedLibraryTaskId(matched ? matched.id : '');
+    setLibraryTaskSearch('');
     const savedMaterial = task.materials?.[0];
     const matchedMaterial = matched?.materials?.find(material => material.name === savedMaterial?.name);
     setSelectedMaterialId(matchedMaterial?.id || '');
@@ -618,7 +633,7 @@ export default function DefineWBS() {
             <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
               <Folder size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
               <p style={{ fontSize: '0.9rem', fontWeight: 500, margin: '0 0 6px' }}>No WBS Groups Defined</p>
-              <p style={{ fontSize: '0.8rem', margin: 0 }}>Click "Add Group" above to create your first WBS group with RERA stage.</p>
+              <p style={{ fontSize: '0.8rem', margin: 0 }}>Click &quot;Add Group&quot; above to create your first WBS group with RERA stage.</p>
             </div>
           ) : (
             <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', background: '#fafafa' }}>
@@ -913,7 +928,7 @@ export default function DefineWBS() {
                     <td colSpan="6" style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8' }}>
                       <Layers size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
                       <p style={{ margin: '0 0 6px', fontWeight: 500, fontSize: '0.95rem' }}>No Tasks in this Group</p>
-                      <p style={{ margin: 0, fontSize: '0.85rem' }}>Click "Add Task to {selectedGroup?.name || 'Group'}" to add tasks with material & labour work volumes.</p>
+                      <p style={{ margin: 0, fontSize: '0.85rem' }}>Click &quot;Add Task to {selectedGroup?.name || 'Group'}&quot; to add tasks with material &amp; labour work volumes.</p>
                     </td>
                   </tr>
                 ) : (
@@ -982,7 +997,7 @@ export default function DefineWBS() {
           {/* Footer Brand Line */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#94a3b8', marginTop: 'auto' }}>
             <span>Powered by Kanix Infotech Pvt. Ltd.</span>
-            <span style={{ color: '#be123c' }}>India's first Construction ERP Software. Ver: 33.00.00</span>
+            <span style={{ color: '#be123c' }}>India&apos;s first Construction ERP Software. Ver: 33.00.00</span>
           </div>
         </div>
       </div>
@@ -1144,6 +1159,15 @@ export default function DefineWBS() {
 
                   {/* Task Library Selector Dropdown */}
                   <div style={{ marginBottom: '8px' }}>
+                    <input
+                      type="search"
+                      className="premium-input"
+                      value={libraryTaskSearch}
+                      onChange={event => setLibraryTaskSearch(event.target.value)}
+                      placeholder="Search task or task group..."
+                      aria-label="Search task library"
+                      style={{ width: '100%', boxSizing: 'border-box', marginBottom: '6px' }}
+                    />
                     <select
                       className="premium-input"
                       value={selectedLibraryTaskId}
@@ -1158,8 +1182,9 @@ export default function DefineWBS() {
                       }}
                     >
                       <option value="">-- Select Task from Task Library --</option>
+                      {filteredLibraryTasks.length === 0 && <option disabled>No matching tasks found</option>}
                       {Object.entries(
-                        libraryTasks.reduce((acc, t) => {
+                        filteredLibraryTasks.reduce((acc, t) => {
                           const grpKey = `${t.libraryName} • ${t.libraryGroupName}`;
                           if (!acc[grpKey]) acc[grpKey] = [];
                           acc[grpKey].push(t);

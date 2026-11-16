@@ -19,9 +19,8 @@ export default function PurchaseBillsPage() {
 
   useEffect(() => { fetchBills(); }, [filter]);
 
-  const fetchBills = async () => {
+  async function fetchBills() {
     try {
-      setLoading(true);
       const url = filter === 'ALL' ? '/api/accounts/purchase-bills' : `/api/accounts/purchase-bills?status=${filter}`;
       const res = await fetch(url);
       const data = await res.json();
@@ -46,7 +45,7 @@ export default function PurchaseBillsPage() {
       setKpis({ gross, tds, net, paid, outstanding: net - paid });
     } catch { setBills([]); }
     finally { setLoading(false); }
-  };
+  }
 
   const fmt = (n) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
   const fmtCr = (n) => {

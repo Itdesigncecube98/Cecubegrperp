@@ -74,7 +74,7 @@ export default function UnitMaster() {
   };
 
   useEffect(() => {
-    fetchUnits(search);
+    React.startTransition(() => fetchUnits(search));
   }, [sortBy, libraryId]);
 
   useEffect(() => {
@@ -103,7 +103,7 @@ export default function UnitMaster() {
   // Keep current page within valid bounds
   useEffect(() => {
     if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
+      React.startTransition(() => setCurrentPage(totalPages));
     }
   }, [totalPages, currentPage]);
 
@@ -610,7 +610,7 @@ export default function UnitMaster() {
         {/* Footer Brand Line */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', fontSize: '0.75rem', color: '#94a3b8' }}>
           <span>Powered by Kanix Infotech Pvt. Ltd.</span>
-          <span style={{ color: '#0ea5e9' }}>India's first Construction ERP Software. Ver: 33.00.00</span>
+          <span style={{ color: '#0ea5e9' }}>India&apos;s first Construction ERP Software. Ver: 33.00.00</span>
         </div>
       </div>
 

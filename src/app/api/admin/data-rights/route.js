@@ -8,12 +8,12 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
     const roleId = searchParams.get('roleId');
-    const module = searchParams.get('module');
+    const moduleName = searchParams.get('module');
 
     const where = {};
     if (userId) where.userId = userId;
     if (roleId) where.roleId = roleId;
-    if (module) where.module = module;
+    if (moduleName) where.module = moduleName;
 
     const [scopes, users] = await Promise.all([
       prisma.dataScopeAccess.findMany({ where, orderBy: [{ scopeType: 'asc' }, { createdAt: 'desc' }] }),

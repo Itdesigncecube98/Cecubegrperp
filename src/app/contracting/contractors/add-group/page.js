@@ -18,7 +18,7 @@ export default function ContractorGroupsPage() {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
+  async function fetchData() {
     setLoading(true);
     try {
       const [groupsRes, contractorsRes] = await Promise.all([
@@ -32,7 +32,7 @@ export default function ContractorGroupsPage() {
       showToast('Error loading data', 'error');
     }
     setLoading(false);
-  };
+  }
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });

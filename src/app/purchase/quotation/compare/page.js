@@ -50,7 +50,7 @@ function CompareInner() {
   }, [rfqId]);
 
   useEffect(() => {
-    load();
+    React.startTransition(() => load());
   }, [load]);
 
   const materials = data?.materials || [];

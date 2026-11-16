@@ -16,7 +16,6 @@ export default function ProfitAndLossPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const res = await fetch(`/api/accounts/profit-and-loss?fromDate=${filters.fromDate}&toDate=${filters.toDate}`);
       const json = await res.json();

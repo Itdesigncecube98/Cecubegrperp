@@ -95,7 +95,7 @@ export default function ImprestResponsibilitiesPage() {
         {requests.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
             <CheckCircle size={48} style={{ color: '#10b981', marginBottom: '1rem', opacity: 0.5 }} />
-            <h3>You're all caught up!</h3>
+            <h3>You&apos;re all caught up!</h3>
             <p>No pending imprest requests await your approval.</p>
           </div>
         ) : (

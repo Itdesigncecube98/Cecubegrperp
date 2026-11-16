@@ -11,10 +11,9 @@ export default function TdsPaymentPage() {
     dateTo: '' 
   });
   const [selected, setSelected] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    setLoading(true);
     try {
       const params = new URLSearchParams(filters);
       const data = await fetch(`/api/tds-deductions?${params}`).then(r => r.json());

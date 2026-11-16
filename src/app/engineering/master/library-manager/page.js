@@ -15,7 +15,7 @@ export default function LibraryManager() {
     fetchLibraries();
   }, []);
 
-  const fetchLibraries = async () => {
+  async function fetchLibraries() {
     try {
       const res = await fetch('/api/libraries');
       if (res.ok) {
@@ -25,7 +25,7 @@ export default function LibraryManager() {
     } catch (err) {
       console.error(err);
     }
-  };
+  }
 
   const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this library?")) {

@@ -150,7 +150,7 @@ export default function TeamLeaveApplications() {
               <h2 className="tableTitle">Team Leave Applications</h2>
               <Info size={16} className="infoIcon" />
             </div>
-            <p className="tableSubtitle">The below table shows the list of your team's leave applications.</p>
+            <p className="tableSubtitle">The below table shows the list of your team&apos;s leave applications.</p>
           </div>
           <div className="actionButtons" style={{ gap: '0.5rem', display: 'flex' }}>
             <select className="filterInput" style={{ minWidth: '150px' }}>

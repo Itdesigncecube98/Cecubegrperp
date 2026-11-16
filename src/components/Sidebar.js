@@ -186,7 +186,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {filteredItems.length === 0 ? (
               <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: '12px', color: '#64748b' }}>
-                No results for "{searchQuery}"
+                No results for &quot;{searchQuery}&quot;
               </div>
             ) : (
               filteredItems.map(item => {

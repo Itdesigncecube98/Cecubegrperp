@@ -14,7 +14,7 @@ export default function ContractorList() {
     fetchContractors();
   }, []);
 
-  const fetchContractors = async () => {
+  async function fetchContractors() {
     try {
       const res = await fetch('/api/contractors');
       if (res.ok) {
@@ -26,7 +26,7 @@ export default function ContractorList() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const handleEdit = (id) => {
     router.push(`/contracting/contractors/add-contractor?id=${id}`);

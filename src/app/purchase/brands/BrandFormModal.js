@@ -35,9 +35,11 @@ export default function BrandFormModal({ isOpen, brand, onClose, onSaved }) {
 
   useEffect(() => {
     if (!isOpen) return;
-    setForm({ name: brand?.name || '', status: brand?.status || 'Active' });
-    setFormError('');
-    setSaving(false);
+    React.startTransition(() => {
+      setForm({ name: brand?.name || '', status: brand?.status || 'Active' });
+      setFormError('');
+      setSaving(false);
+    });
   }, [isOpen, brand]);
 
   if (!isOpen) return null;

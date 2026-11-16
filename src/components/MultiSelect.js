@@ -6,11 +6,15 @@ export default function MultiSelect({ options, selected, onChange, placeholder =
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [tempSelected, setTempSelected] = useState(selected || []);
+  const [syncedSelected, setSyncedSelected] = useState(selected);
+  const [syncedIsOpen, setSyncedIsOpen] = useState(isOpen);
   const wrapperRef = useRef(null);
 
-  useEffect(() => {
+  if (selected !== syncedSelected || isOpen !== syncedIsOpen) {
+    setSyncedSelected(selected);
+    setSyncedIsOpen(isOpen);
     setTempSelected(selected || []);
-  }, [selected, isOpen]);
+  }
 
   useEffect(() => {
     function handleClickOutside(event) {

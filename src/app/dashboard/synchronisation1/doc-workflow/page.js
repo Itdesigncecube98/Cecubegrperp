@@ -57,7 +57,7 @@ export default function DocWorkflowConfigPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>Doc Generator Workflow Configuration</h1>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Configure the approval chain for each employee's document requests.</p>
+          <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Configure the approval chain for each employee&apos;s document requests.</p>
         </div>
         <button 
           onClick={saveMappings}

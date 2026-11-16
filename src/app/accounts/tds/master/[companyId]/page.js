@@ -34,7 +34,7 @@ export default function TDSMasterPage() {
     }
   }, [companyId, type]);
 
-  const fetchLedgers = async () => {
+  async function fetchLedgers() {
     try {
       const res = await fetch(`/api/ledgers?companyId=${companyId}`);
       if (res.ok) {
@@ -44,9 +44,9 @@ export default function TDSMasterPage() {
     } catch (e) {
       console.error('Failed to load ledgers:', e);
     }
-  };
+  }
 
-  const fetchRows = async () => {
+  async function fetchRows() {
     setLoading(true);
     setError(null);
     try {
@@ -59,7 +59,7 @@ export default function TDSMasterPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const handleAdd = () => {
     setEditingRow(null);
@@ -192,7 +192,7 @@ export default function TDSMasterPage() {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-                  No {type} sections configured. Click "+ Add Section" to create one.
+                  No {type} sections configured. Click &quot;+ Add Section&quot; to create one.
                 </td>
               </tr>
             ) : (

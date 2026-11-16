@@ -2145,7 +2145,7 @@ export default function EmployeeDashboard() {
                   You have <strong>{availableNightShifts}</strong> total Night Shifts logged in <strong>{coffData.month}</strong>.
                 </p>
                 <p style={{ margin: '0.5rem 0 0 0', color: '#0284c7', fontSize: '12px' }}>
-                  Please verify you haven't already converted these before submitting.
+                  Please verify you haven&apos;t already converted these before submitting.
                 </p>
               </div>
 

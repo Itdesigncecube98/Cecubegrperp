@@ -45,7 +45,7 @@ export default function WhosOnLeave() {
       </Link>
       
       <div className="tabsContainer" style={{ marginTop: '1rem' }}>
-        <div className="tab active" style={{ fontSize: '16px', color: '#111827' }}>Team's Leave List</div>
+        <div className="tab active" style={{ fontSize: '16px', color: '#111827' }}>Team&apos;s Leave List</div>
       </div>
 
       <div className="card">
@@ -76,9 +76,9 @@ export default function WhosOnLeave() {
         <div className="tableHeaderRow">
           <div>
             <div className="tableTitleArea">
-              <h2 className="tableTitle">Team's Leave List</h2>
+              <h2 className="tableTitle">Team&apos;s Leave List</h2>
             </div>
-            <p className="tableSubtitle">The below table shows the list of your team's absentees for {date}.</p>
+            <p className="tableSubtitle">The below table shows the list of your team&apos;s absentees for {date}.</p>
           </div>
         </div>
 

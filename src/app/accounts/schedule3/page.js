@@ -14,10 +14,9 @@ export default function Schedule3Page() {
   });
 
   const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const res = await fetch(`/api/accounts/schedule3?fromDate=${filters.fromDate}&toDate=${filters.toDate}`);
       const json = await res.json();

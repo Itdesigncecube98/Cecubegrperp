@@ -12,12 +12,16 @@ export default function CreatePR() {
   const canCreate = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', 'Purchase Indent Create')));
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
-  const [materials, setMaterials] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [taskSearch, setTaskSearch] = useState('');
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksError, setTasksError] = useState('');
 
   const [formData, setFormData] = useState({
     department: '',
     project: '',
+    wbsTaskId: '',
     site: '',
     requiredDate: '',
     priority: 'Normal',
@@ -27,8 +31,15 @@ export default function CreatePR() {
   });
 
   const [items, setItems] = useState([
-    { id: 1, selectedMaterialId: '', item: '', specification: '', unit: 'Nos', quantity: '' }
+    { id: 1, item: '', specification: '', unit: 'Nos', quantity: '' }
   ]);
+  const selectedTask = tasks.find(task => task.id === formData.wbsTaskId);
+  const filteredTasks = tasks.filter(task =>
+    `${task.name} ${task.groupName || ''}`.toLowerCase().includes(taskSearch.trim().toLowerCase())
+  );
+  const displayedTasks = selectedTask && !filteredTasks.some(task => task.id === selectedTask.id)
+    ? [selectedTask, ...filteredTasks]
+    : filteredTasks;
 
   useEffect(() => {
     async function loadData() {
@@ -55,32 +66,41 @@ export default function CreatePR() {
   }, []);
 
   useEffect(() => {
-    if (!formData.project) { setMaterials([]); return; }
     const selectedProject = projects.find(project => project.name === formData.project);
-    if (!selectedProject) { setMaterials([]); return; }
-    fetch(`/api/engineering/material-library?resourceType=Material&projectId=${encodeURIComponent(selectedProject.id)}`, { cache: 'no-store' })
-      .then(response => response.ok ? response.json() : [])
-      .then(groups => {
-        const allMaterials = [];
-        const flatten = nodes => (nodes || []).forEach(node => {
-          (node.materials || []).forEach(material => allMaterials.push(material));
-          flatten(node.subgroups);
-        });
-        flatten(Array.isArray(groups) ? groups : []);
-        setMaterials(allMaterials);
+    if (!selectedProject) return;
+
+    let cancelled = false;
+    fetch(`/api/purchase/pr/tasks?projectId=${encodeURIComponent(selectedProject.id)}`, { cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to load WBS tasks.');
+        if (!cancelled) setTasks(Array.isArray(data) ? data : []);
       })
-      .catch(() => setMaterials([]));
+      .catch(error => {
+        if (!cancelled) setTasksError(error.message || 'Failed to load WBS tasks.');
+      })
+      .finally(() => {
+        if (!cancelled) setTasksLoading(false);
+      });
+
+    return () => { cancelled = true; };
   }, [formData.project, projects]);
 
   const handleHeaderChange = (e) => {
     const { name, value } = e.target;
     if (name === 'project') {
       const selectedProject = projects.find(project => project.name === value);
+      setTasks([]);
+      setTaskSearch('');
+      setTasksError('');
+      setTasksLoading(!!selectedProject);
       setFormData(prev => ({
         ...prev,
         project: value,
+        wbsTaskId: '',
         site: selectedProject?.location || selectedProject?.address || selectedProject?.state || ''
       }));
+      setItems([{ id: 1, item: '', specification: '', unit: 'Nos', quantity: '' }]);
       return;
     }
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -94,7 +114,7 @@ export default function CreatePR() {
   };
 
   const addItem = () => {
-    setItems([...items, { id: items.length + 1, selectedMaterialId: '', item: '', specification: '', unit: 'Nos', quantity: '' }]);
+    setItems([...items, { id: Date.now(), item: '', specification: '', unit: 'Nos', quantity: '' }]);
   };
 
   const removeItem = (index) => {
@@ -103,26 +123,35 @@ export default function CreatePR() {
     }
   };
 
-  const fillFromLibrary = (index, materialId) => {
-    const material = materials.find(entry => entry.id === materialId);
-    setItems(prev => prev.map((it, i) => i === index ? {
-      ...it,
-      selectedMaterialId: materialId,
-      item: material?.name || '',
-      specification: material?.specification || '',
-      unit: material?.unit || 'Nos',
-      quantity: material?.quantity || 1
-    } : it));
+  const handleTaskChange = taskId => {
+    const task = tasks.find(entry => entry.id === taskId);
+    setFormData(previous => ({ ...previous, wbsTaskId: taskId }));
+    setTaskSearch(task?.name || '');
+    const taskMaterials = (task?.materials || [])
+      .filter(material => material?.name || material?.materialName)
+      .map((material, index) => ({
+        id: `${taskId}-${index}`,
+        item: material.name || material.materialName,
+        specification: material.specification || '',
+        unit: material.unit || 'Nos',
+        quantity: material.quantity ?? ''
+      }));
+    setItems(taskMaterials.length ? taskMaterials : [{ id: `${taskId}-empty`, item: '', specification: '', unit: 'Nos', quantity: '' }]);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
+      const selectedTask = tasks.find(task => task.id === formData.wbsTaskId);
       const res = await fetch('/api/purchase/pr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, items })
+        body: JSON.stringify({
+          ...formData,
+          purpose: formData.purpose || (selectedTask ? `WBS Task: ${selectedTask.name}` : ''),
+          items
+        })
       });
       if (res.ok) {
         router.push('/purchase/pr');
@@ -167,6 +196,35 @@ export default function CreatePR() {
                     <option key={p.id} value={p.name}>{p.name}</option>
                   ))}
                 </select>
+              </div>
+              <div className="pur-form-group">
+                <label className="pur-label">WBS Task *</label>
+                <input
+                  type="search"
+                  value={taskSearch}
+                  onChange={event => setTaskSearch(event.target.value)}
+                  disabled={!formData.project || tasksLoading || !!tasksError}
+                  placeholder="Search task or WBS group..."
+                  className="pur-input"
+                  style={{ marginBottom: 8 }}
+                />
+                <select
+                  name="wbsTaskId"
+                  required
+                  value={formData.wbsTaskId}
+                  onChange={event => handleTaskChange(event.target.value)}
+                  disabled={!formData.project || tasksLoading}
+                  className="pur-select"
+                >
+                  <option value="">{tasksLoading ? 'Loading WBS tasks...' : 'Select WBS Task'}</option>
+                  {displayedTasks.map(task => (
+                    <option key={task.id} value={task.id}>{task.groupName} / {task.name}</option>
+                  ))}
+                </select>
+                {tasksError && <div role="alert" style={{ color: '#b91c1c', fontSize: '0.75rem', marginTop: 4 }}>{tasksError}</div>}
+                {!tasksLoading && !tasksError && formData.project && tasks.length === 0 && (
+                  <div style={{ color: '#b45309', fontSize: '0.75rem', marginTop: 4 }}>No WBS tasks found for this project.</div>
+                )}
               </div>
               <div className="pur-form-group">
                 <label className="pur-label">Site / Location</label>
@@ -223,7 +281,10 @@ export default function CreatePR() {
 
           <div className="pur-form-section">
             <div className="pur-flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 className="pur-section-title" style={{ margin: 0 }}>Item Details</h2>
+              <div>
+                <h2 className="pur-section-title" style={{ margin: 0 }}>Item Details</h2>
+                <p className="pur-subtitle" style={{ margin: '4px 0 0' }}>Materials are loaded from the selected WBS task. You can adjust quantities.</p>
+              </div>
               <button type="button" onClick={addItem} className="pur-btn pur-btn-outline" style={{ fontSize: '0.75rem', padding: '4px 8px' }}>
                 <Plus size={14} /> Add Item
               </button>
@@ -233,7 +294,6 @@ export default function CreatePR() {
               <table className="pur-table" style={{ border: '1px solid #e2e8f0' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f8fafc' }}>
-                    <th style={{ width: '200px' }}>From Material Library</th>
                     <th>Item Name *</th>
                     <th>Specification</th>
                     <th style={{ width: '100px' }}>Unit</th>
@@ -242,27 +302,10 @@ export default function CreatePR() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item, index) => {
-                    const selectedMaterial = item.selectedMaterialId ? materials.find(material => material.id === item.selectedMaterialId) : null;
-                    
-                    return (
+                  {items.map((item, index) => (
                     <tr key={item.id || index}>
                       <td style={{ padding: '8px' }}>
-                        <select
-                          className="pur-select"
-                          onChange={e => fillFromLibrary(index, e.target.value)}
-                          value={item.selectedMaterialId || ''}
-                        >
-                          <option value="">Pick material from library...</option>
-                          {materials.map(material => <option key={material.id} value={material.id}>{material.name}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ padding: '8px' }}>
-                        {selectedMaterial ? (
-                          <input type="text" name="item" required value={item.item} readOnly className="pur-input" />
-                        ) : (
-                          <input type="text" name="item" required value={item.item} onChange={(e) => handleItemChange(index, e)} className="pur-input" placeholder="E.g. Transformer" />
-                        )}
+                        <input type="text" name="item" required value={item.item} onChange={(e) => handleItemChange(index, e)} className="pur-input" placeholder="E.g. Transformer" />
                       </td>
                       <td style={{ padding: '8px' }}>
                         <input type="text" name="specification" value={item.specification} onChange={(e) => handleItemChange(index, e)} className="pur-input" placeholder="E.g. 500kVA, 11kV/433V" />
@@ -279,7 +322,7 @@ export default function CreatePR() {
                         </button>
                       </td>
                     </tr>
-                  )})}
+                  ))}
                 </tbody>
               </table>
             </div>

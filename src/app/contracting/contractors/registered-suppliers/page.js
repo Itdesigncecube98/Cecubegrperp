@@ -22,7 +22,7 @@ export default function ContractorGroupMapping() {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
+  async function fetchData() {
     try {
       setLoading(true);
       const [contRes, groupRes] = await Promise.all([
@@ -39,7 +39,7 @@ export default function ContractorGroupMapping() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   // When mode or selected main ID changes, calculate which checkboxes should be checked
   useEffect(() => {

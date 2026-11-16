@@ -61,7 +61,7 @@ export default function InspectionReportPage() {
   };
 
   useEffect(() => {
-    fetchReports(selectedProjectId);
+    React.startTransition(() => fetchReports(selectedProjectId));
   }, [selectedProjectId]);
 
   const currentProject = useMemo(() => {

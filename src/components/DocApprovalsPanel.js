@@ -109,8 +109,8 @@ export default function DocApprovalsPanel({ role, currentEmployee }) {
   }, [role]);
 
   useEffect(() => {
-    void load();
-    loadHodMappings();
+    void Promise.resolve().then(load);
+    void Promise.resolve().then(loadHodMappings);
   }, [load, loadHodMappings]);
 
   // ── Derived lists ─────────────────────────────────────────────────────────

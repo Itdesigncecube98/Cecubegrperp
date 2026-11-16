@@ -29,8 +29,25 @@ export default function TDSMasterPage() {
   };
 
   useEffect(() => {
-    if (companyId) fetchRows();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!companyId) return;
+    let active = true;
+    async function loadInitialRows() {
+      try {
+        const res = await fetch(`/api/tds-master?companyId=${companyId}&type=${type}`);
+        if (!res.ok) throw new Error("Failed to load TDS accounts");
+        const data = await res.json();
+        if (active) {
+          setError(null);
+          setRows(data.rows);
+        }
+      } catch (loadError) {
+        if (active) setError(loadError.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadInitialRows();
+    return () => { active = false; };
   }, [companyId, type]);
 
   // "+ New Section" button

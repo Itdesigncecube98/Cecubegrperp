@@ -70,7 +70,7 @@ export default function EngineeringDashboard() {
   useEffect(() => {
     let live = true;
     const params = new URLSearchParams(applied);
-    setLoading(true);
+    React.startTransition(() => setLoading(true));
     fetch(`/api/engineering/dashboard?${params.toString()}`, { cache: 'no-store' })
       .then(async response => {
         const result = await response.json();

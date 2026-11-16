@@ -1355,7 +1355,7 @@ export default function EmployeeVehiclesPage() {
                     lineHeight: "1.5",
                   }}
                 >
-                  You don't have any vehicles assigned to your profile. Please
+                  You don&apos;t have any vehicles assigned to your profile. Please
                   contact admin to assign a vehicle.
                 </p>
                 <button
@@ -1821,7 +1821,7 @@ export default function EmployeeVehiclesPage() {
             {vehicles.length === 0 ? (
               <div style={{ textAlign: "center", padding: "1rem 0" }}>
                 <p style={{ color: "var(--danger)", marginBottom: "1rem" }}>
-                  You don't have any vehicles assigned.
+                  You don&apos;t have any vehicles assigned.
                 </p>
                 <button
                   type="button"

@@ -3,42 +3,6 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { readAuthSession } from '@/lib/authSession';
 
-async function syncUnlinkedMaterialRequisitions() {
-  const unlinked = await prisma.siteMaterialRequisition.findMany({
-    where: { purchaseIndentId: null },
-    include: { project: { select: { name: true } } },
-    orderBy: { createdAt: 'asc' }
-  });
-
-  for (const requisition of unlinked) {
-    const purchaseCount = await prisma.purchaseIndent.count();
-    const purchaseIndent = await prisma.purchaseIndent.create({
-      data: {
-        prNo: `PR-${new Date().getFullYear()}-${String(purchaseCount + 1).padStart(4, '0')}`,
-        project: requisition.project?.name || '',
-        requiredDate: requisition.requiredByDate,
-        purpose: `Material requisition for ${requisition.taskName || 'site work'}`,
-        status: 'Pending Approval',
-        requestedById: requisition.requestedById,
-        items: {
-          create: [{
-            item: requisition.materialName || requisition.itemDescription,
-            specification: requisition.taskName,
-            unit: requisition.unit || 'Nos',
-            quantity: requisition.quantityReq || 0,
-            requiredDate: requisition.requiredByDate
-          }]
-        }
-      }
-    });
-
-    await prisma.siteMaterialRequisition.update({
-      where: { id: requisition.id },
-      data: { purchaseIndentId: purchaseIndent.id }
-    });
-  }
-}
-
 export async function GET(req) {
   try {
     const prs = await prisma.purchaseIndent.findMany({

@@ -34,49 +34,53 @@ export function PermissionsProvider({ children }) {
   // Load state from localStorage on mount
   useEffect(() => {
     let cancelled = false;
-    const adminSession = sessionStorage.getItem('isAdmin') === 'true';
-    setIsAdminSession(adminSession);
-    const savedEmp = localStorage.getItem('activeEmp');
-    const savedProj = localStorage.getItem('activeProj');
-    const employeeData = localStorage.getItem('employeeData');
-    let hasEmployeeSession = false;
-    if (employeeData && sessionStorage.getItem('isAdmin') !== 'true') {
-      try {
-        const employee = JSON.parse(employeeData);
-        if (employee?.id) {
-          hasEmployeeSession = true;
-          setActiveEmployee(employee);
-          localStorage.setItem('activeEmp', JSON.stringify(employee));
-        }
-      } catch { /* Ignore invalid cached employee data. */ }
-    } else if (sessionStorage.getItem('isAdmin') !== 'true' && savedEmp) setActiveEmployee(JSON.parse(savedEmp));
-    if (savedProj) setActiveProject(JSON.parse(savedProj));
+    const loadStoredState = () => {
+      if (cancelled) return;
+      const adminSession = sessionStorage.getItem('isAdmin') === 'true';
+      setIsAdminSession(adminSession);
+      const savedEmp = localStorage.getItem('activeEmp');
+      const savedProj = localStorage.getItem('activeProj');
+      const employeeData = localStorage.getItem('employeeData');
+      let hasEmployeeSession = false;
+      if (employeeData && sessionStorage.getItem('isAdmin') !== 'true') {
+        try {
+          const employee = JSON.parse(employeeData);
+          if (employee?.id) {
+            hasEmployeeSession = true;
+            setActiveEmployee(employee);
+            localStorage.setItem('activeEmp', JSON.stringify(employee));
+          }
+        } catch { /* Ignore invalid cached employee data. */ }
+      } else if (sessionStorage.getItem('isAdmin') !== 'true' && savedEmp) setActiveEmployee(JSON.parse(savedEmp));
+      if (savedProj) setActiveProject(JSON.parse(savedProj));
 
-    // Fetch lists
-    if (adminSession) {
-      fetch('/api/employees').then(res => res.json()).then(data => {
-        if (!cancelled) setEmployees(Array.isArray(data) ? data : []);
-      }).catch(() => {});
-    }
-    if (adminSession || hasEmployeeSession) {
-      fetch('/api/projects').then(res => res.json()).then(data => {
-        if (cancelled || !Array.isArray(data)) return;
-        setProjects(data);
-        const cachedProject = savedProj ? JSON.parse(savedProj) : null;
-        if (cachedProject?.id && !data.some(project => project.id === cachedProject.id)) {
-          if (hasEmployeeSession && !adminSession && data.length > 0) {
+      // Fetch lists
+      if (adminSession) {
+        fetch('/api/employees').then(res => res.json()).then(data => {
+          if (!cancelled) setEmployees(Array.isArray(data) ? data : []);
+        }).catch(() => {});
+      }
+      if (adminSession || hasEmployeeSession) {
+        fetch('/api/projects').then(res => res.json()).then(data => {
+          if (cancelled || !Array.isArray(data)) return;
+          setProjects(data);
+          const cachedProject = savedProj ? JSON.parse(savedProj) : null;
+          if (cachedProject?.id && !data.some(project => project.id === cachedProject.id)) {
+            if (hasEmployeeSession && !adminSession && data.length > 0) {
+              setActiveProject(data[0]);
+              localStorage.setItem('activeProj', JSON.stringify(data[0]));
+            } else {
+              localStorage.removeItem('activeProj');
+              setActiveProject(null);
+            }
+          } else if (!cachedProject && hasEmployeeSession && data.length > 0) {
             setActiveProject(data[0]);
             localStorage.setItem('activeProj', JSON.stringify(data[0]));
-          } else {
-            localStorage.removeItem('activeProj');
-            setActiveProject(null);
           }
-        } else if (!cachedProject && hasEmployeeSession && data.length > 0) {
-          setActiveProject(data[0]);
-          localStorage.setItem('activeProj', JSON.stringify(data[0]));
-        }
-      }).catch(() => {});
-    }
+        }).catch(() => {});
+      }
+    };
+    void Promise.resolve().then(loadStoredState);
     return () => { cancelled = true; };
   }, []);
 
@@ -84,7 +88,9 @@ export function PermissionsProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
     if (activeEmployee?.id) {
-      setPermissionsLoaded(false);
+      void Promise.resolve().then(() => {
+        if (!cancelled) setPermissionsLoaded(false);
+      });
       fetch(`/api/admin/employee-tools?employeeId=${encodeURIComponent(activeEmployee.id)}&allProjects=true`)
         .then(res => res.json())
         .then(data => {
@@ -103,10 +109,13 @@ export function PermissionsProvider({ children }) {
         .catch(error => { if (!cancelled) console.error(error); })
         .finally(() => { if (!cancelled) setPermissionsLoaded(true); });
     } else {
-      setGrantedTools([]);
-      setProjectGrantedTools({});
-      setEmployeeWideGrantedTools([]);
-      setPermissionsLoaded(false);
+      void Promise.resolve().then(() => {
+        if (cancelled) return;
+        setGrantedTools([]);
+        setProjectGrantedTools({});
+        setEmployeeWideGrantedTools([]);
+        setPermissionsLoaded(false);
+      });
     }
     return () => { cancelled = true; };
   }, [activeEmployee]);

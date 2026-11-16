@@ -22,12 +22,11 @@ export default function GstCategoryPage() {
   const [success, setSuccess] = useState(null);
 
   const loadCategories = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/gst/categories?companyId=${COMPANY_ID}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load categories");
+      setError(null);
       setCategories(json.data);
     } catch (err) {
       setError(err.message);
@@ -37,8 +36,25 @@ export default function GstCategoryPage() {
   }, []);
 
   useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
+    let active = true;
+    async function loadInitialCategories() {
+      try {
+        const res = await fetch(`/api/gst/categories?companyId=${COMPANY_ID}`);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to load categories");
+        if (active) {
+          setError(null);
+          setCategories(json.data);
+        }
+      } catch (loadError) {
+        if (active) setError(loadError.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadInitialCategories();
+    return () => { active = false; };
+  }, []);
 
   function selectCategory(cat) {
     setForm({

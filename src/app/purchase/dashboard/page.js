@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { startTransition, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -47,7 +47,7 @@ export default function PurchaseDashboard() {
     }
   }, [project, from, to]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { startTransition(() => load()); }, [load]);
 
   const maxMonth = Math.max(1, ...(data?.monthlyPO || []).map(row => Number(row.value) || 0));
   const maxSupplier = Math.max(1, ...(data?.topSuppliers || []).map(row => Number(row.amount) || 0));

@@ -121,8 +121,8 @@ export default function ModuleAccessTracker() {
             }
           } catch { /* Some endpoints return an empty or non-JSON response. */ }
         }
-        const module = moduleForPath(currentPath.current);
-        if (!module) return;
+        const moduleName = moduleForPath(currentPath.current);
+        if (!moduleName) return;
 
         let employeeId = undefined;
         try {
@@ -157,10 +157,10 @@ export default function ModuleAccessTracker() {
   }, []);
 
   useEffect(() => {
-    const module = moduleForPath(pathname || '');
-    if (module === lastModule.current) return;
-    lastModule.current = module;
-    if (!module) return;
+    const moduleName = moduleForPath(pathname || '');
+    if (moduleName === lastModule.current) return;
+    lastModule.current = moduleName;
+    if (!moduleName) return;
     let employeeId = undefined;
     try {
       const emp = localStorage.getItem('employeeData');

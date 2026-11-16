@@ -21,7 +21,6 @@ export default function ChartOfAccounts() {
   const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
-    setError('');
     try {
       const [groupResponse, accountResponse] = await Promise.all([
         fetch('/api/accounts/groups', { cache: 'no-store' }),
@@ -30,6 +29,7 @@ export default function ChartOfAccounts() {
       const [groupData, accountData] = await Promise.all([groupResponse.json(), accountResponse.json()]);
       if (!groupResponse.ok) throw new Error(groupData.error || 'Unable to load account groups.');
       if (!accountResponse.ok) throw new Error(accountData.error || 'Unable to load contractors and parties.');
+      setError('');
       const nextGroups = Array.isArray(groupData) ? groupData : [];
       setGroups(nextGroups);
       setAccounts(Array.isArray(accountData) ? accountData : []);

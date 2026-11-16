@@ -30,7 +30,7 @@ export default function TDSMasterPage() {
     fetchRows();
   }, [type]);
 
-  const fetchLedgers = async () => {
+  async function fetchLedgers() {
     try {
       const res = await fetch(`/api/ledgers?companyId=${companyId}`);
       if (res.ok) {
@@ -40,9 +40,9 @@ export default function TDSMasterPage() {
     } catch (e) {
       console.error('Failed to load ledgers:', e);
     }
-  };
+  }
 
-  const fetchRows = async () => {
+  async function fetchRows() {
     setLoading(true);
     setError(null);
     try {
@@ -55,7 +55,7 @@ export default function TDSMasterPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const handleAdd = () => {
     setEditingRow(null);
@@ -263,7 +263,7 @@ export default function TDSMasterPage() {
                   <td colSpan={8} style={{ padding: 60, textAlign: 'center', color: '#9ca3af' }}>
                     <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
                     <div style={{ fontSize: 16, marginBottom: 8 }}>No TDS accounts configured.</div>
-                    <div style={{ fontSize: 14 }}>Click "New Section" to add one</div>
+                    <div style={{ fontSize: 14 }}>Click &quot;New Section&quot; to add one</div>
                   </td>
                 </tr>
               ) : (

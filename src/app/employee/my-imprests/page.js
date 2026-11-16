@@ -160,7 +160,7 @@ export default function MyImprestsPage() {
                 <IndianRupee size={32} color="#94a3b8" />
               </div>
               <h3 style={{ margin: '0 0 0.5rem 0', color: '#0f172a' }}>No Requests Found</h3>
-              <p style={{ margin: 0 }}>You haven't made any imprest requests yet.</p>
+              <p style={{ margin: 0 }}>You haven&apos;t made any imprest requests yet.</p>
             </div>
           )}
         </div>

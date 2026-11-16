@@ -13,14 +13,14 @@ export default function CompanyAdder() {
     fetchCompanies();
   }, []);
 
-  const fetchCompanies = async () => {
+  async function fetchCompanies() {
     try {
       const res = await fetch('/api/companies');
       if (res.ok) setCompanies(await res.json());
     } catch (err) {
       console.error(err);
     }
-  };
+  }
   
   // Form State
   const [isEditing, setIsEditing] = useState(false);

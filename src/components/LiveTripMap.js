@@ -40,16 +40,60 @@ export default function LiveTripMap({ tripId, isActive, startLocation, endLocati
   const [mapError, setMapError] = useState('');
   const [pings, setPings] = useState([]);
   const [follow, setFollow] = useState(true);
-  const [distLeft, setDistLeft] = useState(null);
-  const [eta, setEta] = useState(null);
-  const [distTravelled, setDistTravelled] = useState(0);
   const [routeStatus, setRouteStatus] = useState('');
-  const [gpsStatus, setGpsStatus] = useState('Waiting for GPS…');
-  const [clockNow, setClockNow] = useState(Date.now());
+  const [clockNow, setClockNow] = useState(0);
+  const [routeGeometry, setRouteGeometry] = useState(() => plannedPath
+    .map(point => ({ latitude: Number(point.lat), longitude: Number(point.lng) }))
+    .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude)));
+  const [routeMetrics, setRouteMetrics] = useState({ distanceKm: null, durationMinutes: null });
   const routeRef = useRef({ points: [], line: null });
   const routeMetricsRef = useRef({ distanceKm: null, durationMinutes: null });
   const lastRouteRequestAtRef = useRef(0);
   const routeRequestIdRef = useRef(0);
+
+  const cleanedTrack = cleanTripTrack(pings);
+  const lastPing = cleanedTrack.accepted[cleanedTrack.accepted.length - 1];
+  const ageSeconds = lastPing ? Math.max(0, Math.floor((clockNow - lastPing.timestamp) / 1000)) : null;
+  const gpsStatus = !lastPing
+    ? 'Waiting for GPS…'
+    : ageSeconds > 90
+      ? `GPS signal delayed · updated ${Math.floor(ageSeconds / 60)} min ago`
+      : ageSeconds < 15
+        ? 'GPS live · updated just now'
+        : `GPS live · updated ${ageSeconds}s ago`;
+  const plannedRoutePoints = plannedPath
+    .map(point => ({ latitude: Number(point.lat), longitude: Number(point.lng) }))
+    .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+  const displayRoutePoints = routeGeometry.length > 1 ? routeGeometry : plannedRoutePoints;
+  let distLeft = null;
+  let eta = null;
+  if (mapReady && lastPing && endCoords) {
+    const liveGps = { latitude: lastPing.latitude, longitude: lastPing.longitude };
+    const destinationGps = { latitude: Number(endCoords.lat), longitude: Number(endCoords.lng) };
+    if (Number.isFinite(destinationGps.latitude) && Number.isFinite(destinationGps.longitude)) {
+      let km = distanceBetweenGpsPoints(liveGps, destinationGps);
+      if (displayRoutePoints.length > 1) {
+        let closestIndex = 0;
+        let closestDistance = Infinity;
+        displayRoutePoints.forEach((point, index) => {
+          const distance = distanceBetweenGpsPoints(liveGps, point);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIndex = index;
+          }
+        });
+        km = displayRoutePoints.slice(closestIndex).reduce((sum, point, index, remaining) => {
+          if (index === 0) return sum + distanceBetweenGpsPoints(liveGps, point);
+          return sum + distanceBetweenGpsPoints(remaining[index - 1], point);
+        }, 0);
+      }
+      distLeft = km.toFixed(1);
+      eta = routeMetrics.distanceKm > 0 && Number.isFinite(routeMetrics.durationMinutes)
+        ? Math.ceil(routeMetrics.durationMinutes * km / routeMetrics.distanceKm)
+        : null;
+    }
+  }
+  const distTravelled = mapReady ? cleanedTrack.distanceKm : 0;
 
   useEffect(() => () => {
     routeRequestIdRef.current += 1;
@@ -149,33 +193,24 @@ export default function LiveTripMap({ tripId, isActive, startLocation, endLocati
   }, [tripId]);
 
   useEffect(() => {
-    fetchPings();
-    if (!isActive) return;
+    const initialFetchId = window.setTimeout(fetchPings, 0);
+    if (!isActive) return () => window.clearTimeout(initialFetchId);
     const interval = setInterval(fetchPings, 4000);
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(initialFetchId);
+      clearInterval(interval);
+    };
   }, [isActive, fetchPings]);
 
   useEffect(() => {
-    if (!isActive) return undefined;
+    const initialTick = window.setTimeout(() => setClockNow(Date.now()), 0);
+    if (!isActive) return () => window.clearTimeout(initialTick);
     const interval = window.setInterval(() => setClockNow(Date.now()), 15_000);
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearTimeout(initialTick);
+      window.clearInterval(interval);
+    };
   }, [isActive]);
-
-  useEffect(() => {
-    const acceptedPings = cleanTripTrack(pings).accepted;
-    const lastPing = acceptedPings[acceptedPings.length - 1];
-    if (!lastPing) {
-      setGpsStatus('Waiting for GPS…');
-      return;
-    }
-    const ageSeconds = Math.max(0, Math.floor((clockNow - lastPing.timestamp) / 1000));
-    if (ageSeconds > 90) {
-      const ageMinutes = Math.floor(ageSeconds / 60);
-      setGpsStatus(`GPS signal delayed · updated ${ageMinutes} min ago`);
-    } else {
-      setGpsStatus(ageSeconds < 15 ? 'GPS live · updated just now' : `GPS live · updated ${ageSeconds}s ago`);
-    }
-  }, [pings, clockNow]);
 
   // Update map when pings arrive
   useEffect(() => {
@@ -187,8 +222,6 @@ export default function LiveTripMap({ tripId, isActive, startLocation, endLocati
     const path = cleanedTrack.accepted.map(p => ({ lat: p.latitude, lng: p.longitude }));
     if (path.length === 0) return;
     const livePos = path[path.length - 1];
-    const liveGps = { latitude: livePos.lat, longitude: livePos.lng };
-    const destinationGps = endCoords ? { latitude: Number(endCoords.lat), longitude: Number(endCoords.lng) } : null;
 
     // Move live dot
     if (liveDotRef.current) {
@@ -210,40 +243,7 @@ export default function LiveTripMap({ tripId, isActive, startLocation, endLocati
     // Auto-follow camera
     if (follow) map.panTo(livePos);
 
-    // Distance travelled (sum of all ping segments)
-    const totalKm = cleanedTrack.distanceKm;
-    setDistTravelled(totalKm);
-
-    // Follow the remaining planned route from the closest point to the vehicle.
-    if (endCoords) {
-      const route = routeRef.current.points.length > 1
-        ? routeRef.current.points
-        : plannedPath.map(point => ({ latitude: Number(point.lat), longitude: Number(point.lng) }))
-          .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
-      let km = distanceBetweenGpsPoints(liveGps, destinationGps);
-      if (route.length > 1) {
-        let closestIndex = 0;
-        let closestDistance = Infinity;
-        route.forEach((point, index) => {
-          const distance = distanceBetweenGpsPoints(liveGps, point);
-          if (distance < closestDistance) {
-            closestDistance = distance;
-            closestIndex = index;
-          }
-        });
-        km = route.slice(closestIndex).reduce((sum, point, index, remaining) => {
-          if (index === 0) return sum + distanceBetweenGpsPoints(liveGps, point);
-          return sum + distanceBetweenGpsPoints(remaining[index - 1], point);
-        }, 0);
-      }
-      setDistLeft(km.toFixed(1));
-      const routeMetrics = routeMetricsRef.current;
-      const remainingMinutes = routeMetrics.distanceKm > 0 && Number.isFinite(routeMetrics.durationMinutes)
-        ? Math.ceil(routeMetrics.durationMinutes * km / routeMetrics.distanceKm)
-        : null;
-      setEta(remainingMinutes);
-    }
-  }, [pings, mapReady, follow, endCoords, plannedPath]);
+  }, [pings, mapReady, follow]);
 
   // Recompute the route from the latest GPS position, using live traffic. Calls
   // are throttled; a driver who stays on route only gets a traffic refresh every
@@ -305,21 +305,23 @@ export default function LiveTripMap({ tripId, isActive, startLocation, endLocati
             latitude: point.lat(),
             longitude: point.lng(),
           }));
+          setRouteGeometry(routeRef.current.points);
         }
 
         if (Number.isFinite(route.distanceMeters)) {
           routeMetricsRef.current.distanceKm = route.distanceMeters / 1000;
-          setDistLeft(routeMetricsRef.current.distanceKm.toFixed(1));
         }
         routeMetricsRef.current.durationMinutes = Number.isFinite(route.durationMillis)
           ? route.durationMillis / 60_000
           : null;
-        setEta(routeMetricsRef.current.durationMinutes == null ? null : Math.max(1, Math.ceil(routeMetricsRef.current.durationMinutes)));
+        setRouteMetrics({
+          distanceKm: routeMetricsRef.current.distanceKm,
+          durationMinutes: routeMetricsRef.current.durationMinutes,
+        });
         setRouteStatus('Route and ETA updated with live traffic');
       } catch (error) {
         if (requestId !== routeRequestIdRef.current) return;
         console.warn('Live traffic route refresh failed:', error);
-        if (!Number.isFinite(routeMetricsRef.current.durationMinutes)) setEta(null);
         setRouteStatus('Live route unavailable; showing the planned route');
       }
     })();

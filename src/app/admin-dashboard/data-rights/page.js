@@ -30,7 +30,7 @@ export default function DataRightsPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { React.startTransition(() => load()); }, [load]);
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this data access scope?')) return;

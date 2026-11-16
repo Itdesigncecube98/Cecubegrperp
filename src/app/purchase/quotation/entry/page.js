@@ -141,7 +141,7 @@ function QuotationEntryInner() {
   }, [rfqId, vendorId]);
 
   useEffect(() => {
-    load();
+    React.startTransition(() => load());
   }, [load]);
 
   const updateLine = (key, field, value) => {

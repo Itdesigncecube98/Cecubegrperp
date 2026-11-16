@@ -29,8 +29,6 @@ export default function PurchaseOrdersPage() {
   const [error, setError] = useState(null);
 
   const search = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ companyId: COMPANY_ID });
       if (filters.status) params.set("status", filters.status);
@@ -41,6 +39,7 @@ export default function PurchaseOrdersPage() {
       const res = await fetch(`/api/purchase-orders?${params.toString()}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Search failed");
+      setError(null);
       setPOs(json.data);
     } catch (err) {
       setError(err.message);

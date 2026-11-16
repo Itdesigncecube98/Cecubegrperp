@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
@@ -12,22 +12,22 @@ import {
 import Dialog from './Dialog';
 import './sidebar.css';
 
+const subscribeToNothing = () => () => {};
+const getClientMountedSnapshot = () => true;
+const getServerMountedSnapshot = () => false;
+
 export default function AccountsSidebar({ isCollapsed: propCollapsed, setIsCollapsed: propSetIsCollapsed }) {
   const pathname = usePathname();
   const router = useRouter();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showWidget, setShowWidget] = useState(true);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(subscribeToNothing, getClientMountedSnapshot, getServerMountedSnapshot);
 
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
   const setIsCollapsed = propSetIsCollapsed || setLocalCollapsed;
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  
   const [expanded, setExpanded] = useState({
     dashboard: true,
     finance: true,
@@ -201,7 +201,7 @@ export default function AccountsSidebar({ isCollapsed: propCollapsed, setIsColla
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {filteredItems.length === 0 ? (
               <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: '12px', color: '#64748b' }}>
-                No results for "{searchQuery}"
+                No results for &quot;{searchQuery}&quot;
               </div>
             ) : (
               filteredItems.map(item => {

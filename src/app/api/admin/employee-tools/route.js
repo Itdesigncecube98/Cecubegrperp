@@ -22,7 +22,7 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get('employeeId');
     const projectId  = searchParams.get('projectId');
-    const module     = searchParams.get('module');
+    const moduleName = searchParams.get('module');
 
     if (!employeeId) {
       return NextResponse.json({ error: 'employeeId is required' }, { status: 400 });
@@ -32,12 +32,12 @@ export async function GET(req) {
     }
 
     const where = projectId === EMPLOYEE_WIDE_PROJECT_ID
-      ? { module, name: { in: EMPLOYEE_WIDE_TOOL_MODULES[module] || [] } }
-      : { ...(module ? { module } : {}) };
+      ? { module: moduleName, name: { in: EMPLOYEE_WIDE_TOOL_MODULES[moduleName] || [] } }
+      : { ...(moduleName ? { module: moduleName } : {}) };
 
     if (!projectId && searchParams.get('allProjects') === 'true') {
       const grants = await prisma.employeeProjectToolAccess.findMany({
-        where: { employeeId, granted: true, tool: module ? { is: { module } } : undefined },
+        where: { employeeId, granted: true, tool: moduleName ? { is: { module: moduleName } } : undefined },
         select: { projectId: true, tool: { select: { code: true, module: true, name: true } } },
       });
       return NextResponse.json(grants

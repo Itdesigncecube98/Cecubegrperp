@@ -698,7 +698,7 @@ export default function MaterialLibrary() {
             <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: '40px', fontSize: '0.85rem' }}>
               <Package size={36} style={{ margin: '0 auto 8px', opacity: 0.4 }} />
               <div>No groups found in this library.</div>
-              <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>Click "Add Root Group" to create the first group.</div>
+              <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>Click &quot;Add Root Group&quot; to create the first group.</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1016,7 +1016,7 @@ export default function MaterialLibrary() {
 
                   {(!selectedItem.data.materials || selectedItem.data.materials.length === 0) ? (
                     <div style={{ padding: '24px', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', color: '#94a3b8', fontSize: '0.82rem' }}>
-                      No direct materials in this {selectedItem.type}. Click "Add Material" above or click the green + on the folder in the tree.
+                      No direct materials in this {selectedItem.type}. Click &quot;Add Material&quot; above or click the green + on the folder in the tree.
                     </div>
                   ) : (
                     <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>

@@ -49,7 +49,7 @@ export default function CustomReportPage() {
   };
 
   useEffect(() => {
-    fetchReport();
+    React.startTransition(() => fetchReport());
   }, [selectedProjectId, selectedCompany, reportType]);
 
   const filteredProjects = useMemo(() => {

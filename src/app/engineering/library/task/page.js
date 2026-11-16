@@ -158,7 +158,9 @@ export default function TaskLibrary() {
   );
 
   useEffect(() => {
-    if (!combinedMaterialRateTouched) setCombinedMaterialRate(String(calculatedCombinedMaterialRate));
+    if (!combinedMaterialRateTouched) {
+      React.startTransition(() => setCombinedMaterialRate(String(calculatedCombinedMaterialRate)));
+    }
   }, [calculatedCombinedMaterialRate, combinedMaterialRateTouched]);
 
   const showToast = (msg, type = 'success') => {
@@ -219,8 +221,10 @@ export default function TaskLibrary() {
 
   // 1. Fetch available libraries & units on mount
   useEffect(() => {
-    fetchLibraries();
-    fetchUnits();
+    React.startTransition(() => {
+      fetchLibraries();
+      fetchUnits();
+    });
     fetch('/api/projects').then(res => res.ok ? res.json() : []).then(data => setProjects(Array.isArray(data) ? data : [])).catch(() => setProjects([]));
   }, []);
 
@@ -228,24 +232,30 @@ export default function TaskLibrary() {
     if (!selectedProjectId) return;
     const project = projects.find(item => item.id === selectedProjectId);
     const linkedLibrary = libraries.find(item => item.name?.trim().toLowerCase() === project?.library?.trim().toLowerCase());
-    if (linkedLibrary && linkedLibrary.id !== selectedLibraryId) setSelectedLibraryId(linkedLibrary.id);
+    if (linkedLibrary && linkedLibrary.id !== selectedLibraryId) {
+      React.startTransition(() => setSelectedLibraryId(linkedLibrary.id));
+    }
   }, [selectedProjectId, projects, libraries, selectedLibraryId]);
 
   // 2. Fetch groups whenever selectedLibraryId changes
   useEffect(() => {
     if (selectedLibraryId) {
-      fetchGroups(selectedLibraryId);
-      fetchMasterResources(selectedLibraryId, selectedProjectId);
+      React.startTransition(() => {
+        fetchGroups(selectedLibraryId);
+        fetchMasterResources(selectedLibraryId, selectedProjectId);
+      });
     } else {
-      setGroups([]);
-      setSelectedGroupId(null);
-      setSelectedTaskId(null);
-      setMasterResources({ material: [], labour: [] });
-      setMaterialGroups([]);
+      React.startTransition(() => {
+        setGroups([]);
+        setSelectedGroupId(null);
+        setSelectedTaskId(null);
+        setMasterResources({ material: [], labour: [] });
+        setMaterialGroups([]);
+      });
     }
   }, [selectedLibraryId, selectedProjectId]);
 
-  const fetchLibraries = async () => {
+  async function fetchLibraries() {
     try {
       setLoadingLibraries(true);
       const res = await fetch('/api/libraries');
@@ -268,9 +278,9 @@ export default function TaskLibrary() {
     } finally {
       setLoadingLibraries(false);
     }
-  };
+  }
 
-  const fetchUnits = async () => {
+  async function fetchUnits() {
     try {
       const res = await fetch('/api/engineering/unit-library');
       if (res.ok) {
@@ -289,9 +299,9 @@ export default function TaskLibrary() {
       // Fallback defaults
       setAvailableUnits(['Rmt', 'Mtr', 'Nos', 'Sqm', 'Cum', 'Kg', 'Ton', 'Lot', 'Bags', 'Manday', 'Hour', 'Point']);
     }
-  };
+  }
 
-  const fetchGroups = async (libId) => {
+  async function fetchGroups(libId) {
     try {
       setLoadingGroups(true);
       const res = await fetch(`/api/engineering/task-library?libraryId=${libId}${selectedProjectId ? `&projectId=${selectedProjectId}` : ''}`);
@@ -326,7 +336,7 @@ export default function TaskLibrary() {
     } finally {
       setLoadingGroups(false);
     }
-  };
+  }
 
   // Find currently selected Group & Task from groups state
   const selectedGroup = useMemo(() => {
@@ -334,24 +344,24 @@ export default function TaskLibrary() {
     return groups.find(g => g.id === selectedGroupId) || null;
   }, [groups, selectedGroupId]);
 
-  const selectedTask = useMemo(() => {
+  const selectedTask = (() => {
     if (!selectedTaskId) return null;
     for (const g of groups) {
       const task = (g.tasks || []).find(t => t.id === selectedTaskId);
       if (task) return { ...task, groupName: g.name, parentGroupId: g.id };
     }
     return null;
-  }, [groups, selectedTaskId]);
+  })();
 
   useEffect(() => {
     if (!selectedTask) {
-      setRateDrafts({ materials: {}, labours: {} });
+      React.startTransition(() => setRateDrafts({ materials: {}, labours: {} }));
       return;
     }
-    setRateDrafts({
+    React.startTransition(() => setRateDrafts({
       materials: Object.fromEntries((selectedTask.materials || []).map(item => [item.id, item.rate ?? 0])),
       labours: Object.fromEntries((selectedTask.labours || []).map(item => [item.id, item.rate ?? 0])),
-    });
+    }));
   }, [selectedTask]);
 
   const allLabourItems = useMemo(() => {
@@ -1457,7 +1467,7 @@ export default function TaskLibrary() {
                   lineHeight: '1.5'
                 }}>
                   <strong style={{ color: '#1e293b' }}>Description / Specification: </strong>
-                  {selectedTask.description ? selectedTask.description : <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>No description provided. Click "Edit Task" to add specifications.</span>}
+                  {selectedTask.description ? selectedTask.description : <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>No description provided. Click &quot;Edit Task&quot; to add specifications.</span>}
                 </div>
               </div>
 
@@ -1545,7 +1555,7 @@ export default function TaskLibrary() {
                           Attached Materials
                         </h3>
                         <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>
-                          Bill of Materials and standard rates per unit of "{selectedTask.name}". Saved rates prefill Purchase Orders and Work Orders.
+                        Bill of Materials and standard rates per unit of &quot;{selectedTask.name}&quot;. Saved rates prefill Purchase Orders and Work Orders.
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
@@ -1685,7 +1695,7 @@ export default function TaskLibrary() {
                           Attached Labours
                         </h3>
                         <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>
-                          Workforce & labour effort required per unit of "{selectedTask.name}"
+                          Workforce &amp; labour effort required per unit of &quot;{selectedTask.name}&quot;
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>

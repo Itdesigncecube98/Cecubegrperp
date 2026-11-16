@@ -49,7 +49,7 @@ export default function VendorPayablesPage() {
   useEffect(() => { fetchPayables(); }, [filter]);
   useEffect(() => { fetchCounts(); }, []);
 
-  const fetchCounts = async () => {
+  async function fetchCounts() {
     try {
       const tabs = STATUS_TABS.map(t => t.key);
       const results = await Promise.all(tabs.map(s => fetch(`/api/accounts/vendor-payables?status=${s}`).then(r => r.json())));
@@ -57,17 +57,16 @@ export default function VendorPayablesPage() {
       tabs.forEach((s, i) => { c[s] = Array.isArray(results[i]) ? results[i].length : 0; });
       setCounts(c);
     } catch {}
-  };
+  }
 
-  const fetchPayables = async () => {
+  async function fetchPayables() {
     try {
-      setLoading(true);
       const res = await fetch(`/api/accounts/vendor-payables?status=${filter}`);
       const data = await res.json();
       setPayables(Array.isArray(data) ? data : []);
     } catch { setPayables([]); }
     finally { setLoading(false); }
-  };
+  }
 
   const handleAction = (po, action) => {
     setSelectedPO(po); setModalAction(action); setRemarks(''); setShowModal(true);

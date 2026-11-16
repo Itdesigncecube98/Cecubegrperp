@@ -9,10 +9,9 @@ export default function TdsChallanPage() {
     dateFrom: '', 
     dateTo: '' 
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    setLoading(true);
     try {
       const data = await fetch(`/api/tds-challans?${new URLSearchParams(filters)}`).then(r => r.json());
       setRows(data.data || []);

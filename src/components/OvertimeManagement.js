@@ -44,8 +44,8 @@ export default function OvertimeManagement() {
   };
 
   useEffect(() => {
-    loadAssignData();
-    loadScheduleData();
+    void Promise.resolve().then(loadAssignData);
+    void Promise.resolve().then(loadScheduleData);
   }, []);
 
   const showToast = (msg, type = 'success') => {

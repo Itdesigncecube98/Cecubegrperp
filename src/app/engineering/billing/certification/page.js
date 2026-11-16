@@ -10,7 +10,7 @@ export default function ClientCertification() {
     fetchMBs();
   }, []);
 
-  const fetchMBs = async () => {
+  async function fetchMBs() {
     try {
       const res = await fetch('/api/engineering/billing/mb');
       if (res.ok) setMbs(await res.json());
@@ -19,7 +19,7 @@ export default function ClientCertification() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const certifyMB = async (id) => {
     if (!confirm('Are you sure you want to certify this MB? It will become available for RA Billing.')) return;

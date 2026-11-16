@@ -56,7 +56,7 @@ export default function EnquiryGeneration() {
       const params = new URLSearchParams(window.location.search);
       const id = params.get('indentId');
       if (id) {
-        setSelectedIndentId(id);
+        React.startTransition(() => setSelectedIndentId(id));
       }
     }
   }, []);

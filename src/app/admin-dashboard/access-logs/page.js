@@ -120,7 +120,7 @@ export default function AccessLogsPage() {
   };
 
   useEffect(() => {
-    fetchLogs();
+    React.startTransition(() => fetchLogs());
     const refreshOnFocus = () => fetchLogs();
     const timer = window.setInterval(fetchLogs, 15000);
     window.addEventListener('focus', refreshOnFocus);

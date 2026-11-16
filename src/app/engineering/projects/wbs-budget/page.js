@@ -34,10 +34,10 @@ export default function WBSBudget() {
 
   // Fetch projects and tasks on initial mount
   useEffect(() => {
-    fetchProjectsAndTasks();
+    React.startTransition(() => fetchProjectsAndTasks());
   }, []);
 
-  const fetchProjectsAndTasks = async () => {
+  async function fetchProjectsAndTasks() {
     try {
       setLoadingProjects(true);
       const res = await fetch('/api/projects');
@@ -55,7 +55,7 @@ export default function WBSBudget() {
     } finally {
       setLoadingProjects(false);
     }
-  };
+  }
 
   const fetchTasks = async (projId = selectedProjectId, isSync = false) => {
     try {

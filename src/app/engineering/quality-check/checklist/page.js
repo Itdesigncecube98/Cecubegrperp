@@ -65,7 +65,7 @@ export default function QualityChecklistPage() {
   };
 
   useEffect(() => {
-    fetchQuality(selectedProjectId);
+    React.startTransition(() => fetchQuality(selectedProjectId));
   }, [selectedProjectId]);
 
   const currentProject = useMemo(() => {

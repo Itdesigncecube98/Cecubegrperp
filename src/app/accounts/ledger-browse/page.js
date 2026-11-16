@@ -23,10 +23,9 @@ export default function LedgerBrowsePage() {
   const [showAdvanceSearch, setShowAdvanceSearch] = useState(false);
   
   const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   const fetchData = async () => {
-    setLoading(true);
     try {
       let viewType = "Account List";
       if (activeTab === "Ledger Browse") viewType = "Detailed";
@@ -52,8 +51,32 @@ export default function LedgerBrowsePage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [activeTab]);
+    let active = true;
+    async function loadDataForTab() {
+      try {
+        let viewType = "Account List";
+        if (activeTab === "Ledger Browse") viewType = "Detailed";
+        else if (activeTab === "Monthwise") viewType = "Monthwise";
+        else if (activeTab === "Daywise") viewType = "Daywise";
+        const query = new URLSearchParams({
+          fromDate: filters.fromDate,
+          toDate: filters.toDate,
+          viewType,
+          ...(filters.groupId && { groupId: filters.groupId }),
+          ...(filters.accountId && { accountId: filters.accountId }),
+        });
+        const res = await fetch(`/api/accounts/ledger-browse?${query.toString()}`);
+        const json = await res.json();
+        if (active && json.data) setData(json.data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadDataForTab();
+    return () => { active = false; };
+  }, [activeTab, filters]);
 
   const handleSearch = () => {
     fetchData();

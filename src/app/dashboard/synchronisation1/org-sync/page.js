@@ -307,7 +307,7 @@ export default function SynchronizationPage() {
               <div style={{ width: '32px', height: '32px', borderRadius: '16px', background: '#e2e8f0', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>1</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, color: '#334155' }}>Supervisor (Level 1)</div>
-                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Dynamic — employee's direct supervisor from org structure</div>
+                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Dynamic — employee&apos;s direct supervisor from org structure</div>
               </div>
             </div>
 
@@ -396,7 +396,7 @@ export default function SynchronizationPage() {
             <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>Loading...</div>
           ) : items.length === 0 ? (
             <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
-              No {getLabel().toLowerCase()}s found. Click "Add {getLabel()}" to create one.
+              No {getLabel().toLowerCase()}s found. Click &quot;Add {getLabel()}&quot; to create one.
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>

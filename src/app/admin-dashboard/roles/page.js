@@ -52,7 +52,7 @@ export default function RolesPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { React.startTransition(() => load()); }, [load]);
 
   const handleSelectRole = async (role) => {
     setSelectedRole(role);

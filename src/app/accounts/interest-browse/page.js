@@ -13,10 +13,9 @@ export default function InterestBrowsePage() {
   });
 
   const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const res = await fetch(`/api/accounts/interest-browse?fromDate=${filters.fromDate}&toDate=${filters.toDate}`);
       const json = await res.json();
@@ -29,7 +28,20 @@ export default function InterestBrowsePage() {
   };
 
   useEffect(() => {
-    fetchData();
+    let active = true;
+    async function loadInitialData() {
+      try {
+        const res = await fetch('/api/accounts/interest-browse?fromDate=2026-04-01&toDate=2026-09-30');
+        const json = await res.json();
+        if (active && json.data) setData(json.data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadInitialData();
+    return () => { active = false; };
   }, []);
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(val || 0);

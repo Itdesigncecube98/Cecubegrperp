@@ -14,14 +14,14 @@ export default function ProjectStatus() {
     fetchStatuses();
   }, []);
 
-  const fetchStatuses = async () => {
+  async function fetchStatuses() {
     try {
       const res = await fetch('/api/project-statuses');
       if (res.ok) setStatuses(await res.json());
     } catch (err) {
       console.error(err);
     }
-  };
+  }
 
   // Form State
   const [isEditing, setIsEditing] = useState(false);

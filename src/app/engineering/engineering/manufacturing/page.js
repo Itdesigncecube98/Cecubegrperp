@@ -63,7 +63,7 @@ export default function ManufacturingPage() {
   };
 
   useEffect(() => {
-    fetchOrders(selectedProjectId);
+    React.startTransition(() => fetchOrders(selectedProjectId));
   }, [selectedProjectId]);
 
   const currentProject = useMemo(() => {

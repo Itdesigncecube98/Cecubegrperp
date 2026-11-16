@@ -152,7 +152,7 @@ export default function AdvancesPage() {
         
         {applications.length === 0 ? (
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '32px', textAlign: 'center', color: '#6b7280' }}>
-            No advance applications found. Click "Add Application" to create one.
+            No advance applications found. Click &quot;Add Application&quot; to create one.
           </div>
         ) : (
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>

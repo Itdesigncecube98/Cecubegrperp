@@ -15,13 +15,11 @@ export default function GstVoucherBrowsePage() {
   });
   const [vouchers, setVouchers] = useState([]);
   const [totals, setTotals] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(new Set());
 
   const search = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const params = new URLSearchParams({ companyId: COMPANY_ID });
       if (filters.stateGstinId) params.set("stateGstinId", filters.stateGstinId);
@@ -33,6 +31,7 @@ export default function GstVoucherBrowsePage() {
       const res = await fetch(`/api/gst/vouchers?${params.toString()}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Search failed");
+      setError(null);
       setVouchers(json.data);
       setTotals(json.totals);
       setSelected(new Set());
@@ -44,8 +43,34 @@ export default function GstVoucherBrowsePage() {
   }, [filters]);
 
   useEffect(() => {
-    search();
-  }, [search]);
+    let active = true;
+    async function loadInitialVouchers() {
+      try {
+        const params = new URLSearchParams({ companyId: COMPANY_ID });
+        if (filters.stateGstinId) params.set("stateGstinId", filters.stateGstinId);
+        if (filters.fromDate) params.set("fromDate", filters.fromDate);
+        if (filters.toDate) params.set("toDate", filters.toDate);
+        if (filters.direction) params.set("direction", filters.direction);
+        if (filters.search) params.set("search", filters.search);
+
+        const res = await fetch(`/api/gst/vouchers?${params.toString()}`);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Search failed");
+        if (active) {
+          setError(null);
+          setVouchers(json.data);
+          setTotals(json.totals);
+          setSelected(new Set());
+        }
+      } catch (loadError) {
+        if (active) setError(loadError.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadInitialVouchers();
+    return () => { active = false; };
+  }, [filters]);
 
   function toggleRow(id) {
     setSelected((prev) => {
