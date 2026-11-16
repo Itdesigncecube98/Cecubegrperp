@@ -50,7 +50,7 @@ export default function RatioAnalysisPage() {
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, fromDate, toDate]);
 
   useEffect(() => {
     if (!companyId) return;

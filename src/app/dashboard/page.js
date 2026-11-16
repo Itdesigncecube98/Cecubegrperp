@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  Users, UserPlus, Mail, MapPin, PlusCircle, FileText, 
+import {
+  Users, UserPlus, Mail, MapPin, PlusCircle, FileText,
   RefreshCw, Clock, CheckCircle, PenTool,
   Map, Calendar, DollarSign, Activity
 } from 'lucide-react';
@@ -11,6 +11,101 @@ import { LineChart as LineChartIcon, BarChart3, PieChart as PieChartIcon } from 
 import './dashboard.css';
 import oldStyles from '../employee/dashboard/dashboard.module.css';
 import { useAutoRefresh, formatRefreshTime } from '../../lib/useAutoRefresh';
+
+function ChartToolbar({ chartKey, onRefresh, loading, hideToggle, supportPie, chartModes, setChartModes }) {
+  return (
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+      {!hideToggle && (
+        <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '6px', padding: '2px' }}>
+          {supportPie && (
+            <button
+              onClick={() => setChartModes(prev => ({...prev, [chartKey]: 'pie'}))}
+              style={{ all: 'unset', cursor: 'pointer', padding: '4px', borderRadius: '4px', background: chartModes[chartKey] === 'pie' ? '#fff' : 'transparent', boxShadow: chartModes[chartKey] === 'pie' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', color: chartModes[chartKey] === 'pie' ? '#0ea5e9' : '#64748b' }}
+              title="Pie Chart"
+            >
+              <PieChartIcon size={16} />
+            </button>
+          )}
+          <button
+            onClick={() => setChartModes(prev => ({...prev, [chartKey]: 'bar'}))}
+            style={{ all: 'unset', cursor: 'pointer', padding: '4px', borderRadius: '4px', background: chartModes[chartKey] === 'bar' || (!chartModes[chartKey] && !supportPie) ? '#fff' : 'transparent', boxShadow: chartModes[chartKey] === 'bar' || (!chartModes[chartKey] && !supportPie) ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', color: chartModes[chartKey] === 'bar' || (!chartModes[chartKey] && !supportPie) ? '#0ea5e9' : '#64748b' }}
+            title="Bar Chart"
+          >
+            <BarChart3 size={16} />
+          </button>
+          <button
+            onClick={() => setChartModes(prev => ({...prev, [chartKey]: 'line'}))}
+            style={{ all: 'unset', cursor: 'pointer', padding: '4px', borderRadius: '4px', background: chartModes[chartKey] === 'line' ? '#fff' : 'transparent', boxShadow: chartModes[chartKey] === 'line' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', color: chartModes[chartKey] === 'line' ? '#0ea5e9' : '#64748b' }}
+            title="Line Chart"
+          >
+            <LineChartIcon size={16} />
+          </button>
+        </div>
+      )}
+      <button
+        onClick={onRefresh}
+        disabled={loading}
+        style={{ all: 'unset', cursor: loading ? 'default' : 'pointer', padding: '6px', borderRadius: '6px', background: '#eff6ff', color: '#3b82f6', opacity: loading ? 0.5 : 1 }}
+        title="Refresh"
+      >
+        <RefreshCw size={16} className={loading ? 'spin' : ''} />
+      </button>
+    </div>
+  );
+}
+
+function CustomTooltip({ active, payload, label }) {
+  if (active && payload && payload.length) {
+    const displayLabel = (payload[0].payload.fullDate || label || '').split('||')[0];
+    return (
+      <div className="customTooltip">
+        <div className="tooltipLabel">{displayLabel}</div>
+        {payload.map((entry, index) => (
+          <div key={index} className="tooltipItem" style={{ color: entry.color }}>
+            {entry.name}: {entry.value}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
+
+function CustomTick({ x, y, payload }) {
+  const parts = (payload.value || '').split('||');
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={16} textAnchor="middle" fill="#6b7280" fontSize={12}>
+        <tspan x="0" dy="0">{parts[0]}</tspan>
+        {parts[1] && <tspan x="0" dy="14" fill={parts[1] === 'Off' ? '#3b82f6' : '#f59e0b'} fontWeight="600" fontSize={11}>{parts[1]}</tspan>}
+      </text>
+    </g>
+  );
+}
+
+function TopHoursTooltip({ active, payload }) {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 16px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+        <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4, fontSize: 13 }}>{payload[0].payload.name}</div>
+        <div style={{ color: '#6366f1', fontSize: 14, fontWeight: 600 }}>⏱ {payload[0].value} hrs / day</div>
+      </div>
+    );
+  }
+  return null;
+}
+
+function TopPresentDaysTooltip({ active, payload }) {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px 16px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+        <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4, fontSize: 13 }}>{payload[0].payload.name}</div>
+        <div style={{ color: '#0284c7', fontSize: 14, fontWeight: 600 }}>📅 {payload[0].value} days present</div>
+      </div>
+    );
+  }
+  return null;
+}
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -59,7 +154,7 @@ export default function AdminDashboard() {
     deptHeadcount: 'bar',
     deptSalary: 'bar'
   });
-  
+
   const [chartLoading, setChartLoading] = useState({
     dailyTrend: false,
     topHours: false,
@@ -72,7 +167,7 @@ export default function AdminDashboard() {
     d.setDate(d.getDate() - 9);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
-  
+
   const [trendEndDate, setTrendEndDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -83,7 +178,7 @@ export default function AdminDashboard() {
     d.setDate(d.getDate() - 9);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
-  
+
   const [statusEndDate, setStatusEndDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -113,7 +208,7 @@ export default function AdminDashboard() {
         const distHoliday = trendData.reduce((sum, day) => sum + day.Holiday, 0);
         const distOff = trendData.reduce((sum, day) => sum + day.Off, 0);
         const distLeave = trendData.reduce((sum, day) => sum + day.Leave, 0);
-        
+
         setStatusDistribution([
           { name: 'Present', value: distPresent, color: '#bbf7d0' },
           { name: 'COff', value: distCOff, color: '#166534' },
@@ -127,7 +222,7 @@ export default function AdminDashboard() {
     setChartLoading(prev => ({ ...prev, statusDist: false }));
   };
 
-  const fetchTopHours = async () => {
+  const fetchTopHours = useCallback(async () => {
     setChartLoading(prev => ({ ...prev, topHours: true }));
     try {
       const res = await fetch('/api/attendance/top-hours?days=30');
@@ -135,9 +230,9 @@ export default function AdminDashboard() {
       setTopHours(Array.isArray(data) ? data : []);
     } catch { setTopHours([]); }
     setChartLoading(prev => ({ ...prev, topHours: false }));
-  };
+  }, []);
 
-  const fetchTopPresentDays = async () => {
+  const fetchTopPresentDays = useCallback(async () => {
     setChartLoading(prev => ({ ...prev, topPresent: true }));
     try {
       const res = await fetch('/api/attendance/top-present-days?days=30');
@@ -145,9 +240,9 @@ export default function AdminDashboard() {
       setTopPresentDays(Array.isArray(data) ? data : []);
     } catch { setTopPresentDays([]); }
     setChartLoading(prev => ({ ...prev, topPresent: false }));
-  };
+  }, []);
 
-  const fetchWorkforceKpis = async () => {
+  const fetchWorkforceKpis = useCallback(async () => {
     setChartLoading(prev => ({ ...prev, workforceKpis: true }));
     try {
       const res = await fetch('/api/analytics/workforce-kpis');
@@ -155,7 +250,7 @@ export default function AdminDashboard() {
       if (!data.error) setWorkforceKpis(data);
     } catch {}
     setChartLoading(prev => ({ ...prev, workforceKpis: false }));
-  };
+  }, []);
 
   const toggleChartMode = (chartKey) => {
     setChartModes(prev => ({
@@ -164,57 +259,8 @@ export default function AdminDashboard() {
     }));
   };
 
-  const ChartToolbar = ({ chartKey, onRefresh, loading, hideToggle, supportPie }) => (
-    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-      {!hideToggle && (
-        <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '6px', padding: '2px' }}>
-          {supportPie && (
-            <button 
-              onClick={() => setChartModes(prev => ({...prev, [chartKey]: 'pie'}))}
-              style={{ all: 'unset', cursor: 'pointer', padding: '4px', borderRadius: '4px', background: chartModes[chartKey] === 'pie' ? '#fff' : 'transparent', boxShadow: chartModes[chartKey] === 'pie' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', color: chartModes[chartKey] === 'pie' ? '#0ea5e9' : '#64748b' }}
-              title="Pie Chart"
-            >
-              <PieChartIcon size={16} />
-            </button>
-          )}
-          <button 
-            onClick={() => setChartModes(prev => ({...prev, [chartKey]: 'bar'}))}
-            style={{ all: 'unset', cursor: 'pointer', padding: '4px', borderRadius: '4px', background: chartModes[chartKey] === 'bar' || (!chartModes[chartKey] && !supportPie) ? '#fff' : 'transparent', boxShadow: chartModes[chartKey] === 'bar' || (!chartModes[chartKey] && !supportPie) ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', color: chartModes[chartKey] === 'bar' || (!chartModes[chartKey] && !supportPie) ? '#0ea5e9' : '#64748b' }}
-            title="Bar Chart"
-          >
-            <BarChart3 size={16} />
-          </button>
-          <button 
-            onClick={() => setChartModes(prev => ({...prev, [chartKey]: 'line'}))}
-            style={{ all: 'unset', cursor: 'pointer', padding: '4px', borderRadius: '4px', background: chartModes[chartKey] === 'line' ? '#fff' : 'transparent', boxShadow: chartModes[chartKey] === 'line' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', color: chartModes[chartKey] === 'line' ? '#0ea5e9' : '#64748b' }}
-            title="Line Chart"
-          >
-            <LineChartIcon size={16} />
-          </button>
-        </div>
-      )}
-      <button 
-        onClick={onRefresh}
-        disabled={loading}
-        style={{ all: 'unset', cursor: loading ? 'default' : 'pointer', padding: '6px', borderRadius: '6px', background: '#eff6ff', color: '#3b82f6', opacity: loading ? 0.5 : 1 }}
-        title="Refresh"
-      >
-        <RefreshCw size={16} className={loading ? 'spin' : ''} />
-      </button>
-    </div>
-  );
-
-  useEffect(() => {
-    const adminData = sessionStorage.getItem('adminData');
-    if (!adminData) {
-      router.push('/login');
-      return;
-    }
-    loadDashboardData();
-  }, [router]);
-
   // Fast path: one summary API → show dashboard immediately; top-hours loads after
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     try {
       const res = await fetch('/api/attendance/dashboard-summary?days=10');
       const summary = await res.json();
@@ -253,7 +299,16 @@ export default function AdminDashboard() {
     fetchTopHours();
     fetchTopPresentDays();
     fetchWorkforceKpis();
-  };
+  }, [fetchTopHours, fetchTopPresentDays, fetchWorkforceKpis]);
+
+  useEffect(() => {
+    const adminData = sessionStorage.getItem('adminData');
+    if (!adminData) {
+      router.push('/login');
+      return;
+    }
+    void Promise.resolve().then(loadDashboardData);
+  }, [router, loadDashboardData]);
 
   // Silent auto-refresh also uses the fast summary endpoint
   const refreshToday = useCallback(async () => {
@@ -289,35 +344,6 @@ export default function AdminDashboard() {
     intervalMs: 15000,
     enabled: true
   });
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      const displayLabel = (payload[0].payload.fullDate || label || '').split('||')[0];
-      return (
-        <div className="customTooltip">
-          <div className="tooltipLabel">{displayLabel}</div>
-          {payload.map((entry, index) => (
-            <div key={index} className="tooltipItem" style={{ color: entry.color }}>
-              {entry.name}: {entry.value}
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const CustomTick = ({ x, y, payload }) => {
-    const parts = (payload.value || '').split('||');
-    return (
-      <g transform={`translate(${x},${y})`}>
-        <text x={0} y={0} dy={16} textAnchor="middle" fill="#6b7280" fontSize={12}>
-          <tspan x="0" dy="0">{parts[0]}</tspan>
-          {parts[1] && <tspan x="0" dy="14" fill={parts[1] === 'Off' ? '#3b82f6' : '#f59e0b'} fontWeight="600" fontSize={11}>{parts[1]}</tspan>}
-        </text>
-      </g>
-    );
-  };
 
   if (loading) {
     return (
@@ -581,7 +607,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Employment Type</h2>
               <p className="cardSubtitle">Distribution by employment status</p>
             </div>
-            <ChartToolbar chartKey="empType" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} supportPie={true} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="empType" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} supportPie={true} />
           </div>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -603,11 +629,11 @@ export default function AdminDashboard() {
                 </BarChart>
               ) : (
                 <PieChart>
-                  <Pie 
-                    data={workforceKpis.charts?.empTypeData || []} 
-                    innerRadius={80} 
-                    outerRadius={110} 
-                    paddingAngle={2} 
+                  <Pie
+                    data={workforceKpis.charts?.empTypeData || []}
+                    innerRadius={80}
+                    outerRadius={110}
+                    paddingAngle={2}
                     dataKey="value"
                     stroke="none"
                   >
@@ -629,7 +655,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Employee Tenure</h2>
               <p className="cardSubtitle">Distribution of years of service</p>
             </div>
-            <ChartToolbar chartKey="empTenure" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} supportPie={true} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="empTenure" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} supportPie={true} />
           </div>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -651,11 +677,11 @@ export default function AdminDashboard() {
                 </BarChart>
               ) : (
                 <PieChart>
-                  <Pie 
-                    data={workforceKpis.charts?.tenureData || []} 
-                    innerRadius={0} 
-                    outerRadius={110} 
-                    paddingAngle={1} 
+                  <Pie
+                    data={workforceKpis.charts?.tenureData || []}
+                    innerRadius={0}
+                    outerRadius={110}
+                    paddingAngle={1}
                     dataKey="value"
                     stroke="#fff"
                   >
@@ -679,7 +705,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Qualification Count</h2>
               <p className="cardSubtitle">Number of employees holding each qualification</p>
             </div>
-            <ChartToolbar chartKey="eduCount" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} hideToggle={true} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="eduCount" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} hideToggle={true} />
           </div>
           <div style={{ marginTop: '16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
             {(!workforceKpis.charts?.eduCountData || workforceKpis.charts.eduCountData.length === 0) ? (
@@ -687,11 +713,11 @@ export default function AdminDashboard() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {workforceKpis.charts.eduCountData.map((item, idx) => (
-                  <div key={idx} style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between', 
-                    padding: '12px 16px', 
+                  <div key={idx} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 16px',
                     borderBottom: idx < workforceKpis.charts.eduCountData.length - 1 ? '1px solid #e2e8f0' : 'none',
                     background: idx % 2 === 0 ? '#fff' : '#f8fafc',
                     transition: 'background-color 0.2s'
@@ -716,7 +742,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Attrition Tenure</h2>
               <p className="cardSubtitle">Time spent by employees before quitting</p>
             </div>
-            <ChartToolbar chartKey="attrition" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="attrition" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
           </div>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -749,7 +775,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Resignations (Last 12 Months)</h2>
               <p className="cardSubtitle">Trend of employees leaving the organisation</p>
             </div>
-            <ChartToolbar chartKey="resignationTrend" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="resignationTrend" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
           </div>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -782,7 +808,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Headcount by Department</h2>
               <p className="cardSubtitle">Top departments by number of employees</p>
             </div>
-            <ChartToolbar chartKey="deptHeadcount" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="deptHeadcount" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
           </div>
           <div style={{ height: '360px' }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -823,7 +849,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Avg Salary by Department</h2>
               <p className="cardSubtitle">Average basic salary across departments</p>
             </div>
-            <ChartToolbar chartKey="deptSalary" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="deptSalary" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} />
           </div>
           <div style={{ height: '360px' }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -867,7 +893,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Salary by Designation</h2>
               <p className="cardSubtitle">Total vs Avg Salary & Employee Count per Designation</p>
             </div>
-            <ChartToolbar chartKey="designationSalary" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} hideToggle={true} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="designationSalary" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} hideToggle={true} />
           </div>
           <div style={{ overflowX: 'auto', marginTop: '16px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -907,7 +933,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Salary by Organisation</h2>
               <p className="cardSubtitle">Total vs Avg Salary & Employee Count per Organisation</p>
             </div>
-            <ChartToolbar chartKey="orgSalary" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} hideToggle={true} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="orgSalary" onRefresh={fetchWorkforceKpis} loading={chartLoading.workforceKpis} hideToggle={true} />
           </div>
           <div style={{ overflowX: 'auto', marginTop: '16px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -952,7 +978,7 @@ export default function AdminDashboard() {
             <p style={{ margin: '4px 0 0 0', color: '#3b82f6', fontSize: '14px', fontWeight: 500 }}>Corporate Hierarchy & Functional Reporting</p>
           </div>
         </div>
-        <button 
+        <button
           onClick={() => router.push('/dashboard/organization/structure')}
           style={{ background: 'white', color: '#1d4ed8', border: '1px solid #93c5fd', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}
           onMouseOver={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
@@ -971,21 +997,21 @@ export default function AdminDashboard() {
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input 
-                type="date" 
-                value={trendStartDate} 
-                onChange={e => setTrendStartDate(e.target.value)} 
+              <input
+                type="date"
+                value={trendStartDate}
+                onChange={e => setTrendStartDate(e.target.value)}
                 style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none' }}
               />
               <span style={{ color: '#64748b', fontSize: '13px' }}>to</span>
-              <input 
-                type="date" 
-                value={trendEndDate} 
-                onChange={e => setTrendEndDate(e.target.value)} 
+              <input
+                type="date"
+                value={trendEndDate}
+                onChange={e => setTrendEndDate(e.target.value)}
                 style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '13px', outline: 'none' }}
               />
             </div>
-            <ChartToolbar chartKey="dailyTrend" onRefresh={fetchDailyTrend} loading={chartLoading.dailyTrend} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="dailyTrend" onRefresh={fetchDailyTrend} loading={chartLoading.dailyTrend} />
           </div>
         </div>
         <div style={{ overflowX: 'auto', overflowY: 'hidden', marginTop: '16px' }}>
@@ -1032,24 +1058,24 @@ export default function AdminDashboard() {
             <div>
               <h2 className="cardTitle">Attendance Status Distribution</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                <input 
-                  type="date" 
-                  value={statusStartDate} 
-                  onChange={e => setStatusStartDate(e.target.value)} 
+                <input
+                  type="date"
+                  value={statusStartDate}
+                  onChange={e => setStatusStartDate(e.target.value)}
                   className="date-input"
                   style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
                 />
                 <span style={{ fontSize: '13px', color: '#64748b' }}>to</span>
-                <input 
-                  type="date" 
-                  value={statusEndDate} 
-                  onChange={e => setStatusEndDate(e.target.value)} 
+                <input
+                  type="date"
+                  value={statusEndDate}
+                  onChange={e => setStatusEndDate(e.target.value)}
                   className="date-input"
                   style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
                 />
               </div>
             </div>
-            <ChartToolbar chartKey="statusDist" onRefresh={fetchStatusDist} hideToggle={false} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="statusDist" onRefresh={fetchStatusDist} hideToggle={false} />
           </div>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -1084,7 +1110,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Average Hours Devoted (Top Employees)</h2>
               <p className="cardSubtitle">Average daily hours over the past 30 days</p>
             </div>
-            <ChartToolbar chartKey="topHours" onRefresh={fetchTopHours} loading={chartLoading.topHours} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="topHours" onRefresh={fetchTopHours} loading={chartLoading.topHours} />
           </div>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -1179,7 +1205,7 @@ export default function AdminDashboard() {
               <h2 className="cardTitle">Top Employees (Days Present)</h2>
               <p className="cardSubtitle">Number of days present in the past 30 days</p>
             </div>
-            <ChartToolbar chartKey="topPresent" onRefresh={fetchTopPresentDays} loading={chartLoading.topPresent} />
+            <ChartToolbar chartModes={chartModes} setChartModes={setChartModes} chartKey="topPresent" onRefresh={fetchTopPresentDays} loading={chartLoading.topPresent} />
           </div>
           <div style={{ height: '300px' }}>
             <ResponsiveContainer width="100%" height="100%">
