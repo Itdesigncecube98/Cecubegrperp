@@ -1,7 +1,7 @@
 'use client';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Shield, ChevronDown, Check, X, User } from 'lucide-react';
-import { EMPLOYEE_WIDE_PROJECT_ID, LEGACY_PERMISSION_ALIASES } from '../lib/employeeToolCatalog';
+import { EMPLOYEE_WIDE_PROJECT_ID, LEGACY_PERMISSION_ALIASES, PROJECT_EMPLOYEE_TOOLS } from '../lib/employeeToolCatalog';
 
 const PermissionsContext = createContext({
   activeEmployee: null,
@@ -143,6 +143,15 @@ export function PermissionsProvider({ children }) {
     return aliases ? aliases.some(code => codes.includes(code)) : codes.includes(toolCode);
   };
 
+  const currentProjectPermissionCodes = [...new Set([
+    ...employeeWideGrantedTools,
+    ...(activeProject?.id ? projectGrantedTools[activeProject.id] || [] : []),
+  ])];
+  const currentProjectPermissions = Object.entries(PROJECT_EMPLOYEE_TOOLS).flatMap(([module, tools]) =>
+    tools.filter(tool => currentProjectPermissionCodes.includes(tool.code))
+      .map(tool => ({ module, name: tool.name, code: tool.code }))
+  );
+
   return (
     <PermissionsContext.Provider value={{ activeEmployee, activeProject, grantedTools, projectGrantedTools, employeeWideGrantedTools, permissionsLoaded, hasRight, openProjectSelector, setActiveEmployee: handleSetEmp, setActiveProject: handleSetProj }}>
       {children}
@@ -215,11 +224,23 @@ export function PermissionsProvider({ children }) {
               
               <div style={{ marginTop: 16, padding: '10px 12px', background: (activeEmployee && activeProject) ? '#ecfdf5' : '#f1f5f9', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                 {(activeEmployee && activeProject) ? (
-                  <><Check size={14} color="#10b981" /> <strong>{grantedTools.length}</strong> permissions loaded.</>
+                  <><Check size={14} color="#10b981" /> <strong>{currentProjectPermissionCodes.length}</strong> permissions for this project.</>
                 ) : (
                   <><User size={14} color="#64748b" /> No session active.</>
                 )}
               </div>
+              {activeEmployee && activeProject && (
+                <details style={{ marginTop: 10, fontSize: 12 }}>
+                  <summary style={{ cursor: 'pointer', color: '#334155', fontWeight: 600 }}>View my permissions</summary>
+                  <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6, padding: 8 }}>
+                    {currentProjectPermissions.length ? currentProjectPermissions.map(permission => (
+                      <div key={permission.code} style={{ padding: '5px 2px', borderBottom: '1px solid #f1f5f9' }}>
+                        <span style={{ color: '#64748b' }}>{permission.module}</span> · {permission.name}
+                      </div>
+                    )) : <div style={{ color: '#64748b' }}>No permissions are assigned for this project.</div>}
+                  </div>
+                </details>
+              )}
             </div>
           </div>
         )}

@@ -136,6 +136,15 @@ export async function POST(req) {
         'Purchase||Vendor Master Create/View/Edit': 'Vendor Master View',
         'Purchase||Purchase Orders (PO)': 'Purchase Orders View',
         'Purchase||Purchase Bills': 'Purchase Bills View',
+        'Purchase||Supplier': 'Purchase Supplier Summary View',
+        'Purchase||Supplier Summary': 'Purchase Supplier Summary View',
+        'Purchase||PO Analysis': 'Purchase PO Analysis View',
+        'Purchase||Supplier Wise Transaction': 'Purchase Supplier Transactions View',
+        'Purchase||Supplier Wise PO': 'Purchase Supplier-wise PO View',
+        'Purchase||Payment Summary': 'Purchase Payment Summary View',
+        'Purchase||Payment Details': 'Purchase Payment Details View',
+        'Purchase||Date Tracking': 'Purchase Payment Date Tracking View',
+        'Purchase||Ageing': 'Purchase Payment Ageing View',
       };
 
       // Upsert all canonical tools

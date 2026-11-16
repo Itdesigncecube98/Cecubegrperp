@@ -87,6 +87,17 @@ const TENDER_DETAIL_RIGHTS = {
   approval: 'TENDER_APPROVAL',
 };
 
+const PURCHASE_REPORT_RIGHTS = {
+  'supplier/summary': 'PURCHASE_REPORT_SUPPLIER_SUMMARY',
+  'supplier/po-analysis': 'PURCHASE_REPORT_PO_ANALYSIS',
+  'supplier/supplier-wise-transaction': 'PURCHASE_REPORT_SUPPLIER_TXN',
+  'supplier/supplier-wise-po': 'PURCHASE_REPORT_SUPPLIER_PO',
+  'payment/summary': 'PURCHASE_REPORT_PAYMENT_SUMMARY',
+  'payment/details': 'PURCHASE_REPORT_PAYMENT_DETAILS',
+  'payment/date-tracking': 'PURCHASE_REPORT_DATE_TRACKING',
+  'payment/ageing': 'PURCHASE_REPORT_AGEING',
+};
+
 const subscribeToNothing = () => () => {};
 const getClientMountedSnapshot = () => true;
 const getServerMountedSnapshot = () => false;
@@ -98,7 +109,13 @@ export default function ProjectRoutePermissionGate({ children }) {
   const matchedRight = ROUTE_RIGHTS.slice().sort((a, b) => b[0].length - a[0].length)
     .find(([path]) => path.endsWith('/') ? pathname.startsWith(path) : pathname === path || pathname.startsWith(`${path}/`))?.[1];
   const tenderDetail = pathname.match(/^\/tender\/[^/]+\/([^/]+)/)?.[1];
-  const right = matchedRight || (tenderDetail ? TENDER_DETAIL_RIGHTS[tenderDetail] : null);
+  const purchaseReportPath = pathname.match(/^\/purchase\/reports\/([^/]+)\/([^/]+)/);
+  const purchaseReportRight = purchaseReportPath
+    ? PURCHASE_REPORT_RIGHTS[`${purchaseReportPath[1]}/${purchaseReportPath[2]}`]
+    : null;
+  const right = purchaseReportRight
+    ? ['PURCHASE_REPORTS', purchaseReportRight]
+    : matchedRight || (tenderDetail ? TENDER_DETAIL_RIGHTS[tenderDetail] : null);
   const employeeSession = mounted && sessionStorage.getItem('isAdmin') !== 'true' &&
     (!!activeEmployee || !!localStorage.getItem('employeeData'));
   const hasRoutePermission = Array.isArray(right) ? right.some(hasRight) : right ? hasRight(right) : false;

@@ -1,10 +1,22 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { readAuthSession } from '@/lib/authSession';
 
 const REPORT_VIEWS = {
   supplier: ['summary', 'po-analysis', 'supplier-wise-transaction', 'supplier-wise-po'],
   payment: ['summary', 'details', 'date-tracking', 'ageing']
+};
+
+const REPORT_PERMISSION_NAMES = {
+  'supplier/summary': 'Purchase Supplier Summary View',
+  'supplier/po-analysis': 'Purchase PO Analysis View',
+  'supplier/supplier-wise-transaction': 'Purchase Supplier Transactions View',
+  'supplier/supplier-wise-po': 'Purchase Supplier-wise PO View',
+  'payment/summary': 'Purchase Payment Summary View',
+  'payment/details': 'Purchase Payment Details View',
+  'payment/date-tracking': 'Purchase Payment Date Tracking View',
+  'payment/ageing': 'Purchase Payment Ageing View',
 };
 
 const amount = value => Number(value || 0);
@@ -38,6 +50,8 @@ function billStatus(bill, vendor, today) {
 }
 
 export async function GET(request) {
+  const session = readAuthSession(request);
+  if (!session) return NextResponse.json({ error: 'Please sign in to view purchase reports.' }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const family = searchParams.get('family') || 'supplier';
   const view = searchParams.get('view') || 'supplier';
@@ -47,6 +61,20 @@ export async function GET(request) {
 
   if (!REPORT_VIEWS[family]?.includes(view)) {
     return NextResponse.json({ error: 'Unknown purchase report.' }, { status: 400 });
+  }
+  if (session.type === 'employee') {
+    const reportPermission = REPORT_PERMISSION_NAMES[`${family}/${view}`];
+    const reportGrant = await prisma.employeeProjectToolAccess.findFirst({
+      where: {
+        employeeId: String(session.id),
+        granted: true,
+        tool: { is: { module: 'Purchase', name: { in: ['Purchase Reports View', reportPermission] } } },
+      },
+      select: { id: true },
+    });
+    if (!reportGrant) {
+      return NextResponse.json({ error: 'You do not have permission to view this purchase report.' }, { status: 403 });
+    }
   }
   if ((from && !parseDate(from)) || (to && !parseDate(to, true))) {
     return NextResponse.json({ error: 'Enter valid report dates.' }, { status: 400 });
