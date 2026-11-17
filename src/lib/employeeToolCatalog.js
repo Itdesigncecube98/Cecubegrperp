@@ -35,7 +35,8 @@ export const PROJECT_TOOL_MODULES = {
   Site: [
     'Site Dashboard', 'DPR Create', 'DPR View', 'Work Completion — Log Qty', 'Work Completion Certificate Approve',
     'GTN View', 'GTN Edit', 'GRN View', 'GRN Edit',
-    'Site Store', 'Task Status Change', 'Quality Control View', 'Quality Control Add', 'Health & Safety View',
+    'Site Store', 'Site Store Add', 'Site Store Edit', 'Site Store Status Change',
+    'Task Status Change', 'Quality Control View', 'Quality Control Add', 'Health & Safety View',
     'Health & Safety Add',
   ],
   Marketing: [
@@ -187,7 +188,7 @@ export const LEGACY_PERMISSION_ALIASES = {
   SITE_WORK_COMPLETION: alias('Site', 'Work Completion — Log Qty', 'Work Completion Certificate Approve'),
   SITE_GTN: alias('Site', 'GTN View', 'GTN Edit'),
   SITE_GRN: alias('Site', 'GRN View', 'GRN Edit'),
-  SITE_STORE: alias('Site', 'Site Store'),
+  SITE_STORE: alias('Site', 'Site Store', 'Site Store Add', 'Site Store Edit', 'Site Store Status Change'),
   SITE_TASK_STATUS: alias('Site', 'Task Status Change'),
   SITE_QUALITY: alias('Site', 'Quality Control View', 'Quality Control Add', 'Health & Safety View', 'Health & Safety Add'),
   MARKETING_PROJECT_ENQUIRIES: alias('Marketing', 'Project Enquiry View'),

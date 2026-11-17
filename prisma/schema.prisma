@@ -850,6 +850,7 @@ model Project {
   category1           String?
   category2           String?
   companyId           String?
+  statusHistory       ProjectStatusHistory[]
   policies            InsurancePolicy[]
   companyRel          Company?          @relation(fields: [companyId], references: [id])
   wbsTasks            ProjectWbsTask[]
@@ -858,6 +859,19 @@ model Project {
   wbsBifurcationTasks WbsTask[]
 
   @@index([companyId])
+}
+
+model ProjectStatusHistory {
+  id        String   @id @default(cuid())
+  projectId String
+  fromStatus String?
+  toStatus  String
+  actorName String?
+  changedAt DateTime @default(now())
+  note      String?
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, changedAt])
 }
 
 model ProjectWbsTask {
@@ -2645,6 +2659,7 @@ model ProjectMaster {
   siteGTNs         SiteGTN[]
   materialReqs     SiteMaterialRequisition[]
   siteStoreStocks  SiteStoreStock[]
+  siteStoreIssues  SiteStoreIssue[]
   siteTaskGroups   SiteTaskGroup[]
   taskLibraryItems TaskLibraryItem[]
   workOrders       WorkOrder[]
@@ -3034,10 +3049,63 @@ model SiteStoreStock {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   project        ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issueItems     SiteStoreIssueItem[]
 
   @@index([projectId, materialName])
   @@index([status])
   @@index([poNo])
+}
+
+model SiteStoreIssue {
+  id              String               @id @default(cuid())
+  issueNo         String               @unique
+  projectId       String
+  issueDate       DateTime             @default(now())
+  status          String               @default("Issued")
+  vehicleNo       String?
+  workOrderNo     String?
+  purchaseOrderNo String?
+  purchaseBillNo  String?
+  ewayBillNo      String?
+  challanNo       String?
+  remarks         String?
+  issuedBy        String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  project         ProjectMaster        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items           SiteStoreIssueItem[]
+  statusHistory   SiteStoreIssueStatusHistory[]
+
+  @@index([projectId, issueDate])
+  @@index([status])
+}
+
+model SiteStoreIssueStatusHistory {
+  id        String         @id @default(cuid())
+  issueId   String
+  fromStatus String?
+  toStatus  String
+  actorName String?
+  changedAt DateTime       @default(now())
+  note      String?
+  issue     SiteStoreIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId, changedAt])
+}
+
+model SiteStoreIssueItem {
+  id           String         @id @default(cuid())
+  issueId      String
+  stockId      String
+  materialName String
+  unit         String?
+  quantity     Float          @default(0)
+  createdAt    DateTime       @default(now())
+  issue        SiteStoreIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  stock        SiteStoreStock @relation(fields: [stockId], references: [id], onDelete: Restrict)
+
+  @@index([issueId])
+  @@index([stockId])
 }
 
 model QualityNCR {

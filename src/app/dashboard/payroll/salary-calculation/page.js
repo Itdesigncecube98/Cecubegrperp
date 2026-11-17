@@ -36,7 +36,9 @@ export default function SalaryCalculation() {
       .then(d => {
         if (Array.isArray(d)) {
           setCycles(d);
-          if (d.length > 0) setSelectedCycleId(d[0].id);
+          const requestedCycleId = new URLSearchParams(window.location.search).get('cycleId');
+          const requestedCycle = d.find(cycle => cycle.id === requestedCycleId);
+          if (requestedCycle || d.length > 0) setSelectedCycleId(requestedCycle?.id || d[0].id);
         }
       });
   }, []);
@@ -72,19 +74,45 @@ export default function SalaryCalculation() {
 
   const handleCalculate = async () => {
     if (!selectedCycleId) return;
+    const employeesToCalculate = selectedRecordIds.length > 0
+      ? records.filter(record => selectedRecordIds.includes(record.id) && record.status === 'PENDING')
+      : [];
+    if (selectedRecordIds.length > 0 && employeesToCalculate.length === 0) {
+      alert('Select at least one pending salary record to calculate.');
+      return;
+    }
+
     setProcessing(true);
     try {
       const res = await fetch(`/api/payroll/cycles/${selectedCycleId}/process`, { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ considerBonus, considerLeaveEncash, considerTds })
+        body: JSON.stringify({
+          considerBonus,
+          considerLeaveEncash,
+          considerTds,
+          ...(selectedRecordIds.length > 0
+            ? { employeeIds: employeesToCalculate.map(record => record.employeeId) }
+            : {}),
+        })
       });
       const json = await res.json();
       if (json.success) {
         await fetchDetails();
         alert(`✅ Processed ${json.processedCount} records successfully!`);
       } else {
-        alert(`❌ Error: ${json.error}`);
+        const attendanceEmployees = (json.employeesNeedingAttendanceReview || []).map(employeeId => {
+          const employee = records.find(record =>
+            record.employee?.empId === employeeId ||
+            record.employeeId === employeeId ||
+            record.employee?.id === employeeId
+          )?.employee;
+          return employee ? `${employee.name} (${employee.empId})` : employeeId;
+        });
+        const attendanceMessage = attendanceEmployees.length > 0
+          ? `\nAttendance missing or unapproved for: ${attendanceEmployees.join(', ')}.\nApprove their attendance, then retry.`
+          : '';
+        alert(`❌ Error: ${json.error}${attendanceMessage}`);
       }
     } catch (e) {
       alert(`❌ Network error: ${e.message}`);
@@ -389,6 +417,7 @@ export default function SalaryCalculation() {
         <SalarySlipModal
           record={selectedRecordForSlip}
           cycleName={cycles.find(c => c.id === selectedCycleId)?.name}
+          cycleStatus={cycles.find(c => c.id === selectedCycleId)?.status}
           bonusIncentives={cycleBonusIncentives}
           onClose={() => setSelectedRecordForSlip(null)}
           onSaveSuccess={handleSlipSaveSuccess}

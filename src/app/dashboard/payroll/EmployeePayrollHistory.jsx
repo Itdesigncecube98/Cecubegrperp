@@ -4,10 +4,20 @@ import { useState } from 'react';
 import { History, X } from 'lucide-react';
 
 const money = value => `₹${(Number(value) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const title = value => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+const title = value => value === 'lta'
+  ? 'Leave Travel Allowance'
+  : String(value || '').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 const cycleLabel = cycle => cycle
   ? `${cycle.name}${cycle.startDate || cycle.endDate ? ` · ${cycle.startDate || '—'} to ${cycle.endDate || '—'}` : ''}`
   : 'Pay cycle unavailable';
+const itemMessage = item => {
+  if (item.type !== 'lta') return item.message;
+  try {
+    return JSON.parse(item.message || '{}').applications?.join(', ') || '';
+  } catch {
+    return '';
+  }
+};
 
 export default function EmployeePayrollHistory({ employeeId, employeeName }) {
   const [open, setOpen] = useState(false);
@@ -39,7 +49,7 @@ export default function EmployeePayrollHistory({ employeeId, employeeName }) {
       amount: item.amount,
       status: item.status === 'ADDED_TO_SALARY' ? 'Included in payslip' : title(item.status),
       date: item.updatedAt || item.createdAt,
-      message: item.message,
+      message: itemMessage(item),
     })),
     ...(history.encashments || []).map(item => ({
       id: `encash-${item.id}`,
@@ -59,7 +69,7 @@ export default function EmployeePayrollHistory({ employeeId, employeeName }) {
     {open && <div role="dialog" aria-modal="true" aria-label="Employee payroll history" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <section onClick={event => event.stopPropagation()} style={{ background: 'white', borderRadius: 12, width: 'min(980px, 96vw)', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(15,23,42,.3)' }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, background: 'white' }}>
-          <div><strong style={{ color: '#0f172a' }}>Payroll History · {employeeName}</strong><div style={{ color: '#64748b', fontSize: 13, marginTop: 3 }}>Bonus, incentive, gratuity and leave encashment by pay cycle</div></div>
+          <div><strong style={{ color: '#0f172a' }}>Payroll History · {employeeName}</strong><div style={{ color: '#64748b', fontSize: 13, marginTop: 3 }}>Bonus, incentive, arrears, gratuity, LTA and leave encashment by pay cycle</div></div>
           <button type="button" onClick={() => setOpen(false)} aria-label="Close history" style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#64748b' }}><X size={20} /></button>
         </header>
         {loading ? <p style={{ padding: 24, color: '#64748b' }}>Loading payroll history…</p> : error ? <p style={{ padding: 24, color: '#b91c1c' }}>{error}</p> : <div style={{ padding: 16, overflowX: 'auto' }}>

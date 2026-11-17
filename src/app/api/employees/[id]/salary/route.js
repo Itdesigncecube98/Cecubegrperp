@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
 import { classifyStandardEarningHead } from '@/lib/payrollSalaryHeads';
+import { generateSalaryRevisionArrears } from '@/lib/payrollArrears';
 
 export async function GET(request, { params }) {
   try {
@@ -62,55 +63,60 @@ export async function POST(request, { params }) {
 
     if (!employee) return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
 
-    const newRevision = await prisma.salaryRevision.create({
-      data: {
-        employeeId: employee.id,
-        effectiveFrom,
-        remark: remark || null,
-        components: {
-          create: components.map(c => ({
-            salaryHeadId: c.salaryHeadId,
-            amount: parseFloat(c.amount) || 0,
-            rule: c.rule || '(None)'
-          }))
-        }
-      },
-      include: {
-        components: {
-          include: {
-            salaryHead: {
-              include: { headType: true }
+    const { newRevision, arrearsGeneration } = await prisma.$transaction(async tx => {
+      const revision = await tx.salaryRevision.create({
+        data: {
+          employeeId: employee.id,
+          effectiveFrom,
+          remark: remark || null,
+          components: {
+            create: components.map(c => ({
+              salaryHeadId: c.salaryHeadId,
+              amount: parseFloat(c.amount) || 0,
+              rule: c.rule || '(None)'
+            }))
+          }
+        },
+        include: {
+          components: {
+            include: {
+              salaryHead: {
+                include: { headType: true }
+              }
             }
           }
         }
-      }
+      });
+
+      let basicSalary = 0, hra = 0, pfEmployee = 0, pfEmployer = 0, specialAllowance = 0;
+      revision.components.forEach(c => {
+        const headName = c.salaryHead.description.trim().toLowerCase();
+        const earningCategory = classifyStandardEarningHead(headName);
+        if (earningCategory === 'basic') basicSalary = c.amount;
+        else if (earningCategory === 'hra') hra = c.amount;
+        else if (headName === 'employee pf' || headName === 'pf employee' || headName === 'provident fund') pfEmployee = c.amount;
+        else if (headName === 'employer pf' || headName === 'pf employer') pfEmployer = c.amount;
+        else if (headName === 'special allowance') specialAllowance = c.amount;
+      });
+
+      await tx.employee.update({
+        where: { id: employee.id },
+        data: {
+          basicSalary: String(basicSalary),
+          hra: String(hra),
+          pfEmployee: String(pfEmployee),
+          pfEmployer: String(pfEmployer),
+          specialAllowance: String(specialAllowance)
+        }
+      });
+
+      return {
+        newRevision: revision,
+        arrearsGeneration: await generateSalaryRevisionArrears(tx, employee.id),
+      };
     });
 
-    // Also update backward-compatible fields on the Employee table
-    let basicSalary = 0, hra = 0, pfEmployee = 0, pfEmployer = 0, specialAllowance = 0;
-    
-    newRevision.components.forEach(c => {
-      const headName = c.salaryHead.description.trim().toLowerCase();
-      const earningCategory = classifyStandardEarningHead(headName);
-      if (earningCategory === 'basic') basicSalary = c.amount;
-      else if (earningCategory === 'hra') hra = c.amount;
-      else if (headName === 'employee pf' || headName === 'pf employee' || headName === 'provident fund') pfEmployee = c.amount;
-      else if (headName === 'employer pf' || headName === 'pf employer') pfEmployer = c.amount;
-      else if (headName === 'special allowance') specialAllowance = c.amount;
-    });
-
-    await prisma.employee.update({
-      where: { id: employee.id },
-      data: {
-        basicSalary: String(basicSalary),
-        hra: String(hra),
-        pfEmployee: String(pfEmployee),
-        pfEmployer: String(pfEmployer),
-        specialAllowance: String(specialAllowance)
-      }
-    });
-
-    return NextResponse.json(newRevision);
+    return NextResponse.json({ ...newRevision, arrearsGeneration });
   } catch (error) {
     console.error('Failed to create salary revision:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -124,11 +130,18 @@ export async function PUT(request, { params }) {
 
     if (!revisionId) return NextResponse.json({ error: 'revisionId is required' }, { status: 400 });
 
+    const { id } = await params;
+    const decodedId = decodeURIComponent(id);
+    const employee = await prisma.employee.findFirst({
+      where: { OR: [{ id: decodedId }, { empId: decodedId }, { name: decodedId }] },
+      select: { id: true }
+    });
+
     // Replace revision details atomically so a failed save cannot leave the
     // salary revision with its old components deleted.
-    const updated = await prisma.$transaction(async tx => {
+    const { updated, arrearsGeneration } = await prisma.$transaction(async tx => {
       await tx.salaryComponent.deleteMany({ where: { revisionId } });
-      return tx.salaryRevision.update({
+      const revision = await tx.salaryRevision.update({
         where: { id: revisionId },
         data: {
           effectiveFrom,
@@ -149,34 +162,33 @@ export async function PUT(request, { params }) {
           }
         }
       });
+
+      if (employee) {
+        let basicSalary = 0, hra = 0, pfEmployee = 0, pfEmployer = 0, specialAllowance = 0;
+        revision.components.forEach(c => {
+          const n = c.salaryHead.description.trim().toLowerCase();
+          const earningCategory = classifyStandardEarningHead(n);
+          if (earningCategory === 'basic') basicSalary = c.amount;
+          else if (earningCategory === 'hra') hra = c.amount;
+          else if (n === 'employee pf' || n === 'pf employee' || n === 'provident fund') pfEmployee = c.amount;
+          else if (n === 'employer pf' || n === 'pf employer') pfEmployer = c.amount;
+          else if (n === 'special allowance') specialAllowance = c.amount;
+        });
+        await tx.employee.update({
+          where: { id: employee.id },
+          data: { basicSalary: String(basicSalary), hra: String(hra), pfEmployee: String(pfEmployee), pfEmployer: String(pfEmployer), specialAllowance: String(specialAllowance) }
+        });
+      }
+
+      return {
+        updated: revision,
+        arrearsGeneration: employee
+          ? await generateSalaryRevisionArrears(tx, employee.id)
+          : { status: 'employee_not_found' },
+      };
     });
 
-    // Sync backward-compatible fields
-    const { id } = await params;
-    const decodedId = decodeURIComponent(id);
-    const employee = await prisma.employee.findFirst({
-      where: { OR: [{ id: decodedId }, { empId: decodedId }, { name: decodedId }] },
-      select: { id: true }
-    });
-
-    if (employee) {
-      let basicSalary = 0, hra = 0, pfEmployee = 0, pfEmployer = 0, specialAllowance = 0;
-      updated.components.forEach(c => {
-        const n = c.salaryHead.description.trim().toLowerCase();
-        const earningCategory = classifyStandardEarningHead(n);
-        if (earningCategory === 'basic') basicSalary = c.amount;
-        else if (earningCategory === 'hra') hra = c.amount;
-        else if (n === 'employee pf' || n === 'pf employee' || n === 'provident fund') pfEmployee = c.amount;
-        else if (n === 'employer pf' || n === 'pf employer') pfEmployer = c.amount;
-        else if (n === 'special allowance') specialAllowance = c.amount;
-      });
-      await prisma.employee.update({
-        where: { id: employee.id },
-        data: { basicSalary: String(basicSalary), hra: String(hra), pfEmployee: String(pfEmployee), pfEmployer: String(pfEmployer), specialAllowance: String(specialAllowance) }
-      });
-    }
-
-    return NextResponse.json(updated);
+    return NextResponse.json({ ...updated, arrearsGeneration });
   } catch (error) {
     console.error('Failed to update salary revision:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

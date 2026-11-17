@@ -796,13 +796,21 @@ export default function EmployeeProfilePage({ initialId }) {
         });
       }
 
+      const result = await res.json().catch(() => ({}));
       if (res.ok) {
-        showToast(editingRevisionId ? 'Salary revision updated!' : 'Salary revision saved!');
+        const arrearsWarning = result.arrearsGeneration?.status === 'blocked'
+          ? result.arrearsGeneration.reason
+          : result.arrearsGeneration?.status === 'no_open_pay_cycle'
+            ? 'No open pay cycle exists for the pending arrears entry.'
+            : '';
+        showToast(arrearsWarning
+          ? `Salary revision saved, but arrears were not updated: ${arrearsWarning}`
+          : (editingRevisionId ? 'Salary revision updated!' : 'Salary revision saved!'));
         setShowAddSalaryModal(false);
         setEditingRevisionId(null);
         fetchData();
       } else {
-        showToast('Failed to save salary revision', 'error');
+        showToast(result.error || 'Failed to save salary revision', 'error');
       }
     } catch (e) {
       showToast('Error saving salary revision', 'error');

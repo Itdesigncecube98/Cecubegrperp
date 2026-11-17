@@ -10,6 +10,10 @@ import {
 const COLORS = ['#2563eb', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'];
 const CHART_COLORS = { Completed: '#10b981', 'In Progress': '#0ea5e9', 'On Hold': '#f59e0b', Pending: '#94a3b8' };
 const cardStyle = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 18, minWidth: 0, boxShadow: '0 2px 8px rgba(15,23,42,.04)' };
+const formatProjectTick = value => {
+  const name = String(value || '').replace(/\s+/g, ' ').trim();
+  return name.length > 24 ? `${name.slice(0, 23)}…` : name;
+};
 
 function ChartCard({ title, children, empty }) {
   return <section style={cardStyle}>
@@ -68,15 +72,17 @@ export default function SiteDashboard() {
 
   useEffect(() => { fetchDashboard(selectedProjectId); }, [fetchDashboard, selectedProjectId]);
 
-  const workCompletionData = useMemo(() => (data?.workCompletion || []).map(project => ({
-    name: project.projectName,
-    total: project.total,
-    'Completed tasks': project.completed,
-    'In progress': project.inProgress,
-    'On hold': project.onHold,
-    Pending: project.pending,
-    completionPercent: project.completionPercent,
-  })), [data]);
+  const workCompletionData = useMemo(() => (data?.workCompletion || [])
+    .filter(project => project.total > 0)
+    .map(project => ({
+      name: project.projectName,
+      total: project.total,
+      'Completed tasks': project.completed,
+      'In progress': project.inProgress,
+      'On hold': project.onHold,
+      Pending: project.pending,
+      completionPercent: project.completionPercent,
+    })), [data]);
 
   const stats = [
     { label: 'Projects', value: data?.totals?.projects || 0, icon: Activity, color: '#2563eb', tint: '#eff6ff' },
@@ -120,13 +126,13 @@ export default function SiteDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,430px),1fr))', gap: 16 }}>
         <ChartCard title="Project Status" empty={!data.projectStatuses?.length}><StatusPie data={data.projectStatuses || []} /></ChartCard>
         <ChartCard title="DPR Status" empty={!data.dprStatuses?.length}><StatusBars data={data.dprStatuses || []} /></ChartCard>
-        <ChartCard title="Work Completion by Project" empty={!workCompletionData.some(project => project.total > 0)}>
+        <ChartCard title="Work Completion by Project" empty={workCompletionData.length === 0}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', color: '#64748b', fontSize: 12, marginBottom: 2 }}>Average task completion by project</div>
-          <ResponsiveContainer width="100%" height={Math.max(250, workCompletionData.length * 32)}>
-            <BarChart data={workCompletionData} layout="vertical" margin={{ top: 8, right: 18, bottom: 8, left: 4 }}>
+          <ResponsiveContainer width="100%" height={Math.max(250, workCompletionData.length * 38)}>
+            <BarChart data={workCompletionData} layout="vertical" margin={{ top: 8, right: 18, bottom: 8, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis type="number" domain={[0, 100]} unit="%" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" width={125} tick={{ fontSize: 10 }} />
+              <YAxis type="category" dataKey="name" width={155} tickFormatter={formatProjectTick} tick={{ fontSize: 11 }} />
               <Tooltip formatter={value => [`${value}%`, 'Completion']} />
               <Bar dataKey="completionPercent" name="Completion" fill="#10b981" radius={[0, 5, 5, 0]} />
             </BarChart>

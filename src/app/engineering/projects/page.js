@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Filter, Building2, Eye, Pencil, Trash2, X, ChevronRight, Home, Layers } from 'lucide-react';
+import { Search, Plus, Filter, Building2, Eye, Pencil, Trash2, X, ChevronRight, Home, Layers, Clock3 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { usePermissions } from '@/context/PermissionsContext';
@@ -25,6 +25,7 @@ export default function ProjectMaster() {
   const [loadError, setLoadError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [timelineProject, setTimelineProject] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -237,11 +238,22 @@ export default function ProjectMaster() {
                       <td style={{ padding: '13px 16px', fontSize: '0.85rem', color: '#57534e' }}>{proj.library || '—'}</td>
                       <td style={{ padding: '13px 16px', fontSize: '0.85rem', color: '#57534e' }}>{proj.category1 || '—'}</td>
                       <td style={{ padding: '13px 16px' }}>
-                        <span style={{
-                          background: ss.bg, color: ss.color,
-                          padding: '4px 10px', borderRadius: '20px',
-                          fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap',
-                        }}>{proj.status || 'Planning'}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{
+                            background: ss.bg, color: ss.color,
+                            padding: '4px 10px', borderRadius: '20px',
+                            fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap',
+                          }}>{proj.status || 'Planning'}</span>
+                          <button
+                            type="button"
+                            onClick={() => setTimelineProject(proj)}
+                            title="Project status timeline"
+                            aria-label={`View status timeline for ${proj.name}`}
+                            style={{ border: '1px solid #e7e5e4', borderRadius: 6, background: '#fff', color: '#78716c', padding: '4px 6px', cursor: 'pointer', display: 'inline-flex' }}
+                          >
+                            <Clock3 size={14} />
+                          </button>
+                        </div>
                       </td>
                       <td style={{ padding: '13px 16px', fontSize: '0.85rem', color: '#57534e', whiteSpace: 'nowrap' }}>
                         {proj.startDate ? proj.startDate.split(' ')[0] : '—'}
@@ -318,6 +330,53 @@ export default function ProjectMaster() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirm Modal */}
+      {timelineProject && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Status timeline for ${timelineProject.name}`}
+          onClick={() => setTimelineProject(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(28,25,23,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 16 }}
+        >
+          <div
+            onClick={event => event.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, padding: 24, width: 'min(560px, 100%)', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.2)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#1c1917' }}>Project Status Timeline</h3>
+                <div style={{ marginTop: 4, color: '#78716c', fontSize: '0.85rem' }}>{timelineProject.name}</div>
+              </div>
+              <button type="button" onClick={() => setTimelineProject(null)} aria-label="Close status timeline" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a8a29e' }}>
+                <X size={20} />
+              </button>
+            </div>
+            {timelineProject.statusHistory?.length ? (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {timelineProject.statusHistory.map(entry => (
+                  <div key={entry.id} style={{ display: 'grid', gridTemplateColumns: '12px 1fr', gap: 10 }}>
+                    <span style={{ width: 10, height: 10, marginTop: 4, borderRadius: '50%', background: '#b45309' }} />
+                    <div style={{ borderBottom: '1px solid #f5f5f4', paddingBottom: 10 }}>
+                      <strong style={{ color: '#1c1917', fontSize: '0.9rem' }}>
+                        {entry.fromStatus ? `${entry.fromStatus} → ` : ''}{entry.toStatus}
+                      </strong>
+                      <div style={{ marginTop: 3, color: '#78716c', fontSize: '0.78rem' }}>
+                        {new Date(entry.changedAt).toLocaleString('en-IN')}
+                        {entry.actorName ? ` · ${entry.actorName}` : ''}
+                      </div>
+                      {entry.note && <div style={{ marginTop: 3, color: '#57534e', fontSize: '0.8rem' }}>{entry.note}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ margin: 0, color: '#78716c', fontSize: '0.85rem' }}>No status changes recorded.</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirm Modal */}
       {deleteTarget && (

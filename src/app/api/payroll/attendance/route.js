@@ -87,8 +87,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
 
-    // Import mode adds only missing dates. Existing attendance is never
-    // overwritten, and new rows are approved from the HR attendance source.
+    // Imported attendance remains pending until it is reviewed and approved.
     if (!Array.isArray(body) && body?.mode === 'spreadsheet-import') {
       if (!Array.isArray(body.records) || body.records.length === 0) {
         return NextResponse.json({ error: 'records must be a non-empty array' }, { status: 400 });
@@ -134,7 +133,7 @@ export async function POST(request) {
               date: record.date,
               status: record.status,
               shiftType: 'Day',
-              isApproved: true
+              isApproved: false
             })),
             skipDuplicates: true
           })

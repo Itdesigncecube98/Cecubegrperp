@@ -1,6 +1,28 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 
+function validateAmounts(amountValue, advanceValue, amountPaidValue) {
+  const amount = Number(amountValue);
+  const advanceAmount = Number(advanceValue);
+  const amountPaid = Number(amountPaidValue);
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { error: 'Total amount must be greater than zero.' };
+  }
+  if (!Number.isFinite(advanceAmount) || advanceAmount < 0) {
+    return { error: 'Advance amount must be zero or greater.' };
+  }
+  if (!Number.isFinite(amountPaid) || amountPaid < 0) {
+    return { error: 'Amount paid cannot be negative.' };
+  }
+
+  const balanceAmount = Math.round((amount - advanceAmount - amountPaid) * 100) / 100;
+  if (balanceAmount < 0) {
+    return { error: 'Total amount cannot be less than the advance plus amount paid.' };
+  }
+  return { amount, advanceAmount, amountPaid, balanceAmount };
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -40,6 +62,8 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const data = await request.json();
+    const amounts = validateAmounts(data.amount, data.advanceAmount, 0);
+    if (amounts.error) return NextResponse.json({ error: amounts.error }, { status: 400 });
     
     const record = await prisma.leaveTravelAllowance.create({
       data: {
@@ -50,13 +74,13 @@ export async function POST(request) {
         ltaAvailTo: data.ltaAvailTo ? new Date(data.ltaAvailTo) : null,
         availLeavesForLta: data.availLeavesForLta,
         remark: data.remark,
-        amount: data.amount ? parseFloat(data.amount) : null,
+        amount: amounts.amount,
         dateOfAdvancePaid: data.dateOfAdvancePaid ? new Date(data.dateOfAdvancePaid) : null,
-        advanceAmount: data.advanceAmount ? parseFloat(data.advanceAmount) : null,
+        advanceAmount: amounts.advanceAmount,
         bankAccount: data.bankAccount,
-        amountPaid: data.amountPaid ? parseFloat(data.amountPaid) : null,
+        amountPaid: 0,
         chequeNo: data.chequeNo,
-        balanceAmount: data.balanceAmount ? parseFloat(data.balanceAmount) : null,
+        balanceAmount: amounts.balanceAmount,
       },
       include: {
         employee: {
@@ -85,7 +109,17 @@ export async function PUT(request) {
       return NextResponse.json(record);
     }
     
-    // Full update
+    if (!data.id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+    const existing = await prisma.leaveTravelAllowance.findUnique({ where: { id: data.id } });
+    if (!existing) return NextResponse.json({ error: 'LTA application not found.' }, { status: 404 });
+
+    const amounts = validateAmounts(
+      data.amount ?? existing.amount,
+      data.advanceAmount ?? existing.advanceAmount ?? 0,
+      existing.amountPaid ?? 0
+    );
+    if (amounts.error) return NextResponse.json({ error: amounts.error }, { status: 400 });
+
     const record = await prisma.leaveTravelAllowance.update({
       where: { id: data.id },
       data: {
@@ -96,14 +130,14 @@ export async function PUT(request) {
         ltaAvailTo: data.ltaAvailTo ? new Date(data.ltaAvailTo) : null,
         availLeavesForLta: data.availLeavesForLta,
         remark: data.remark,
-        amount: data.amount ? parseFloat(data.amount) : null,
+        amount: amounts.amount,
         dateOfAdvancePaid: data.dateOfAdvancePaid ? new Date(data.dateOfAdvancePaid) : null,
-        advanceAmount: data.advanceAmount ? parseFloat(data.advanceAmount) : null,
+        advanceAmount: amounts.advanceAmount,
         bankAccount: data.bankAccount,
-        amountPaid: data.amountPaid ? parseFloat(data.amountPaid) : null,
         chequeNo: data.chequeNo,
-        balanceAmount: data.balanceAmount ? parseFloat(data.balanceAmount) : null,
-        status: data.status || 'Pending'
+        amountPaid: amounts.amountPaid,
+        balanceAmount: amounts.balanceAmount,
+        status: data.status || existing.status
       }
     });
     

@@ -21,8 +21,8 @@ export default function LtaPage() {
     advanceAmount: '',
     bankAccount: '',
     chequeNo: '',
-    amountPaid: '',
-    balanceAmount: ''
+    amountPaid: '0',
+    balanceAmount: '0'
   });
 
   // Auto-filled employee fields
@@ -116,11 +116,12 @@ export default function LtaPage() {
     setFormData(prev => {
       const next = { ...prev, [name]: value };
       
-      // Auto-calculate Balance Amount = Amount - Advance Amount
+      // The advance is part of the total; salary-paid amounts reduce the remaining balance.
       if (name === 'amount' || name === 'advanceAmount') {
         const amt = parseFloat(name === 'amount' ? value : next.amount) || 0;
         const adv = parseFloat(name === 'advanceAmount' ? value : next.advanceAmount) || 0;
-        next.balanceAmount = (amt - adv).toString();
+        const paid = parseFloat(next.amountPaid) || 0;
+        next.balanceAmount = (Math.round((amt - adv - paid) * 100) / 100).toString();
       }
       
       return next;
@@ -128,8 +129,15 @@ export default function LtaPage() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedEmployeeId || !formData.amount || !formData.advanceAmount || !formData.bankAccount) {
+    const amount = Number(formData.amount);
+    const advanceAmount = Number(formData.advanceAmount);
+    const amountPaid = Number(formData.amountPaid) || 0;
+    if (!selectedEmployeeId || !Number.isFinite(amount) || amount <= 0 || formData.advanceAmount === '' || !Number.isFinite(advanceAmount) || advanceAmount < 0 || !formData.bankAccount) {
       alert('Please fill out all required fields (*)');
+      return;
+    }
+    if (amount < advanceAmount + amountPaid) {
+      alert('Total amount cannot be less than the advance plus amount paid.');
       return;
     }
 
@@ -169,13 +177,13 @@ export default function LtaPage() {
       ltaAvailTo: lta.ltaAvailTo ? lta.ltaAvailTo.split('T')[0] : '',
       availLeavesForLta: lta.availLeavesForLta || '',
       remark: lta.remark || '',
-      amount: lta.amount || '',
+      amount: lta.amount ?? '',
       dateOfAdvancePaid: lta.dateOfAdvancePaid ? lta.dateOfAdvancePaid.split('T')[0] : '',
-      advanceAmount: lta.advanceAmount || '',
+      advanceAmount: lta.advanceAmount ?? '0',
       bankAccount: lta.bankAccount || '',
       chequeNo: lta.chequeNo || '',
-      amountPaid: lta.amountPaid || '',
-      balanceAmount: lta.balanceAmount || ''
+      amountPaid: String(Number(lta.amountPaid) || 0),
+      balanceAmount: String(Math.round(((Number(lta.amount) || 0) - (Number(lta.advanceAmount) || 0) - (Number(lta.amountPaid) || 0)) * 100) / 100)
     });
     setShowForm(true);
   };
@@ -227,8 +235,8 @@ export default function LtaPage() {
       dateOfAdvancePaid: '',
       advanceAmount: '',
       bankAccount: '',
-      amountPaid: '',
-      balanceAmount: ''
+      amountPaid: '0',
+      balanceAmount: '0'
     });
     setEmpNo('');
     setPosition('');
@@ -376,8 +384,8 @@ export default function LtaPage() {
              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingLeft: '1rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: '#0891b2', fontWeight: '600', fontSize: '0.9rem' }}>Amount <span style={{ color: 'red' }}>*</span></label>
-                    <input type="number" name="amount" value={formData.amount} onChange={handleChange} style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: '#0891b2', fontWeight: '600', fontSize: '0.9rem' }}>Total Amount <span style={{ color: 'red' }}>*</span></label>
+                    <input type="number" name="amount" min="0" step="0.01" value={formData.amount} onChange={handleChange} style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: '#0891b2', fontWeight: '600', fontSize: '0.9rem' }}>Date of advance paid</label>
@@ -387,8 +395,8 @@ export default function LtaPage() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: '#0891b2', fontWeight: '600', fontSize: '0.9rem' }}>Advance amount <span style={{ color: 'red' }}>*</span></label>
-                    <input type="number" name="advanceAmount" value={formData.advanceAmount} onChange={handleChange} style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
+                    <label style={{ display: 'block', marginBottom: '0.5rem', color: '#0891b2', fontWeight: '600', fontSize: '0.9rem' }}>Advance Amount (part of total) <span style={{ color: 'red' }}>*</span></label>
+                    <input type="number" name="advanceAmount" min="0" step="0.01" value={formData.advanceAmount} onChange={handleChange} style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: '#0891b2', fontWeight: '600', fontSize: '0.9rem' }}>Bank Accounts <span style={{ color: 'red' }}>*</span></label>
@@ -405,7 +413,8 @@ export default function LtaPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: '#0891b2', fontWeight: '600', fontSize: '0.9rem' }}>Amount Paid</label>
-                    <input type="number" name="amountPaid" value={formData.amountPaid} onChange={handleChange} style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
+                    <input type="number" name="amountPaid" value={formData.amountPaid} readOnly style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#f1f5f9' }} />
+                    <small style={{ color: '#64748b' }}>Updated when salary is posted.</small>
                   </div>
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.5rem', color: '#0891b2', fontWeight: '600', fontSize: '0.9rem' }}>Cheque No</label>
@@ -415,7 +424,7 @@ export default function LtaPage() {
 
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: '#0891b2', fontWeight: '600', fontSize: '0.9rem' }}>Balance Amount</label>
-                  <input type="number" name="balanceAmount" value={formData.balanceAmount} onChange={handleChange} style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
+                  <input type="number" name="balanceAmount" value={formData.balanceAmount} readOnly style={{ width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#f1f5f9' }} />
                 </div>
              </div>
           </div>
@@ -443,8 +452,9 @@ export default function LtaPage() {
               <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                 <th style={{ padding: '0.75rem' }}>Employee</th>
                 <th style={{ padding: '0.75rem' }}>App No.</th>
-                <th style={{ padding: '0.75rem' }}>Amount</th>
+                <th style={{ padding: '0.75rem' }}>Total Amount</th>
                 <th style={{ padding: '0.75rem' }}>Advance</th>
+                <th style={{ padding: '0.75rem' }}>Amount Paid</th>
                 <th style={{ padding: '0.75rem' }}>Balance</th>
                 <th style={{ padding: '0.75rem' }}>Status</th>
                 <th style={{ padding: '0.75rem' }}>Date</th>
@@ -458,6 +468,7 @@ export default function LtaPage() {
                   <td style={{ padding: '0.75rem' }}>{lta.applicationNo}</td>
                   <td style={{ padding: '0.75rem' }}>₹{lta.amount}</td>
                   <td style={{ padding: '0.75rem' }}>₹{lta.advanceAmount}</td>
+                  <td style={{ padding: '0.75rem' }}>₹{Number(lta.amountPaid) || 0}</td>
                   <td style={{ padding: '0.75rem' }}>₹{lta.balanceAmount}</td>
                   <td style={{ padding: '0.75rem' }}>
                     <span style={{ 
@@ -499,7 +510,7 @@ export default function LtaPage() {
               ))}
               {filteredLtas.length === 0 && (
                 <tr>
-                  <td colSpan="8" style={{ padding: '1rem', textAlign: 'center', color: '#64748b' }}>No records found.</td>
+                  <td colSpan="9" style={{ padding: '1rem', textAlign: 'center', color: '#64748b' }}>No records found.</td>
                 </tr>
               )}
             </tbody>

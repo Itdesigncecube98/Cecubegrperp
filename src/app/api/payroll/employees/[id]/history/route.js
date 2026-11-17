@@ -14,7 +14,7 @@ export async function GET(request, { params }) {
 
     const [items, encashments] = await Promise.all([
       prisma.bonusIncentive.findMany({
-        where: { employeeId, type: { in: ['bonus', 'incentive', 'gratuity'] } },
+        where: { employeeId, type: { in: ['bonus', 'incentive', 'arrears', 'gratuity', 'lta'] } },
         include: { payCycle: { select: { id: true, name: true, startDate: true, endDate: true, status: true } } },
         orderBy: [{ createdAt: 'desc' }],
       }),

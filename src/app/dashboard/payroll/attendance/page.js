@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Upload, Download, RefreshCw, Search, CheckCircle, XCircle, Save } from 'lucide-react';
 import ActionToolbar from '@/components/ActionToolbar';
 import MultiSelect from '@/components/MultiSelect';
@@ -24,9 +25,10 @@ export function resolveDayAttendance(emp, col, approvedLeaves = []) {
   const isWeekOff = !col.isWorkingDay && employeeWeekoffDays.includes(col.dayName);
   const isScheduledWorkingDay = col.isWorkingDay || (!col.isHoliday && !isWeekOff);
 
-  // 1. If manually edited by user in this session, respect that edit
-  if (att?.isManual) {
-    return rawStatus;
+  // Explicit payroll statuses must remain unchanged after saving, including on holidays and week-offs.
+  const explicitStatuses = ['P', 'HD', 'A', 'CL', 'SL', 'EL', 'C-off', 'LWP', 'W-off', 'H'];
+  if (att?.isManual || rawStatus === '-' || rawStatus === 'Not Marked' || explicitStatuses.includes(rawStatus)) {
+    return rawStatus === 'Not Marked' ? '-' : rawStatus;
   }
 
   let slots = [];
@@ -50,8 +52,6 @@ export function resolveDayAttendance(emp, col, approvedLeaves = []) {
     return getLeaveAbbreviation(leave.leaveType);
   }
 
-  if (rawStatus === 'Not Marked' || rawStatus === '-') return '-';
-
   // 3. Normalize raw status from database
   if (rawStatus) {
     if (rawStatus === 'Present') return 'P';
@@ -73,6 +73,7 @@ export function resolveDayAttendance(emp, col, approvedLeaves = []) {
 }
 
 export default function PayrollAttendance() {
+  const router = useRouter();
   const [cycles, setCycles] = useState([]);
   const [selectedCycleId, setSelectedCycleId] = useState('');
   const [data, setData] = useState(null);
@@ -93,7 +94,9 @@ export default function PayrollAttendance() {
   // New state for approval workflow
   const [isApprovedMode, setIsApprovedMode] = useState(false);
   const [selectedEmps, setSelectedEmps] = useState([]);
+  const [pendingEdits, setPendingEdits] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPushingToSalary, setIsPushingToSalary] = useState(false);
   
   // Dialog state
   const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null, onCancel: null });
@@ -142,41 +145,37 @@ export default function PayrollAttendance() {
     if (selectedCycleId) fetchAttendance();
   }, [selectedCycleId]);
 
-  const handleStatusChange = async (employeeId, dateStr, newStatus) => {
-    // Auto-select row if edited
-    if (!selectedEmps.includes(employeeId)) {
-      setSelectedEmps(prev => [...prev, employeeId]);
-    }
+  const handleStatusChange = (employeeId, dateStr, newStatus) => {
+    const employee = data?.employees?.find(emp => emp.id === employeeId);
+    const existingAttendance = employee?.attendances?.find(att => att.date === dateStr);
+    if (existingAttendance?.isApproved) return;
 
-    // Optimistic update
-    const updatedEmployees = data.employees.map(emp => {
-      if (emp.id !== employeeId) return emp;
-      
-      const existingAtt = emp.attendances.find(a => a.date === dateStr);
-      let newAttendances = [...emp.attendances];
-      
-      if (existingAtt) {
-        newAttendances = newAttendances.map(a => a.date === dateStr ? { ...a, status: newStatus, isManual: true } : a);
-      } else {
-        newAttendances.push({ employeeId, date: dateStr, status: newStatus, isManual: true });
-      }
-      return { ...emp, attendances: newAttendances };
+    // Auto-select row if edited
+    setSelectedEmps(prev => prev.includes(employeeId) ? prev : [...prev, employeeId]);
+
+    setData(previous => {
+      if (!previous) return previous;
+      return {
+        ...previous,
+        employees: previous.employees.map(emp => {
+          if (emp.id !== employeeId) return emp;
+          const attendances = emp.attendances || [];
+          const currentAttendance = attendances.find(att => att.date === dateStr);
+          const updatedAttendance = { ...currentAttendance, employeeId, date: dateStr, status: newStatus, isManual: true };
+          return {
+            ...emp,
+            attendances: currentAttendance
+              ? attendances.map(att => att.date === dateStr ? updatedAttendance : att)
+              : [...attendances, updatedAttendance],
+          };
+        }),
+      };
     });
 
-    setData({ ...data, employees: updatedEmployees });
-
-    // Auto-save the specific edit to the database immediately
-    try {
-      await fetch('/api/attendance/bulk-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          updates: [{ employeeId, date: dateStr, status: newStatus }]
-        })
-      });
-    } catch (error) {
-      console.error('Auto-save failed:', error);
-    }
+    setPendingEdits(previous => [
+      ...previous.filter(edit => edit.employeeId !== employeeId || edit.date !== dateStr),
+      { employeeId, date: dateStr, status: newStatus },
+    ]);
   };
 
   // Generate date range columns
@@ -218,15 +217,10 @@ export default function PayrollAttendance() {
       return false;
     }
     
-    // Approval filter
-    let isEmpApproved = false;
-    dateCols.forEach(col => {
-       const att = emp.attendances?.find(a => a.date === col.fullDate);
-       if (att && att.isApproved) isEmpApproved = true;
-    });
-
-    if (isApprovedMode && !isEmpApproved) return false;
-    if (!isApprovedMode && isEmpApproved) return false;
+    const attendances = emp.attendances || [];
+    const isEmpFullyApproved = attendances.length > 0 && attendances.every(att => att.isApproved);
+    if (isApprovedMode && !isEmpFullyApproved) return false;
+    if (!isApprovedMode && isEmpFullyApproved) return false;
 
     return true;
   }).sort((a, b) => String(a.empId || '').localeCompare(String(b.empId || ''), undefined, { numeric: true, sensitivity: 'base' }));
@@ -296,49 +290,32 @@ export default function PayrollAttendance() {
   };
 
   const handleSaveEdits = async () => {
-    if (selectedEmps.length === 0) {
-      alert("Please select at least one employee to save edits.");
+    if (pendingEdits.length === 0) {
+      alert("There are no attendance edits to save.");
       return;
     }
     setIsSaving(true);
-    const updates = [];
-
-    selectedEmps.forEach(empId => {
-      const emp = data.employees.find(e => e.id === empId);
-      if (!emp) return;
-      // Instead of looping through all 30 days, we should only save what exists in optimistic state.
-      // But actually, we implemented auto-save in handleStatusChange, so we don't strictly need this to loop over 30 days.
-      // However, if the user explicitly hits Save Edits, we should just save their actual DB attendance, not invented defaults.
-      dateCols.forEach(col => {
-         const att = emp.attendances.find(a => a.date === col.fullDate);
-         if (att) {
-           updates.push({
-             employeeId: empId,
-             date: col.fullDate,
-             status: att.status
-           });
-         }
-      });
-    });
 
     try {
       const res = await fetch('/api/attendance/bulk-update', {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ updates })
+         body: JSON.stringify({ updates: pendingEdits })
       });
-      if (res.ok) {
-         setSelectedEmps([]);
-         fetchAttendance();
-         alert('Successfully saved edits!');
-      } else {
-         alert('Failed to save edits');
+      const result = await res.json();
+      if (!res.ok || !result.success || result.count !== pendingEdits.length) {
+         throw new Error(result.error || 'Some attendance edits were not saved.');
       }
+      setPendingEdits([]);
+      setSelectedEmps([]);
+      await fetchAttendance();
+      alert('Successfully saved edits!');
     } catch (e) {
       console.error(e);
-      alert('Error saving edits');
+      alert(e.message || 'Error saving edits');
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const handleSave = () => {
@@ -385,12 +362,15 @@ export default function PayrollAttendance() {
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ updates, isApproved: targetApprovalState })
           });
-          if (res.ok) {
+          const result = await res.json();
+          if (res.ok && result.success && result.count === updates.length) {
+             setPendingEdits(previous => previous.filter(edit => !selectedEmps.includes(edit.employeeId)));
              setSelectedEmps([]);
-             fetchAttendance();
+             setIsApprovedMode(targetApprovalState);
+             await fetchAttendance();
              alert(`Successfully ${targetApprovalState ? 'approved' : 'unapproved'} attendance!`);
           } else {
-             alert('Failed to update attendance');
+             alert(result.error || 'Some attendance records were not updated.');
           }
         } catch (e) {
           console.error(e);
@@ -399,6 +379,41 @@ export default function PayrollAttendance() {
         setIsSaving(false);
       }
     });
+  };
+
+  const handlePushToSalaryCalculation = async () => {
+    const employeeIds = (filteredEmployees || [])
+      .filter(emp => emp.attendances?.length > 0 && emp.attendances.every(att => att.isApproved))
+      .map(emp => emp.id);
+    if (!selectedCycleId || employeeIds.length === 0) {
+      alert('No fully approved attendance is available to push for this pay cycle.');
+      return;
+    }
+
+    setIsPushingToSalary(true);
+    try {
+      const response = await fetch(`/api/payroll/cycles/${encodeURIComponent(selectedCycleId)}/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeIds,
+          considerBonus: false,
+          considerLeaveEncash: true,
+          considerTds: true,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        const attendanceReview = result.employeesNeedingAttendanceReview?.join(', ');
+        throw new Error(attendanceReview ? `${result.error} Employees: ${attendanceReview}` : result.error || 'Could not push attendance to salary calculation.');
+      }
+
+      router.push(`/dashboard/payroll/salary-calculation?cycleId=${encodeURIComponent(selectedCycleId)}`);
+    } catch (error) {
+      alert(error.message || 'Could not push attendance to salary calculation.');
+    } finally {
+      setIsPushingToSalary(false);
+    }
   };
 
 
@@ -468,10 +483,20 @@ export default function PayrollAttendance() {
       <ActionToolbar onReset={fetchAttendance} shareTitle="Payroll Attendance" onSave={handleSaveEdits} />
 
       <div style={{ marginTop: '0.5rem', marginBottom: '1rem', display: 'flex', gap: '12px' }}>
-        <button className="btn-primary" onClick={handleSaveEdits} disabled={isSaving || selectedEmps.length === 0} style={{ padding: '8px 24px', background: '#0ea5e9', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: (isSaving || selectedEmps.length === 0) ? 'not-allowed' : 'pointer' }}>
+        <button className="btn-primary" onClick={handleSaveEdits} disabled={isSaving || pendingEdits.length === 0} style={{ padding: '8px 24px', background: '#0ea5e9', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: (isSaving || pendingEdits.length === 0) ? 'not-allowed' : 'pointer' }}>
           <Save size={16} />
           Save Edits
         </button>
+        {isApprovedMode && filteredEmployees?.length > 0 && (
+          <button
+            className="btn-primary"
+            onClick={handlePushToSalaryCalculation}
+            disabled={isPushingToSalary}
+            style={{ padding: '8px 24px', background: isPushingToSalary ? '#94a3b8' : '#7c3aed', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: isPushingToSalary ? 'wait' : 'pointer' }}
+          >
+            {isPushingToSalary ? 'Pushing...' : 'Push to Salary Calculation'}
+          </button>
+        )}
         <button className="btn-primary" onClick={handleSave} disabled={isSaving || selectedEmps.length === 0} style={{ padding: '8px 24px', background: '#10b981', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: (isSaving || selectedEmps.length === 0) ? 'not-allowed' : 'pointer' }}>
           <Save size={16} />
           {isSaving ? 'Saving...' : (isApprovedMode ? `Unapprove Selected (${selectedEmps.length})` : `Approve Selected (${selectedEmps.length})`)}
@@ -567,7 +592,7 @@ export default function PayrollAttendance() {
                         <td key={col.fullDate} style={{ padding: 0, borderRight: '1px solid #e2e8f0', textAlign: 'center', background: isApprovedMode ? '#f8fafc' : bgColor }}>
                           <select 
                             value={status} 
-                            disabled={isApprovedMode}
+                            disabled={isApprovedMode || Boolean(emp.attendances?.find(att => att.date === col.fullDate)?.isApproved)}
                             onChange={(e) => handleStatusChange(emp.id, col.fullDate, e.target.value)}
                             style={{ 
                               width: '100%', height: '100%', padding: '8px 4px', border: 'none', 

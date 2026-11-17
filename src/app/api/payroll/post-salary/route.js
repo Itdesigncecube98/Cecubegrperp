@@ -3,6 +3,25 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { amount, postJournal } from '@/lib/accounting';
 
+function ltaIdsFromMessage(message) {
+  try {
+    const parsed = JSON.parse(message || '{}');
+    return Array.isArray(parsed.ltaIds) ? [...new Set(parsed.ltaIds.filter(id => typeof id === 'string'))] : [];
+  } catch {
+    return [];
+  }
+}
+
+function money(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function conflict(message) {
+  const error = new Error(message);
+  error.statusCode = 409;
+  throw error;
+}
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -132,6 +151,54 @@ export async function POST(request) {
           if (record.status !== 'APPROVED') {
             throw new Error(`Salary record ${record.id} must be approved by HR/admin before posting to Accounts`);
           }
+
+          const ltaAddition = await tx.bonusIncentive.findUnique({
+            where: {
+              employeeId_payCycleId_type: {
+                employeeId: record.employeeId,
+                payCycleId: record.payCycleId,
+                type: 'lta',
+              },
+            },
+          });
+          const ltaAmount = money(ltaAddition?.amount);
+          if (ltaAddition?.status === 'ADDED_TO_SALARY' && ltaAmount > 0) {
+            const ltaIds = ltaIdsFromMessage(ltaAddition.message);
+            if (ltaIds.length === 0) {
+              conflict(`LTA details are missing for ${record.employee.name}. Refresh and save the payslip before posting.`);
+            }
+
+            const ltaRecords = await tx.leaveTravelAllowance.findMany({
+              where: {
+                id: { in: ltaIds },
+                employeeId: record.employeeId,
+                status: 'Posted to Salary',
+              },
+              select: { id: true, amount: true, advanceAmount: true, amountPaid: true, balanceAmount: true },
+            });
+            const availableBalance = ltaRecords.reduce((sum, item) => sum + money(item.balanceAmount), 0);
+            if (ltaRecords.length !== ltaIds.length || Math.abs(availableBalance - ltaAmount) > 0.01) {
+              conflict(`LTA balance changed for ${record.employee.name}. Refresh and recalculate the payslip before posting.`);
+            }
+
+            for (const ltaRecord of ltaRecords) {
+              const balance = money(ltaRecord.balanceAmount);
+              const expectedBalance = money(
+                money(ltaRecord.amount) - money(ltaRecord.advanceAmount) - money(ltaRecord.amountPaid)
+              );
+              if (expectedBalance < 0 || Math.abs(expectedBalance - balance) > 0.01) {
+                conflict(`LTA balance is inconsistent for ${record.employee.name}. Correct the LTA application before posting.`);
+              }
+              await tx.leaveTravelAllowance.update({
+                where: { id: ltaRecord.id },
+                data: {
+                  amountPaid: money(money(ltaRecord.amountPaid) + balance),
+                  balanceAmount: money(expectedBalance - balance),
+                },
+              });
+            }
+          }
+
           await tx.payrollRecord.update({ where: { id: update.id }, data: { status: 'POSTED' } });
           await tx.leaveEncashment.updateMany({
             where: {
@@ -165,6 +232,6 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     console.error('Error posting salary:', error);
-    return NextResponse.json({ error: 'Failed to post salary' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Failed to post salary' }, { status: error.statusCode || 500 });
   }
 }

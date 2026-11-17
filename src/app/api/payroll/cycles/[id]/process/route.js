@@ -29,6 +29,12 @@ export async function POST(request, { params }) {
 
     const body = await request.json().catch(() => ({}));
     const { considerBonus = false, considerLeaveEncash = true, considerTds = true } = body;
+    const requestedEmployeeIds = Array.isArray(body.employeeIds)
+      ? [...new Set(body.employeeIds.filter(employeeId => typeof employeeId === 'string' && employeeId))]
+      : null;
+    if (body.employeeIds !== undefined && (!requestedEmployeeIds || requestedEmployeeIds.length === 0)) {
+      return NextResponse.json({ error: 'At least one employee must be selected for salary calculation.' }, { status: 400 });
+    }
 
     const cycle = await prisma.payCycle.findUnique({ where: { id } });
     if (!cycle) {
@@ -44,7 +50,10 @@ export async function POST(request, { params }) {
     }
 
     const existingRecords = await prisma.payrollRecord.findMany({
-      where: { payCycleId: id },
+      where: {
+        payCycleId: id,
+        ...(requestedEmployeeIds ? { employeeId: { in: requestedEmployeeIds } } : {}),
+      },
       select: { id: true, employeeId: true, status: true }
     });
     if (existingRecords.some(record => record.status !== 'PENDING')) {
@@ -74,9 +83,17 @@ export async function POST(request, { params }) {
     });
 
     // Fetch employees (attendance only, no salary relations)
-    const whereClause = cycle.selectedEmployees && cycle.selectedEmployees.length > 0
-      ? { id: { in: cycle.selectedEmployees } }
-      : {};
+    if (requestedEmployeeIds && cycle.selectedEmployees?.length > 0) {
+      const selectedForCycle = new Set(cycle.selectedEmployees);
+      if (requestedEmployeeIds.some(employeeId => !selectedForCycle.has(employeeId))) {
+        return NextResponse.json({ error: 'One or more employees are not selected for this pay cycle.' }, { status: 400 });
+      }
+    }
+    const whereClause = requestedEmployeeIds
+      ? { id: { in: requestedEmployeeIds } }
+      : cycle.selectedEmployees && cycle.selectedEmployees.length > 0
+        ? { id: { in: cycle.selectedEmployees } }
+        : {};
 
     const employees = await prisma.employee.findMany({
       where: whereClause,
@@ -84,6 +101,9 @@ export async function POST(request, { params }) {
         attendances: { where: { date: { gte: cycle.startDate, lte: cycle.endDate } } }
       }
     });
+    if (requestedEmployeeIds && employees.length !== requestedEmployeeIds.length) {
+      return NextResponse.json({ error: 'One or more selected employees could not be found.' }, { status: 404 });
+    }
 
     // Fetch ALL salary revisions for these employees separately
     const employeeIds = employees.map(e => e.id);

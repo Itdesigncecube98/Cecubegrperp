@@ -18,6 +18,7 @@ export default function BonusIncentive() {
   const [selectedCycleId, setSelectedCycleId] = useState('');
   
   const [bonusType, setBonusType] = useState('bonus');
+  const [approvalFilter, setApprovalFilter] = useState('Unapproved');
 
   // Store the raw fetched employees
   const [allFetchedEmployees, setAllFetchedEmployees] = useState([]);
@@ -113,6 +114,10 @@ export default function BonusIncentive() {
       .catch(console.error);
   }, [selectedCycleId, allFetchedEmployees.length, bonusType]);
 
+  const visibleData = data.filter(row => approvalFilter === 'Approved'
+    ? row.bonusStatus === 'ADDED_TO_SALARY'
+    : row.bonusStatus !== 'ADDED_TO_SALARY');
+
   const handleSearch = () => {
     let filtered = allFetchedEmployees.filter(emp => {
       const empLabel = `${emp.name} (${emp.empNo})`;
@@ -141,7 +146,7 @@ export default function BonusIncentive() {
     }
 
     // Get all rows that have an amount > 0 or basis > 0
-    const items = data
+    const items = visibleData
       .filter(row => parseFloat(row.amount) > 0 || parseFloat(row.basis) > 0 || row.message)
       .map(row => ({
         employeeId: row.id,
@@ -167,7 +172,14 @@ export default function BonusIncentive() {
       const json = await res.json();
       if (json.success) {
         alert(action === 'SAVE' ? `Successfully saved drafts for ${json.updatedCount} employees!` : `Successfully added to salary for ${json.updatedCount} employees!`);
-        window.location.reload();
+        const updatedItems = new Map(items.map(item => [item.employeeId, item]));
+        const nextStatus = action === 'SAVE' ? 'SAVED' : 'ADDED_TO_SALARY';
+        const updateRows = rows => rows.map(row => {
+          const item = updatedItems.get(row.id);
+          return item ? { ...row, ...item, bonusStatus: nextStatus } : row;
+        });
+        setAllFetchedEmployees(updateRows);
+        setData(updateRows);
       } else {
         alert("Error: " + json.error);
       }
@@ -220,8 +232,9 @@ export default function BonusIncentive() {
         </div>
         <div className="filter-group">
           <label>Type</label>
-          <select>
+          <select value={approvalFilter} onChange={event => setApprovalFilter(event.target.value)}>
             <option value="Approved">Approved</option>
+            <option value="Unapproved">Unapproved</option>
           </select>
         </div>
         <div className="filter-group" style={{ justifyContent: 'flex-end', paddingBottom: '0.5rem' }}>
@@ -257,9 +270,9 @@ export default function BonusIncentive() {
       <div className="summary-badges" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: '1rem' }}>
           <div className="summary-badge" style={{ backgroundColor: '#e0f2fe', color: '#0284c7', border: '1px solid #bae6fd' }}>
-            Total Records: {data.length}
+            Total Records: {visibleData.length}
           </div>
-          <button onClick={() => handleSaveOrAdd('SAVE')} className="btn-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#3b82f6' }}>
+          <button onClick={() => handleSaveOrAdd('SAVE')} disabled={approvalFilter === 'Approved'} className="btn-primary" title={approvalFilter === 'Approved' ? 'Switch to Unapproved to save drafts.' : undefined} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: approvalFilter === 'Approved' ? '#94a3b8' : '#3b82f6' }}>
             Save Drafts
           </button>
           <button onClick={() => handleSaveOrAdd('ADD_TO_SALARY')} className="btn-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#10b981' }}>
@@ -291,7 +304,7 @@ export default function BonusIncentive() {
             </tr>
           </thead>
           <tbody>
-            {data.map(row => (
+            {visibleData.map(row => (
               <tr key={row.id}>
                 <td><input type="checkbox" /></td>
                 <td>{row.empNo}</td>
@@ -338,10 +351,10 @@ export default function BonusIncentive() {
                 <td><EmployeePayrollHistory employeeId={row.id} employeeName={`${row.name} (${row.empNo})`} /></td>
               </tr>
             ))}
-            {data.length === 0 && (
+            {visibleData.length === 0 && (
               <tr>
                 <td colSpan={13} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
-                  No employees found matching the filters.
+                  No {approvalFilter.toLowerCase()} bonus/incentive records found for the selected filters.
                 </td>
               </tr>
             )}

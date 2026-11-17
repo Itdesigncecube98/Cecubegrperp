@@ -22,13 +22,17 @@ export async function GET(req) {
         const canEdit = await employeeHasProjectTool(prisma, session.id, id, 'Project Edit');
         if (!canView && !canEdit) return NextResponse.json({ error: 'You do not have Project View access for this project.' }, { status: 403 });
       }
-      const project = await prisma.project.findUnique({ where: { id } });
+      const project = await prisma.project.findUnique({
+        where: { id },
+        include: { statusHistory: { orderBy: { changedAt: 'asc' } } },
+      });
       if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
       return NextResponse.json(project);
     }
     
     const projects = await prisma.project.findMany({
       where: visibleProjectIds ? { id: { in: visibleProjectIds } } : {},
+      include: { statusHistory: { orderBy: { changedAt: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
     return NextResponse.json(projects);
@@ -46,7 +50,18 @@ export async function POST(req) {
     if (session.type === 'employee' && !await employeeHasAnyTool(prisma, session.id, 'Engineering', 'New Project')) {
       return NextResponse.json({ error: 'You do not have New Project access.' }, { status: 403 });
     }
-    const project = await prisma.project.create({ data });
+    const project = await prisma.project.create({
+      data: {
+        ...data,
+        statusHistory: {
+          create: {
+            toStatus: data.status || 'Planning',
+            actorName: session.type === 'admin' ? 'Administrator' : session.id,
+            note: 'Project created',
+          },
+        },
+      },
+    });
     await autoGrantCreatorProjectTools(prisma, req, {
       requestedEmployeeId: data.creatorEmployeeId,
       projectId: project.id,
@@ -69,7 +84,29 @@ export async function PUT(req) {
     if (session.type === 'employee' && !await employeeHasProjectTool(prisma, session.id, id, 'Project Edit')) {
       return NextResponse.json({ error: 'You do not have Project Edit access for this project.' }, { status: 403 });
     }
-    const project = await prisma.project.update({ where: { id }, data: updateData });
+    const project = await prisma.$transaction(async tx => {
+      const existing = await tx.project.findUnique({ where: { id }, select: { status: true } });
+      if (!existing) return null;
+
+      const updated = await tx.project.update({ where: { id }, data: updateData });
+      if (typeof updateData.status === 'string' && updateData.status !== existing.status) {
+        await tx.projectStatusHistory.create({
+          data: {
+            projectId: id,
+            fromStatus: existing.status,
+            toStatus: updateData.status,
+            actorName: session.type === 'admin' ? 'Administrator' : session.id,
+            note: `Status changed from ${existing.status || 'Unknown'} to ${updateData.status}`,
+          },
+        });
+      }
+
+      return tx.project.findUnique({
+        where: { id: updated.id },
+        include: { statusHistory: { orderBy: { changedAt: 'asc' } } },
+      });
+    });
+    if (!project) return NextResponse.json({ error: 'Project not found.' }, { status: 404 });
     return NextResponse.json(project);
   } catch (error) {
     console.error('Error updating project:', error);

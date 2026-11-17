@@ -22,8 +22,9 @@ function numberToWords(num) {
   return str;
 }
 
-export default function SalarySlipModal({ record, cycleName, bonusIncentives = [], onClose, onSaveSuccess }) {
+export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusIncentives = [], onClose, onSaveSuccess }) {
   const emp = record?.employee || {};
+  const canEdit = record?.status === 'PENDING' && cycleStatus !== 'COMPLETED';
 
   // Find existing bonus, incentive, arrears from bonusIncentives
   const empBonusIncentives = (bonusIncentives || []).filter(b => b.employeeId === record.employeeId);
@@ -38,6 +39,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
 
   const existingBonus = salaryAdditions.find(b => b.type === 'bonus')?.amount || 0;
   const existingIncentive = salaryAdditions.find(b => b.type === 'incentive')?.amount || 0;
+  const existingLta = salaryAdditions.find(b => b.type === 'lta')?.amount || 0;
 
   // Fallback if record.bonus has value but bonusIncentives is empty
   const initialBonus = existingBonus || (existingIncentive === 0 && record?.bonus ? record.bonus : 0);
@@ -45,9 +47,18 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
   const initialArrears = existingArrears;
   const existingGratuity = salaryAdditions.find(b => b.type === 'gratuity')?.amount || 0;
   const initialLeaveEncashment = Number(record?.leaveEncashment) || 0;
-  const savedBaseEarningsTotal = Math.round((
-    (Number(record?.grossPay) || 0) - initialLeaveEncashment - initialArrears - initialBonus - initialIncentive - existingGratuity
+  const savedGrossPay = Number(record?.grossPay) || 0;
+  const savedBaseComponentsTotal = Math.round((
+    (Number(record?.basicPay) || 0) +
+    (Number(record?.hra) || 0) +
+    (Number(record?.medical) || 0) +
+    (Number(record?.conveyance) || 0) +
+    (Number(record?.specialAllow) || 0)
   ) * 100) / 100;
+  const savedAdditionsTotal = Math.round((
+    initialLeaveEncashment + initialArrears + initialBonus + initialIncentive + existingGratuity + existingLta
+  ) * 100) / 100;
+  const savedGrossBelowEarnings = savedGrossPay + 0.01 < savedBaseComponentsTotal + savedAdditionsTotal;
   const savedDeductionTotals = {
     pf: Number(record?.pfEmployee) || 0,
     pt: Number(record?.professionalTax) || 0,
@@ -94,20 +105,14 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
 
   const [leaveEncashmentState, setLeaveEncashmentState] = useState(initialLeaveEncashment);
   const [gratuity, setGratuity] = useState(existingGratuity);
+  const [leaveTravelAllowance, setLeaveTravelAllowance] = useState(existingLta);
+  const [availableLta, setAvailableLta] = useState([]);
 
   // Dynamic heads come from the salary revision effective for this pay cycle.
   const configuredEarnings = salaryBreakdown?.earnings || [];
-  const savedEarnings = [
-    { id: 'saved-basic', name: 'Basic Pay', amount: Number(record?.basicPay) || 0 },
-    { id: 'saved-hra', name: 'HRA', amount: Number(record?.hra) || 0 },
-    { id: 'saved-medical', name: 'Medical Allowance', amount: Number(record?.medical) || 0 },
-    { id: 'saved-conveyance', name: 'Transport / Conveyance', amount: Number(record?.conveyance) || 0 },
-    { id: 'saved-special', name: 'Special Allowance', amount: Number(record?.specialAllow) || 0 },
-  ].filter(head => head.amount !== 0);
-  const savedEarningsTotal = savedEarnings.reduce((total, head) => total + head.amount, 0);
   const configuredEarningsTotal = configuredEarnings.reduce((total, head) => total + (Number(head.amount) || 0), 0);
   const earningsBreakdownMatches = configuredEarnings.length > 0 &&
-    Math.abs(configuredEarningsTotal - savedBaseEarningsTotal) <= 0.01;
+    Math.abs(configuredEarningsTotal - savedBaseComponentsTotal) <= 0.01;
   const hasConfiguredEarnings = earningsBreakdownMatches;
   const sumConfiguredEarnings = (category) => configuredEarnings
     .filter(head => classifyStandardEarningHead(head.name) === category)
@@ -126,11 +131,10 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
   const configuredSpecialAllowance = configuredEarnings
     .filter(head => !classifyStandardEarningHead(head.name))
     .reduce((total, head) => total + (Number(head.amount) || 0), 0);
-  const savedEarningsBalanceAdjustment = savedBaseEarningsTotal - savedEarningsTotal;
   const specialAllow = hasConfiguredEarnings
     ? configuredSpecialAllowance
     : resolveSpecialAllowance(
-      (Number(record?.specialAllow) || 0) + savedEarningsBalanceAdjustment,
+      Number(record?.specialAllow) || 0,
       configuredSpecialAllowance
     );
 
@@ -153,6 +157,18 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
         setSalaryHeadDeductionValues(Object.fromEntries(
           (data.salaryBreakdown.deductions || []).map(head => [head.id, String(head.amount)])
         ));
+        const ltaAdditions = data.bonusIncentives || bonusIncentives;
+        const addedLta = ltaAdditions.find(item =>
+          item.employeeId === record.employeeId &&
+          item.type === 'lta' &&
+          item.status === 'ADDED_TO_SALARY'
+        );
+        const eligibleLta = data.availableLta || [];
+        setAvailableLta(eligibleLta);
+        setLeaveTravelAllowance(
+          Number(addedLta?.amount) ||
+          eligibleLta.reduce((total, item) => total + (Number(item.balanceAmount) || 0), 0)
+        );
       })
       .catch(error => {
         if (!active) return;
@@ -161,7 +177,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
       })
       .finally(() => { if (active) setSalaryHeadsLoading(false); });
     return () => { active = false; };
-  }, [record.id]);
+  }, [record.id, record.employeeId, bonusIncentives]);
 
   // Live Calculations
   const numArrears = parseFloat(arrears) || 0;
@@ -170,6 +186,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
 
   const numLeaveEncashment = parseFloat(leaveEncashmentState) || 0;
   const numGratuity = parseFloat(gratuity) || 0;
+  const numLta = parseFloat(leaveTravelAllowance) || 0;
 
   const configuredDeductions = salaryBreakdown?.deductions || [];
   const classifyDeduction = (name) => {
@@ -191,7 +208,6 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
   const salaryBreakdownMismatch =
     (configuredEarnings.length > 0 && !earningsBreakdownMatches) ||
     (configuredDeductions.length > 0 && !deductionsBreakdownMatches) ||
-    (!hasConfiguredEarnings && Math.abs(savedEarningsBalanceAdjustment) > 0.01) ||
     (!hasConfiguredDeductions && Math.abs(savedTotalDeductions - savedDeductionFieldsTotal) > 0.01);
   const numPf = hasConfiguredDeductions ? configuredDeductionTotal('pf') : (parseFloat(pfEmployee) || 0);
   const numPt = hasConfiguredDeductions ? configuredDeductionTotal('pt') : (parseFloat(professionalTax) || 0);
@@ -199,7 +215,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
   const numOtherDed = hasConfiguredDeductions ? configuredDeductionTotal('other') : (parseFloat(otherDeductions) || 0);
 
   const baseEarnings = hasConfiguredEarnings ? configuredEarningsTotal : basicPay + hra + conveyance + medical + specialAllow;
-  const grossPay = Math.round((baseEarnings + numLeaveEncashment + numArrears + numBonus + numIncentive + numGratuity) * 100) / 100;
+  const grossPay = Math.round((baseEarnings + numLeaveEncashment + numArrears + numBonus + numIncentive + numGratuity + numLta) * 100) / 100;
   const totalDeductions = Math.round((numPf + numPt + numTds + numOtherDed) * 100) / 100;
   const netPay = Math.round((grossPay - totalDeductions) * 100) / 100;
 
@@ -285,6 +301,8 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
           bonus: numBonus,
           incentive: numIncentive,
           gratuity: numGratuity,
+          lta: numLta,
+          ltaIds: availableLta.map(item => item.id),
           pfEmployee: numPf,
           professionalTax: numPt,
           tds: numTds,
@@ -339,6 +357,82 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
       setSaving(false);
     }
   };
+
+  const handleReturnToHistory = async (type, amount) => {
+    const labels = {
+      arrears: 'arrears',
+      bonus: 'bonus',
+      incentive: 'incentive',
+      gratuity: 'gratuity',
+      lta: 'leave travel allowance',
+    };
+    if (!confirm(`Return ${labels[type]} to pending history?`)) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/payroll/records/${record.id}/return-to-history`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          amount,
+          sourceIds: type === 'lta' ? availableLta.map(item => item.id) : undefined,
+          arrearsBreakdown: type === 'arrears' ? arrearsBreakdown : undefined,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to return item to pending history.');
+      }
+
+      if (type === 'arrears') {
+        setArrears(0);
+        setArrearsBreakdown(null);
+      } else if (type === 'bonus') {
+        setBonus(0);
+      } else if (type === 'incentive') {
+        setIncentive(0);
+      } else if (type === 'gratuity') {
+        setGratuity(0);
+      } else if (type === 'lta') {
+        setLeaveTravelAllowance(0);
+        setAvailableLta([]);
+      }
+      setSaveSuccess(true);
+      if (onSaveSuccess) onSaveSuccess(result.record, result.bonusIncentives);
+    } catch (returnError) {
+      setError(returnError.message || 'Failed to return item to pending history.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderReturnButton = (type, amount) => canEdit && amount > 0 ? (
+    <button
+      type="button"
+      aria-label={`Return ${type} to pending history`}
+      title="Return to pending history"
+      data-html2canvas-ignore="true"
+      onClick={() => handleReturnToHistory(type, amount)}
+      disabled={saving}
+      style={{
+        width: 28,
+        height: 28,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: '1px solid #fecaca',
+        borderRadius: 6,
+        background: saving ? '#f1f5f9' : '#fef2f2',
+        color: '#dc2626',
+        cursor: saving ? 'wait' : 'pointer',
+        flexShrink: 0,
+      }}
+    >
+      <X size={15} />
+    </button>
+  ) : null;
 
   return (
     <div className="salary-slip-modal-overlay">
@@ -619,7 +713,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
 
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !canEdit}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -765,7 +859,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
             <div className="modal-no-print" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '8px 12px', fontSize: '0.8rem', color: '#1e40af', marginBottom: '14px' }}>
               <Sparkles size={16} color="#2563eb" style={{ flexShrink: 0 }} />
               <span>
-                <strong>Changeable Fields:</strong> Arrears, Bonus, Incentive, Gratuity, Leave Encashment, and Deductions can be directly edited below. Totals recalculate instantly.
+                <strong>Changeable Fields:</strong> Arrears, Bonus, Incentive, Gratuity, Leave Encashment, and deductions can be edited. LTA can be returned to pending history with X.
               </span>
             </div>
 
@@ -778,6 +872,11 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
             {!salaryHeadsLoading && !salaryHeadsError && salaryBreakdownMismatch && (
               <div style={{ marginBottom: '12px', padding: '9px 12px', borderRadius: '6px', border: '1px solid #fcd34d', background: '#fffbeb', color: '#92400e', fontSize: '0.82rem' }}>
                 The employee&apos;s current salary heads differ from this processed payroll. This slip uses the saved payroll amounts so its earnings, deductions, and net salary match the payroll record.
+              </div>
+            )}
+            {savedGrossBelowEarnings && (
+              <div style={{ marginBottom: '12px', padding: '9px 12px', borderRadius: '6px', border: '1px solid #fca5a5', background: '#fef2f2', color: '#b91c1c', fontSize: '0.82rem' }}>
+                The saved payroll total is below the positive salary components and additions. The payslip shows the correct positive earnings; {canEdit ? 'save this payslip' : 'unapprove this record and save the payslip'} to synchronize the salary table before approving it again.
               </div>
             )}
             <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -806,7 +905,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                     </div>
                     {medical > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>Medical Allowance</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{medical.toFixed(2)}</div></div>}
                     {conveyance > 0 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>Transport / Conveyance</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{conveyance.toFixed(2)}</div></div>}
-                    {Math.abs(specialAllow) > 0.005 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>{Math.abs(savedEarningsBalanceAdjustment) > 0.01 ? `${savedSpecialAllowanceLabel} / Saved Payroll Adjustment` : savedSpecialAllowanceLabel}</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{specialAllow.toFixed(2)}</div></div>}
+                    {Math.abs(specialAllow) > 0.005 && <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center' }}><div style={{ color: '#334155' }}>{savedSpecialAllowanceLabel}</div><div style={{ textAlign: 'right', fontWeight: 600 }}>₹{specialAllow.toFixed(2)}</div></div>}
                   </>}
 
                   {/* CHANGEABLE: Leave Encashment */}
@@ -823,9 +922,9 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         onChange={(e) => setLeaveEncashmentState(e.target.value)}
                         className="changeable-input"
                         placeholder="0.00"
-                        disabled={record?.status === 'APPROVED'}
+                        disabled={!canEdit}
                       />
-                      {numLeaveEncashment > 0 && record?.status === 'PENDING' && (
+                      {numLeaveEncashment > 0 && canEdit && (
                         <button
                           type="button"
                           aria-label="Cancel leave encashment"
@@ -867,17 +966,18 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                           onChange={(e) => setArrears(e.target.value)}
                           className="changeable-input"
                           placeholder="0.00"
-                          disabled={record?.status === 'APPROVED'}
+                          disabled={!canEdit}
                         />
                         <button
                           type="button"
                           onClick={loadApprovedArrears}
-                          disabled={calculatingArrears || record?.status === 'APPROVED'}
+                          disabled={calculatingArrears || !canEdit}
                           className="btn-outline"
                           style={{ whiteSpace: 'nowrap', fontSize: '0.72rem', padding: '5px 8px' }}
                         >
                           {calculatingArrears ? 'Loading…' : 'Load arrears'}
                         </button>
+                        {renderReturnButton('arrears', numArrears)}
                       </div>
                     </div>
                     {arrearsBreakdown && (
@@ -898,7 +998,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                       <span>Bonus</span>
                       <span className="changeable-badge">Changeable</span>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px' }}>
                       <input
                         type="number"
                         step="any"
@@ -906,8 +1006,9 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         onChange={(e) => setBonus(e.target.value)}
                         className="changeable-input"
                         placeholder="0.00"
-                        disabled={record?.status === 'APPROVED'}
+                        disabled={!canEdit}
                       />
+                      {renderReturnButton('bonus', numBonus)}
                     </div>
                   </div>
 
@@ -917,7 +1018,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                       <span>Incentive</span>
                       <span className="changeable-badge">Changeable</span>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px' }}>
                       <input
                         type="number"
                         step="any"
@@ -925,8 +1026,9 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         onChange={(e) => setIncentive(e.target.value)}
                         className="changeable-input"
                         placeholder="0.00"
-                        disabled={record?.status === 'APPROVED'}
+                        disabled={!canEdit}
                       />
+                      {renderReturnButton('incentive', numIncentive)}
                     </div>
                   </div>
 
@@ -936,7 +1038,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                       <span>Gratuity</span>
                       <span className="changeable-badge">Changeable</span>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px' }}>
                       <input
                         type="number"
                         step="any"
@@ -944,9 +1046,24 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         onChange={(e) => setGratuity(e.target.value)}
                         className="changeable-input"
                         placeholder="0.00"
-                        disabled={record?.status === 'APPROVED'}
+                        disabled={!canEdit}
                       />
+                      {renderReturnButton('gratuity', numGratuity)}
                     </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center', background: '#f0f9ff', padding: '4px 6px', borderRadius: '4px', border: '1px dashed #7dd3fc' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', color: '#0369a1', fontWeight: 600 }}>
+                      <span>Leave Travel Allowance (Balance Amount)</span>
+                      <span className="changeable-badge">Changeable</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontWeight: 600, minWidth: 110, textAlign: 'right' }}>₹{numLta.toFixed(2)}</span>
+                      {renderReturnButton('lta', numLta)}
+                    </div>
+                    {numLta <= 0 && !salaryHeadsLoading && !salaryHeadsError && (
+                      <small style={{ gridColumn: '1 / -1', color: '#64748b' }}>No LTA balance is marked “Posted to Salary” for this employee.</small>
+                    )}
                   </div>
                 </div>
 
@@ -971,7 +1088,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         <span>{head.name}</span><span className="changeable-badge deduction-badge">Changeable</span>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <input type="number" step="any" value={salaryHeadDeductionValues[head.id] ?? head.amount} onChange={event => setSalaryHeadDeductionValues(previous => ({ ...previous, [head.id]: event.target.value }))} className="changeable-input deduction-input" placeholder="0.00" disabled={record?.status === 'APPROVED'} />
+                        <input type="number" step="any" value={salaryHeadDeductionValues[head.id] ?? head.amount} onChange={event => setSalaryHeadDeductionValues(previous => ({ ...previous, [head.id]: event.target.value }))} className="changeable-input deduction-input" placeholder="0.00" disabled={!canEdit} />
                       </div>
                     </div>
                   ))}
@@ -990,6 +1107,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         onChange={(e) => setPfEmployee(e.target.value)}
                         className="changeable-input deduction-input"
                         placeholder="0.00"
+                        disabled={!canEdit}
                       />
                     </div>
                   </div>
@@ -1008,7 +1126,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         onChange={(e) => setProfessionalTax(e.target.value)}
                         className="changeable-input deduction-input"
                         placeholder="0.00"
-                        disabled={record?.status === 'APPROVED'}
+                        disabled={!canEdit}
                       />
                     </div>
                   </div>
@@ -1027,7 +1145,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         onChange={(e) => setTds(e.target.value)}
                         className="changeable-input deduction-input"
                         placeholder="0.00"
-                        disabled={record?.status === 'APPROVED'}
+                        disabled={!canEdit}
                       />
                     </div>
                   </div>
@@ -1046,7 +1164,7 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
                         onChange={(e) => setOtherDeductions(e.target.value)}
                         className="changeable-input deduction-input"
                         placeholder="0.00"
-                        disabled={record?.status === 'APPROVED'}
+                        disabled={!canEdit}
                       />
                     </div>
                   </div>
@@ -1115,9 +1233,9 @@ export default function SalarySlipModal({ record, cycleName, bonusIncentives = [
             >
               Close
             </button>
-            {record?.status === 'APPROVED' ? (
+            {!canEdit ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a', fontWeight: 600, padding: '8px 12px', background: '#dcfce3', borderRadius: '8px', border: '1px solid #16a34a' }}>
-                <span>🔒 Approved & Locked</span>
+                <span>🔒 {record?.status === 'APPROVED' ? 'Approved' : record?.status === 'POSTED' || cycleStatus === 'COMPLETED' ? 'Posted' : 'Locked'}</span>
               </div>
             ) : (
               <button

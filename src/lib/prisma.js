@@ -3,6 +3,18 @@ import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis;
 
+const hasSiteStoreIssueModels = (client) =>
+  typeof client?.siteStoreIssue?.findMany === "function" &&
+  typeof client?.siteStoreIssueItem?.findMany === "function";
+
+if (
+  (globalForPrisma.prisma && !hasSiteStoreIssueModels(globalForPrisma.prisma)) ||
+  (globalForPrisma.prismaClient && !hasSiteStoreIssueModels(globalForPrisma.prismaClient))
+) {
+  delete globalForPrisma.prisma;
+  delete globalForPrisma.prismaClient;
+}
+
 function getDatasourceOptions() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) return {};
