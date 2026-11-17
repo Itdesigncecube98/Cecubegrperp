@@ -47,7 +47,8 @@ export async function GET(request) {
             department: true,
             position: true,
           }
-        }
+        },
+        statusHistory: { orderBy: { changedAt: 'asc' } },
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -81,6 +82,12 @@ export async function POST(request) {
         amountPaid: 0,
         chequeNo: data.chequeNo,
         balanceAmount: amounts.balanceAmount,
+        statusHistory: {
+          create: {
+            toStatus: 'Pending',
+            note: 'LTA application created',
+          },
+        },
       },
       include: {
         employee: {
@@ -102,11 +109,39 @@ export async function PUT(request) {
     
     // Status update only
     if (data.statusOnly && data.id) {
-      const record = await prisma.leaveTravelAllowance.update({
-        where: { id: data.id },
-        data: { status: data.status }
+      const result = await prisma.$transaction(async tx => {
+        const existing = await tx.leaveTravelAllowance.findUnique({ where: { id: data.id } });
+        if (!existing) return { error: 'LTA application not found.', status: 404 };
+        const allowedNextStatuses = {
+          Pending: ['Approved'],
+          Approved: ['Paid'],
+          Paid: [],
+          'Posted to Salary': [],
+        };
+        if (existing.status !== data.status && !allowedNextStatuses[existing.status]?.includes(data.status)) {
+          return { error: `LTA cannot move from ${existing.status} to ${data.status}.`, status: 409 };
+        }
+        if (existing.status === data.status) return { record: existing };
+        const record = await tx.leaveTravelAllowance.update({
+          where: { id: data.id },
+          data: { status: data.status }
+        });
+        if (existing.status !== data.status) {
+          await tx.ltaStatusHistory.create({
+            data: {
+              ltaId: data.id,
+              fromStatus: existing.status,
+              toStatus: data.status,
+              note: 'Status updated from LTA management',
+            },
+          });
+        }
+        return { record };
       });
-      return NextResponse.json(record);
+      if (result.error) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json(result.record);
     }
     
     if (!data.id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
@@ -120,28 +155,36 @@ export async function PUT(request) {
     );
     if (amounts.error) return NextResponse.json({ error: amounts.error }, { status: 400 });
 
-    const record = await prisma.leaveTravelAllowance.update({
-      where: { id: data.id },
-      data: {
-        employeeId: data.employeeId,
-        applicationNo: data.applicationNo,
-        applicationDate: data.applicationDate ? new Date(data.applicationDate) : null,
-        ltaAvailFrom: data.ltaAvailFrom ? new Date(data.ltaAvailFrom) : null,
-        ltaAvailTo: data.ltaAvailTo ? new Date(data.ltaAvailTo) : null,
-        availLeavesForLta: data.availLeavesForLta,
-        remark: data.remark,
-        amount: amounts.amount,
-        dateOfAdvancePaid: data.dateOfAdvancePaid ? new Date(data.dateOfAdvancePaid) : null,
-        advanceAmount: amounts.advanceAmount,
-        bankAccount: data.bankAccount,
-        chequeNo: data.chequeNo,
-        amountPaid: amounts.amountPaid,
-        balanceAmount: amounts.balanceAmount,
-        status: data.status || existing.status
-      }
+    const result = await prisma.$transaction(async tx => {
+      const current = await tx.leaveTravelAllowance.findUnique({ where: { id: data.id } });
+      if (!current) return { error: 'LTA application not found.', status: 404 };
+      const record = await tx.leaveTravelAllowance.update({
+        where: { id: data.id },
+        data: {
+          employeeId: data.employeeId,
+          applicationNo: data.applicationNo,
+          applicationDate: data.applicationDate ? new Date(data.applicationDate) : null,
+          ltaAvailFrom: data.ltaAvailFrom ? new Date(data.ltaAvailFrom) : null,
+          ltaAvailTo: data.ltaAvailTo ? new Date(data.ltaAvailTo) : null,
+          availLeavesForLta: data.availLeavesForLta,
+          remark: data.remark,
+          amount: amounts.amount,
+          dateOfAdvancePaid: data.dateOfAdvancePaid ? new Date(data.dateOfAdvancePaid) : null,
+          advanceAmount: amounts.advanceAmount,
+          bankAccount: data.bankAccount,
+          chequeNo: data.chequeNo,
+          amountPaid: amounts.amountPaid,
+          balanceAmount: amounts.balanceAmount,
+          status: current.status,
+        }
+      });
+      return { record };
     });
-    
-    return NextResponse.json(record);
+
+    if (result.error) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    return NextResponse.json(result.record);
   } catch (error) {
     console.error('Error updating LTA record:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

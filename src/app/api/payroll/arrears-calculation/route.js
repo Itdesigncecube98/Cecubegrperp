@@ -39,6 +39,7 @@ export async function GET(request) {
       
       return {
         id: a.id,
+        employeeId: a.employeeId,
         name: a.employee.name,
         empId: a.employee.empId,
         dept: a.employee.department,

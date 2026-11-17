@@ -118,7 +118,9 @@ export async function POST(request) {
             await tx.payrollRecord.update({
               where: { id: record.id },
               data: {
-                bonus: Math.round(((Number(record.bonus) || 0) + delta) * 100) / 100,
+                ...(['bonus', 'incentive'].includes(type)
+                  ? { bonus: Math.round(((Number(record.bonus) || 0) + delta) * 100) / 100 }
+                  : {}),
                 grossPay: Math.round(((Number(record.grossPay) || 0) + delta) * 100) / 100,
                 netPay: Math.round(((Number(record.netPay) || 0) + delta) * 100) / 100,
               }

@@ -12,6 +12,17 @@ function ltaIdsFromMessage(message) {
   }
 }
 
+function arrearsIdsFromMessage(message) {
+  try {
+    const parsed = JSON.parse(message || '{}');
+    return Array.isArray(parsed.pushedArrearsIds)
+      ? parsed.pushedArrearsIds.filter(id => typeof id === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function POST(request, { params }) {
   try {
     const { id } = await params;
@@ -106,17 +117,40 @@ export async function POST(request, { params }) {
 
         const ltaRecords = await tx.leaveTravelAllowance.findMany({
           where: { id: { in: ltaIds }, employeeId: record.employeeId },
-          select: { id: true },
+          select: { id: true, status: true },
         });
         if (ltaRecords.length !== ltaIds.length) {
           return { error: 'Some linked LTA applications no longer exist. Refresh and retry.', status: 409 };
         }
 
-        await tx.leaveTravelAllowance.updateMany({
-          where: { id: { in: ltaIds }, employeeId: record.employeeId },
-          data: { status: 'Pending' },
-        });
+        for (const ltaRecord of ltaRecords) {
+          if (ltaRecord.status === 'Pending') continue;
+          await tx.leaveTravelAllowance.update({
+            where: { id: ltaRecord.id },
+            data: { status: 'Pending' },
+          });
+          await tx.ltaStatusHistory.create({
+            data: {
+              ltaId: ltaRecord.id,
+              fromStatus: ltaRecord.status,
+              toStatus: 'Pending',
+              note: 'Returned from salary to LTA history',
+            },
+          });
+        }
       } else if (type === 'arrears') {
+        const transferredArrearsIds = arrearsIdsFromMessage(current?.message);
+        if (transferredArrearsIds.length > 0) {
+          await tx.bonusIncentive.updateMany({
+            where: {
+              id: { in: transferredArrearsIds },
+              employeeId: record.employeeId,
+              type: 'arrears',
+              status: 'TRANSFERRED_TO_SALARY',
+            },
+            data: { status: 'PENDING' },
+          });
+        }
         await tx.bonusIncentive.updateMany({
           where: { employeeId: record.employeeId, type: 'arrears', status: 'APPROVED' },
           data: { status: 'PENDING' },

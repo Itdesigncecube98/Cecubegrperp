@@ -3,6 +3,26 @@ import { X, Download, RefreshCw } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
+function pushedArrearsIdsFromMessage(message) {
+  try {
+    const parsed = JSON.parse(message || '{}');
+    return Array.isArray(parsed.pushedArrearsIds)
+      ? parsed.pushedArrearsIds.filter(id => typeof id === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchEmployeeArrearsHistory(employeeId) {
+  const response = await fetch(`/api/payroll/arrears-calculation?employeeId=${encodeURIComponent(employeeId)}`, { cache: 'no-store' });
+  const data = await response.json();
+  if (!response.ok || !Array.isArray(data)) {
+    throw new Error(data.error || 'Could not load arrears history.');
+  }
+  return data;
+}
+
 function numberToWords(num) {
   if (isNaN(num) || num <= 0) return 'Zero Rupees Only';
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
@@ -21,26 +41,103 @@ function numberToWords(num) {
 
 export default function ArrearsHistoryModal({ employee, onClose }) {
   const [history, setHistory] = useState([]);
+  const [payCycles, setPayCycles] = useState([]);
+  const [selectedCycleId, setSelectedCycleId] = useState('');
+  const [cycleArrears, setCycleArrears] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
   const [currentPrintData, setCurrentPrintData] = useState(null);
+  const [pushingArrearId, setPushingArrearId] = useState('');
+  const [pushError, setPushError] = useState('');
 
   useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const res = await fetch(`/api/payroll/arrears-calculation?employeeId=${employee.id}`);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setHistory(data);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+    let active = true;
+    fetchEmployeeArrearsHistory(employee.id)
+      .then(data => { if (active) setHistory(data); })
+      .catch(error => { if (active) console.error(error); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [employee.id]);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/payroll/cycles')
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data)) throw new Error(data.error || 'Failed to load pay cycles.');
+        return data;
+      })
+      .then(cycles => {
+        if (!active) return;
+        setPayCycles(cycles);
+        const currentCycle = cycles.find(cycle => cycle.status === 'PROCESSING') ||
+          cycles.find(cycle => cycle.status !== 'COMPLETED');
+        setSelectedCycleId(currentCycle?.id || '');
+      })
+      .catch(error => { if (active) setPushError(error.message || 'Failed to load pay cycles.'); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCycleId) return;
+    let active = true;
+    fetch(`/api/payroll/bonus?cycleId=${encodeURIComponent(selectedCycleId)}&type=arrears`, { cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data)) throw new Error(data.error || 'Failed to load current-cycle arrears.');
+        return data;
+      })
+      .then(items => { if (active) setCycleArrears(items); })
+      .catch(error => { if (active) setPushError(error.message || 'Failed to load current-cycle arrears.'); });
+    return () => { active = false; };
+  }, [selectedCycleId]);
+
+  const handlePushArrearsToSalary = async arrear => {
+    if (!selectedCycleId) {
+      setPushError('Select a pay cycle before pushing arrears to salary.');
+      return;
+    }
+
+    setPushingArrearId(arrear.id);
+    setPushError('');
+    try {
+      const response = await fetch('/api/payroll/arrears-calculation/push-to-salary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ arrearsId: arrear.id, cycleId: selectedCycleId }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to push arrears to salary.');
       }
-    };
-    fetchHistory();
-  }, [employee]);
+
+      setHistory(previous => previous.map(item => item.id === arrear.id
+        ? { ...item, status: result.item.id === arrear.id ? 'ADDED_TO_SALARY' : 'TRANSFERRED_TO_SALARY' }
+        : item));
+      setCycleArrears(previous => [
+        ...previous.filter(item => item.employeeId !== result.item.employeeId),
+        result.item,
+      ]);
+      try {
+        const [updatedHistory, cycleResponse] = await Promise.all([
+          fetchEmployeeArrearsHistory(employee.id),
+          fetch(`/api/payroll/bonus?cycleId=${encodeURIComponent(selectedCycleId)}&type=arrears`, { cache: 'no-store' }),
+        ]);
+        const updatedCycleArrears = await cycleResponse.json();
+        if (!cycleResponse.ok || !Array.isArray(updatedCycleArrears)) {
+          throw new Error('Failed to refresh current-cycle arrears.');
+        }
+        setHistory(updatedHistory);
+        setCycleArrears(updatedCycleArrears);
+      } catch (refreshError) {
+        setPushError(`Arrears were added to salary, but the history refresh failed: ${refreshError.message}`);
+      }
+    } catch (error) {
+      setPushError(error.message || 'Failed to push arrears to salary.');
+    } finally {
+      setPushingArrearId('');
+    }
+  };
 
   const handleToggleApprove = async (arrearId, newStatus) => {
     try {
@@ -141,6 +238,20 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
             </h2>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <select
+              value={selectedCycleId}
+              onChange={event => {
+                setSelectedCycleId(event.target.value);
+                setPushError('');
+              }}
+              aria-label="Current pay cycle for arrears"
+              style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#fff', maxWidth: 220 }}
+            >
+              <option value="">Select pay cycle</option>
+              {payCycles.filter(cycle => cycle.status !== 'COMPLETED').map(cycle => (
+                <option key={cycle.id} value={cycle.id}>{cycle.name} ({cycle.status})</option>
+              ))}
+            </select>
             <button 
               onClick={async () => {
                 try {
@@ -172,6 +283,11 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
             </button>
           </div>
         </div>
+        {pushError && (
+          <div role="alert" style={{ padding: '10px 18px', background: '#fef2f2', color: '#b91c1c', borderBottom: '1px solid #fecaca', fontSize: 13 }}>
+            {pushError}
+          </div>
+        )}
         
         <div style={{ padding: '0', overflowY: 'auto', flexGrow: 1, background: '#ffffff' }}>
           {loading ? (
@@ -212,6 +328,11 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
                     const isDayWise = !!breakdownObj.overlapDays;
                     const arrearsTypeDisplay = isDayWise ? 'Day-wise' : 'Month-wise';
                     const arrearsDaysDisplay = breakdownObj.overlapDays ? breakdownObj.overlapDays : row.workingDays;
+                    const currentArrearsItem = cycleArrears.find(item =>
+                      item.employeeId === row.employeeId && item.status === 'ADDED_TO_SALARY'
+                    );
+                    const isPushedToCurrentCycle = currentArrearsItem &&
+                      pushedArrearsIdsFromMessage(currentArrearsItem.message).includes(row.id);
                     
                     return (
                       <tr key={row.id}>
@@ -248,7 +369,23 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
                                 Unapprove
                               </button>
                             ) : (
-                              <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: '6px', background: '#f1f5f9', color: '#475569', fontSize: '0.75rem', fontWeight: 600 }}>Added to Salary</span>
+                              <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: '6px', background: '#f1f5f9', color: '#475569', fontSize: '0.75rem', fontWeight: 600 }}>
+                                {row.status === 'TRANSFERRED_TO_SALARY' ? 'Transferred to Salary' : row.status === 'ADDED_TO_SALARY' ? 'Added to Salary' : row.status}
+                              </span>
+                            )}
+                            {row.status === 'APPROVED' && (
+                              <button
+                                type="button"
+                                onClick={() => handlePushArrearsToSalary(row)}
+                                disabled={!selectedCycleId || pushingArrearId === row.id || isPushedToCurrentCycle}
+                                style={{ background: '#0ea5e9', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', opacity: !selectedCycleId || pushingArrearId === row.id || isPushedToCurrentCycle ? 0.6 : 1 }}
+                              >
+                                {pushingArrearId === row.id
+                                  ? 'Pushing...'
+                                  : isPushedToCurrentCycle
+                                    ? 'Added to Current Payslip'
+                                    : 'Push to Salary'}
+                              </button>
                             )}
                             <button 
                               onClick={() => handleDownloadPDF(row)}

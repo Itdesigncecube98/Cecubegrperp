@@ -1,10 +1,23 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { History, X } from 'lucide-react';
+
+function ltaIdsFromMessage(message) {
+  try {
+    const parsed = JSON.parse(message || '{}');
+    return Array.isArray(parsed.ltaIds) ? parsed.ltaIds : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function LtaPage() {
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [ltas, setLtas] = useState([]);
+  const [payCycles, setPayCycles] = useState([]);
+  const [selectedCycleId, setSelectedCycleId] = useState('');
+  const [cycleLtaItems, setCycleLtaItems] = useState([]);
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   
@@ -34,25 +47,69 @@ export default function LtaPage() {
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
+  const [pushingLtaId, setPushingLtaId] = useState('');
+  const [pushError, setPushError] = useState('');
+  const [timelineLta, setTimelineLta] = useState(null);
 
   useEffect(() => {
-    fetchLtas();
-    fetchEmployees();
+    let active = true;
+    fetch('/api/payroll/lta')
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to fetch LTAs.');
+        return data;
+      })
+      .then(data => { if (active) setLtas(data); })
+      .catch(error => { if (active) setPushError(error.message || 'Failed to fetch LTAs.'); });
+
+    fetch('/api/employees')
+      .then(async response => {
+        if (!response.ok) throw new Error('Failed to fetch employees.');
+        return response.json();
+      })
+      .then(data => {
+        if (!active || !Array.isArray(data)) return;
+        setEmployees(data);
+        setDepartments([...new Set(data.map(emp => emp.department).filter(Boolean))]);
+      })
+      .catch(error => console.error('Failed to fetch employees', error));
+
+    fetch('/api/payroll/cycles')
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to fetch pay cycles.');
+        return data;
+      })
+      .then(cycles => {
+        if (!Array.isArray(cycles)) throw new Error('Invalid pay cycle response.');
+        if (!active) return;
+        setPayCycles(cycles);
+        const currentCycle = cycles.find(cycle => cycle.status === 'PROCESSING') ||
+          cycles.find(cycle => cycle.status !== 'COMPLETED');
+        setSelectedCycleId(currentCycle?.id || '');
+      })
+      .catch(error => { if (active) setPushError(error.message || 'Failed to fetch pay cycles.'); });
+    return () => { active = false; };
   }, []);
 
-  const fetchEmployees = async () => {
-    try {
-      const res = await fetch('/api/employees');
-      if (res.ok) {
-        const data = await res.json();
-        setEmployees(data);
-        const uniqueDepts = [...new Set(data.map(emp => emp.department).filter(Boolean))];
-        setDepartments(uniqueDepts);
-      }
-    } catch (err) {
-      console.error('Failed to fetch employees', err);
-    }
-  };
+  useEffect(() => {
+    if (!selectedCycleId) return;
+    let active = true;
+    fetch(`/api/payroll/bonus?cycleId=${encodeURIComponent(selectedCycleId)}&type=lta`, { cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to load LTA salary items.');
+        return data;
+      })
+      .then(items => {
+        if (active && Array.isArray(items)) setCycleLtaItems(items);
+      })
+      .catch(error => {
+        if (active) setPushError(error.message || 'Failed to load LTA salary items.');
+      });
+
+    return () => { active = false; };
+  }, [selectedCycleId]);
 
   const fetchLtas = async () => {
     try {
@@ -220,6 +277,37 @@ export default function LtaPage() {
     }
   };
 
+  const handlePushToSalary = async ltaId => {
+    if (!selectedCycleId) {
+      setPushError('Select a pay cycle before pushing LTA to salary.');
+      return;
+    }
+
+    setPushingLtaId(ltaId);
+    setPushError('');
+    try {
+      const response = await fetch('/api/payroll/lta/push-to-salary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ltaId, cycleId: selectedCycleId }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to push LTA to salary.');
+      }
+
+      setCycleLtaItems(previous => [
+        ...previous.filter(item => item.employeeId !== result.item.employeeId),
+        result.item,
+      ]);
+      await fetchLtas();
+    } catch (error) {
+      setPushError(error.message || 'Failed to push LTA to salary.');
+    } finally {
+      setPushingLtaId('');
+    }
+  };
+
   const handleReset = () => {
     setEditId(null);
     setSelectedEmployeeId('');
@@ -267,6 +355,17 @@ export default function LtaPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: '1rem 1.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>LTA Management</h2>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <select
+                value={selectedCycleId}
+                onChange={event => setSelectedCycleId(event.target.value)}
+                aria-label="Current pay cycle for LTA"
+                style={{ padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#fff' }}
+              >
+                <option value="">Select pay cycle</option>
+                {payCycles.filter(cycle => cycle.status !== 'COMPLETED').map(cycle => (
+                  <option key={cycle.id} value={cycle.id}>{cycle.name} ({cycle.status})</option>
+                ))}
+              </select>
               <select 
                 value={listDepartmentFilter} 
                 onChange={e => { setListDepartmentFilter(e.target.value); setListEmployeeFilter(''); }}
@@ -443,6 +542,12 @@ export default function LtaPage() {
       </>
       )}
 
+      {pushError && (
+        <div role="alert" style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: '#fee2e2', color: '#b91c1c', borderRadius: '6px' }}>
+          {pushError}
+        </div>
+      )}
+
       {/* LTA Records Table */}
       <div style={{ marginTop: '2rem', background: '#fff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
         <h3 style={{ marginBottom: '1rem', color: '#1e293b' }}>Previous LTA Applications</h3>
@@ -462,7 +567,13 @@ export default function LtaPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredLtas.map(lta => (
+              {filteredLtas.map(lta => {
+                const currentLtaItem = selectedCycleId
+                  ? cycleLtaItems.find(item => item.employeeId === lta.employeeId && item.status === 'ADDED_TO_SALARY')
+                  : null;
+                const isPushed = currentLtaItem && ltaIdsFromMessage(currentLtaItem.message).includes(lta.id);
+                const balance = Number(lta.balanceAmount) || 0;
+                return (
                 <tr key={lta.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
                   <td style={{ padding: '0.75rem' }}>{lta.employee?.name} ({lta.employee?.empId})</td>
                   <td style={{ padding: '0.75rem' }}>{lta.applicationNo}</td>
@@ -489,16 +600,23 @@ export default function LtaPage() {
                         Approve
                       </button>
                     )}
-                    {(lta.status === 'Pending' || lta.status === 'Approved') && (
+                    {lta.status === 'Approved' && (
                       <button onClick={() => handleUpdateStatus(lta.id, 'Paid')} style={{ background: '#3b82f6', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}>
                         Mark Paid
                       </button>
                     )}
-                    {lta.status === 'Paid' && (
-                      <button onClick={() => handleUpdateStatus(lta.id, 'Posted to Salary')} style={{ background: '#8b5cf6', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}>
-                        Post Salary
+                    {['Paid', 'Posted to Salary'].includes(lta.status) && balance > 0 && (
+                      <button
+                        onClick={() => handlePushToSalary(lta.id)}
+                        disabled={!selectedCycleId || pushingLtaId === lta.id || isPushed}
+                        style={{ background: '#8b5cf6', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', opacity: !selectedCycleId || pushingLtaId === lta.id || isPushed ? 0.6 : 1 }}
+                      >
+                        {pushingLtaId === lta.id ? 'Pushing...' : isPushed ? 'Added to Payslip' : 'Push to Current Payslip'}
                       </button>
                     )}
+                    <button onClick={() => setTimelineLta(lta)} style={{ background: '#0ea5e9', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <History size={13} /> Timeline
+                    </button>
                     <button onClick={() => handleEdit(lta)} style={{ background: '#f59e0b', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}>
                       Edit
                     </button>
@@ -507,7 +625,8 @@ export default function LtaPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {filteredLtas.length === 0 && (
                 <tr>
                   <td colSpan="9" style={{ padding: '1rem', textAlign: 'center', color: '#64748b' }}>No records found.</td>
@@ -517,6 +636,39 @@ export default function LtaPage() {
           </table>
         </div>
       </div>
+      {timelineLta && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="LTA status timeline"
+          onClick={() => setTimelineLta(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <section onClick={event => event.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 'min(680px, 96vw)', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(15,23,42,.3)' }}>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid #e2e8f0' }}>
+              <strong>LTA Status Timeline · {timelineLta.applicationNo || timelineLta.employee?.empId}</strong>
+              <button type="button" onClick={() => setTimelineLta(null)} aria-label="Close timeline" style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#64748b' }}>
+                <X size={20} />
+              </button>
+            </header>
+            <div style={{ padding: 18 }}>
+              {(timelineLta.statusHistory || []).length === 0 ? (
+                <p style={{ color: '#64748b' }}>No status timeline is available.</p>
+              ) : (
+                <ol style={{ margin: 0, paddingLeft: 22 }}>
+                  {timelineLta.statusHistory.map(entry => (
+                    <li key={entry.id} style={{ padding: '0 0 16px 4px', color: '#334155' }}>
+                      <div style={{ fontWeight: 700 }}>{entry.fromStatus ? `${entry.fromStatus} → ` : ''}{entry.toStatus}</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{new Date(entry.changedAt).toLocaleString('en-IN')}</div>
+                      {entry.note && <div style={{ fontSize: 13, marginTop: 4 }}>{entry.note}</div>}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

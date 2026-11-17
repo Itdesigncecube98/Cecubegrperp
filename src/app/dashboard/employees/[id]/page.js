@@ -124,6 +124,9 @@ export default function EmployeeProfilePage({ initialId }) {
   const [showAddSalaryModal, setShowAddSalaryModal] = useState(false);
   const [availableShifts, setAvailableShifts] = useState([]);
   const [salaryRevisions, setSalaryRevisions] = useState([]);
+  const [salaryArrearsPreview, setSalaryArrearsPreview] = useState(null);
+  const [loadingSalaryArrears, setLoadingSalaryArrears] = useState(false);
+  const [pushingSalaryArrears, setPushingSalaryArrears] = useState(false);
   const [activeRevisionIndex, setActiveRevisionIndex] = useState(0);
   const [newRevisionForm, setNewRevisionForm] = useState({ effectiveFrom: '', remark: '', components: {}, rules: {} });
   const [editingRevisionId, setEditingRevisionId] = useState(null);
@@ -806,6 +809,7 @@ export default function EmployeeProfilePage({ initialId }) {
         showToast(arrearsWarning
           ? `Salary revision saved, but arrears were not updated: ${arrearsWarning}`
           : (editingRevisionId ? 'Salary revision updated!' : 'Salary revision saved!'));
+        setSalaryArrearsPreview(null);
         setShowAddSalaryModal(false);
         setEditingRevisionId(null);
         fetchData();
@@ -816,6 +820,47 @@ export default function EmployeeProfilePage({ initialId }) {
       showToast('Error saving salary revision', 'error');
     }
     setSaving(false);
+  };
+
+  const handleLoadSalaryArrears = async () => {
+    if (!employee?.id) {
+      showToast('Save the employee before loading arrears.', 'error');
+      return;
+    }
+
+    setLoadingSalaryArrears(true);
+    setSalaryArrearsPreview(null);
+    try {
+      const response = await fetch(`/api/payroll/arrears-calculation/generate?employeeId=${encodeURIComponent(employee.id)}`, { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to load salary revision arrears.');
+      }
+      setSalaryArrearsPreview(result.data);
+    } catch (error) {
+      showToast(error.message || 'Failed to load salary revision arrears.', 'error');
+    } finally {
+      setLoadingSalaryArrears(false);
+    }
+  };
+
+  const handlePushSalaryArrears = async () => {
+    if (!employee?.id || salaryArrearsPreview?.status !== 'calculated' || salaryArrearsPreview.amount <= 0) return;
+
+    setPushingSalaryArrears(true);
+    try {
+      const response = await fetch(`/api/payroll/arrears-calculation/generate?employeeId=${encodeURIComponent(employee.id)}`, { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to push arrears to Arrears Calculation.');
+      }
+      setSalaryArrearsPreview(previous => ({ ...previous, pushed: true }));
+      showToast('Salary revision arrears pushed to Arrears Calculation.');
+    } catch (error) {
+      showToast(error.message || 'Failed to push arrears to Arrears Calculation.', 'error');
+    } finally {
+      setPushingSalaryArrears(false);
+    }
   };
 
   const handleEditRevision = (rev) => {
@@ -842,6 +887,7 @@ export default function EmployeeProfilePage({ initialId }) {
       const res = await fetch(`/api/employees/${id}/salary?revisionId=${revId}`, { method: 'DELETE' });
       if (res.ok) {
         showToast('Revision deleted!');
+        setSalaryArrearsPreview(null);
         setActiveRevisionIndex(0);
         fetchData();
       } else {
@@ -2579,6 +2625,51 @@ export default function EmployeeProfilePage({ initialId }) {
                         🗑️ Delete
                       </button>
                     </div>
+                  </div>
+
+                  <div style={{ marginBottom: '24px', padding: '16px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#0c4a6e' }}>Salary Revision Arrears</div>
+                        <div style={{ marginTop: '4px', fontSize: '12px', color: '#475569' }}>Load a preview from the latest effective revision, then push it to Arrears Calculation.</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={handleLoadSalaryArrears}
+                          disabled={loadingSalaryArrears || pushingSalaryArrears}
+                          style={{ padding: '8px 14px', background: '#fff', color: '#0369a1', border: '1px solid #7dd3fc', borderRadius: '7px', cursor: loadingSalaryArrears ? 'wait' : 'pointer', fontWeight: 600, fontSize: '12px' }}
+                        >
+                          {loadingSalaryArrears ? 'Loading...' : 'Load Arrears'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handlePushSalaryArrears}
+                          disabled={pushingSalaryArrears || loadingSalaryArrears || salaryArrearsPreview?.status !== 'calculated' || salaryArrearsPreview?.pushed}
+                          style={{ padding: '8px 14px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '7px', cursor: pushingSalaryArrears ? 'wait' : 'pointer', fontWeight: 600, fontSize: '12px', opacity: salaryArrearsPreview?.status === 'calculated' && !salaryArrearsPreview?.pushed ? 1 : 0.55 }}
+                        >
+                          {pushingSalaryArrears ? 'Pushing...' : salaryArrearsPreview?.pushed ? 'Pushed to Arrears Calculation' : 'Push to Arrears Calculation'}
+                        </button>
+                      </div>
+                    </div>
+                    {salaryArrearsPreview && (
+                      <div style={{ marginTop: '14px', padding: '12px', background: '#fff', border: '1px solid #e0f2fe', borderRadius: '8px' }}>
+                        {salaryArrearsPreview.status === 'calculated' ? (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                              <span style={{ color: '#334155', fontSize: '13px' }}>Calculated amount</span>
+                              <strong style={{ color: '#0369a1', fontSize: '15px' }}>₹{Number(salaryArrearsPreview.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                            </div>
+                            <div style={{ color: '#64748b', fontSize: '12px' }}>
+                              Period: {salaryArrearsPreview.breakdown?.fromDate || '—'} to {salaryArrearsPreview.breakdown?.toDate || '—'}
+                              {salaryArrearsPreview.breakdown?.overlapDays ? ` (${salaryArrearsPreview.breakdown.overlapDays} days)` : ''}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{ color: '#64748b', fontSize: '13px' }}>No positive salary revision arrears were found for this employee.</span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Head Types + Components */}

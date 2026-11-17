@@ -1428,7 +1428,21 @@ model LeaveTravelAllowance {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   status            String    @default("Pending")
+  statusHistory     LtaStatusHistory[]
   employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model LtaStatusHistory {
+  id        String              @id @default(cuid())
+  ltaId     String
+  fromStatus String?
+  toStatus  String
+  actorName String?
+  changedAt DateTime            @default(now())
+  note      String?
+  lta       LeaveTravelAllowance @relation(fields: [ltaId], references: [id], onDelete: Cascade)
+
+  @@index([ltaId, changedAt])
 }
 
 model Contractor {

@@ -3,7 +3,7 @@ import { parsePayrollDate } from '@/lib/payrollDates';
 
 const roundCurrency = value => Math.round(value * 100) / 100;
 
-export async function generateSalaryRevisionArrears(tx, employeeId) {
+export async function calculateSalaryRevisionArrears(tx, employeeId) {
   const revisions = await tx.salaryRevision.findMany({
     where: { employeeId },
     include: {
@@ -116,6 +116,19 @@ export async function generateSalaryRevisionArrears(tx, employeeId) {
 
   if (totalArrears <= 0) return { status: 'no_arrears' };
 
+  return {
+    status: 'calculated',
+    amount: totalArrears,
+    breakdown: finalBreakdown,
+  };
+}
+
+export async function generateSalaryRevisionArrears(tx, employeeId) {
+  const calculation = await calculateSalaryRevisionArrears(tx, employeeId);
+  if (calculation.status !== 'calculated') return calculation;
+
+  const { amount, breakdown } = calculation;
+
   const openPayCycles = await tx.payCycle.findMany({
     where: { status: { not: 'COMPLETED' } },
     orderBy: { createdAt: 'desc' },
@@ -162,17 +175,17 @@ export async function generateSalaryRevisionArrears(tx, employeeId) {
       },
     },
     update: {
-      amount: totalArrears,
+      amount,
       status: 'PENDING',
-      message: JSON.stringify(finalBreakdown),
+      message: JSON.stringify(breakdown),
     },
     create: {
       employeeId,
       payCycleId: payCycle.id,
       type: 'arrears',
-      amount: totalArrears,
+      amount,
       status: 'PENDING',
-      message: JSON.stringify(finalBreakdown),
+      message: JSON.stringify(breakdown),
     },
   });
 

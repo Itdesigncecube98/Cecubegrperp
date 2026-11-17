@@ -47,7 +47,11 @@ export async function POST(request, { params }) {
           if (breakdown.overlapDays) overlapDays += breakdown.overlapDays;
           
           Object.keys(breakdown).forEach(key => {
-            if (key !== 'fromDate' && key !== 'toDate' && key !== 'overlapDays') {
+            if (
+              !['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds'].includes(key) &&
+              typeof breakdown[key] === 'number' &&
+              Number.isFinite(breakdown[key])
+            ) {
               finalBreakdown[key] = (finalBreakdown[key] || 0) + breakdown[key];
             }
           });
