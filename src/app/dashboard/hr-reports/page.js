@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import './hr-reports.css';
 import { Loader2, FileText, Download, Printer, Search } from 'lucide-react';
 import MultiSelect from '../../../components/MultiSelect';
+import EmployeePayslipDocument from '../../../components/EmployeePayslipDocument';
 
 const reportTypes = [
   'Salary Statement',
@@ -51,6 +52,7 @@ export default function HRReportsPage() {
   const [employees, setEmployees] = useState([]);
   const [payrollData, setPayrollData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedSalarySlip, setSelectedSalarySlip] = useState(null);
 
   const [branches, setBranches] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -102,9 +104,19 @@ export default function HRReportsPage() {
     }
   };
 
-  const fetchData = async () => {
+  const fetchData = async (refreshPayrollOnly = false) => {
     try {
       setLoading(true);
+      if (refreshPayrollOnly) {
+        const payrollRes = await fetch('/api/reports/payroll', { cache: 'no-store' });
+        const payrollRecords = await payrollRes.json();
+        if (!payrollRes.ok || !Array.isArray(payrollRecords)) {
+          throw new Error('Failed to refresh salary statement data.');
+        }
+        setPayrollData(payrollRecords);
+        return;
+      }
+
       const [empRes, payrollRes] = await Promise.all([
         fetch('/api/employees'),
         fetch('/api/reports/payroll')
@@ -152,7 +164,8 @@ export default function HRReportsPage() {
     }
 
     switch (activeReport) {
-      case 'Salary Statement': {
+      case 'Salary Statement':
+      case 'Payslip Register': {
         if (!selectedMonth) return [];
         const [year, month] = selectedMonth.split('-').map(Number);
         const monthStart = `${selectedMonth}-01`;
@@ -296,6 +309,7 @@ export default function HRReportsPage() {
   const renderTableHead = () => {
     switch (activeReport) {
       case 'Salary Statement':
+      case 'Payslip Register':
         return (
           <tr>
             <th>Employee ID</th>
@@ -310,6 +324,7 @@ export default function HRReportsPage() {
             <th style={{ textAlign: 'right' }}>Medical</th>
             <th style={{ textAlign: 'right' }}>Special Allowance</th>
             <th style={{ textAlign: 'right' }}>Bonus</th>
+            <th style={{ textAlign: 'right' }}>Arrears</th>
             <th style={{ textAlign: 'right' }}>Leave Encashment</th>
             <th style={{ textAlign: 'right' }}>Gross Pay</th>
             <th style={{ textAlign: 'right' }}>PF</th>
@@ -318,6 +333,7 @@ export default function HRReportsPage() {
             <th style={{ textAlign: 'right' }}>Other Deduction</th>
             <th style={{ textAlign: 'right' }}>Total Deduction</th>
             <th style={{ textAlign: 'right' }}>Net Salary</th>
+            <th>Action</th>
           </tr>
         );
       case 'Employee List':
@@ -410,19 +426,29 @@ export default function HRReportsPage() {
   const renderTableRow = (emp) => {
     switch (activeReport) {
       case 'Salary Statement':
+      case 'Payslip Register':
         return (
           <tr key={emp.id}>
             <td>{emp.employee?.empId || '-'}</td>
             <td>{emp.employee?.name || '-'}</td>
             <td>{emp.payCycle?.name || '-'}</td>
             {[emp.workingDays, emp.presentDays, emp.absentDays, emp.basicPay, emp.hra, emp.conveyance, emp.medical,
-              emp.specialAllow, emp.bonus, emp.leaveEncashment, emp.grossPay,
+              emp.specialAllow, emp.bonus, emp.arrears, emp.leaveEncashment, emp.grossPay,
               emp.pfEmployee, emp.professionalTax, emp.tds, emp.otherDeductions, emp.totalDeductions, emp.netPay]
               .map((amount, index) => (
                 <td key={index} style={{ textAlign: 'right', fontWeight: index === 13 ? 700 : 400 }}>
                   {Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </td>
               ))}
+            <td>
+              <button
+                type="button"
+                onClick={() => setSelectedSalarySlip(emp)}
+                style={{ padding: '7px 12px', border: 'none', borderRadius: '6px', background: '#2563eb', color: '#fff', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                View Payslip
+              </button>
+            </td>
           </tr>
         );
       case 'Employee List':
@@ -518,7 +544,8 @@ export default function HRReportsPage() {
 
     switch (activeReport) {
       case 'Salary Statement':
-        headers = ['Employee ID', 'Employee Name', 'Pay Period', 'Working Days', 'Present Days', 'Absent Days', 'Basic', 'HRA', 'Conveyance', 'Medical', 'Special Allowance', 'Bonus', 'Leave Encashment', 'Gross Pay', 'PF', 'Professional Tax', 'TDS', 'Other Deduction', 'Total Deduction', 'Net Salary'];
+      case 'Payslip Register':
+        headers = ['Employee ID', 'Employee Name', 'Pay Period', 'Working Days', 'Present Days', 'Absent Days', 'Basic', 'HRA', 'Conveyance', 'Medical', 'Special Allowance', 'Bonus', 'Arrears', 'Leave Encashment', 'Gross Pay', 'PF', 'Professional Tax', 'TDS', 'Other Deduction', 'Total Deduction', 'Net Salary'];
         rows = currentData.map(record => [
           record.employee?.empId || '-',
           record.employee?.name || '-',
@@ -532,6 +559,7 @@ export default function HRReportsPage() {
           record.medical,
           record.specialAllow,
           record.bonus,
+          record.arrears,
           record.leaveEncashment,
           record.grossPay,
           record.pfEmployee,
@@ -665,11 +693,21 @@ export default function HRReportsPage() {
   };
 
   const currentData = getFilteredData();
-  const isImplemented = ['Salary Statement', 'Birthday List', 'Anniversary List', 'LWF Statement', 'Bonus Statement'].includes(activeReport);
+  const isImplemented = ['Salary Statement', 'Payslip Register', 'Birthday List', 'Anniversary List', 'LWF Statement', 'Bonus Statement'].includes(activeReport);
   
   const groupedPrintData = activeReport === 'Employee List' ? groupEmployeesForPrint(currentData) : 
                            activeReport === 'Birthday List' ? groupEmployeesByBranchForPrint(currentData) : {};
   let globalSrNo = 1;
+
+  if (selectedSalarySlip) {
+    return (
+      <EmployeePayslipDocument
+        slip={selectedSalarySlip}
+        onBack={() => setSelectedSalarySlip(null)}
+        backLabel="Back to Salary Statement"
+      />
+    );
+  }
 
   return (
     <div className="hr-reports-container">
@@ -741,9 +779,9 @@ export default function HRReportsPage() {
                   value={selectedMonth}
                   onChange={handleMonthChange}
                 />
-                <button className="search-btn" onClick={() => {/* Filtering is live, but this gives a satisfying UX action */}} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', height: '38px', backgroundColor: '#0ea5e9', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 500, transition: 'background-color 0.2s' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#0284c7'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0ea5e9'}>
+                <button className="search-btn" onClick={() => fetchData(true)} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0 16px', height: '38px', backgroundColor: '#0ea5e9', color: 'white', border: 'none', borderRadius: '8px', cursor: loading ? 'wait' : 'pointer', fontWeight: 500, transition: 'background-color 0.2s' }} onMouseOver={(e) => { if (!loading) e.currentTarget.style.backgroundColor = '#0284c7'; }} onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0ea5e9'}>
                   <Search size={16} />
-                  Search
+                  {loading ? 'Loading...' : 'Search'}
                 </button>
               </div>
             </div>
@@ -787,8 +825,8 @@ export default function HRReportsPage() {
             </div>
           ) : currentData.length === 0 ? (
             <div className="hr-reports-empty">
-              <h3>{activeReport === 'Salary Statement' && !selectedMonth ? 'Select a month' : 'No posted salaries found'}</h3>
-              <p>{activeReport === 'Salary Statement' && !selectedMonth
+              <h3>{['Salary Statement', 'Payslip Register'].includes(activeReport) && !selectedMonth ? 'Select a month' : 'No posted salaries found'}</h3>
+              <p>{['Salary Statement', 'Payslip Register'].includes(activeReport) && !selectedMonth
                 ? 'Choose a salary month to see employees whose salaries have been posted.'
                 : 'No records match the selected month and filters.'}</p>
             </div>
@@ -823,7 +861,7 @@ export default function HRReportsPage() {
             </div>
           </div>
 
-          {activeReport === 'Salary Statement' && (
+          {['Salary Statement', 'Payslip Register'].includes(activeReport) && (
             <div className="salary-slips-print">
               {currentData.map(record => {
                 const earnings = [
@@ -833,6 +871,7 @@ export default function HRReportsPage() {
                   ['Medical Allowance', record.medical],
                   ['Special Allowance', record.specialAllow],
                   ['Bonus', record.bonus],
+                  ['Arrears', record.arrears],
                   ['Leave Encashment', record.leaveEncashment],
                   ['Gross Earnings', record.grossPay],
                 ];
@@ -1003,7 +1042,7 @@ export default function HRReportsPage() {
           )}
           
           {/* Fallback for other reports for now */}
-          {!['Salary Statement', 'Employee List', 'Birthday List', 'LWF Statement', 'Bonus Statement'].includes(activeReport) && (
+          {!['Salary Statement', 'Payslip Register', 'Employee List', 'Birthday List', 'LWF Statement', 'Bonus Statement'].includes(activeReport) && (
             <p style={{textAlign: 'center', marginTop: '20px'}}>Print format for {activeReport} is under construction.</p>
           )}
         </div>

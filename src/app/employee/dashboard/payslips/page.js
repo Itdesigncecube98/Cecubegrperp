@@ -223,6 +223,7 @@ export default function PayslipsPage() {
                 ...(selectedSlip.medical > 0 ? [{ earn: ['Medical', selectedSlip.medical], deduct: selectedSlip.tds > 0 ? ['TDS', selectedSlip.tds] : null }] : []),
                 ...(selectedSlip.conveyance > 0 ? [{ earn: ['Transport Allow.', selectedSlip.conveyance], deduct: selectedSlip.otherDeductions > 0 ? ['Other Deductions', selectedSlip.otherDeductions] : null }] : []),
                 ...(selectedSlip.specialAllow > 0 ? [{ earn: ['Special Allow.', selectedSlip.specialAllow], deduct: null }] : []),
+                ...(Number(selectedSlip.arrears) > 0 ? [{ earn: ['Arrears', Number(selectedSlip.arrears)], deduct: null }] : []),
               ].map(({ earn, deduct }, i) => (
                 <tr key={i}>
                   <td style={{ ...cell, ...borderR }}>{earn[0]}</td>
