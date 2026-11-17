@@ -1426,6 +1426,9 @@ model Contractor {
   address       String?
   gstNumber     String?
   panNumber     String?
+  faxNo         String?
+  website       String?
+  documents     String?
   status        String            @default("Active")
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
@@ -2205,6 +2208,8 @@ model VendorMaster {
   state         String?
   gstin         String?
   pan           String?
+  faxNo         String?
+  website       String?
   msmeStatus    Boolean             @default(false)
   bankName      String?
   accountNo     String?

@@ -1,8 +1,9 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { addTaskMasterTask, getTaskMasterTask, updateTaskMasterTask } from '@/lib/siteTaskMaster';
+import { addTaskMasterTask, createNextWccTaskMasterTask, getTaskMasterTask, updateTaskMasterTask } from '@/lib/siteTaskMaster';
 import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
+import { getWorkOrderBillUsage } from '@/lib/workCompletionTasks';
 import fs from 'fs';
 import path from 'path';
 
@@ -89,10 +90,12 @@ function mapSiteTasks(groups, parentNames = []) {
     (group.tasks || []).forEach((task, taskIndex) => {
       const plannedQty = Number(task.plannedQty ?? task.quantity ?? 0);
       const completedQty = Number(task.completedQty ?? task.progressQty ?? 0);
+      const originTaskId = task.originTaskId || task.id;
       rows.push({
         id: task.id,
         wbsCode: task.wbsCode || `${groupIndex + 1}.${taskIndex + 1}`,
         taskName: task.name,
+        description: task.name || task.materialName || '',
         groupName: hierarchy[0] || 'Site Tasks',
         subgroupName: hierarchy.slice(1).join(' / ') || group.name,
         materialName: task.materialName || task.name,
@@ -118,6 +121,12 @@ function mapSiteTasks(groups, parentNames = []) {
         cumulativeAmount: Number(task.cumulativeQty ?? completedQty) * Number(task.rate || 0),
         balanceAmount: Math.max(0, plannedQty - Number(task.cumulativeQty ?? completedQty)) * Number(task.rate || 0),
         workOrderId: task.workOrderId || null,
+        sourceId: task.sourceId || null,
+        originTaskId,
+        completionTaskId: task.billingTaskId
+          || `${task.workOrderId || 'work-order'}:${task.sourceId || originTaskId}`,
+        wccSequence: Number(task.wccSequence) || 1,
+        nextWccId: task.nextWccId || null,
         contractorName: task.contractorName || '',
         certificateApproved: task.certificateApproved === true,
         certificateApprovedBy: task.certificateApprovedBy || null,
@@ -291,10 +300,11 @@ export async function GET(req) {
     }
 
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
+    let workOrders = [];
     if (project?.name) {
-      const workOrders = await prisma.workOrder.findMany({
+      workOrders = await prisma.workOrder.findMany({
         where: { project: { name: project.name } },
-        select: { woNo: true, contractorName: true, scope: true }
+        select: { id: true, woNo: true, contractorName: true, scope: true }
       });
       workOrders.forEach(order => {
         let scope = {};
@@ -317,11 +327,35 @@ export async function GET(req) {
 
     const siteTaskPath = getSiteTaskStatusPath(projectId);
     if (fs.existsSync(siteTaskPath)) {
+      let siteTaskData;
       try {
-        const siteTaskData = JSON.parse(fs.readFileSync(siteTaskPath, 'utf8'));
-        return NextResponse.json({ tasks: mapSiteTasks(onlyWorkOrderGroups(siteTaskData.groups)), source: 'site-task-status' });
+        siteTaskData = JSON.parse(fs.readFileSync(siteTaskPath, 'utf8'));
       } catch (error) {
         console.warn('Could not read Site Task Status data, continuing with saved work completion data', error);
+      }
+      if (siteTaskData) {
+        const tasks = mapSiteTasks(onlyWorkOrderGroups(siteTaskData.groups));
+        if (project?.name) {
+          const billUsageByWorkOrder = await Promise.all(workOrders.map(async order => {
+            const workOrderTasks = tasks.filter(task => task.workOrderId === order.woNo);
+            const usage = await getWorkOrderBillUsage(prisma, { workOrderId: order.id, tasks: workOrderTasks });
+            return [order.woNo, usage];
+          }));
+          const billUsageByWorkOrderNo = new Map(billUsageByWorkOrder);
+          tasks.forEach(task => {
+            const billedQty = billUsageByWorkOrderNo.get(task.workOrderId)?.billedByWccTaskId.get(task.id) || 0;
+            task.hasRABill = billedQty > 0;
+            task.wccBilledQty = billedQty;
+            task.wccBillComplete = task.completedQty > 0 && billedQty + 0.0001 >= task.completedQty;
+          });
+        } else {
+          tasks.forEach(task => {
+            task.hasRABill = false;
+            task.wccBilledQty = 0;
+            task.wccBillComplete = false;
+          });
+        }
+        return NextResponse.json({ tasks, source: 'site-task-status' });
       }
     }
 
@@ -340,6 +374,62 @@ export async function POST(req) {
 
     if (!projectId) {
       return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+    }
+
+    if (action === 'CREATE_NEXT_WCC') {
+      if (!body.taskId) return NextResponse.json({ error: 'A Work Completion task is required.' }, { status: 400 });
+      const existingTask = getTaskMasterTask(projectId, body.taskId);
+      if (!existingTask) return NextResponse.json({ error: 'Task not found in Site Task Master.' }, { status: 404 });
+      if (getVerificationStatus(existingTask) !== 'Approved') {
+        return NextResponse.json({ error: 'Approve this Work Completion task before creating the next WCC.' }, { status: 409 });
+      }
+
+      const [project, workOrder] = await Promise.all([
+        prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }),
+        prisma.workOrder.findFirst({
+          where: { woNo: existingTask.workOrderId || '' },
+          select: { id: true, woNo: true, project: { select: { name: true } } },
+        }),
+      ]);
+      if (!project || !workOrder || workOrder.project?.name !== project.name) {
+        return NextResponse.json({ error: 'Work Order not found for this project.' }, { status: 404 });
+      }
+
+      const siteTaskPath = getSiteTaskStatusPath(projectId);
+      const siteTaskData = fs.existsSync(siteTaskPath)
+        ? JSON.parse(fs.readFileSync(siteTaskPath, 'utf8'))
+        : { groups: [] };
+      const workOrderTasks = mapSiteTasks(onlyWorkOrderGroups(siteTaskData.groups))
+        .filter(task => task.workOrderId === workOrder.woNo);
+      const usage = await getWorkOrderBillUsage(prisma, {
+        workOrderId: workOrder.id,
+        tasks: workOrderTasks,
+      });
+      const completedQty = Number(existingTask.cumulativeQty ?? existingTask.completedQty ?? 0);
+      const billedQty = usage.billedByWccTaskId.get(existingTask.id) || 0;
+      if (completedQty <= 0 || billedQty + 0.0001 < completedQty) {
+        return NextResponse.json({ error: 'Generate an RA Bill for the full approved quantity in this WCC before creating the next WCC.' }, { status: 409 });
+      }
+
+      const created = createNextWccTaskMasterTask(projectId, body.taskId, String(body.actorName || ''));
+      if (created.error) return NextResponse.json({ error: created.error }, { status: created.status });
+      const updatedData = JSON.parse(fs.readFileSync(siteTaskPath, 'utf8'));
+      const updatedRows = mapSiteTasks(onlyWorkOrderGroups(updatedData.groups));
+      const updatedTask = updatedRows.find(task => task.id === created.task.id);
+      const parentTask = updatedRows.find(task => task.id === created.parentTask.id);
+      if (!updatedTask || !parentTask) {
+        return NextResponse.json({ error: 'The next WCC was saved but could not be reloaded.' }, { status: 500 });
+      }
+      return NextResponse.json({
+        success: true,
+        updatedTask: { ...updatedTask, hasRABill: false, wccBilledQty: 0, wccBillComplete: false },
+        parentTask: {
+          ...parentTask,
+          hasRABill: true,
+          wccBilledQty: completedQty,
+          wccBillComplete: true,
+        },
+      });
     }
 
     if (action === 'CERTIFICATE_APPROVAL') {
@@ -400,6 +490,13 @@ export async function POST(req) {
             ? 'Unapprove this Work Completion task before logging quantity.'
             : 'Unapprove the Work Completion certificate before logging quantity.',
         }, { status: 409 });
+      }
+      if (changesQuantity && (update.completedQty !== undefined || update.cumulativeQty !== undefined)) {
+        const plannedQty = Number(existingTask.plannedQty ?? existingTask.quantity ?? 0);
+        const completedQty = Number(update.cumulativeQty ?? update.completedQty);
+        if (!Number.isFinite(plannedQty) || !Number.isFinite(completedQty) || completedQty < 0 || completedQty > plannedQty) {
+          return NextResponse.json({ error: `Completed quantity must be between 0 and the planned quantity (${plannedQty}).` }, { status: 400 });
+        }
       }
 
       if (requestedStatus !== undefined) {

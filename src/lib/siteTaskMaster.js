@@ -58,6 +58,10 @@ export function addTaskMasterTask(projectId, { groupName, subgroupName, taskName
     existing.workOrderId = workOrderId || existing.workOrderId || null;
     existing.contractorName = contractorName || existing.contractorName || '';
     existing.sourceId = sourceId || existing.sourceId || null;
+    existing.originTaskId = existing.originTaskId || existing.id;
+    existing.billingTaskId = existing.billingTaskId
+      || `${existing.workOrderId || 'work-order'}:${existing.sourceId || existing.originTaskId}`;
+    existing.wccSequence = Number(existing.wccSequence) || 1;
     existing.cumulativeQty = Number(existing.cumulativeQty ?? existing.completedQty ?? 0);
     existing.completedQty = existing.cumulativeQty;
     existing.remainingQty = Math.max(0, existing.plannedQty - existing.cumulativeQty);
@@ -66,8 +70,9 @@ export function addTaskMasterTask(projectId, { groupName, subgroupName, taskName
     return existing;
   }
   const now = new Date().toISOString();
+  const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const task = {
-    id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id,
     name: taskName.trim(),
     description: description?.trim() || '',
     source: source || 'manual',
@@ -82,6 +87,9 @@ export function addTaskMasterTask(projectId, { groupName, subgroupName, taskName
     workOrderId,
     contractorName,
     sourceId,
+    originTaskId: id,
+    billingTaskId: `${workOrderId || 'work-order'}:${sourceId || id}`,
+    wccSequence: 1,
     status: 'Tentative',
     updatedAt: now,
     history: [{ status: 'Tentative', changedAt: now, description: description?.trim() || '' }]
@@ -102,6 +110,22 @@ function findTask(groups, taskId) {
   return null;
 }
 
+function findTaskCollection(groups, taskId) {
+  for (const group of groups || []) {
+    if ((group.tasks || []).some(task => task.id === taskId)) return group.tasks;
+    const nested = findTaskCollection(group.subgroups, taskId);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function flattenTasks(groups) {
+  return (groups || []).flatMap(group => [
+    ...(group.tasks || []),
+    ...flattenTasks(group.subgroups),
+  ]);
+}
+
 export function getTaskMasterTask(projectId, taskId) {
   if (!projectId || !taskId) return null;
   const data = read(projectId);
@@ -116,4 +140,69 @@ export function updateTaskMasterTask(projectId, taskUpdate) {
   Object.assign(task, taskUpdate, { updatedAt: new Date().toISOString() });
   write(projectId, data);
   return task;
+}
+
+export function createNextWccTaskMasterTask(projectId, taskId, actorName = '') {
+  if (!projectId || !taskId) return { error: 'A project and Work Completion task are required.', status: 400 };
+  const data = read(projectId);
+  const task = findTask(data.groups, taskId);
+  const collection = findTaskCollection(data.groups, taskId);
+  if (!task || !collection) return { error: 'Task not found in Site Task Master.', status: 404 };
+  if (task.nextWccId) return { error: 'A next WCC already exists for this task.', status: 409 };
+
+  const plannedQty = Number(task.plannedQty ?? task.quantity ?? 0);
+  const completedQty = Number(task.cumulativeQty ?? task.completedQty ?? 0);
+  const remainingQty = Math.max(0, plannedQty - completedQty);
+  if (remainingQty <= 0) return { error: 'This task has no remaining quantity for another WCC.', status: 409 };
+
+  const originTaskId = task.originTaskId || task.id;
+  const billingTaskId = task.billingTaskId
+    || `${task.workOrderId || 'work-order'}:${task.sourceId || originTaskId}`;
+  task.originTaskId = originTaskId;
+  task.billingTaskId = billingTaskId;
+  task.wccSequence = Number(task.wccSequence) || 1;
+
+  const sequence = flattenTasks(data.groups)
+    .filter(candidate => (candidate.billingTaskId || `${candidate.workOrderId || 'work-order'}:${candidate.sourceId || candidate.originTaskId || candidate.id}`) === billingTaskId)
+    .reduce((latest, candidate) => Math.max(latest, Number(candidate.wccSequence) || 1), 1) + 1;
+  const now = new Date().toISOString();
+  const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const nextTask = {
+    ...task,
+    id,
+    originTaskId,
+    billingTaskId,
+    wccSequence: sequence,
+    parentWccId: task.id,
+    nextWccId: null,
+    quantity: remainingQty,
+    plannedQty: remainingQty,
+    cumulativeQty: 0,
+    completedQty: 0,
+    progressQty: 0,
+    remainingQty,
+    workPercent: 0,
+    verificationStatus: 'Pending Verification',
+    statusTimeline: [{
+      fromStatus: '',
+      toStatus: 'Pending Verification',
+      changedAt: now,
+      actorName,
+    }],
+    certificateApproved: false,
+    certificateApprovedBy: null,
+    certificateApprovedAt: null,
+    logs: [],
+    mbRef: '',
+    completedDate: '',
+    actualDate: '',
+    status: 'Tentative',
+    updatedAt: now,
+    statusDates: { Tentative: now },
+    history: [{ status: 'Tentative', changedAt: now, description: task.description || '' }],
+  };
+  task.nextWccId = id;
+  collection.push(nextTask);
+  write(projectId, data);
+  return { task: nextTask, parentTask: task };
 }

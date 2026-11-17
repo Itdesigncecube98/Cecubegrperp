@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   Home, ChevronRight, Save, ArrowLeft, User, Phone, MapPin, FileText
 } from 'lucide-react';
+import { MASTER_RECORD_STATUSES, normalizeMasterRecordStatus } from '@/lib/masterRecordStatus';
 import '../../contracting.css';
 
 const FormSection = ({ title, children, defaultOpen = true }) => {
@@ -49,20 +50,24 @@ function AddContractorForm() {
     'Building Maintenance', 'Misc. Services', 'Solar Service', 
     'Civil Contractor', 'CCTV PA & FA'
   ]);
-  const [statuses] = useState(['Regular', 'Inactive', 'Blacklisted']);
-
   const [formData, setFormData] = useState({
     name: '',
     group: '',
+    contactPerson: '',
     phone: '',
     mobile: '',
     pan: '',
     status: 'Regular',
     email: '',
     address: '',
-    address: '',
-    gst: ''
+    gst: '',
+    faxNo: '',
+    website: '',
+    documents: []
   });
+  const [documentFiles, setDocumentFiles] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const documentInputRef = React.useRef(null);
   
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
@@ -76,14 +81,19 @@ function AddContractorForm() {
             setFormData({
               name: data.companyName || '',
               group: '', // Not in DB currently
+              contactPerson: data.contactPerson || '',
               phone: data.phone || '',
               mobile: data.phone || '',
               pan: data.panNumber || '',
-              status: data.status || 'Regular',
+              status: normalizeMasterRecordStatus(data.status, 'Regular'),
               email: data.email || '',
               address: data.address || '',
-              gst: data.gstNumber || ''
+              gst: data.gstNumber || '',
+              faxNo: data.faxNo || '',
+              website: data.website || '',
+              documents: Array.isArray(data.documents) ? data.documents : []
             });
+            setDocumentFiles([]);
           }
         })
         .catch(err => console.error('Error fetching contractor:', err));
@@ -97,6 +107,16 @@ function AddContractorForm() {
     }
     
     try {
+      setSaving(true);
+      const uploadedDocuments = await Promise.all(documentFiles.map(async file => {
+        const uploadData = new FormData();
+        uploadData.append('file', file);
+        const uploadResponse = await fetch('/api/upload', { method: 'POST', body: uploadData });
+        const result = await uploadResponse.json();
+        if (!uploadResponse.ok) throw new Error(result.error || `Failed to upload ${file.name}`);
+        return { name: file.name, type: file.type, url: result.url };
+      }));
+      const documents = [...(formData.documents || []), ...uploadedDocuments];
       const url = id ? `/api/contractors/${id}` : '/api/contractors';
       const method = id ? 'PUT' : 'POST';
       
@@ -107,11 +127,15 @@ function AddContractorForm() {
         },
         body: JSON.stringify({
           companyName: formData.name,
+          contactPerson: formData.contactPerson,
           email: formData.email,
           phone: formData.mobile || formData.phone,
           address: formData.address,
           gstNumber: formData.gst,
           panNumber: formData.pan,
+          faxNo: formData.faxNo,
+          website: formData.website,
+          documents,
           status: formData.status
         })
       });
@@ -124,7 +148,10 @@ function AddContractorForm() {
       alert(`Contractor ${id ? 'Updated' : 'Saved'} Successfully!`);
       router.push('/contracting/contractors/contractor-list');
     } catch (error) {
-      alert(error.message);
+      console.error('Error saving contractor:', error);
+      alert(error.message || 'Failed to save contractor.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -161,6 +188,15 @@ function AddContractorForm() {
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
               />
             </FormGroup>
+            <FormGroup label="Contact Person">
+              <input
+                type="text"
+                className="contracting-input"
+                style={{ width: '100%', padding: '10px' }}
+                value={formData.contactPerson}
+                onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+              />
+            </FormGroup>
             <FormGroup label="Group" required>
               <select 
                 className="contracting-input" 
@@ -180,8 +216,25 @@ function AddContractorForm() {
                 onChange={(e) => setFormData({...formData, status: e.target.value})}
               >
                 <option value="">- Select Status -</option>
-                {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                {MASTER_RECORD_STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
               </select>
+            </FormGroup>
+          </div>
+        </FormSection>
+
+        <FormSection title="Tax & Website Details">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+            <FormGroup label="PAN No">
+              <input type="text" className="contracting-input" style={{ width: '100%', padding: '10px' }} value={formData.pan} onChange={(e) => setFormData({ ...formData, pan: e.target.value })} />
+            </FormGroup>
+            <FormGroup label="GST No">
+              <input type="text" className="contracting-input" style={{ width: '100%', padding: '10px' }} value={formData.gst} onChange={(e) => setFormData({ ...formData, gst: e.target.value })} />
+            </FormGroup>
+            <FormGroup label="Fax No">
+              <input type="text" className="contracting-input" style={{ width: '100%', padding: '10px' }} value={formData.faxNo} onChange={(e) => setFormData({ ...formData, faxNo: e.target.value })} />
+            </FormGroup>
+            <FormGroup label="Website">
+              <input type="text" className="contracting-input" style={{ width: '100%', padding: '10px' }} value={formData.website} onChange={(e) => setFormData({ ...formData, website: e.target.value })} />
             </FormGroup>
           </div>
         </FormSection>
@@ -226,33 +279,6 @@ function AddContractorForm() {
               </FormGroup>
             </div>
           </div>
-        </FormSection>
-
-        <FormSection title="Category" defaultOpen={false}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-            <FormGroup label="Library">
-              <select className="contracting-input" style={{ width: '100%' }}><option>-Select-</option></select>
-            </FormGroup>
-            <FormGroup label="Category">
-              <select className="contracting-input" style={{ width: '100%' }}><option>Select Labour Category here</option></select>
-            </FormGroup>
-          </div>
-        </FormSection>
-
-        <FormSection title="Remark" defaultOpen={false}>
-          <table className="contracting-table" style={{ marginTop: '8px' }}>
-            <thead>
-              <tr>
-                <th style={{ width: '30%' }}>Remark type</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td colSpan="2" style={{ textAlign: 'left', color: '#999', padding: '12px' }}>Data not available</td>
-              </tr>
-            </tbody>
-          </table>
         </FormSection>
 
         <FormSection title="Account Mapping" defaultOpen={false}>
@@ -311,20 +337,42 @@ function AddContractorForm() {
           </div>
         </FormSection>
 
-        <FormSection title="Document Upload" defaultOpen={false}>
+        <FormSection title="Document Upload">
           <div style={{ maxWidth: '400px' }}>
-            <FormGroup label="Document Type">
-              <select className="contracting-input" style={{ width: '100%' }}><option>Contractor</option></select>
-            </FormGroup>
+            {formData.documents.length === 0 && (
+              <div style={{ background: '#f8fafc', color: '#64748b', padding: '12px', borderRadius: '4px', marginBottom: '16px', fontSize: '0.9rem' }}>
+                No documents uploaded.
+              </div>
+            )}
+            {formData.documents.map((document, index) => (
+              <div key={`${document.url}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '8px 0' }}>
+                <a href={document.url} target="_blank" rel="noreferrer">{document.name || `Document ${index + 1}`}</a>
+                <button type="button" className="btn-cyan" onClick={() => setFormData(prev => ({ ...prev, documents: prev.documents.filter((_, itemIndex) => itemIndex !== index) }))}>
+                  Remove
+                </button>
+              </div>
+            ))}
             
-            <div style={{ background: '#f8d7da', color: '#721c24', padding: '12px', borderRadius: '4px', marginBottom: '16px', fontSize: '0.9rem' }}>
-              No Document Found!!
-            </div>
-            
-            <button style={{ 
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
-              background: '#e2e8f0', border: '1px dashed #cbd5e1', borderRadius: '8px', padding: '24px', 
-              width: '150px', cursor: 'pointer', color: '#475569'
+            <input
+              ref={documentInputRef}
+              type="file"
+              multiple
+              onChange={event => {
+                setDocumentFiles(previous => [...previous, ...Array.from(event.target.files || [])]);
+                event.target.value = '';
+              }}
+              style={{ display: 'none' }}
+            />
+            {documentFiles.map((file, index) => (
+              <div key={`${file.name}-${file.lastModified}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '6px 0' }}>
+                <span>{file.name}</span>
+                <button type="button" onClick={() => setDocumentFiles(previous => previous.filter((_, fileIndex) => fileIndex !== index))}>Remove</button>
+              </div>
+            ))}
+            <button type="button" onClick={() => documentInputRef.current?.click()} disabled={saving} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              background: '#e2e8f0', border: '1px dashed #cbd5e1', borderRadius: '8px', padding: '24px',
+              width: '150px', cursor: saving ? 'wait' : 'pointer', color: '#475569'
             }}>
               <FileText size={32} style={{ marginBottom: '8px' }} />
               <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>UPLOAD DOCUMENT</span>
@@ -353,8 +401,8 @@ function AddContractorForm() {
           <button className="btn-cyan" style={{ background: '#f1f5f9', color: '#475569' }} onClick={() => router.push('/contracting/contractors/contractor-list')}>
             Cancel
           </button>
-          <button className="btn-cyan" onClick={handleSave}>
-            <Save size={16} /> Save Contractor
+          <button className="btn-cyan" type="button" onClick={handleSave} disabled={saving}>
+            <Save size={16} /> {saving ? 'Saving...' : 'Save Contractor'}
           </button>
         </div>
       </div>

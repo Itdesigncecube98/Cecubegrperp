@@ -449,6 +449,8 @@ export default function RABillsPage() {
             qty:         String(t.qty || ''),
             rate:        String(t.rate || ''),
             amount:      String(t.amount || ''),
+            completionTaskId: t.completionTaskId,
+            wccAllocations: t.wccAllocations,
           }));
 
           setForm(f => ({
@@ -998,8 +1000,8 @@ export default function RABillsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {workCompletionTasks.filter(t => t.percentComplete > 0).map((t, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #d1fae5' }}>
+                      {workCompletionTasks.filter(t => t.qty > 0).map((t, i) => (
+                        <tr key={t.completionTaskId || i} style={{ borderBottom: '1px solid #d1fae5' }}>
                           <td style={{ padding: '5px 8px' }}>{t.description || t.materialName || t.taskName}</td>
                           <td style={{ padding: '5px 8px', textAlign: 'right' }}>{t.qty ?? t.completedQty} {t.unit}</td>
                           <td style={{ padding: '5px 8px', textAlign: 'right' }}>{t.percentComplete}%</td>

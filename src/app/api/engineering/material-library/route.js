@@ -2,8 +2,29 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveProjectLibraryContext } from '@/lib/projectLibrary';
+import { readAuthSession } from '@/lib/authSession';
+import { writeSessionAudit } from '@/lib/serverAudit';
 
 const materialLibraryState = globalThis;
+
+async function writeRateHistoryEntry(db, request, session, {
+  entityType,
+  entityId,
+  oldRate,
+  oldUnit,
+  rate,
+  unit,
+}) {
+  return writeSessionAudit(db, request, session, {
+    module: 'Engineering',
+    subModule: 'Master Material/Labour Library',
+    action: 'RATE_CHANGE',
+    entityType,
+    entityId,
+    oldValues: oldRate == null ? null : JSON.stringify({ rate: oldRate, unit: oldUnit }),
+    newValues: JSON.stringify({ rate, unit }),
+  });
+}
 
 // Auto-seed default library hierarchy if empty
 async function seedDefaultMaterialTreeIfNeeded() {
@@ -311,18 +332,32 @@ export async function POST(req) {
       if (!groupId) return NextResponse.json({ error: 'Group/Subgroup ID is required' }, { status: 400 });
       if (!name || !name.trim()) return NextResponse.json({ error: 'Material name is required' }, { status: 400 });
 
-      const item = await prisma.materialLibraryItem.create({
-        data: {
-          groupId,
-          resourceType,
-          name: name.trim(),
-          unit: unit ? unit.trim() : 'Nos',
-          quantity: parseFloat(quantity) || 0,
-          rate: parseFloat(rate) || 0,
-          specification: specification ? specification.trim() : null,
-          description: description ? description.trim() : null,
-          usedIn: Array.isArray(usedIn) ? usedIn : []
+      const session = readAuthSession(req);
+      const item = await prisma.$transaction(async tx => {
+        const createdItem = await tx.materialLibraryItem.create({
+          data: {
+            groupId,
+            resourceType,
+            name: name.trim(),
+            unit: unit ? unit.trim() : 'Nos',
+            quantity: parseFloat(quantity) || 0,
+            rate: parseFloat(rate) || 0,
+            specification: specification ? specification.trim() : null,
+            description: description ? description.trim() : null,
+            usedIn: Array.isArray(usedIn) ? usedIn : []
+          }
+        });
+        if (['Material', 'Labour', 'Equipment'].includes(resourceType)) {
+          await writeRateHistoryEntry(tx, req, session, {
+            entityType: 'MaterialLibraryItem',
+            entityId: createdItem.id,
+            oldRate: null,
+            oldUnit: null,
+            rate: createdItem.rate,
+            unit: createdItem.unit
+          });
         }
+        return createdItem;
       });
       return NextResponse.json(item, { status: 201 });
     }
@@ -337,20 +372,34 @@ export async function POST(req) {
       if (parent) finalLibId = parent.libraryId;
     }
 
-    const group = await prisma.materialLibraryGroup.create({
-      data: {
-        libraryId: finalLibId || null,
-        parentId: parentId || null,
-        resourceType,
-        name: name.trim(),
-        description: description ? description.trim() : null,
-        combinedRate: resourceType === 'Labour' ? Math.max(0, Number(combinedRate) || 0) : 0,
-        combinedUnit: resourceType === 'Labour' ? (combinedUnit?.trim() || 'Manday') : null
-      },
-      include: {
-        materials: true,
-        subgroups: true
+    const session = readAuthSession(req);
+    const group = await prisma.$transaction(async tx => {
+      const createdGroup = await tx.materialLibraryGroup.create({
+        data: {
+          libraryId: finalLibId || null,
+          parentId: parentId || null,
+          resourceType,
+          name: name.trim(),
+          description: description ? description.trim() : null,
+          combinedRate: resourceType === 'Labour' ? Math.max(0, Number(combinedRate) || 0) : 0,
+          combinedUnit: resourceType === 'Labour' ? (combinedUnit?.trim() || 'Manday') : null
+        },
+        include: {
+          materials: true,
+          subgroups: true
+        }
+      });
+      if (resourceType === 'Labour') {
+        await writeRateHistoryEntry(tx, req, session, {
+          entityType: 'MaterialLibraryGroup',
+          entityId: createdGroup.id,
+          oldRate: null,
+          oldUnit: null,
+          rate: createdGroup.combinedRate,
+          unit: createdGroup.combinedUnit
+        });
       }
+      return createdGroup;
     });
 
     return NextResponse.json(group, { status: 201 });
@@ -377,9 +426,33 @@ export async function PUT(req) {
       if (description !== undefined) updateData.description = description ? description.trim() : null;
       if (usedIn !== undefined && Array.isArray(usedIn)) updateData.usedIn = usedIn;
 
-      const item = await prisma.materialLibraryItem.update({
+      const currentItem = await prisma.materialLibraryItem.findUnique({
         where: { id },
-        data: updateData
+        select: { id: true, name: true, rate: true, unit: true, resourceType: true }
+      });
+      if (!currentItem) return NextResponse.json({ error: 'Material not found' }, { status: 404 });
+
+      const updatedRate = rate !== undefined ? parseFloat(rate) || 0 : currentItem.rate;
+      const trackRateChange = rate !== undefined
+        && ['Material', 'Labour', 'Equipment'].includes(currentItem.resourceType)
+        && updatedRate !== currentItem.rate;
+      const session = readAuthSession(req);
+      const item = await prisma.$transaction(async tx => {
+        const updatedItem = await tx.materialLibraryItem.update({
+          where: { id },
+          data: updateData
+        });
+        if (trackRateChange) {
+          await writeRateHistoryEntry(tx, req, session, {
+            entityType: 'MaterialLibraryItem',
+            entityId: id,
+            oldRate: currentItem.rate,
+            oldUnit: currentItem.unit,
+            rate: updatedRate,
+            unit: updatedItem.unit
+          });
+        }
+        return updatedItem;
       });
       return NextResponse.json(item);
     }
@@ -392,9 +465,35 @@ export async function PUT(req) {
     if (combinedRate !== undefined) updateData.combinedRate = Math.max(0, Number(combinedRate) || 0);
     if (combinedUnit !== undefined) updateData.combinedUnit = combinedUnit?.trim() || 'Manday';
 
-    const group = await prisma.materialLibraryGroup.update({
+    const currentGroup = await prisma.materialLibraryGroup.findUnique({
       where: { id },
-      data: updateData
+      select: { id: true, name: true, combinedRate: true, combinedUnit: true, resourceType: true }
+    });
+    if (!currentGroup) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+
+    const updatedRate = combinedRate !== undefined
+      ? Math.max(0, Number(combinedRate) || 0)
+      : currentGroup.combinedRate;
+    const trackRateChange = combinedRate !== undefined
+      && currentGroup.resourceType === 'Labour'
+      && updatedRate !== currentGroup.combinedRate;
+    const session = readAuthSession(req);
+    const group = await prisma.$transaction(async tx => {
+      const updatedGroup = await tx.materialLibraryGroup.update({
+        where: { id },
+        data: updateData
+      });
+      if (trackRateChange) {
+        await writeRateHistoryEntry(tx, req, session, {
+          entityType: 'MaterialLibraryGroup',
+          entityId: id,
+          oldRate: currentGroup.combinedRate,
+          oldUnit: currentGroup.combinedUnit,
+          rate: updatedRate,
+          unit: updatedGroup.combinedUnit
+        });
+      }
+      return updatedGroup;
     });
     return NextResponse.json(group);
   } catch (error) {

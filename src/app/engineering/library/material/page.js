@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   Search, Plus, ChevronRight, ChevronDown,
-  Home, Package, Box, Edit, Trash2, MapPin, Folder,
+  Home, Package, Box, Edit, Trash2, Folder,
   Sparkles, X, Check, AlertCircle, RefreshCw, Loader2
 } from 'lucide-react';
 import '../../../../app/accounts/company/company.css';
@@ -21,6 +21,14 @@ export default function MaterialLibrary() {
 
   // Selected node in tree: { type: 'material' | 'group' | 'subgroup', data: object, path: array }
   const [selectedItem, setSelectedItem] = useState(null);
+  const [rateHistory, setRateHistory] = useState([]);
+  const [loadingRateHistory, setLoadingRateHistory] = useState(false);
+  const [rateHistoryError, setRateHistoryError] = useState('');
+  const rateHistoryType = selectedItem?.type === 'material'
+    ? 'item'
+    : resourceType === 'Labour' && ['group', 'subgroup'].includes(selectedItem?.type)
+      ? 'group'
+      : null;
 
   // Unit Library suggestions
   const [unitList, setUnitList] = useState([]);
@@ -64,6 +72,43 @@ export default function MaterialLibrary() {
     fetchLibraries();
     fetchUnits();
   }, []);
+
+  useEffect(() => {
+    const itemId = selectedItem?.data?.id;
+    if (!rateHistoryType || !itemId) {
+      setRateHistory([]);
+      setRateHistoryError('');
+      setLoadingRateHistory(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const loadRateHistory = async () => {
+      try {
+        setLoadingRateHistory(true);
+        setRateHistory([]);
+        setRateHistoryError('');
+        const params = new URLSearchParams({ type: rateHistoryType, id: itemId });
+        const response = await fetch(`/api/engineering/material-library/rate-history?${params}`, {
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to load rate history');
+        setRateHistory(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Failed to load material/labour rate history:', error);
+          setRateHistoryError(error.message || 'Failed to load rate history');
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoadingRateHistory(false);
+      }
+    };
+
+    loadRateHistory();
+    return () => controller.abort();
+  }, [selectedItem?.data?.id, rateHistoryType]);
 
   const fetchLibraries = async () => {
     try {
@@ -145,6 +190,39 @@ export default function MaterialLibrary() {
     });
     return count;
   };
+
+  const renderRateHistory = () => (
+    <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', background: '#fff' }}>
+      <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#334155', margin: '0 0 12px' }}>
+        Rate Change History
+      </h3>
+      {loadingRateHistory ? (
+        <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Loading rate history...</div>
+      ) : rateHistoryError ? (
+        <div role="alert" style={{ color: '#b91c1c', fontSize: '0.82rem' }}>{rateHistoryError}</div>
+      ) : rateHistory.length === 0 ? (
+        <div style={{ color: '#64748b', fontSize: '0.82rem' }}>No rate changes recorded yet.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {rateHistory.map(entry => (
+            <div key={entry.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '10px 12px', background: '#f8fafc', borderRadius: '6px' }}>
+              <div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#1e293b' }}>
+                  {entry.oldRate ?? '—'} → {entry.newRate ?? '—'}
+                </div>
+                <div style={{ marginTop: '3px', fontSize: '0.75rem', color: '#64748b' }}>
+                  Changed by {entry.changedBy}
+                </div>
+              </div>
+              <time dateTime={entry.changedAt} style={{ flexShrink: 0, fontSize: '0.75rem', color: '#64748b', textAlign: 'right' }}>
+                {new Date(entry.changedAt).toLocaleString()}
+              </time>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   // ==================== ACTIONS / HANDLERS ====================
   const handleOpenAdd = (parentNode, defaultType = 'subgroup', e) => {
@@ -832,6 +910,32 @@ export default function MaterialLibrary() {
                 {/* Detail Body */}
                 <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+                    <div style={{ padding: '14px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#475569', marginBottom: '5px' }}>
+                        {resourceType === 'Labour' ? 'Labour Rate' : 'Rate Per Unit'}
+                      </div>
+                      <strong style={{ fontSize: '1.1rem', color: '#1d4ed8' }}>
+                        ₹{Number(selectedItem.data.rate || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                        <span style={{ fontSize: '0.8rem', fontWeight: 500 }}> / {selectedItem.data.unit || 'Nos'}</span>
+                      </strong>
+                    </div>
+                    <div style={{ padding: '14px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#475569', marginBottom: '5px' }}>Standard Quantity</div>
+                      <strong style={{ fontSize: '1.1rem', color: '#1e293b' }}>
+                        {Number(selectedItem.data.quantity ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {selectedItem.data.unit || 'Nos'}
+                      </strong>
+                    </div>
+                    <div style={{ padding: '14px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#475569', marginBottom: '5px' }}>Standard Amount</div>
+                      <strong style={{ fontSize: '1.1rem', color: '#166534' }}>
+                        ₹{(Number(selectedItem.data.quantity || 0) * Number(selectedItem.data.rate || 0)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {rateHistoryType && renderRateHistory()}
+
                   {/* Specification Box */}
                   <div>
                     <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>Specification / Grade</h3>
@@ -846,40 +950,6 @@ export default function MaterialLibrary() {
                     <div style={{ color: '#475569', fontSize: '0.88rem', padding: '12px 16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', lineHeight: '1.5' }}>
                       {selectedItem.data.description || <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>No description provided for this material.</span>}
                     </div>
-                  </div>
-
-                  {/* Where is it used? (Project List) */}
-                  <div>
-                    <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#334155', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <MapPin size={16} color="#0ea5e9" /> Where is it used? (Project List)
-                    </h3>
-
-                    {selectedItem.data.usedIn && selectedItem.data.usedIn.length > 0 ? (
-                      <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                          <thead style={{ background: '#f1f5f9' }}>
-                            <tr>
-                              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.82rem', color: '#475569', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>Project Name</th>
-                              <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: '0.82rem', color: '#475569', fontWeight: 600, borderBottom: '1px solid #e2e8f0', width: '100px' }}>Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedItem.data.usedIn.map((proj, idx) => (
-                              <tr key={idx} style={{ borderBottom: idx !== selectedItem.data.usedIn.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                <td style={{ padding: '10px 14px', fontSize: '0.85rem', color: '#334155' }}>{proj}</td>
-                                <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                                  <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 600 }}>Active</span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div style={{ padding: '20px', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', color: '#64748b', fontSize: '0.82rem' }}>
-                        This material is not currently assigned to any projects.
-                      </div>
-                    )}
                   </div>
 
                 </div>
@@ -958,6 +1028,15 @@ export default function MaterialLibrary() {
                     border: '1px solid #e2e8f0', fontSize: '0.85rem', color: '#475569', marginBottom: '20px'
                   }}>
                     {selectedItem.data.description}
+                  </div>
+                )}
+
+                {resourceType === 'Labour' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+                    <div style={{ padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#fffbeb', color: '#854d0e', fontSize: '0.85rem' }}>
+                      Current combined rate: <strong>{selectedItem.data.combinedRate ?? 0}</strong> / {selectedItem.data.combinedUnit || 'Manday'}
+                    </div>
+                    {renderRateHistory()}
                   </div>
                 )}
 

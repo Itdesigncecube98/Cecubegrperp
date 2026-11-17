@@ -1,10 +1,11 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Save, X, Star, Edit2, Trash2, Mail } from 'lucide-react';
+import { Search, Plus, Save, X, Star, Edit2, Trash2, Mail, Clock3 } from 'lucide-react';
 import Dialog from '@/components/Dialog';
 import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
 import { getClientActor } from '@/lib/clientActor';
+import { MASTER_RECORD_STATUSES, normalizeMasterRecordStatus } from '@/lib/masterRecordStatus';
 
 export default function VendorMaster() {
   const { activeEmployee, activeProject, hasRight } = usePermissions();
@@ -18,6 +19,28 @@ export default function VendorMaster() {
   const [deletingVendor, setDeletingVendor] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [sendingId, setSendingId] = useState('');
+  const [historyVendor, setHistoryVendor] = useState(null);
+  const [statusHistory, setStatusHistory] = useState([]);
+  const [loadingStatusHistory, setLoadingStatusHistory] = useState(false);
+  const [statusHistoryError, setStatusHistoryError] = useState('');
+
+  const openStatusHistory = async vendor => {
+    setHistoryVendor(vendor);
+    setStatusHistory([]);
+    setStatusHistoryError('');
+    setLoadingStatusHistory(true);
+    try {
+      const params = new URLSearchParams({ entity: 'vendor', id: vendor.id });
+      const response = await fetch(`/api/master-status-history?${params}`, { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to load status history.');
+      setStatusHistory(Array.isArray(result) ? result : []);
+    } catch (error) {
+      setStatusHistoryError(error.message || 'Unable to load status history.');
+    } finally {
+      setLoadingStatusHistory(false);
+    }
+  };
 
   const sendVendorEmail = async vendor => {
     setSendingId(vendor.id);
@@ -38,7 +61,8 @@ export default function VendorMaster() {
 
   const [formData, setFormData] = useState({
     name: '', type: 'Supplier', contactPerson: '', mobile: '', email: '',
-    whatsappNo: '', address: '', godownAddress: '', city: '', state: '', gstin: '', pan: '', msmeStatus: false,
+    whatsappNo: '', address: '', godownAddress: '', city: '', state: '', gstin: '', pan: '', faxNo: '', website: '',
+    status: activeEmployee ? 'Unapproved' : 'Active', msmeStatus: false,
     bankName: '', accountName: '', accountNo: '', ifsc: '', paymentTerms: '', creditDays: 0, category: '', fixedGroup: '', documents: []
   });
   const [documentFiles, setDocumentFiles] = useState([]);
@@ -67,7 +91,8 @@ export default function VendorMaster() {
   const resetForm = () => {
     setFormData({
       name: '', type: 'Supplier', contactPerson: '', mobile: '', email: '',
-      whatsappNo: '', address: '', godownAddress: '', city: '', state: '', gstin: '', pan: '', msmeStatus: false,
+      whatsappNo: '', address: '', godownAddress: '', city: '', state: '', gstin: '', pan: '', faxNo: '', website: '',
+      status: activeEmployee ? 'Unapproved' : 'Active', msmeStatus: false,
       bankName: '', accountName: '', accountNo: '', ifsc: '', paymentTerms: '', creditDays: 0, category: '', fixedGroup: '', documents: []
     });
     setDocumentFiles([]);
@@ -85,6 +110,8 @@ export default function VendorMaster() {
       name: vendor.name || '', type: vendor.type || 'Supplier', contactPerson: vendor.contactPerson || '',
       mobile: vendor.mobile || '', email: vendor.email || '', address: vendor.address || '',
       whatsappNo: vendor.whatsappNo || '', godownAddress: vendor.godownAddress || '', city: vendor.city || '', state: vendor.state || '', gstin: vendor.gstin || '', pan: vendor.pan || '',
+      faxNo: vendor.faxNo || '', website: vendor.website || '',
+      status: normalizeMasterRecordStatus(vendor.status, 'Unapproved'),
       msmeStatus: Boolean(vendor.msmeStatus), bankName: vendor.bankName || '', accountNo: vendor.accountNo || '',
       accountName: vendor.accountName || '', ifsc: vendor.ifsc || '', paymentTerms: vendor.paymentTerms || '', creditDays: vendor.creditDays || 0,
       category: vendor.category || '', fixedGroup: vendor.fixedGroup || '', documents: Array.isArray(vendor.documents) ? vendor.documents : []
@@ -106,7 +133,7 @@ export default function VendorMaster() {
         return { name: file.name, type: file.type, url: result.url };
       }));
       const documents = [...(formData.documents || []), ...uploadedDocuments];
-      const payload = { ...formData, documents, status: editingVendor?.status || (activeEmployee ? 'Pending Approval' : 'Active') };
+      const payload = { ...formData, documents };
       const res = await fetch('/api/purchase/vendors', {
         method: editingVendor ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -123,6 +150,7 @@ export default function VendorMaster() {
       }
     } catch (err) {
       console.error(err);
+      alert(err.message || 'Failed to save vendor.');
     } finally {
       setSubmitting(false);
     }
@@ -217,7 +245,7 @@ export default function VendorMaster() {
                       </div>
                     </td>
                     <td>
-                      <span className={`pur-badge ${v.status === 'Active' ? 'pur-badge-emerald' : 'pur-badge-red'}`}>
+                      <span className={`pur-badge ${['Active', 'Approved', 'Regular'].includes(v.status) ? 'pur-badge-emerald' : 'pur-badge-red'}`}>
                         {v.status}
                       </span>
                     </td>
@@ -225,8 +253,11 @@ export default function VendorMaster() {
                       {can('Vendor Master Edit') && <button type="button" className="pur-icon-btn" title="Edit vendor" onClick={() => openEditModal(v)}>
                         <Edit2 size={16} />
                       </button>}
+                      <button type="button" className="pur-icon-btn" title="Status history" onClick={() => openStatusHistory(v)}>
+                        <Clock3 size={16} />
+                      </button>
                       {can('Send Vendor Master by Email') && <button type="button" className="pur-icon-btn" title="Email vendor details" disabled={sendingId === v.id || !v.email} onClick={() => sendVendorEmail(v)}><Mail size={15} /></button>}
-                      {can('Vendor Master Approve') && v.status === 'Pending Approval' && <button type="button" className="pur-btn pur-btn-outline" onClick={() => approveVendor(v)}>Approve</button>}
+                      {can('Vendor Master Approve') && ['Unapproved', 'Pending Approval'].includes(v.status) && <button type="button" className="pur-btn pur-btn-outline" onClick={() => approveVendor(v)}>Approve</button>}
                       {can('Vendor Master Edit') && <button type="button" className="pur-icon-btn pur-text-danger" title="Delete vendor" onClick={() => setDeletingVendor(v)}>
                         <Trash2 size={16} />
                       </button>}
@@ -279,6 +310,12 @@ export default function VendorMaster() {
                     <option value="General">General</option>
                   </select>
                 </div>
+                <div className="pur-form-group">
+                  <label className="pur-label">Status</label>
+                  <select name="status" value={formData.status} onChange={handleChange} className="pur-select">
+                    {MASTER_RECORD_STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div className="pur-grid-3">
@@ -297,6 +334,14 @@ export default function VendorMaster() {
                 <div className="pur-form-group">
                   <label className="pur-label">Email Address</label>
                   <input type="email" name="email" value={formData.email} onChange={handleChange} className="pur-input" />
+                </div>
+                <div className="pur-form-group">
+                  <label className="pur-label">Fax No.</label>
+                  <input type="text" name="faxNo" value={formData.faxNo} onChange={handleChange} className="pur-input" />
+                </div>
+                <div className="pur-form-group">
+                  <label className="pur-label">Website</label>
+                  <input type="text" name="website" value={formData.website} onChange={handleChange} className="pur-input" placeholder="https://" />
                 </div>
               </div>
 
@@ -350,7 +395,16 @@ export default function VendorMaster() {
                 <div className="pur-form-group">
                   <label className="pur-label">Documents</label>
                   <input type="file" multiple onChange={e => setDocumentFiles(Array.from(e.target.files || []))} className="pur-input" />
-                  {formData.documents?.length > 0 && <div className="pur-text-xs pur-text-muted">{formData.documents.length} document(s) already uploaded</div>}
+                  {formData.documents?.length > 0 && (
+                    <div className="pur-text-xs pur-text-muted" style={{ marginTop: '8px' }}>
+                      {formData.documents.map((document, index) => (
+                        <div key={`${document.url}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginTop: '4px' }}>
+                          <a href={document.url} target="_blank" rel="noreferrer">{document.name || `Document ${index + 1}`}</a>
+                          <button type="button" onClick={() => setFormData(prev => ({ ...prev, documents: prev.documents.filter((_, itemIndex) => itemIndex !== index) }))}>Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -373,6 +427,26 @@ export default function VendorMaster() {
         onConfirm={handleDelete}
         onCancel={() => setDeletingVendor(null)}
       />
+
+      {historyVendor && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="vendor-status-history-title" style={{ width: 'min(560px, 100%)', maxHeight: '80vh', overflowY: 'auto', background: '#fff', borderRadius: '12px', padding: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <h2 id="vendor-status-history-title" style={{ margin: 0, fontSize: '1.1rem' }}>Status History — {historyVendor.name}</h2>
+              <button type="button" className="pur-icon-btn" aria-label="Close status history" onClick={() => setHistoryVendor(null)}><X size={18} /></button>
+            </div>
+            {loadingStatusHistory ? <p>Loading status history...</p>
+              : statusHistoryError ? <p role="alert" style={{ color: '#b91c1c' }}>{statusHistoryError}</p>
+                : statusHistory.length === 0 ? <p className="pur-text-muted">No status history recorded.</p>
+                  : statusHistory.map(entry => (
+                    <div key={entry.id} style={{ borderLeft: '2px solid #f59e0b', padding: '2px 0 12px 12px', marginLeft: '4px', marginBottom: '8px' }}>
+                      <div style={{ fontWeight: 600 }}>{entry.fromStatus || '—'} → {entry.toStatus || '—'}</div>
+                      <div className="pur-text-xs pur-text-muted">{new Date(entry.changedAt).toLocaleString()} · {entry.changedBy}</div>
+                    </div>
+                  ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

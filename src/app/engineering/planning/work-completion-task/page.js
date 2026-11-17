@@ -55,6 +55,7 @@ export default function WorkCompletionTask() {
   const [selectedTaskForCert, setSelectedTaskForCert] = useState(null);
   const [certificateActionId, setCertificateActionId] = useState('');
   const [statusActionId, setStatusActionId] = useState('');
+  const [nextWccActionId, setNextWccActionId] = useState('');
   const canApproveCertificate = !activeEmployee || (!!selectedProjectId && hasRight(employeeToolCode('Site', 'Work Completion Certificate Approve'), selectedProjectId));
 
   // Toast state
@@ -201,6 +202,10 @@ export default function WorkCompletionTask() {
     if (!selectedTaskForLog || !selectedProjectId) return;
 
     const addVal = parseFloat(logForm.addQty) || 0;
+    if (addVal <= 0 || addVal > Number(selectedTaskForLog.balanceQty || 0)) {
+      showToast(`Enter a quantity greater than zero and no more than the remaining ${selectedTaskForLog.balanceQty} ${selectedTaskForLog.unit}.`, 'error');
+      return;
+    }
     const newCompleted = Math.round(((selectedTaskForLog.completedQty || 0) + addVal) * 10) / 10;
     const newBalance = Math.max(0, Math.round(((selectedTaskForLog.plannedQty || 0) - newCompleted) * 10) / 10);
     const newPercent = selectedTaskForLog.plannedQty > 0 
@@ -327,6 +332,34 @@ export default function WorkCompletionTask() {
     } catch (error) {
       showToast(error.message || 'Unable to update certificate approval.', 'error');
     } finally { setCertificateActionId(''); }
+  };
+
+  const handleCreateNextWcc = async (task) => {
+    if (!selectedProjectId || nextWccActionId) return;
+    setNextWccActionId(task.id);
+    try {
+      const response = await fetch('/api/engineering/planning/work-completion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          action: 'CREATE_NEXT_WCC',
+          taskId: task.id,
+          actorName: getClientActor(),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to create the next WCC.');
+      setTasks(current => [
+        ...current.map(item => item.id === result.parentTask.id ? result.parentTask : item),
+        result.updatedTask,
+      ]);
+      showToast(`WCC ${result.updatedTask.wccSequence} created for the remaining quantity.`);
+    } catch (error) {
+      showToast(error.message || 'Unable to create the next WCC.', 'error');
+    } finally {
+      setNextWccActionId('');
+    }
   };
 
   // Print Certificate
@@ -578,7 +611,7 @@ export default function WorkCompletionTask() {
               paddingBottom: '8px'
             }}
           >
-            <table className="wc-data-table" style={{ width: '100%', minWidth: '1460px' }}>
+            <table className="wc-data-table" style={{ width: '100%', minWidth: '1540px' }}>
               <thead>
                 <tr>
                   <th style={{ width: '60px' }}>WBS</th>
@@ -593,7 +626,7 @@ export default function WorkCompletionTask() {
                   <th style={{ textAlign: 'right' }}>Balance Amount</th>
                   <th>MB Reference</th>
                   <th>Verification Status</th>
-                  <th style={{ textAlign: 'center', width: '250px' }}>Actions</th>
+                  <th style={{ textAlign: 'center', width: '330px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -629,6 +662,11 @@ export default function WorkCompletionTask() {
                         <div style={{ fontSize: '11px', color: '#64748b' }}>
                           {task.specification || task.taskName}
                         </div>
+                        {task.wccSequence > 1 && (
+                          <div style={{ fontSize: '10px', color: '#6366f1', fontWeight: 700 }}>
+                            WCC {task.wccSequence}
+                          </div>
+                        )}
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>
                         {task.plannedQty} <span style={{ fontSize: '11px', color: '#64748b' }}>{task.unit}</span>
@@ -732,6 +770,26 @@ export default function WorkCompletionTask() {
                           >
                             <FileText size={12} color="#6366f1" /> WCC
                           </button>
+                          {task.verificationStatus === 'Approved'
+                            && task.wccBillComplete
+                            && task.balanceQty > 0
+                            && !task.nextWccId && (
+                            <button
+                              type="button"
+                              onClick={() => handleCreateNextWcc(task)}
+                              disabled={nextWccActionId === task.id}
+                              style={{
+                                background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4338ca',
+                                padding: '5px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 700,
+                                cursor: nextWccActionId === task.id ? 'wait' : 'pointer',
+                                opacity: nextWccActionId === task.id ? 0.65 : 1,
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                              }}
+                              title="Create a new Work Completion Certificate for the remaining quantity"
+                            >
+                              <Plus size={12} /> {nextWccActionId === task.id ? 'Creating…' : '+ WCC'}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setSelectedTaskForTimeline(task)}
@@ -1052,7 +1110,9 @@ export default function WorkCompletionTask() {
             <div className="planning-modal-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Award size={20} color="#059669" />
-                <h3 style={{ margin: 0 }}>Work Completion Certificate (WCC)</h3>
+                <h3 style={{ margin: 0 }}>
+                  Work Completion Certificate (WCC){selectedTaskForCert.wccSequence > 1 ? ` ${selectedTaskForCert.wccSequence}` : ''}
+                </h3>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button 

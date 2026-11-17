@@ -1,6 +1,9 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { readAuthSession } from '@/lib/authSession';
+import { normalizeMasterRecordStatus } from '@/lib/masterRecordStatus';
+import { writeMasterRecordStatusAudit } from '@/lib/serverMasterStatusAudit';
 
 export async function GET(req) {
   try {
@@ -9,6 +12,7 @@ export async function GET(req) {
     });
     return NextResponse.json(vendors.map(vendor => ({
       ...vendor,
+      status: normalizeMasterRecordStatus(vendor.status, vendor.status),
       documents: (() => {
         try { return vendor.documents ? JSON.parse(vendor.documents) : []; } catch { return []; }
       })()
@@ -25,38 +29,58 @@ export async function POST(req) {
 
     const count = await prisma.vendorMaster.count();
     const vendorCode = body.vendorCode || `VND-${String(count + 1).padStart(4, '0')}`;
+    const status = normalizeMasterRecordStatus(body.status, 'Active');
+    if (!status) return NextResponse.json({ error: 'Invalid vendor status' }, { status: 400 });
 
-    const vendor = await prisma.vendorMaster.create({
-      data: {
-        vendorCode,
-        name: body.name,
-        type: body.type,
-        contactPerson: body.contactPerson,
-        mobile: body.mobile,
-        whatsappNo: body.whatsappNo,
-        email: body.email,
-        address: body.address,
-        godownAddress: body.godownAddress,
-        city: body.city,
-        state: body.state,
-        gstin: body.gstin,
-        pan: body.pan,
-        msmeStatus: body.msmeStatus === true || body.msmeStatus === 'true',
-        bankName: body.bankName,
-        accountNo: body.accountNo,
-        ifsc: body.ifsc,
-        accountName: body.accountName,
-        paymentTerms: body.paymentTerms,
-        creditDays: parseInt(body.creditDays) || 0,
-        category: body.category,
-        fixedGroup: body.fixedGroup,
-        documents: JSON.stringify(Array.isArray(body.documents) ? body.documents : []),
-        status: body.status || 'Active',
-        createdById: body.createdById
-      }
+    const session = readAuthSession(req);
+    const vendor = await prisma.$transaction(async tx => {
+      const createdVendor = await tx.vendorMaster.create({
+        data: {
+          vendorCode,
+          name: body.name,
+          type: body.type,
+          contactPerson: body.contactPerson,
+          mobile: body.mobile,
+          whatsappNo: body.whatsappNo,
+          email: body.email,
+          address: body.address,
+          godownAddress: body.godownAddress,
+          city: body.city,
+          state: body.state,
+          gstin: body.gstin,
+          pan: body.pan,
+          faxNo: body.faxNo,
+          website: body.website,
+          msmeStatus: body.msmeStatus === true || body.msmeStatus === 'true',
+          bankName: body.bankName,
+          accountNo: body.accountNo,
+          ifsc: body.ifsc,
+          accountName: body.accountName,
+          paymentTerms: body.paymentTerms,
+          creditDays: parseInt(body.creditDays) || 0,
+          category: body.category,
+          fixedGroup: body.fixedGroup,
+          documents: JSON.stringify(Array.isArray(body.documents) ? body.documents : []),
+          status,
+          createdById: body.createdById
+        }
+      });
+      await writeMasterRecordStatusAudit(tx, req, session, {
+        entityType: 'VendorMaster',
+        entityId: createdVendor.id,
+        oldStatus: null,
+        newStatus: status
+      });
+      return createdVendor;
     });
 
-    return NextResponse.json(vendor, { status: 201 });
+    return NextResponse.json({
+      ...vendor,
+      status: normalizeMasterRecordStatus(vendor.status, vendor.status),
+      documents: (() => {
+        try { return vendor.documents ? JSON.parse(vendor.documents) : []; } catch { return []; }
+      })()
+    }, { status: 201 });
   } catch (error) {
     console.error('Error creating vendor:', error);
     return NextResponse.json({ error: error.message || 'Failed to create vendor' }, { status: 500 });
@@ -70,42 +94,70 @@ export async function PUT(req) {
       return NextResponse.json({ error: 'Vendor id is required' }, { status: 400 });
     }
 
-    if (body.action === 'approve' || body.action === 'reject') {
-      const approved = body.action === 'approve';
-      const vendor = await prisma.vendorMaster.update({ where: { id: body.id }, data: { status: approved ? 'Active' : 'Inactive' } });
-      return NextResponse.json(vendor);
-    }
+    const existingVendor = await prisma.vendorMaster.findUnique({ where: { id: body.id } });
+    if (!existingVendor) return NextResponse.json({ error: 'Vendor not found' }, { status: 404 });
 
-    const vendor = await prisma.vendorMaster.update({
-      where: { id: body.id },
-      data: {
-        name: body.name,
-        type: body.type,
-        contactPerson: body.contactPerson,
-        mobile: body.mobile,
-        whatsappNo: body.whatsappNo,
-        email: body.email,
-        address: body.address,
-        godownAddress: body.godownAddress,
-        city: body.city,
-        state: body.state,
-        gstin: body.gstin,
-        pan: body.pan,
-        msmeStatus: body.msmeStatus === true || body.msmeStatus === 'true',
-        bankName: body.bankName,
-        accountNo: body.accountNo,
-        ifsc: body.ifsc,
-        accountName: body.accountName,
-        paymentTerms: body.paymentTerms,
-        creditDays: parseInt(body.creditDays, 10) || 0,
-        category: body.category,
-        fixedGroup: body.fixedGroup,
-        documents: JSON.stringify(Array.isArray(body.documents) ? body.documents : []),
-        status: body.status || (await prisma.vendorMaster.findUnique({ where: { id: body.id }, select: { status: true } }))?.status || 'Pending Approval'
-      }
+    const status = body.action === 'approve'
+      ? 'Approved'
+      : body.action === 'reject'
+        ? 'Unapproved'
+        : body.status === undefined
+          ? existingVendor.status
+          : normalizeMasterRecordStatus(body.status);
+    if (!status) return NextResponse.json({ error: 'Invalid vendor status' }, { status: 400 });
+
+    const session = readAuthSession(req);
+    const vendor = await prisma.$transaction(async tx => {
+      const updatedVendor = await tx.vendorMaster.update({
+        where: { id: body.id },
+        data: body.action === 'approve' || body.action === 'reject'
+          ? { status }
+          : {
+              name: body.name,
+              type: body.type,
+              contactPerson: body.contactPerson,
+              mobile: body.mobile,
+              whatsappNo: body.whatsappNo,
+              email: body.email,
+              address: body.address,
+              godownAddress: body.godownAddress,
+              city: body.city,
+              state: body.state,
+              gstin: body.gstin,
+              pan: body.pan,
+              faxNo: body.faxNo,
+              website: body.website,
+              msmeStatus: body.msmeStatus === true || body.msmeStatus === 'true',
+              bankName: body.bankName,
+              accountNo: body.accountNo,
+              ifsc: body.ifsc,
+              accountName: body.accountName,
+              paymentTerms: body.paymentTerms,
+              creditDays: parseInt(body.creditDays, 10) || 0,
+              category: body.category,
+              fixedGroup: body.fixedGroup,
+              documents: body.documents !== undefined
+                ? JSON.stringify(Array.isArray(body.documents) ? body.documents : [])
+                : existingVendor.documents,
+              status
+            }
+      });
+      await writeMasterRecordStatusAudit(tx, req, session, {
+        entityType: 'VendorMaster',
+        entityId: body.id,
+        oldStatus: existingVendor.status,
+        newStatus: status
+      });
+      return updatedVendor;
     });
 
-    return NextResponse.json(vendor);
+    return NextResponse.json({
+      ...vendor,
+      status: normalizeMasterRecordStatus(vendor.status, vendor.status),
+      documents: (() => {
+        try { return vendor.documents ? JSON.parse(vendor.documents) : []; } catch { return []; }
+      })()
+    });
   } catch (error) {
     console.error('Error updating vendor:', error);
     return NextResponse.json({ error: error.message || 'Failed to update vendor' }, { status: 500 });

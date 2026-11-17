@@ -26,6 +26,30 @@ const RERA_STAGES = [
   'Handover / Completion'
 ];
 
+const cloneResources = resources => Array.isArray(resources)
+  ? resources.map(resource => ({
+      ...resource,
+      ...(Array.isArray(resource.components)
+        ? { components: resource.components.map(component => ({ ...component })) }
+        : {})
+    }))
+  : [];
+
+const serializeResources = resources => cloneResources(resources).map(resource => ({
+  ...resource,
+  quantity: Number.isFinite(Number(resource.quantity)) ? Number(resource.quantity) : 0,
+  rate: Number.isFinite(Number(resource.rate)) ? Number(resource.rate) : 0,
+  ...(Array.isArray(resource.components)
+    ? {
+        components: resource.components.map(component => ({
+          ...component,
+          quantity: Number.isFinite(Number(component.quantity)) ? Number(component.quantity) : 0,
+          rate: Number.isFinite(Number(component.rate)) ? Number(component.rate) : 0
+        }))
+      }
+    : {})
+}));
+
 export default function DefineWBS() {
   const { activeEmployee, hasRight } = usePermissions();
   // Projects state
@@ -55,7 +79,9 @@ export default function DefineWBS() {
     volOfWorkLabour: '',
     description: '',
     reraStage: '',
-    targetGroupId: ''
+    targetGroupId: '',
+    materials: [],
+    labours: []
   });
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [savingTask, setSavingTask] = useState(false);
@@ -305,7 +331,9 @@ export default function DefineWBS() {
       volOfWorkLabour: '',
       description: '',
       reraStage: parent.reraStage || RERA_STAGES[0],
-      targetGroupId: parent.id
+      targetGroupId: parent.id,
+      materials: [],
+      labours: []
     });
     setShowTaskModal(true);
   };
@@ -326,7 +354,9 @@ export default function DefineWBS() {
       volOfWorkLabour: task.volOfWorkLabour ?? '',
       description: task.description || '',
       reraStage: task.reraStage || '',
-      targetGroupId: task.groupId
+      targetGroupId: task.groupId,
+      materials: cloneResources(Array.isArray(task.materials) ? task.materials : matched?.materials),
+      labours: cloneResources(Array.isArray(task.labours) ? task.labours : matched?.labours)
     });
     setShowTaskModal(true);
   };
@@ -336,6 +366,7 @@ export default function DefineWBS() {
     if (!taskId) {
       setSelectedMaterialId('');
       setSelectedLabourId('');
+      setTaskForm(prev => ({ ...prev, materials: [], labours: [] }));
       return;
     }
     const libTask = libraryTasks.find(t => t.id === taskId);
@@ -363,8 +394,50 @@ export default function DefineWBS() {
       name: libTask.name,
       volOfWorkMaterial: newMaterialVol !== '' && newMaterialVol !== null ? newMaterialVol : prev.volOfWorkMaterial,
       volOfWorkLabour: newLabourVol !== '' && newLabourVol !== null ? newLabourVol : prev.volOfWorkLabour,
-      description: libTask.description ? libTask.description : prev.description
+      description: libTask.description ? libTask.description : prev.description,
+      materials: cloneResources(libTask.materials),
+      labours: cloneResources(libTask.labours)
     }));
+  };
+
+  const updateTaskResource = (resourceType, resourceIndex, componentIndex, field, value) => {
+    setTaskForm(prev => {
+      const resources = [...(prev[resourceType] || [])];
+      const resource = { ...resources[resourceIndex] };
+      if (componentIndex === null) {
+        resource[field] = value;
+      } else {
+        const components = [...(resource.components || [])];
+        components[componentIndex] = { ...components[componentIndex], [field]: value };
+        resource.components = components;
+        if (field === 'quantity' || field === 'rate') {
+          resource.rate = components.reduce((total, component) =>
+            total + (Number(component.quantity) || 0) * (Number(component.rate) || 0), 0);
+        }
+      }
+      resources[resourceIndex] = resource;
+      return { ...prev, [resourceType]: resources };
+    });
+  };
+
+  const removeTaskResource = (resourceType, resourceIndex, componentIndex) => {
+    setTaskForm(prev => {
+      const resources = [...(prev[resourceType] || [])];
+      if (componentIndex === null) {
+        resources.splice(resourceIndex, 1);
+      } else {
+        const resource = { ...resources[resourceIndex] };
+        resource.components = (resource.components || []).filter((_, index) => index !== componentIndex);
+        if (resource.components.length === 0) {
+          resources.splice(resourceIndex, 1);
+        } else {
+          resource.rate = resource.components.reduce((total, component) =>
+            total + (Number(component.quantity) || 0) * (Number(component.rate) || 0), 0);
+          resources[resourceIndex] = resource;
+        }
+      }
+      return { ...prev, [resourceType]: resources };
+    });
   };
 
   const handleSelectMaterialVol = (matId) => {
@@ -419,8 +492,8 @@ export default function DefineWBS() {
             volOfWorkLabour: parseFloat(taskForm.volOfWorkLabour) || 0,
             description: taskForm.description ? taskForm.description.trim() : null,
             reraStage: taskForm.reraStage || null,
-            materials: selectedLibraryTask?.materials || [],
-            labours: selectedLibraryTask?.labours || []
+            materials: serializeResources(taskForm.materials),
+            labours: serializeResources(taskForm.labours)
           }
         : {
             type: 'task',
@@ -431,8 +504,8 @@ export default function DefineWBS() {
             volOfWorkLabour: parseFloat(taskForm.volOfWorkLabour) || 0,
             description: taskForm.description ? taskForm.description.trim() : null,
             reraStage: taskForm.reraStage || null,
-            materials: selectedLibraryTask?.materials || [],
-            labours: selectedLibraryTask?.labours || []
+            materials: serializeResources(taskForm.materials),
+            labours: serializeResources(taskForm.labours)
           };
 
       const res = await fetch('/api/engineering/wbs', {
@@ -1221,44 +1294,79 @@ export default function DefineWBS() {
                       <span>Loaded from {selectedLibraryTask.libraryGroupName} (Standard Qty: {selectedLibraryTask.quantity} {selectedLibraryTask.unit})</span>
                     </div>
                   )}
-                  {selectedLibraryTask && (
-                    <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      {[['Materials', selectedLibraryTask.materials, '#166534'], ['Labour', selectedLibraryTask.labours, '#854d0e']].map(([label, resources, color]) => (
-                        <div key={label} style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px', fontSize: '0.72rem', color: '#475569', minWidth: 0 }}>
-                          {(() => {
-                            const rows = (resources || []).flatMap(resource =>
-                              resource.components?.length ? resource.components : [resource]
-                            );
-                            return <>
-                              <strong style={{ color }}>{label} ({rows.length})</strong>
-                              {rows.length ? (
-                                <div style={{ overflowX: 'auto', marginTop: '6px' }}>
-                                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px', textAlign: 'left' }}>
-                                    <thead>
-                                      <tr style={{ background: '#f8fafc' }}>
-                                        {['Name', 'Qty', 'Unit', 'Rate', 'Specification'].map(heading => (
-                                          <th key={heading} style={{ padding: '6px', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{heading}</th>
-                                        ))}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {rows.map((row, index) => (
-                                        <tr key={row.sourceId || row.id || `${row.name}-${index}`}>
-                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9' }}>{row.name || '—'}</td>
-                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{row.quantity ?? '—'}</td>
-                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{row.unit || '—'}</td>
-                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{row.rate ?? '—'}</td>
-                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9' }}>{row.specification || '—'}</td>
-                                        </tr>
+                  {(selectedLibraryTask || taskForm.materials.length > 0 || taskForm.labours.length > 0) && (
+                    <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+                      {[
+                        { label: 'Materials', resourceType: 'materials', color: '#166534' },
+                        { label: 'Labour', resourceType: 'labours', color: '#854d0e' }
+                      ].map(({ label, resourceType, color }) => {
+                        const resources = taskForm[resourceType] || [];
+                        const rows = resources.flatMap((resource, resourceIndex) => {
+                          const rowsForResource = resource.components?.length
+                            ? resource.components
+                            : [resource];
+                          return rowsForResource.map((row, componentIndex) => ({
+                            row,
+                            resourceIndex,
+                            componentIndex: resource.components?.length ? componentIndex : null
+                          }));
+                        });
+                        return (
+                          <div key={resourceType} style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px', fontSize: '0.72rem', color: '#475569', minWidth: 0 }}>
+                            <strong style={{ color }}>{label} ({rows.length})</strong>
+                            {rows.length ? (
+                              <div style={{ overflowX: 'auto', marginTop: '6px' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '640px', textAlign: 'left' }}>
+                                  <thead>
+                                    <tr style={{ background: '#f8fafc' }}>
+                                      {['Name', 'Qty', 'Unit', 'Rate', 'Specification', ''].map((heading, index) => (
+                                        <th key={`${heading}-${index}`} style={{ padding: '6px', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{heading}</th>
                                       ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              ) : <div style={{ marginTop: '4px' }}>No {label.toLowerCase()} linked</div>}
-                            </>;
-                          })()}
-                        </div>
-                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rows.map(({ row, resourceIndex, componentIndex }, index) => (
+                                      <tr key={row.sourceId || row.id || `${row.name}-${index}`}>
+                                        {[
+                                          ['name', 'text', row.name || ''],
+                                          ['quantity', 'number', row.quantity ?? 0],
+                                          ['unit', 'text', row.unit || ''],
+                                          ['rate', 'number', row.rate ?? 0],
+                                          ['specification', 'text', row.specification || '']
+                                        ].map(([field, inputType, value]) => (
+                                          <td key={field} style={{ padding: '4px', borderBottom: '1px solid #f1f5f9' }}>
+                                            <input
+                                              type={inputType}
+                                              required={field === 'name' || field === 'unit'}
+                                              min={inputType === 'number' ? '0' : undefined}
+                                              step={inputType === 'number' ? 'any' : undefined}
+                                              aria-label={`${label} ${field}`}
+                                              value={value}
+                                              onChange={event => updateTaskResource(resourceType, resourceIndex, componentIndex, field, event.target.value)}
+                                              style={{ width: field === 'name' || field === 'specification' ? '100%' : '84px', boxSizing: 'border-box', padding: '5px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.72rem' }}
+                                            />
+                                          </td>
+                                        ))}
+                                        <td style={{ padding: '4px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
+                                          <button
+                                            type="button"
+                                            title={`Remove ${label.toLowerCase()} item`}
+                                            aria-label={`Remove ${label.toLowerCase()} item`}
+                                            onClick={() => removeTaskResource(resourceType, resourceIndex, componentIndex)}
+                                            style={{ border: 'none', background: 'transparent', color: '#dc2626', cursor: 'pointer', padding: '4px' }}
+                                          >
+                                            <Trash2 size={14} />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : <div style={{ marginTop: '4px' }}>No {label.toLowerCase()} linked</div>}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

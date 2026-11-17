@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-import { Search, Plus, UserPlus, Users, Edit2, Home, ChevronRight, Trash2 } from 'lucide-react';
+import { Search, Plus, UserPlus, Users, Edit2, Home, ChevronRight, Trash2, Clock3, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import '../../contracting.css';
 
@@ -9,6 +9,10 @@ export default function ContractorList() {
   
   const [contractors, setContractors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [historyContractor, setHistoryContractor] = useState(null);
+  const [statusHistory, setStatusHistory] = useState([]);
+  const [loadingStatusHistory, setLoadingStatusHistory] = useState(false);
+  const [statusHistoryError, setStatusHistoryError] = useState('');
 
   React.useEffect(() => {
     fetchContractors();
@@ -30,6 +34,24 @@ export default function ContractorList() {
 
   const handleEdit = (id) => {
     router.push(`/contracting/contractors/add-contractor?id=${id}`);
+  };
+
+  const openStatusHistory = async contractor => {
+    setHistoryContractor(contractor);
+    setStatusHistory([]);
+    setStatusHistoryError('');
+    setLoadingStatusHistory(true);
+    try {
+      const params = new URLSearchParams({ entity: 'contractor', id: contractor.id });
+      const response = await fetch(`/api/master-status-history?${params}`, { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to load status history.');
+      setStatusHistory(Array.isArray(result) ? result : []);
+    } catch (error) {
+      setStatusHistoryError(error.message || 'Unable to load status history.');
+    } finally {
+      setLoadingStatusHistory(false);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -95,7 +117,7 @@ export default function ContractorList() {
               <th style={{ width: '120px' }}>Mobile No</th>
               <th style={{ width: '140px' }}>PAN/PIN No</th>
               <th style={{ width: '80px' }}>Status</th>
-              <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
+              <th style={{ width: '100px', textAlign: 'center' }}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -127,11 +149,12 @@ export default function ContractorList() {
                   <td>{c.phone || '-'}</td>
                   <td>{c.panNumber || '-'}</td>
                   <td>
-                    <span className={`status-badge ${c.status === 'Active' ? 'status-active' : c.status === 'Blacklisted' ? 'status-blacklisted' : 'status-inactive'}`}>
+                    <span className={`status-badge ${['Active', 'Approved', 'Regular'].includes(c.status) ? 'status-active' : c.status === 'Blacklisted' ? 'status-blacklisted' : 'status-inactive'}`}>
                       {c.status || 'Active'}
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
+                    <Clock3 size={16} className="action-icon" onClick={() => openStatusHistory(c)} title="Status History" style={{ marginRight: '8px', cursor: 'pointer', color: '#64748b' }} />
                     <Edit2 size={16} className="action-icon" onClick={() => handleEdit(c.id)} title="Edit Contractor" style={{ marginRight: '8px', cursor: 'pointer', color: '#3b82f6' }} />
                     <Trash2 size={16} className="action-icon" onClick={() => handleDelete(c.id)} title="Delete Contractor" style={{ cursor: 'pointer', color: '#ef4444' }} />
                   </td>
@@ -141,6 +164,26 @@ export default function ContractorList() {
           </tbody>
         </table>
       </div>
+
+      {historyContractor && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="contractor-status-history-title" style={{ width: 'min(560px, 100%)', maxHeight: '80vh', overflowY: 'auto', background: '#fff', borderRadius: '12px', padding: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <h2 id="contractor-status-history-title" style={{ margin: 0, fontSize: '1.1rem' }}>Status History — {historyContractor.companyName}</h2>
+              <button type="button" aria-label="Close status history" onClick={() => setHistoryContractor(null)} style={{ border: 0, background: 'transparent', cursor: 'pointer' }}><X size={18} /></button>
+            </div>
+            {loadingStatusHistory ? <p>Loading status history...</p>
+              : statusHistoryError ? <p role="alert" style={{ color: '#b91c1c' }}>{statusHistoryError}</p>
+                : statusHistory.length === 0 ? <p style={{ color: '#64748b' }}>No status history recorded.</p>
+                  : statusHistory.map(entry => (
+                    <div key={entry.id} style={{ borderLeft: '2px solid #0891b2', padding: '2px 0 12px 12px', marginLeft: '4px', marginBottom: '8px' }}>
+                      <div style={{ fontWeight: 600 }}>{entry.fromStatus || '—'} → {entry.toStatus || '—'}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{new Date(entry.changedAt).toLocaleString()} · {entry.changedBy}</div>
+                    </div>
+                  ))}
+          </div>
+        </div>
+      )}
 
     </div>
   );

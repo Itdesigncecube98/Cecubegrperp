@@ -5,7 +5,7 @@ import { getDocumentActors, getDocumentEditors, recordDocumentAction, recordDocu
 import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 import { parseRABillRemarks, serializeRABillRemarks } from '@/lib/raBillMetadata';
-import { getWorkOrderCompletionData } from '@/lib/workCompletionTasks';
+import { getPendingWorkOrderCompletionData, normalizeRABillTaskLines } from '@/lib/workCompletionTasks';
 
 const VALID_STATUSES = ['Submitted', 'Approved', 'Paid', 'Rejected'];
 
@@ -120,15 +120,19 @@ export async function POST(request) {
     });
     if (!wo) return NextResponse.json({ error: 'Work Order not found' }, { status: 404 });
 
-    const completionData = await getWorkOrderCompletionData(prisma, {
+    const completionData = await getPendingWorkOrderCompletionData(prisma, {
       projectName: wo.project?.name,
       workOrderId,
       workOrderNo: wo.woNo,
     });
     if (!completionData.approvedTasks?.length) {
       return NextResponse.json({
-        error: 'At least one Work Completion task must be Approved before generating an RA bill.',
+        error: 'At least one approved, unbilled Work Completion quantity is required before generating an RA bill.',
       }, { status: 409 });
+    }
+    const taskLineValidation = normalizeRABillTaskLines(taskLines, completionData.approvedTasks);
+    if (taskLineValidation.error) {
+      return NextResponse.json({ error: taskLineValidation.error }, { status: 409 });
     }
 
     // Get previous bills to compute cumulative (only certified/paid bills count)
@@ -161,7 +165,7 @@ export async function POST(request) {
     const netPayable = beforeTds - tdsAmt;
 
     const combinedRemarks = serializeRABillRemarks({
-      taskLines,
+      taskLines: taskLineValidation.taskLines,
       metadata: { contractorBillNo, contractorBillDate, buildingNo },
       remarks,
     });
@@ -236,6 +240,29 @@ export async function PUT(request) {
     if (existing.status === 'Approved' && status === 'Paid' && ['date', 'measuredValue', 'retentionPercent', 'advanceRecovery', 'otherDeductions', 'tdsPercent', 'remarks', 'taskLines'].some(field => data[field] !== undefined)) {
       return NextResponse.json({ error: 'Approved RA bill values cannot be edited. Unapprove it within 2 days first.' }, { status: 409 });
     }
+    const existingBillData = parseRABillRemarks(existing.remarks);
+    let taskLinesToSave = taskLines;
+    if (Array.isArray(taskLines) && !['check', 'approve', 'unapprove'].includes(action)) {
+      const workOrder = await prisma.workOrder.findUnique({
+        where: { id: existing.workOrderId },
+        include: { project: { select: { name: true } } },
+      });
+      if (workOrder) {
+        const completionData = await getPendingWorkOrderCompletionData(prisma, {
+          projectName: workOrder.project?.name,
+          workOrderId: workOrder.id,
+          workOrderNo: workOrder.woNo,
+          excludeBillId: existing.id,
+        });
+        const taskLineValidation = normalizeRABillTaskLines(taskLines, completionData.approvedTasks, {
+          requireLinked: existingBillData.taskLines.some(line => line.completionTaskId || line.billingTaskId),
+        });
+        if (taskLineValidation.error) {
+          return NextResponse.json({ error: taskLineValidation.error }, { status: 409 });
+        }
+        taskLinesToSave = taskLineValidation.taskLines;
+      }
+    }
     if (action === 'check' || action === 'approve' || action === 'unapprove' || status === 'Approved') {
       const toolName = action === 'check' ? 'Check RA Bill' : 'Approve RA Bill';
       const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Contracting', toolName, projectId: existing.projectId });
@@ -271,13 +298,12 @@ export async function PUT(request) {
       && ['date', 'measuredValue', 'retentionPercent', 'advanceRecovery', 'otherDeductions', 'tdsPercent', 'remarks', 'taskLines', 'contractorBillNo', 'contractorBillDate', 'buildingNo'].some(field => data[field] !== undefined);
     const nextStatus = action === 'approve' ? 'Approved' : action === 'unapprove' ? 'Submitted' : hasBillEdits ? 'Submitted' : status;
 
-    const existingBillData = parseRABillRemarks(existing.remarks);
     const hasBillMetadata = ['contractorBillNo', 'contractorBillDate', 'buildingNo']
       .some(field => data[field] !== undefined);
     const shouldSaveRemarks = remarks !== undefined || Array.isArray(taskLines) || hasBillMetadata;
     const savedRemarks = shouldSaveRemarks
       ? serializeRABillRemarks({
-          taskLines: Array.isArray(taskLines) ? taskLines : existingBillData.taskLines,
+          taskLines: Array.isArray(taskLines) ? taskLinesToSave : existingBillData.taskLines,
           metadata: {
             contractorBillNo: data.contractorBillNo !== undefined ? data.contractorBillNo : existingBillData.metadata.contractorBillNo,
             contractorBillDate: data.contractorBillDate !== undefined ? data.contractorBillDate : existingBillData.metadata.contractorBillDate,

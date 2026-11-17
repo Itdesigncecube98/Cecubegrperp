@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getWorkOrderCompletionData } from '@/lib/workCompletionTasks';
+import { getPendingWorkOrderCompletionData } from '@/lib/workCompletionTasks';
 
 // GET /api/contracting/ra-bills/pending?workOrderId=... OR ?projectName=...
 export async function GET(request) {
@@ -28,7 +28,7 @@ export async function GET(request) {
 
     // We MUST resolve the legacy Project by name because siteTaskMaster saves
     // files using the legacy Project model's ID, NOT ProjectMaster.id!
-    const completionData = await getWorkOrderCompletionData(prisma, {
+    const completionData = await getPendingWorkOrderCompletionData(prisma, {
       projectName: resolvedProjectName,
       workOrderId,
       workOrderNo: workOrder?.woNo,
