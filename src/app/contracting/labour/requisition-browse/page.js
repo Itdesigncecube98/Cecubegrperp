@@ -13,6 +13,8 @@ const FormGroup = ({ label, required, children }) => (
   </div>
 );
 
+const formatLabourReqNo = reqNo => String(reqNo || '').replace(/^(LREQ)-[^-]+-(\d+)$/, '$1-$2');
+
 export default function LabourRequisitionBrowse() {
   const [projects, setProjects] = useState([]);
   const [projectTasks, setProjectTasks] = useState([]);
@@ -104,7 +106,10 @@ export default function LabourRequisitionBrowse() {
           
           if (searchFilters.taskId && valid) {
             const task = projectTasks.find(item => item.id === searchFilters.taskId);
-            if (task && r.purpose !== task.name) valid = false;
+            if (task) {
+              const purposeLines = String(r.purpose || '').split('\n').map(line => line.trim());
+              if (!purposeLines.includes(task.name) && !purposeLines.includes(`WBS Task: ${task.name}`)) valid = false;
+            }
           }
 
           return valid;
@@ -149,7 +154,7 @@ export default function LabourRequisitionBrowse() {
 
   const getExportRows = () => requisitions.map((req, index) => ({
     No: index + 1,
-    'Requisition No.': req.reqNo || '',
+    'Requisition No.': formatLabourReqNo(req.reqNo),
     Date: (req.requiredDate || req.date || req.createdAt)
       ? new Date(req.requiredDate || req.date || req.createdAt).toLocaleDateString('en-GB', { timeZone: 'UTC' })
       : '',
@@ -411,7 +416,7 @@ export default function LabourRequisitionBrowse() {
               <button className="btn-cyan" onClick={handleReset}><RefreshCw size={14} /> Reset</button>
               <button 
                 className="btn-cyan" 
-                onClick={handleSearch}
+                onClick={() => handleSearch()}
                 disabled={!filters.projectId || loadingReqs}
                 style={{ opacity: filters.projectId ? 1 : 0.5, cursor: filters.projectId ? 'pointer' : 'not-allowed', minWidth: '80px', justifyContent: 'center' }}
               >
@@ -460,14 +465,14 @@ export default function LabourRequisitionBrowse() {
                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                       <input
                         type="checkbox"
-                        aria-label={`Select requisition ${req.reqNo}`}
+                        aria-label={`Select requisition ${formatLabourReqNo(req.reqNo)}`}
                         checked={selectedIds.includes(req.id)}
                         disabled={String(req.status || '').toLowerCase() !== 'pending'}
                         onChange={() => toggleRequisition(req.id)}
                       />
                     </td>
                     <td style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600 }}>{idx + 1}</td>
-                    <td style={{ padding: '8px 12px', fontWeight: 600, color: '#334155' }}>{req.reqNo}</td>
+                    <td style={{ padding: '8px 12px', fontWeight: 600, color: '#334155' }}>{formatLabourReqNo(req.reqNo)}</td>
                     <td style={{ padding: '8px 12px' }}>{(req.requiredDate || req.date || req.createdAt) ? new Date(req.requiredDate || req.date || req.createdAt).toLocaleDateString('en-GB', { timeZone: 'UTC' }) : '—'}</td>
                     <td style={{ padding: '8px 12px', color: '#64748b' }}>{req.purpose || '—'}</td>
                     <td style={{ padding: '8px 12px' }}>{req.designation}</td>

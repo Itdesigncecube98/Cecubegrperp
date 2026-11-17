@@ -61,7 +61,6 @@ const ROUTE_RIGHTS = [
   ['/purchase/reports', 'PURCHASE_REPORTS'],
   ['/marketing/dashboard', 'MARKETING_DASHBOARD'], ['/marketing/analytics', 'MARKETING_ANALYTICS'],
   ['/marketing/leads', 'MARKETING_LEAD_REGISTER'], ['/marketing/clients', 'MARKETING_CUSTOMER_MASTER'],
-  ['/marketing/opportunities', 'MARKETING_OPP_PIPELINE'], ['/marketing/proposals', 'MARKETING_TENDER_PROPOSAL'],
   ['/marketing/won-lost', 'MARKETING_HANDOVER'],
   ['/site/dashboard', 'SITE_DASHBOARD'], ['/site/dpr', 'SITE_DPR'], ['/site/work-completion', 'SITE_WORK_COMPLETION'],
   ['/site/material/gtn', 'SITE_GTN'], ['/site/material/grn', 'SITE_GRN'],

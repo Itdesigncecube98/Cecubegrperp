@@ -55,17 +55,24 @@ export default function LabourRequestForm() {
       const tasks = (Array.isArray(groups) ? groups : []).flatMap(group => group.tasks || []);
       setLibraryTasks(tasks.map(task => ({ id: task.id, name: task.name })));
       tasks.forEach(task => {
-        const source = task.labours;
-        (source || []).forEach(resource => flattened.push({
-          key: `${task.id}::${resource.id}`,
-          id: resource.id,
-          name: resource.name,
-          taskId: task.id,
-          taskName: task.name,
-          unit: resource.unit || 'Manday',
-          quantity: resource.quantity || 1,
-          rate: resource.rate || 0,
-        }));
+        (task.labours || []).forEach(resource => {
+          const entries = Array.isArray(resource.components) && resource.components.length
+            ? resource.components
+            : [resource];
+          entries.forEach((entry, index) => {
+            const id = entry.sourceId || entry.id || `${resource.id}-${index}`;
+            flattened.push({
+              key: `${task.id}::${id}`,
+              id,
+              name: entry.name || resource.name,
+              taskId: task.id,
+              taskName: task.name,
+              unit: entry.unit || resource.unit || 'Manday',
+              quantity: entry.quantity ?? resource.quantity ?? 1,
+              rate: entry.rate ?? resource.rate ?? 0,
+            });
+          });
+        });
       });
       setResources(flattened);
       setRows([]);

@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { notFound } from 'next/navigation';
 import PrintButton from './PrintButton';
+import { parseRABillRemarks } from '@/lib/raBillMetadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +65,19 @@ export default async function RABillPrintPage({ params }) {
   if (!bill) {
     notFound();
   }
+  if (!['Approved', 'Paid'].includes(bill.status)) {
+    return <main style={{ maxWidth: 720, margin: '48px auto', padding: 24, fontFamily: 'Arial, sans-serif', color: '#991b1b', background: '#fef2f2', borderRadius: 8 }}>
+      This RA Bill must be approved before it can be printed.
+    </main>;
+  }
+
+  const contractorLedger = bill.workOrder?.contractorName
+    ? await prisma.accountsLedgerMaster.findFirst({
+        where: { name: { equals: bill.workOrder.contractorName, mode: 'insensitive' } },
+        select: { vatNo: true, tinNo: true },
+      })
+    : null;
+  const contractorVatNo = contractorLedger?.vatNo || contractorLedger?.tinNo || '';
 
   const billAudit = await prisma.auditLog.findMany({
     where: { entityType: 'WorkOrderRABill', entityId: id, action: { in: ['CREATE', 'EDIT', 'CHECK', 'APPROVE'] } },
@@ -94,21 +108,7 @@ export default async function RABillPrintPage({ params }) {
   checkedBy = formatBillActor(checkedBy);
   approvedBy = formatBillActor(approvedBy);
 
-  // Parse task lines
-  let taskLines = [];
-  let remarksText = bill.remarks || '';
-  if (remarksText.startsWith('__TASK_LINES__:')) {
-    const newlineIdx = remarksText.indexOf('\n');
-    if (newlineIdx !== -1) {
-      const jsonStr = remarksText.substring('__TASK_LINES__:'.length, newlineIdx);
-      try {
-        taskLines = JSON.parse(jsonStr);
-      } catch (e) {
-        console.error('Failed to parse task lines', e);
-      }
-      remarksText = remarksText.substring(newlineIdx + 1).trim();
-    }
-  }
+  const { taskLines, metadata: billMetadata, remarks: remarksText } = parseRABillRemarks(bill.remarks);
 
   const inr = new Intl.NumberFormat('en-IN', {
     style: 'decimal',
@@ -186,7 +186,7 @@ export default async function RABillPrintPage({ params }) {
           <div className="row-kv"><div className="row-k">Phone</div><div className="row-v">: {bill.workOrder?.contractorPhone || ''}</div></div>
           <div className="row-kv"><div className="row-k">PAN</div><div className="row-v">: {bill.workOrder?.contractorPan || ''}</div></div>
           <div className="row-kv"><div className="row-k">ST No</div><div className="row-v">: </div></div>
-          <div className="row-kv"><div className="row-k">VAT/TIN No</div><div className="row-v">: </div></div>
+          <div className="row-kv"><div className="row-k">VAT/TIN No</div><div className="row-v">: {contractorVatNo}</div></div>
           <div className="row-kv"><div className="row-k">GST No</div><div className="row-v">: {bill.workOrder?.contractorGst || ''}</div></div>
           <div className="row-kv"><div className="row-k">Executed By</div><div className="row-v">: {bill.workOrder?.contractorName || 'N/A'}</div></div>
         </div>
@@ -195,13 +195,13 @@ export default async function RABillPrintPage({ params }) {
           <div className="row-kv"><div className="row-k">Work Order Date</div><div className="row-v">: {formatDate(bill.workOrder?.createdAt)}</div></div>
           <div className="row-kv"><div className="row-k">Work Order Value</div><div className="row-v">: {inr.format(bill.workOrder?.contractValue || 0)}</div></div>
           <br />
-          <div className="row-kv"><div className="row-k">Building Name</div><div className="row-v">: </div></div>
+          <div className="row-kv"><div className="row-k">Building No</div><div className="row-v">: {billMetadata.buildingNo || ''}</div></div>
           <br />
           <div className="row-kv"><div className="row-k">RA Bill No</div><div className="row-v">: {bill.billNo}</div></div>
           <div className="row-kv"><div className="row-k">RA Bill Date</div><div className="row-v">: {formatDate(bill.date)}</div></div>
           <br />
-          <div className="row-kv"><div className="row-k">Cont. Bill No</div><div className="row-v">: </div></div>
-          <div className="row-kv"><div className="row-k">Cont. Bill Date</div><div className="row-v">: </div></div>
+          <div className="row-kv"><div className="row-k">Cont. Bill No</div><div className="row-v">: {billMetadata.contractorBillNo || ''}</div></div>
+          <div className="row-kv"><div className="row-k">Cont. Bill Date</div><div className="row-v">: {formatDate(billMetadata.contractorBillDate)}</div></div>
 
           <div style={{ marginTop: '15px', fontWeight: 'bold', fontSize: '14px', letterSpacing: '2px', color: bill.status === 'Approved' || bill.status === 'Paid' ? '#15803d' : '#991b1b' }}>
             {bill.status === 'Approved' || bill.status === 'Paid' ? '' : 'UNAPPROVED'}
@@ -308,7 +308,7 @@ export default async function RABillPrintPage({ params }) {
             <div className="row-kv"><div className="row-k">Phone</div><div className="row-v">: {bill.workOrder?.contractorPhone || ''}</div></div>
             <div className="row-kv"><div className="row-k">PAN</div><div className="row-v">: {bill.workOrder?.contractorPan || ''}</div></div>
             <div className="row-kv"><div className="row-k">ST No</div><div className="row-v">: </div></div>
-            <div className="row-kv"><div className="row-k">VAT/TIN No</div><div className="row-v">: </div></div>
+            <div className="row-kv"><div className="row-k">VAT/TIN No</div><div className="row-v">: {contractorVatNo}</div></div>
             <div className="row-kv"><div className="row-k">GST No</div><div className="row-v">: {bill.workOrder?.contractorGst || ''}</div></div>
             <div className="row-kv"><div className="row-k">Executed By</div><div className="row-v">: {bill.workOrder?.contractorName || 'N/A'}</div></div>
           </div>
@@ -317,13 +317,13 @@ export default async function RABillPrintPage({ params }) {
             <div className="row-kv"><div className="row-k">Work Order Date</div><div className="row-v">: {formatDate(bill.workOrder?.createdAt)}</div></div>
             <div className="row-kv"><div className="row-k">Work Order Value</div><div className="row-v">: {inr.format(bill.workOrder?.contractValue || 0)}</div></div>
             <br />
-            <div className="row-kv"><div className="row-k">Building Name</div><div className="row-v">: </div></div>
+            <div className="row-kv"><div className="row-k">Building No</div><div className="row-v">: {billMetadata.buildingNo || ''}</div></div>
             <br />
             <div className="row-kv"><div className="row-k">RA Bill No</div><div className="row-v">: {bill.billNo}</div></div>
             <div className="row-kv"><div className="row-k">RA Bill Date</div><div className="row-v">: {formatDate(bill.date)}</div></div>
             <br />
-            <div className="row-kv"><div className="row-k">Cont. Bill No</div><div className="row-v">: </div></div>
-            <div className="row-kv"><div className="row-k">Cont. Bill Date</div><div className="row-v">: </div></div>
+            <div className="row-kv"><div className="row-k">Cont. Bill No</div><div className="row-v">: {billMetadata.contractorBillNo || ''}</div></div>
+            <div className="row-kv"><div className="row-k">Cont. Bill Date</div><div className="row-v">: {formatDate(billMetadata.contractorBillDate)}</div></div>
 
             <div style={{ marginTop: '15px', fontWeight: 'bold', fontSize: '14px', letterSpacing: '2px', color: bill.status === 'Approved' || bill.status === 'Paid' ? '#15803d' : '#991b1b' }}>
               {bill.status === 'Approved' || bill.status === 'Paid' ? '' : 'UNAPPROVED'}

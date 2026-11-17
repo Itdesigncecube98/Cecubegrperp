@@ -10,6 +10,7 @@ export default function LibraryManager() {
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
   
   React.useEffect(() => {
     fetchLibraries();
@@ -43,10 +44,12 @@ export default function LibraryManager() {
   };
 
   const handleSave = async () => {
+    if (saving) return;
     if (!newName.trim()) {
       alert("Library name is required!");
       return;
     }
+    setSaving(true);
     try {
       const res = await fetch('/api/libraries', {
         method: editingId ? 'PUT' : 'POST',
@@ -54,15 +57,19 @@ export default function LibraryManager() {
         body: JSON.stringify(editingId ? { id: editingId, name: newName } : { name: newName })
       });
       if (res.ok) {
-        fetchLibraries();
+        await fetchLibraries();
         setNewName('');
         setIsAdding(false);
         setEditingId(null);
       } else {
-        alert("Failed to save library");
+        const result = await res.json().catch(() => ({}));
+        alert(result.error || "Failed to save library");
       }
     } catch (err) {
       console.error(err);
+      alert('Failed to save library. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -119,14 +126,14 @@ export default function LibraryManager() {
                       placeholder="Enter library name"
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                      onKeyDown={(e) => e.key === 'Enter' && !saving && handleSave()}
                       autoFocus
                     />
                   </td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                      <Save size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={handleSave} />
-                      <X size={16} color="#0ea5e9" style={{ cursor: 'pointer' }} onClick={() => { setIsAdding(false); setNewName(''); setEditingId(null); }} />
+                      <Save size={16} color="#0ea5e9" style={{ cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.5 : 1 }} onClick={handleSave} />
+                      <X size={16} color="#0ea5e9" style={{ cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.5 : 1 }} onClick={() => { if (!saving) { setIsAdding(false); setNewName(''); setEditingId(null); } }} />
                     </div>
                   </td>
                 </tr>

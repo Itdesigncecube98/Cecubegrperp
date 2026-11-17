@@ -26,7 +26,7 @@ const MODULE_MAP = {
   Planning: ['Schedule', 'Resource Planning', 'Progress Tracking'],
   Site: ['Daily Progress', 'Site Attendance', 'Material Consumption'],
   Accounts: ['Vouchers', 'Ledger', 'Reports', 'TDS', 'Bank'],
-  Marketing: ['Leads', 'Opportunities', 'Clients'],
+  Marketing: ['Leads', 'Clients'],
   Tender: ['Bids', 'Awards', 'Documents'],
   Quality: ['Checklists', 'Inspection Reports', 'Punch Points'],
   Safety: ['Incidents', 'Safety Inspections', 'Training'],

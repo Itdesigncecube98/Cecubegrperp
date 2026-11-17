@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { enquiryAccess, resolveEnquiryProjectId } from '@/lib/marketingEnquiryAccess';
 
-const includeDetails = { leadOwner: { select: { id: true, name: true } }, client: true, opportunities: true, followups: { include: { createdBy: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } } };
+const includeDetails = { leadOwner: { select: { id: true, name: true } }, client: true, followups: { include: { createdBy: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' } } };
 
 export async function GET(request, { params }) {
   try {

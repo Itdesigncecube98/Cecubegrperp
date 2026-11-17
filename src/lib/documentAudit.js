@@ -18,7 +18,7 @@ export async function recordDocumentEdit(prisma, { entityType, entityId, module,
 
 export async function recordDocumentAction(prisma, { entityType, entityId, module, action, actorName }) {
   const name = String(actorName || '').trim();
-  if (!name || !entityId || !['CREATE', 'CHECK', 'APPROVE'].includes(action)) return;
+  if (!name || !entityId || !['CREATE', 'CHECK', 'APPROVE', 'UNAPPROVE', 'REJECT', 'PAID', 'RESUBMIT'].includes(action)) return;
   try {
     await prisma.auditLog.create({
       data: { module, action, entityType, entityId: String(entityId), remarks: JSON.stringify({ actorName: name }) },

@@ -18,11 +18,12 @@ function POPrintContent() {
       fetch(`/api/purchase/po?id=${id}`)
         .then(res => res.json())
         .then(data => {
-          setPo(Array.isArray(data) ? data[0] : data);
+          const record = Array.isArray(data) ? data[0] : data;
+          setPo(record);
           setLoading(false);
-          setTimeout(() => {
-            window.print();
-          }, 1000);
+          if (record?.approvedAt) {
+            setTimeout(() => window.print(), 1000);
+          }
         })
         .catch(err => {
           console.error(err);
@@ -37,6 +38,10 @@ function POPrintContent() {
 
   if (!po) {
     return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif' }}>Purchase Order not found.</div>;
+  }
+
+  if (!po.approvedAt) {
+    return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif', color: '#b91c1c' }}>This Purchase Order must be approved before it can be printed.</div>;
   }
 
   let extra = { discount: 0, freight: 0, otherCharges: 0 };

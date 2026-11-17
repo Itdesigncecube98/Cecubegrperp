@@ -628,6 +628,7 @@ export default function PurchaseBillsPage() {
               #invoice-document .invoice-footer .inv-doc-input { padding-top: 0 !important; padding-bottom: 0 !important; }
               #invoice-document input, #invoice-document textarea { border: 0 !important; box-shadow: none !important; background: transparent !important; color: #000 !important; }
               .no-print { display: none !important; }
+              ${billMode === 'view' && showBillForm.billRecord?.approvalStatus === 'APPROVED' ? '' : '#bill-print-overlay { display: none !important; }'}
             }
           `}</style>
 
@@ -641,12 +642,21 @@ export default function PurchaseBillsPage() {
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               {errorMsg && <span style={{ color: '#dc2626', fontSize: '12px', fontWeight: 'bold' }}>{errorMsg}</span>}
               <button onClick={() => setShowBillForm(null)} style={{ padding: '8px 16px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
-              <button onClick={handlePrint} style={{ padding: '8px 16px', background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Print</button>
+              {billMode === 'view' && showBillForm.billRecord?.approvalStatus === 'APPROVED' && <button onClick={handlePrint} style={{ padding: '8px 16px', background: '#e0e7ff', color: '#4338ca', border: '1px solid #c7d2fe', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Print</button>}
               {billMode !== 'view' && <button onClick={submitBill} disabled={submitting || !form.billDate || !form.taxableAmount} style={{ padding: '8px 16px', background: '#059669', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {submitting ? 'Saving...' : 'Save Bill'} <Send size={14} />
               </button>}
             </div>
           </div>
+
+          {editingBillId && <section className="no-print" style={{ width: '210mm', boxSizing: 'border-box', marginBottom: 12, padding: 14, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: 14, color: '#0f172a' }}>Purchase Bill Status Timeline</h3>
+            {showBillForm.billRecord?.statusHistory?.length ? <div style={{ display: 'grid', gap: 9 }}>{showBillForm.billRecord.statusHistory.map(entry => <div key={entry.id} style={{ display: 'grid', gridTemplateColumns: '10px 1fr', gap: 9 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#059669', marginTop: 4 }} />
+              <div><div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{entry.fromStatus ? `${entry.fromStatus.replaceAll('_', ' ')} → ` : ''}{entry.toStatus.replaceAll('_', ' ')}</div>
+                <div style={{ marginTop: 2, fontSize: 11, color: '#64748b' }}>{entry.actorName || 'Unknown user'} · {new Date(entry.changedAt).toLocaleString('en-IN')}{entry.note ? ` · ${entry.note}` : ''}</div></div>
+            </div>)}</div> : <div style={{ fontSize: 12, color: '#64748b' }}>No status changes recorded.</div>}
+          </section>}
 
           {/* Document Frame */}
           <div id="invoice-document" style={{ background: '#fff', boxSizing: 'border-box', width: '210mm', minHeight: '297mm', padding: '10mm', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', fontFamily: 'Arial, sans-serif', color: '#000', fontSize: '11px', position: 'relative' }}>

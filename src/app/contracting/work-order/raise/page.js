@@ -21,6 +21,10 @@ const printStyles = `
       display: none !important;
     }
 
+    .work-order-unapproved {
+      display: none !important;
+    }
+
     .sidebar + div {
       margin-left: 0 !important;
       width: 100% !important;
@@ -148,11 +152,12 @@ const previewInputStyle = {
   padding: '2px 4px',
 };
 
-const PreviewInput = ({ value, onChange, multiline = false, style = {}, className = '' }) => {
+const PreviewInput = ({ value, onChange, multiline = false, style = {}, className = '', readOnly = false }) => {
   const props = {
     className: `contracting-input ${className}`.trim(),
     value: value || '',
     onChange,
+    readOnly,
     style: { ...previewInputStyle, ...style },
   };
   return multiline ? <textarea {...props} rows={2} /> : <input {...props} />;
@@ -162,8 +167,11 @@ export default function RaiseWorkOrder() {
   const searchParams = useSearchParams();
   const editId = searchParams.get('id') || '';
   const printMode = searchParams.get('print') === '1';
+  const viewMode = searchParams.get('view') === '1';
+  const readOnlyMode = printMode || viewMode;
   const { activeEmployee, activeProject, hasRight } = usePermissions();
-  const canSaveWorkOrder = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', printMode ? 'View Work Order' : editId ? 'Edit Work Order' : 'Create Work Order')));
+  const requiredTool = readOnlyMode ? 'View Work Order' : editId ? 'Edit Work Order' : 'Create Work Order';
+  const canSaveWorkOrder = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', requiredTool)));
   const [projects, setProjects] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [quotations, setQuotations] = useState([]);
@@ -181,6 +189,8 @@ export default function RaiseWorkOrder() {
   const [showPreview, setShowPreview] = useState(false);
   const [woData, setWoData] = useState(null);
   const [lastEdited, setLastEdited] = useState(null);
+  const [statusHistory, setStatusHistory] = useState([]);
+  const [workOrderStatus, setWorkOrderStatus] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
 
   const [tasks, setTasks] = useState([]);
@@ -243,6 +253,8 @@ export default function RaiseWorkOrder() {
       .then(records => {
         const record = Array.isArray(records) ? records[0] : records;
         if (!record) return;
+        setStatusHistory(Array.isArray(record.statusHistory) ? record.statusHistory : []);
+        setWorkOrderStatus(record.status || '');
         setLastEdited(record.editedBy ? { name: record.editedBy, at: record.editedAt } : null);
         let stored = {};
         try { stored = record.scope ? JSON.parse(record.scope) : {}; } catch { stored = {}; }
@@ -259,10 +271,10 @@ export default function RaiseWorkOrder() {
   }, [editId]);
 
   useEffect(() => {
-    if (!searchParams.get('print') || !showPreview || !woData) return undefined;
+    if (!searchParams.get('print') || !showPreview || !woData || workOrderStatus !== 'Approved') return undefined;
     const timer = window.setTimeout(() => window.print(), 500);
     return () => window.clearTimeout(timer);
-  }, [searchParams, showPreview, woData]);
+  }, [searchParams, showPreview, woData, workOrderStatus]);
 
   const findLabourRate = (name) => {
     const normalizedName = String(name || '').trim().toLowerCase();
@@ -373,20 +385,31 @@ export default function RaiseWorkOrder() {
         rate: Number(material.rate) || 0,
         gstPercent: 18,
       }));
-      const taskLabours = (task.labours || []).map((l, itemIndex) => ({
-        id: `lab-${taskIndex}-${itemIndex}`,
-        description: `${task.name} - ${l.name}`,
-        qty: l.quantity || 1.00,
-        unit: l.unit || 'Manday',
-        rate: firstPositiveRate(
-          findSelectedQuotationRate(l.name, selectedQuotation)?.rate,
-          l.rate,
-          findLabourRate(l.name)?.rate,
-          findQuotationRate(l.name)?.rate,
-          l.labourRate
-        ),
-        gstPercent: 18
-      }));
+      const taskLabours = (task.labours || []).flatMap((labour, labourIndex) => {
+        const components = Array.isArray(labour.components) && labour.components.length
+          ? labour.components
+          : [labour];
+        return components.map((component, componentIndex) => {
+          const labourName = component.name || labour.name;
+          const quantity = Number(labour.quantity) || 1;
+          const componentQuantity = component === labour ? 1 : Number(component.quantity ?? 1);
+          return {
+            id: `lab-${taskIndex}-${labourIndex}-${componentIndex}`,
+            description: `${task.name} - ${labourName}`,
+            qty: quantity * componentQuantity,
+            unit: component.unit || labour.unit || 'Manday',
+            rate: firstPositiveRate(
+              findSelectedQuotationRate(labourName, selectedQuotation)?.rate,
+              component.rate,
+              findLabourRate(labourName)?.rate,
+              findQuotationRate(labourName)?.rate,
+              labour.rate,
+              labour.labourRate
+            ),
+            gstPercent: 18
+          };
+        });
+      });
         return [...taskMaterials, ...taskLabours];
       });
 
@@ -541,7 +564,7 @@ export default function RaiseWorkOrder() {
     return `RUPEES ${parts.join(' ')} ONLY.`;
   };
 
-  if (!canSaveWorkOrder) return <div style={{ padding: 32, color: '#b91c1c' }}>You do not have permission to {editId ? 'edit' : 'create'} work orders for this project.</div>;
+  if (!canSaveWorkOrder) return <div style={{ padding: 32, color: '#b91c1c' }}>You do not have permission to {viewMode || printMode ? 'view' : editId ? 'edit' : 'create'} work orders for this project.</div>;
 
   return (
     <div className="contracting-container">
@@ -550,7 +573,7 @@ export default function RaiseWorkOrder() {
       <div className="contracting-header">
         <div className="contracting-header-title">
           <FileText size={18} />
-          Raise Work Order
+          {viewMode ? 'View Work Order' : editId ? 'Edit Work Order' : 'Raise Work Order'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', color: '#666', gap: '4px' }}>
           <Home size={14} /> Home <ChevronRight size={14} /> Raise Work Order
@@ -558,9 +581,18 @@ export default function RaiseWorkOrder() {
       </div>
 
       <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+
+        {editId && <section className="no-print" style={{ marginBottom: 16, padding: '16px 20px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+          <h2 style={{ margin: '0 0 12px', color: '#0f172a', fontSize: 15 }}>Work Order Status Timeline</h2>
+          {statusHistory.length ? <div style={{ display: 'grid', gap: 10 }}>{statusHistory.map(entry => <div key={entry.id} style={{ display: 'grid', gridTemplateColumns: '12px 1fr', gap: 10 }}>
+            <span style={{ width: 9, height: 9, marginTop: 4, borderRadius: '50%', background: '#0f766e' }} />
+            <div><div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{entry.fromStatus ? `${entry.fromStatus} → ` : ''}{entry.toStatus}</div>
+              <div style={{ marginTop: 2, fontSize: 12, color: '#64748b' }}>{entry.actorName || 'Unknown user'} · {new Date(entry.changedAt).toLocaleString('en-IN')}{entry.note ? ` · ${entry.note}` : ''}</div></div>
+          </div>)}</div> : <div style={{ color: '#64748b', fontSize: 13 }}>No status changes recorded.</div>}
+        </section>}
         
         {/* Filter Section */}
-        <div className="work-order-filter" style={{ marginBottom: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'visible', background: 'white' }}>
+        <div className="work-order-filter" hidden={!!editId} style={{ marginBottom: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'visible', background: 'white' }}>
           <div style={{ background: '#f1f5f9', padding: '10px 16px', fontWeight: 600, fontSize: '0.85rem', color: '#334155', borderBottom: '1px solid #e2e8f0' }}>
             - Filter
           </div>
@@ -703,7 +735,7 @@ export default function RaiseWorkOrder() {
 
         {/* WORK ORDER PREVIEW */}
         {showPreview && woData && (
-          <div className="work-order-preview" style={{ 
+          <div className={`work-order-preview${readOnlyMode ? ' work-order-readonly' : ''}${workOrderStatus === 'Approved' ? '' : ' work-order-unapproved'}`} style={{
             background: 'white', 
             border: '1px solid #e2e8f0', 
             borderRadius: '8px', 
@@ -714,7 +746,7 @@ export default function RaiseWorkOrder() {
             
             {/* Document Header */}
             <div style={{ textAlign: 'center', borderBottom: '2px solid #334155', paddingBottom: '16px', marginBottom: '20px', position: 'relative' }}>
-              <PreviewInput value={woData.companyName} onChange={e => updatePreviewField('companyName', e.target.value)} style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.2rem', color: '#1e293b' }} />
+              <PreviewInput value={woData.companyName} onChange={e => updatePreviewField('companyName', e.target.value)} readOnly={readOnlyMode} style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.2rem', color: '#1e293b' }} />
               <h3 style={{ margin: '4px 0 0 0', fontSize: '1rem', color: '#475569' }}>Work Order</h3>
               {lastEdited && <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>Last edited by {lastEdited.name}{lastEdited.at ? ` on ${new Date(lastEdited.at).toLocaleString('en-IN')}` : ''}</div>}
               <div style={{ position: 'absolute', right: 0, top: 0 }}>
@@ -726,11 +758,11 @@ export default function RaiseWorkOrder() {
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <strong>WO No:</strong>
-                <PreviewInput value={woData.woNo} onChange={e => updatePreviewField('woNo', e.target.value)} style={{ width: '110px', fontWeight: 600 }} />
+                <PreviewInput value={woData.woNo} onChange={e => updatePreviewField('woNo', e.target.value)} readOnly={readOnlyMode} style={{ width: '110px', fontWeight: 600 }} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <strong>WO Date:</strong>
-                <PreviewInput value={woData.date} onChange={e => updatePreviewField('date', e.target.value)} style={{ width: '110px', fontWeight: 600, textAlign: 'right' }} />
+                <PreviewInput value={woData.date} onChange={e => updatePreviewField('date', e.target.value)} readOnly={readOnlyMode} style={{ width: '110px', fontWeight: 600, textAlign: 'right' }} />
               </div>
             </div>
 
@@ -738,32 +770,32 @@ export default function RaiseWorkOrder() {
               {/* Left Column - Contractor */}
               <div style={{ padding: '12px', borderRight: '1px solid #334155' }}>
                 <div style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>To,</div>
-                <PreviewInput value={woData.contractorName} onChange={e => updatePreviewField('contractorName', e.target.value)} style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#0f172a', marginBottom: '6px' }} />
-                <PreviewInput value={woData.contractorAddress} onChange={e => updatePreviewField('contractorAddress', e.target.value)} multiline style={{ fontSize: '0.8rem', marginBottom: '8px', maxWidth: '300px' }} />
+                <PreviewInput value={woData.contractorName} onChange={e => updatePreviewField('contractorName', e.target.value)} readOnly={readOnlyMode} style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#0f172a', marginBottom: '6px' }} />
+                <PreviewInput value={woData.contractorAddress} onChange={e => updatePreviewField('contractorAddress', e.target.value)} multiline readOnly={readOnlyMode} style={{ fontSize: '0.8rem', marginBottom: '8px', maxWidth: '300px' }} />
                 <table style={{ fontSize: '0.8rem', color: '#334155' }}>
                   <tbody>
-                    <tr><td style={{ paddingRight: '12px' }}>Contact No:</td><td><PreviewInput value={woData.contractorContact} onChange={e => updatePreviewField('contractorContact', e.target.value)} /></td></tr>
-                    <tr><td style={{ paddingRight: '12px' }}>Email:</td><td><PreviewInput value={woData.contractorEmail} onChange={e => updatePreviewField('contractorEmail', e.target.value)} /></td></tr>
-                    <tr><td style={{ paddingRight: '12px' }}>PAN No:</td><td><PreviewInput value={woData.contractorPan} onChange={e => updatePreviewField('contractorPan', e.target.value)} /></td></tr>
-                    <tr><td style={{ paddingRight: '12px' }}>GST No:</td><td><PreviewInput value={woData.contractorGst} onChange={e => updatePreviewField('contractorGst', e.target.value)} /></td></tr>
+                    <tr><td style={{ paddingRight: '12px' }}>Contact No:</td><td><PreviewInput value={woData.contractorContact} onChange={e => updatePreviewField('contractorContact', e.target.value)} readOnly={readOnlyMode} /></td></tr>
+                    <tr><td style={{ paddingRight: '12px' }}>Email:</td><td><PreviewInput value={woData.contractorEmail} onChange={e => updatePreviewField('contractorEmail', e.target.value)} readOnly={readOnlyMode} /></td></tr>
+                    <tr><td style={{ paddingRight: '12px' }}>PAN No:</td><td><PreviewInput value={woData.contractorPan} onChange={e => updatePreviewField('contractorPan', e.target.value)} readOnly={readOnlyMode} /></td></tr>
+                    <tr><td style={{ paddingRight: '12px' }}>GST No:</td><td><PreviewInput value={woData.contractorGst} onChange={e => updatePreviewField('contractorGst', e.target.value)} readOnly={readOnlyMode} /></td></tr>
                   </tbody>
                 </table>
               </div>
 
               {/* Right Column - CeCube & Site */}
               <div style={{ padding: '12px' }}>
-                <div style={{ fontSize: '0.85rem' }}>Company Name : <PreviewInput value={woData.companyName} onChange={e => updatePreviewField('companyName', e.target.value)} style={{ fontWeight: 'bold' }} /></div>
-                <PreviewInput value={woData.companyAddress} onChange={e => updatePreviewField('companyAddress', e.target.value)} multiline style={{ fontSize: '0.8rem', marginTop: '4px', marginBottom: '12px', maxWidth: '300px' }} />
+                <div style={{ fontSize: '0.85rem' }}>Company Name : <PreviewInput value={woData.companyName} onChange={e => updatePreviewField('companyName', e.target.value)} readOnly={readOnlyMode} style={{ fontWeight: 'bold' }} /></div>
+                <PreviewInput value={woData.companyAddress} onChange={e => updatePreviewField('companyAddress', e.target.value)} multiline readOnly={readOnlyMode} style={{ fontSize: '0.8rem', marginTop: '4px', marginBottom: '12px', maxWidth: '300px' }} />
                 <table style={{ fontSize: '0.8rem', color: '#334155', marginBottom: '12px' }}>
                   <tbody>
-                    <tr><td style={{ paddingRight: '12px' }}>PAN :</td><td><PreviewInput value={woData.companyPan} onChange={e => updatePreviewField('companyPan', e.target.value)} /></td></tr>
-                    <tr><td style={{ paddingRight: '12px' }}>GST No:</td><td><PreviewInput value={woData.companyGst} onChange={e => updatePreviewField('companyGst', e.target.value)} /></td></tr>
+                    <tr><td style={{ paddingRight: '12px' }}>PAN :</td><td><PreviewInput value={woData.companyPan} onChange={e => updatePreviewField('companyPan', e.target.value)} readOnly={readOnlyMode} /></td></tr>
+                    <tr><td style={{ paddingRight: '12px' }}>GST No:</td><td><PreviewInput value={woData.companyGst} onChange={e => updatePreviewField('companyGst', e.target.value)} readOnly={readOnlyMode} /></td></tr>
                   </tbody>
                 </table>
                 <table style={{ fontSize: '0.8rem', color: '#334155' }}>
                   <tbody>
-                    <tr><td style={{ paddingRight: '12px', verticalAlign: 'top' }}>Site Name:</td><td><PreviewInput value={woData.siteName} onChange={e => updatePreviewField('siteName', e.target.value)} style={{ fontWeight: 600 }} /></td></tr>
-                    <tr><td style={{ paddingRight: '12px', verticalAlign: 'top' }}>Site Address:</td><td><PreviewInput value={woData.siteAddress} onChange={e => updatePreviewField('siteAddress', e.target.value)} /></td></tr>
+                    <tr><td style={{ paddingRight: '12px', verticalAlign: 'top' }}>Site Name:</td><td><PreviewInput value={woData.siteName} onChange={e => updatePreviewField('siteName', e.target.value)} readOnly={readOnlyMode} style={{ fontWeight: 600 }} /></td></tr>
+                    <tr><td style={{ paddingRight: '12px', verticalAlign: 'top' }}>Site Address:</td><td><PreviewInput value={woData.siteAddress} onChange={e => updatePreviewField('siteAddress', e.target.value)} readOnly={readOnlyMode} /></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -777,15 +809,16 @@ export default function RaiseWorkOrder() {
                 className="subject-editable"
                 value={woData.subject}
                 onChange={e => updatePreviewField('subject', e.target.value)}
+                readOnly={readOnlyMode}
                 style={{ minHeight: '34px', resize: 'vertical', lineHeight: '1.35' }}
               />
               <span className="print-subject">{woData.subject}</span>
             </div>
             <div style={{ border: '1px solid #334155', borderTop: 'none', padding: '8px 12px', fontSize: '0.85rem', display: 'flex', gap: '40px' }}>
-              <div style={{ display: 'flex', flex: 1 }}><strong style={{ width: '150px' }}>Site Contact Person :</strong> <PreviewInput value={woData.siteContactPerson} onChange={e => updatePreviewField('siteContactPerson', e.target.value)} /></div>
+              <div style={{ display: 'flex', flex: 1 }}><strong style={{ width: '150px' }}>Site Contact Person :</strong> <PreviewInput value={woData.siteContactPerson} onChange={e => updatePreviewField('siteContactPerson', e.target.value)} readOnly={readOnlyMode} /></div>
             </div>
             <div style={{ border: '1px solid #334155', borderTop: 'none', padding: '8px 12px', fontSize: '0.85rem', display: 'flex', gap: '40px' }}>
-              <div style={{ display: 'flex', flex: 1 }}><strong style={{ width: '150px' }}>Site Contact Detail :</strong> <PreviewInput value={woData.siteContactPhone} onChange={e => updatePreviewField('siteContactPhone', e.target.value)} /></div>
+              <div style={{ display: 'flex', flex: 1 }}><strong style={{ width: '150px' }}>Site Contact Detail :</strong> <PreviewInput value={woData.siteContactPhone} onChange={e => updatePreviewField('siteContactPhone', e.target.value)} readOnly={readOnlyMode} /></div>
             </div>
 
             {/* Introduction Text */}
@@ -795,7 +828,7 @@ export default function RaiseWorkOrder() {
             </div>
 
             {/* Items Table */}
-            <div className="screen-editable" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'end', gap: 8, padding: '10px 0' }}>
+            {!readOnlyMode && <div className="screen-editable" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'end', gap: 8, padding: '10px 0' }}>
               <label style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>
                 Paste item rates (one per line, same row order)
                 <textarea
@@ -809,7 +842,7 @@ export default function RaiseWorkOrder() {
               <button type="button" onClick={applyBulkRates} style={{ padding: '7px 12px', border: '1px solid #2563eb', borderRadius: 4, background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, cursor: 'pointer' }}>
                 Apply rates
               </button>
-            </div>
+            </div>}
             <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #334155', borderTop: 'none', fontSize: '0.8rem' }}>
               <colgroup>
                 <col style={{ width: '5%' }} />
@@ -839,6 +872,7 @@ export default function RaiseWorkOrder() {
                         <textarea 
                           rows={3}
                           className="screen-editable"
+                          readOnly={readOnlyMode}
                           style={{ width: '100%', minWidth: 0, minHeight: 76, boxSizing: 'border-box', border: '1px solid #dbe1ea', borderRadius: 6, outline: 'none', background: '#fff', overflowWrap: 'anywhere', resize: 'vertical', font: 'inherit', fontSize: 13, lineHeight: 1.45, color: 'inherit', padding: '8px 9px' }}
                           value={item.description} 
                           onChange={(e) => {
@@ -852,6 +886,7 @@ export default function RaiseWorkOrder() {
                       <td style={{ border: '1px solid #334155', padding: '8px 5px', textAlign: 'center', minWidth: 0, overflowWrap: 'anywhere' }}>
                         <input 
                           type="number" 
+                          readOnly={readOnlyMode}
                           style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', textAlign: 'center' }} 
                           value={item.qty} 
                           onChange={(e) => {
@@ -864,6 +899,7 @@ export default function RaiseWorkOrder() {
                       <td style={{ border: '1px solid #334155', padding: '8px 5px', textAlign: 'center', minWidth: 0, overflowWrap: 'anywhere' }}>
                         <input 
                           type="text" 
+                          readOnly={readOnlyMode}
                           style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', textAlign: 'center' }} 
                           value={item.unit} 
                           onChange={(e) => {
@@ -877,6 +913,7 @@ export default function RaiseWorkOrder() {
                         <input 
                           type="number" 
                           min="0"
+                          readOnly={readOnlyMode}
                           style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', textAlign: 'right' }} 
                           value={item.rate} 
                           onChange={(e) => {
@@ -890,6 +927,7 @@ export default function RaiseWorkOrder() {
                       <td style={{ border: '1px solid #334155', padding: '8px 5px', textAlign: 'center', minWidth: 0, overflowWrap: 'anywhere' }}>
                         <input 
                           type="number" 
+                          readOnly={readOnlyMode}
                           style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', textAlign: 'center' }} 
                           value={item.gstPercent} 
                           onChange={(e) => {
@@ -960,7 +998,7 @@ export default function RaiseWorkOrder() {
                     'Tax & Duties': 'taxAndDuties',
                     'Freight Charges': 'freightCharges',
                     'Other Conditions': 'otherConditions',
-                  }[label], e.target.value)} /></div>
+                  }[label], e.target.value)} readOnly={readOnlyMode} /></div>
                 ))}
               </div>
             </div>
@@ -968,7 +1006,7 @@ export default function RaiseWorkOrder() {
             {/* Signatures */}
             <div style={{ display: 'flex', justifyContent: 'space-between', border: '1px solid #334155', borderTop: 'none', padding: '16px 12px 60px 12px', fontSize: '0.85rem', fontWeight: 'bold', color: '#0f172a' }}>
               <div>For {woData.companyName}</div>
-              <div>For <PreviewInput value={woData.contractorName} onChange={e => updatePreviewField('contractorName', e.target.value)} style={{ display: 'inline-block', width: '180px', fontWeight: 'bold' }} /></div>
+              <div>For <PreviewInput value={woData.contractorName} onChange={e => updatePreviewField('contractorName', e.target.value)} readOnly={readOnlyMode} style={{ display: 'inline-block', width: '180px', fontWeight: 'bold' }} /></div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', border: '1px solid #334155', borderTop: 'none', padding: '8px 12px', fontSize: '0.85rem', fontWeight: 'bold', color: '#0f172a' }}>
               <div>Authorized Signatory</div>
@@ -977,13 +1015,14 @@ export default function RaiseWorkOrder() {
 
             {/* Save/Print Actions */}
             <div className="work-order-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
-              <button className="btn-cyan" onClick={() => window.print()} style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1' }}>
+              {workOrderStatus === 'Approved' && <button className="btn-cyan" onClick={() => window.print()} style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1' }}>
                 <Printer size={16} /> Print WO
-              </button>
-              {!printMode && <button className="btn-cyan" onClick={handleSaveWorkOrder}>
+              </button>}
+              {!readOnlyMode && <button className="btn-cyan" onClick={handleSaveWorkOrder}>
                 <Save size={16} /> Save Work Order
               </button>}
             </div>
+            {printMode && workOrderStatus !== 'Approved' && <div className="no-print" style={{ marginTop: 10, textAlign: 'right', color: '#b91c1c', fontSize: '0.82rem' }}>This Work Order must be approved before it can be printed.</div>}
             {saveMessage && <div style={{ marginTop: '10px', textAlign: 'right', color: saveMessage.includes('successfully') ? '#166534' : '#b91c1c', fontSize: '0.82rem' }}>{saveMessage}</div>}
 
           </div>

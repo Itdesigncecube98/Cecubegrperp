@@ -98,12 +98,6 @@ export default function CustomerMaster() {
                     <div>
                       <span className="mkt-font-semibold" style={{ color: '#334155' }}>{client.leads?.length || 0}</span> Leads
                     </div>
-                    <div>
-                      <span className="mkt-font-semibold" style={{ color: '#334155' }}>{client.opportunities?.length || 0}</span> Opps
-                    </div>
-                    <div>
-                      <span className="mkt-font-semibold" style={{ color: '#059669' }}>{client.opportunities?.filter(o => o.status === 'Won').length || 0}</span> Won
-                    </div>
                   </div>
                 </div>
               ))}

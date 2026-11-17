@@ -8,6 +8,7 @@ export async function GET(_request, { params }) {
       where: { id: params.id },
       include: {
         items: true,
+        statusHistory: { orderBy: { changedAt: 'asc' } },
         grns: {
           include: {
             items: true,
@@ -33,6 +34,8 @@ export async function PUT(request, { params }) {
   try {
     const body = await request.json();
     const { status, approvedBy, approvedByName, ...updateData } = body;
+    const current = await prisma.purchaseOrder.findUnique({ where: { id: params.id }, select: { status: true } });
+    if (!current) return NextResponse.json({ error: 'Purchase order not found' }, { status: 404 });
 
     const updates = {
       ...updateData,
@@ -42,12 +45,20 @@ export async function PUT(request, { params }) {
         : {}),
     };
 
-    const po = await prisma.purchaseOrder.update({
-      where: { id: params.id },
-      data: updates,
-      include: {
-        items: true,
-      },
+    const po = await prisma.$transaction(async tx => {
+      const updated = await tx.purchaseOrder.update({
+        where: { id: params.id },
+        data: updates,
+        include: { items: true, statusHistory: { orderBy: { changedAt: 'asc' } } },
+      });
+      if (status && status !== current.status) await tx.purchaseOrderStatusHistory.create({ data: {
+        purchaseOrderId: params.id,
+        fromStatus: current.status,
+        toStatus: status,
+        actorName: body.approvedByName || body.approvedBy || body.actorName || 'System',
+        note: `Purchase order status changed to ${status}`,
+      } });
+      return updated;
     });
 
     return NextResponse.json({ data: po });

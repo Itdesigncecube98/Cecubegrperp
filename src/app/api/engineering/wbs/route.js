@@ -55,7 +55,7 @@ export async function POST(req) {
 
     // 1. Create Task
     if (type === 'task' || body.groupId) {
-      const { projectId, groupId, name, volOfWorkMaterial, volOfWorkLabour, description, reraStage, materialRate, labourRate, materials } = body;
+      const { projectId, groupId, name, volOfWorkMaterial, volOfWorkLabour, description, reraStage, materialRate, labourRate, materials, labours } = body;
 
       if (!name || !name.trim()) {
         return NextResponse.json({ error: 'Task name is required' }, { status: 400 });
@@ -96,7 +96,8 @@ export async function POST(req) {
           totalAmount: ((parseFloat(volOfWorkMaterial) || 0) * (parseFloat(materialRate) || 0)) + ((parseFloat(volOfWorkLabour) || 0) * (parseFloat(labourRate) || 0)),
           description: description ? description.trim() : null,
           reraStage: reraStage ? reraStage.trim() : null,
-          materials: Array.isArray(materials) ? materials : []
+          materials: Array.isArray(materials) ? materials : [],
+          labours: Array.isArray(labours) ? labours : []
         }
       });
 
@@ -150,7 +151,7 @@ export async function PUT(req) {
       if (!existingTask || !await canAccessProject(req, existingTask.projectId, 'WBS Edit Task')) {
         return NextResponse.json({ error: 'You do not have Edit Task access for this project.' }, { status: existingTask ? 403 : 404 });
       }
-      const { name, volOfWorkMaterial, volOfWorkLabour, description, reraStage, groupId, materialRate, labourRate, materials } = body;
+      const { name, volOfWorkMaterial, volOfWorkLabour, description, reraStage, groupId, materialRate, labourRate, materials, labours } = body;
       const updateData = {};
       if (name !== undefined) updateData.name = name.trim();
       
@@ -168,6 +169,7 @@ export async function PUT(req) {
       if (reraStage !== undefined) updateData.reraStage = reraStage ? reraStage.trim() : null;
       if (groupId !== undefined) updateData.group = { connect: { id: groupId } };
       if (materials !== undefined) updateData.materials = Array.isArray(materials) ? materials : [];
+      if (labours !== undefined) updateData.labours = Array.isArray(labours) ? labours : [];
 
       if (groupId !== undefined) {
         const destinationGroup = await prisma.wbsGroup.findUnique({ where: { id: groupId }, select: { projectId: true } });

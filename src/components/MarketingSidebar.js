@@ -2,11 +2,11 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  Building2, Briefcase, FileText, Settings, 
-  ChevronDown, ChevronRight, Users, 
-  ThumbsUp, Database, FileBarChart, LogOut, Search, X, 
-  ChevronLeft, Sparkles, BarChart2, PhoneCall, Trophy, CheckCircle, Layers
+import {
+  Building2, Settings,
+  ChevronDown, ChevronRight, Users,
+  ThumbsUp, Database, FileBarChart, LogOut, Search, X,
+  ChevronLeft, BarChart2, PhoneCall, Trophy, CheckCircle, Layers
 } from 'lucide-react';
 import Dialog from './Dialog';
 import { useUserPermissions, canSee } from '@/lib/permission';
@@ -18,20 +18,17 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
   const router = useRouter();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showWidget, setShowWidget] = useState(true);
   const permissions = useUserPermissions();
   const { activeEmployee, permissionsLoaded, hasRight } = usePermissions();
 
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const isCollapsed = propCollapsed !== undefined ? propCollapsed : localCollapsed;
   const setIsCollapsed = propSetIsCollapsed || setLocalCollapsed;
-  
+
   const [expanded, setExpanded] = useState({
     dashboard: true,
     leads: true,
     customers: false,
-    opportunities: false,
-    proposals: false,
     wonLost: false
   });
 
@@ -74,22 +71,6 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       ]
     },
     {
-      id: 'opportunities',
-      label: 'Opportunities',
-      icon: Briefcase,
-      items: [
-        { name: 'Opportunity Pipeline', path: '/marketing/opportunities', permissionCode: 'MARKETING_OPP_PIPELINE' },
-      ]
-    },
-    {
-      id: 'proposals',
-      label: 'Proposals',
-      icon: FileText,
-      items: [
-        { name: 'Tender & Proposal', path: '/marketing/proposals', permissionCode: 'MARKETING_TENDER_PROPOSAL' },
-      ]
-    },
-    {
       id: 'wonLost',
       label: 'Won / Lost',
       icon: Trophy,
@@ -124,8 +105,8 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
-      <div 
-        className="sidebar-toggle-btn" 
+      <div
+        className="sidebar-toggle-btn"
         onClick={() => setIsCollapsed(!isCollapsed)}
         title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
         aria-label="Toggle sidebar"
@@ -150,8 +131,8 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
           )}
         </Link>
         {!isCollapsed && (
-          <button 
-            className="sidebar-header-btn" 
+          <button
+            className="sidebar-header-btn"
             title="Switch Module"
             onClick={() => router.push('/portal')}
           >
@@ -164,7 +145,7 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
         <div className="sidebar-search-box">
           <div className="sidebar-search-inner">
             <Search size={14} color="#64748b" />
-            <input 
+            <input
               type="text"
               placeholder="Search marketing..."
               value={searchQuery}
@@ -181,9 +162,9 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       )}
 
       <nav className="sidebar-nav">
-        <Link 
-          href="/portal" 
-          className="nav-item" 
+        <Link
+          href="/portal"
+          className="nav-item"
           title="Switch Module"
         >
           <div className="nav-item-left">
@@ -226,7 +207,7 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
 
             return (
               <div key={section.id} style={{ marginTop: '2px' }}>
-                <div 
+                <div
                   className={`nav-item ${hasActiveChild ? 'active' : ''}`}
                   onClick={() => toggleSection(section.id)}
                   title={section.label}
@@ -269,26 +250,6 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
       </nav>
 
       <div className="sidebar-footer">
-        {!isCollapsed && showWidget && (
-          <div className="sidebar-widget-card">
-            <div className="sidebar-widget-header">
-              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <Sparkles size={13} color="#a855f7" /> Pipeline Value
-              </span>
-              <button 
-                className="sidebar-widget-close" 
-                onClick={() => setShowWidget(false)}
-                title="Dismiss"
-              >
-                <X size={12} />
-              </button>
-            </div>
-            <div className="sidebar-widget-text">
-              Track weighted opportunities and proposal stages.
-            </div>
-          </div>
-        )}
-
         <div className="sidebar-user-row">
           <div className="sidebar-user-left">
             <div className="sidebar-avatar-wrapper">
@@ -302,8 +263,8 @@ export default function MarketingSidebar({ isCollapsed: propCollapsed, setIsColl
               <span className="sidebar-user-email">marketing@cecube.com</span>
             </div>
           </div>
-          <button 
-            className="sidebar-logout-icon-btn" 
+          <button
+            className="sidebar-logout-icon-btn"
             title="Sign out"
             onClick={() => setShowLogoutDialog(true)}
           >

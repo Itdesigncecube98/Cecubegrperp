@@ -31,45 +31,8 @@ export async function POST(req) {
     if (!body.grnDate) return NextResponse.json({ error: 'GRN date is required.' }, { status: 400 });
     if (body.grnType === 'PO' && !body.poNo) return NextResponse.json({ error: 'PO number is required for PO GRN type.' }, { status: 400 });
 
-    const requisitionItems = [...incomingItems];
-    if (body.grnType === 'PO') {
-      const missingItems = requisitionItems.filter(item => !item.requisitionId);
-      if (missingItems.length > 0) {
-        const latest = await prisma.siteMaterialRequisition.findFirst({ orderBy: { serialNo: 'desc' }, select: { serialNo: true } });
-        let serialNo = (latest?.serialNo || 0) + 1;
-        for (const item of missingItems) {
-          const existing = await prisma.siteMaterialRequisition.findFirst({
-            where: { projectId: body.projectId, materialName: item.materialName || item.itemDescription }
-          });
-          if (existing) {
-            item.requisitionId = existing.id;
-            continue;
-          }
-          const materialName = item.materialName || item.itemDescription || 'PO Material';
-          const created = await prisma.siteMaterialRequisition.create({
-            data: {
-              reqNo: `PO-${new Date().getFullYear()}-${String(serialNo).padStart(4, '0')}`,
-              serialNo,
-              projectId: body.projectId,
-              materialName,
-              itemDescription: materialName,
-              quantityReq: Number(item.quantity) || 0,
-              unit: item.unit || null,
-              poRate: 0,
-              status: 'Approved'
-            }
-          });
-          item.requisitionId = created.id;
-          serialNo += 1;
-        }
-      }
-    }
-
-    const items = requisitionItems.filter(item => item.requisitionId && Number(item.quantity) > 0);
+    const items = incomingItems.filter(item => String(item.materialName || '').trim());
     if (items.length === 0) return NextResponse.json({ error: 'Select at least one material.' }, { status: 400 });
-
-    const requisitions = await prisma.siteMaterialRequisition.findMany({ where: { id: { in: items.map(item => item.requisitionId) } } });
-    if (requisitions.length !== items.length) return NextResponse.json({ error: 'One or more requisitions were not found.' }, { status: 400 });
 
     const [gtnCount, grnCount] = await Promise.all([prisma.siteGTN.count(), prisma.siteGRN.count()]);
     const gtnItems = items.filter(item => item.sendToGtn !== false);
@@ -88,9 +51,15 @@ export async function POST(req) {
           vehicleNo: body.vehicleNo || null,
           status: 'Dispatched',
           remarks: body.remarks || null,
-          items: { create: gtnItems.map(item => ({ requisitionId: item.requisitionId, materialName: item.materialName, quantity: Number(item.quantity), unit: item.unit || null })) }
+          items: { create: gtnItems.map(item => ({ materialName: item.materialName, quantity: Number(item.quantity), unit: item.unit || null })) }
         }
       }) : null;
+      if (gtn) await tx.siteGTNStatusHistory.create({ data: {
+        gtnId: gtn.id,
+        toStatus: 'Dispatched',
+        actorName: body.createdBy || body.receivedBy || 'Site User',
+        note: 'GTN created with GRN',
+      } });
       const grn = await tx.siteGRN.create({
         data: {
           grnNo,
@@ -111,9 +80,10 @@ export async function POST(req) {
           state: body.state || null,
           ewayBillNo,
           ewayBillDate: toDate(body.ewayBillDate) || new Date(),
-          status: 'Received',
+          status: body.status || 'Received',
           remarks: body.remarks || null,
-          items: { create: items.map(item => ({ requisitionId: item.requisitionId, materialName: item.materialName, quantity: Number(item.quantity), unit: item.unit || null, acceptedQty: Number(item.goodQty ?? item.quantity), retainedQty: Number(item.retainedQty) || 0, rejectedQty: Number(item.rejectedQty) || 0, challanQty: Number(item.challanQty) || 0, budgetHead: item.budgetHead || null, storeName: item.storeName || null, brand: item.brand || null, remarks: item.remarks || null, testRequired: Boolean(item.testRequired), gtnSrNo: item.gtnSrNo || null, document: item.document || null })) }
+          statusHistory: { create: { fromStatus: null, toStatus: body.status || 'Received', note: 'GRN created' } },
+          items: { create: items.map(item => ({ materialName: item.materialName, quantity: Number(item.quantity), unit: item.unit || null, acceptedQty: Number(item.goodQty ?? item.quantity), retainedQty: Number(item.retainedQty) || 0, rejectedQty: Number(item.rejectedQty) || 0, challanQty: Number(item.challanQty) || 0, budgetHead: item.budgetHead || null, storeName: item.storeName || null, brand: item.brand || null, remarks: item.remarks || null, testRequired: Boolean(item.testRequired), gtnSrNo: item.gtnSrNo || null, document: item.document || null })) }
         },
         include: { items: true }
       });
@@ -124,7 +94,7 @@ export async function POST(req) {
         .filter(item => !item.testRequired && Number(item.acceptedQty) > 0)
         .map(item => ({
           projectId: grn.projectId,
-          requisitionId: item.requisitionId,
+          requisitionId: null,
           grnId: grn.id,
           grnItemId: item.id,
           gtnId: null,
@@ -140,7 +110,6 @@ export async function POST(req) {
           remarks: item.remarks
         }));
       if (storeItems.length > 0) await tx.siteStoreStock.createMany({ data: storeItems, skipDuplicates: true });
-      await tx.siteMaterialRequisition.updateMany({ where: { id: { in: items.map(item => item.requisitionId) } }, data: { status: 'Issued' } });
       return { gtn, grn };
     });
     return NextResponse.json(result, { status: 201 });
@@ -154,9 +123,13 @@ export async function PUT(req) {
   try {
     const body = await req.json();
     if (!body.id || !Array.isArray(body.items)) return NextResponse.json({ error: 'GRN and item details are required.' }, { status: 400 });
-    const grn = await prisma.siteGRN.update({
-      where: { id: body.id },
-      data: {
+    const result = await prisma.$transaction(async tx => {
+      const current = await tx.siteGRN.findUnique({ where: { id: body.id }, select: { status: true } });
+      if (!current) return null;
+      const nextStatus = body.status || current.status;
+      const grn = await tx.siteGRN.update({
+        where: { id: body.id },
+        data: {
         grnType: body.grnType === 'PO' ? 'PO' : 'WITHOUT_PO',
         supplierId: body.supplierId || null,
         supplierName: body.supplierName || null,
@@ -166,6 +139,7 @@ export async function PUT(req) {
         challanNo: body.challanNo || null,
         state: body.state || null,
         ewayBillNo: body.ewayBillNo || null,
+        status: nextStatus,
         items: {
           update: body.items.filter(item => item.id).map(item => ({
             where: { id: item.id },
@@ -184,10 +158,21 @@ export async function PUT(req) {
             }
           }))
         }
-      },
-      include: { items: true }
+        },
+        include: { items: true }
+      });
+      if (nextStatus !== current.status) {
+        await tx.siteGRNStatusHistory.create({ data: {
+          grnId: body.id,
+          fromStatus: current.status,
+          toStatus: nextStatus,
+          note: 'GRN status updated',
+        } });
+      }
+      return grn;
     });
-    return NextResponse.json(grn);
+    if (!result) return NextResponse.json({ error: 'GRN not found.' }, { status: 404 });
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Error updating site GRN:', error);
     return NextResponse.json({ error: error?.message || 'Failed to update GRN' }, { status: 500 });

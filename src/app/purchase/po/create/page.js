@@ -54,6 +54,7 @@ function CreatePOContent() {
   const [bulkRates, setBulkRates] = useState('');
   const [lastEditedBy, setLastEditedBy] = useState('');
   const [lastEditedAt, setLastEditedAt] = useState('');
+  const [statusHistory, setStatusHistory] = useState([]);
 
   const [formData, setFormData] = useState({
     poNumber: '', vendorId: '', indentId: '', taskId: '', project: '', site: '',
@@ -109,6 +110,7 @@ function CreatePOContent() {
           const poData = await poRes.json();
           const po = Array.isArray(poData) ? poData[0] : poData;
           if (po) {
+            setStatusHistory(Array.isArray(po.statusHistory) ? po.statusHistory : []);
             setLastEditedBy(po.editedBy || '');
             setLastEditedAt(po.editedAt || '');
             let extra = {
@@ -433,6 +435,15 @@ function CreatePOContent() {
           </select>
         </div>
       </div>
+
+      {editId && <section className="no-print" style={{ maxWidth: 1500, margin: '0 auto 16px', padding: '16px 20px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+        <h2 style={{ margin: '0 0 12px', fontSize: 15, color: '#0f172a' }}>PO Status Timeline</h2>
+        {statusHistory.length ? <div style={{ display: 'grid', gap: 10 }}>{statusHistory.map(entry => <div key={entry.id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 10 }}>
+          <span style={{ width: 10, height: 10, marginTop: 5, borderRadius: '50%', background: '#2563eb' }} />
+          <div><div style={{ fontSize: 13, color: '#1e293b', fontWeight: 650 }}>{entry.fromStatus ? `${entry.fromStatus.replaceAll('_', ' ')} → ` : ''}{entry.toStatus.replaceAll('_', ' ')}</div>
+            <div style={{ marginTop: 2, fontSize: 12, color: '#64748b' }}>{entry.actorName || 'Unknown user'} · {new Date(entry.changedAt).toLocaleString('en-IN')}{entry.note ? ` · ${entry.note}` : ''}</div></div>
+        </div>)}</div> : <div style={{ fontSize: 13, color: '#64748b' }}>No status changes have been recorded yet.</div>}
+      </section>}
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div className="document-frame" style={{ backgroundColor: '#fff', width: '100%', maxWidth: '1500px', padding: '32px 42px 180px', position: 'relative' }}>

@@ -70,10 +70,21 @@ export default function LabourRequisitionForm({ embedded = false, onSubmitted })
         const tasks = (Array.isArray(groups) ? groups : []).flatMap(group => group.tasks || []);
         setLibraryTasks(tasks.map(task => ({ id: task.id, name: task.name })));
         tasks.forEach(task => {
-          (task.labours || []).forEach(labour => resources.push({
-            id: labour.id, name: labour.name, taskId: task.id, taskName: task.name,
-            resourceType: 'Labour', unit: labour.unit || 'Manday', quantity: labour.quantity || 0, rate: labour.rate || 0,
-          }));
+          (task.labours || []).forEach(labour => {
+            const entries = Array.isArray(labour.components) && labour.components.length
+              ? labour.components
+              : [labour];
+            entries.forEach((entry, index) => resources.push({
+              id: entry.sourceId || entry.id || `${labour.id}-${index}`,
+              name: entry.name || labour.name,
+              taskId: task.id,
+              taskName: task.name,
+              resourceType: 'Labour',
+              unit: entry.unit || labour.unit || 'Manday',
+              quantity: entry.quantity ?? labour.quantity ?? 0,
+              rate: entry.rate ?? labour.rate ?? 0,
+            }));
+          });
         });
         setTaskResources(resources);
       })

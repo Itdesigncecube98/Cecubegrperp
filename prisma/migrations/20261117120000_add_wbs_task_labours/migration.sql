@@ -1,0 +1,1 @@
+ALTER TABLE "WbsTask" ADD COLUMN "labours" JSONB NOT NULL DEFAULT '[]';

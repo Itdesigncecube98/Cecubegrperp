@@ -34,9 +34,22 @@ export async function GET() {
 export async function POST(request) {
   try {
     const data = await request.json();
-    const item = await prisma.library.create({ data });
+    const name = String(data.name || '').trim();
+    if (!name) return NextResponse.json({ error: 'Library name is required.' }, { status: 400 });
+
+    const existing = await prisma.library.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (existing) return NextResponse.json({ error: 'A library with this name already exists.' }, { status: 409 });
+
+    const item = await prisma.library.create({ data: { ...data, name } });
+    globalThis.engineeringLibraryCache = null;
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
+    if (error?.code === 'P2002') {
+      return NextResponse.json({ error: 'A library with this name already exists.' }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -45,9 +58,23 @@ export async function PUT(request) {
   try {
     const data = await request.json();
     const { id, ...updateData } = data;
+    if (!id) return NextResponse.json({ error: 'Library id is required.' }, { status: 400 });
+    if (updateData.name !== undefined) {
+      updateData.name = String(updateData.name).trim();
+      if (!updateData.name) return NextResponse.json({ error: 'Library name is required.' }, { status: 400 });
+      const existing = await prisma.library.findFirst({
+        where: { id: { not: id }, name: { equals: updateData.name, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      if (existing) return NextResponse.json({ error: 'A library with this name already exists.' }, { status: 409 });
+    }
     const item = await prisma.library.update({ where: { id }, data: updateData });
+    globalThis.engineeringLibraryCache = null;
     return NextResponse.json(item);
   } catch (error) {
+    if (error?.code === 'P2002') {
+      return NextResponse.json({ error: 'A library with this name already exists.' }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -56,6 +83,7 @@ export async function DELETE(request) {
   try {
     const { id } = await request.json();
     await prisma.library.delete({ where: { id } });
+    globalThis.engineeringLibraryCache = null;
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

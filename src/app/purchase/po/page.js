@@ -188,7 +188,7 @@ export default function PORegister() {
                     <td className="pur-text-right pur-flex" style={{ justifyContent: 'flex-end', gap: '8px' }}>
                       {['DRAFT', 'PENDING_APPROVAL'].includes(po.status) && can('Purchase Orders Approve') && <button className="pur-btn pur-btn-outline" disabled={approvalId === po.id} onClick={() => togglePOApproval(po)}>{approvalId === po.id ? 'Saving…' : 'Approve'}</button>}
                       {po.status === 'APPROVED' && withinApprovalWindow(po.approvedAt) && can('Purchase Orders Approve') && <button className="pur-btn pur-btn-outline" disabled={approvalId === po.id} onClick={() => togglePOApproval(po)}>{approvalId === po.id ? 'Saving…' : 'Unapprove (2 day window)'}</button>}
-                      {can('Purchase Orders View') && <Link href={`/purchase/po/print?id=${po.id}`} target="_blank" className="pur-icon-btn pur-text-indigo-600" title="Download PDF">
+                      {can('Purchase Orders View') && po.approvedAt && <Link href={`/purchase/po/print?id=${po.id}`} target="_blank" className="pur-icon-btn pur-text-indigo-600" title="Download PDF">
                         <Download size={16} />
                       </Link>}
                       {can('Purchase Orders Edit') && !po.approvedAt && <Link href={`/purchase/po/create?id=${po.id}`} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>Edit</Link>}

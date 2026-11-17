@@ -7,8 +7,7 @@ export async function GET(req) {
     const clients = await prisma.marketingClient.findMany({
       orderBy: { companyName: 'asc' },
       include: {
-        leads: { select: { id: true, leadId: true } },
-        opportunities: { select: { id: true, estimatedValue: true, status: true } }
+        leads: { select: { id: true, leadId: true } }
       }
     });
     return NextResponse.json(clients);

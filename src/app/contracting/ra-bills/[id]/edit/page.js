@@ -33,20 +33,16 @@ export default function EditRABillPage() {
                 const b = Array.isArray(data) ? data[0] : data;
                 if (!b) throw new Error('RA bill not found');
 
-                let parsedLines = [];
-                let remarks = b.remarks || '';
-                if (remarks.startsWith('__TASK_LINES__:')) {
-                    const nl = remarks.indexOf('\n');
-                    if (nl !== -1) {
-                        try { parsedLines = JSON.parse(remarks.substring('__TASK_LINES__:'.length, nl)); } catch { /* ignore */ }
-                        remarks = remarks.substring(nl + 1).trim();
-                    }
-                }
+                const parsedLines = Array.isArray(b.taskLines) ? b.taskLines : [];
+                const remarks = b.remarks || '';
                 if (cancelled) return;
                 setBill(b);
                 setLines(parsedLines.map(l => ({ description: l.description || '', qty: l.qty ?? 0, rate: l.rate ?? 0 })));
                 setForm({
                     date: b.date ? new Date(b.date).toISOString().slice(0, 10) : '',
+                    contractorBillNo: b.contractorBillNo || '',
+                    contractorBillDate: b.contractorBillDate ? new Date(b.contractorBillDate).toISOString().slice(0, 10) : '',
+                    buildingNo: b.buildingNo || '',
                     measuredValue: b.measuredValue ?? 0,
                     retentionPercent: b.retentionPercent ?? 0,
                     advanceRecovery: b.advanceRecovery ?? 0,
@@ -94,6 +90,9 @@ export default function EditRABillPage() {
                 body: JSON.stringify({
                     id,
                     date: form.date,
+                    contractorBillNo: form.contractorBillNo,
+                    contractorBillDate: form.contractorBillDate,
+                    buildingNo: form.buildingNo,
                     measuredValue: measured,
                     retentionPercent: num(form.retentionPercent),
                     advanceRecovery: num(form.advanceRecovery),
@@ -133,6 +132,9 @@ export default function EditRABillPage() {
             <fieldset disabled={locked} style={{ border: 'none', padding: 0, margin: 0 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
                     <div><span style={label}>RA Bill Date</span><input type="date" style={box} value={form.date} onChange={e => setField('date', e.target.value)} /></div>
+                    <div><span style={label}>Cont. Bill No</span><input style={box} value={form.contractorBillNo} onChange={e => setField('contractorBillNo', e.target.value)} /></div>
+                    <div><span style={label}>Cont. Bill Date</span><input type="date" style={box} value={form.contractorBillDate} onChange={e => setField('contractorBillDate', e.target.value)} /></div>
+                    <div><span style={label}>Building No</span><input style={box} value={form.buildingNo} onChange={e => setField('buildingNo', e.target.value)} /></div>
                     <div><span style={label}>Retention %</span><input type="number" style={box} value={form.retentionPercent} onChange={e => setField('retentionPercent', e.target.value)} /></div>
                     <div><span style={label}>TDS %</span><input type="number" style={box} value={form.tdsPercent} onChange={e => setField('tdsPercent', e.target.value)} /></div>
                     <div><span style={label}>Advance Recovery</span><input type="number" style={box} value={form.advanceRecovery} onChange={e => setField('advanceRecovery', e.target.value)} /></div>

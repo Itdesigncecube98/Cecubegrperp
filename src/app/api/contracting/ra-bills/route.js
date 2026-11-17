@@ -4,6 +4,8 @@ import prisma from '@/lib/prisma';
 import { getDocumentActors, getDocumentEditors, recordDocumentAction, recordDocumentEdit } from '@/lib/documentAudit';
 import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
+import { parseRABillRemarks, serializeRABillRemarks } from '@/lib/raBillMetadata';
+import { getWorkOrderCompletionData } from '@/lib/workCompletionTasks';
 
 const VALID_STATUSES = ['Submitted', 'Approved', 'Paid', 'Rejected'];
 
@@ -40,11 +42,57 @@ export async function GET(request) {
       },
       orderBy: { createdAt: 'desc' }
     });
-    const [editors, actors] = await Promise.all([
+    const [editors, actors, checks, timelineEvents] = await Promise.all([
       getDocumentEditors(prisma, 'WorkOrderRABill', bills.map(bill => bill.id)),
       getDocumentActors(prisma, 'WorkOrderRABill', bills.map(bill => bill.id)),
+      prisma.auditLog.findMany({
+        where: { entityType: 'WorkOrderRABill', action: 'CHECK', entityId: { in: bills.map(bill => bill.id) } },
+        orderBy: { createdAt: 'desc' },
+        select: { entityId: true, createdAt: true },
+      }),
+      prisma.auditLog.findMany({
+        where: {
+          entityType: 'WorkOrderRABill',
+          action: { in: ['CREATE', 'EDIT', 'CHECK', 'APPROVE', 'UNAPPROVE', 'REJECT', 'PAID', 'RESUBMIT'] },
+          entityId: { in: bills.map(bill => bill.id) },
+        },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, entityId: true, action: true, remarks: true, createdAt: true },
+      }),
     ]);
-    return NextResponse.json(bills.map(bill => ({ ...bill, ...actors[bill.id], ...editors[bill.id] })));
+    const latestCheckAt = new Map();
+    checks.forEach(check => {
+      if (check.entityId && !latestCheckAt.has(check.entityId)) latestCheckAt.set(check.entityId, check.createdAt);
+    });
+    const timelineByBill = new Map();
+    timelineEvents.forEach(event => {
+      if (!event.entityId) return;
+      const events = timelineByBill.get(event.entityId) || [];
+      let payload = {};
+      try { payload = JSON.parse(event.remarks || '{}'); } catch { /* Older audit entries may not contain JSON. */ }
+      events.push({
+        id: event.id,
+        action: event.action,
+        actorName: event.action === 'EDIT' ? payload.editedBy || '' : payload.actorName || '',
+        createdAt: event.createdAt,
+      });
+      timelineByBill.set(event.entityId, events);
+    });
+    return NextResponse.json(bills.map(bill => {
+      const editedAt = editors[bill.id]?.editedAt;
+      const checkedAt = latestCheckAt.get(bill.id);
+      const { taskLines, metadata, remarks } = parseRABillRemarks(bill.remarks);
+      return {
+        ...bill,
+        ...metadata,
+        taskLines,
+        remarks,
+        ...actors[bill.id],
+        ...editors[bill.id],
+        checkedBy: checkedAt && (!editedAt || checkedAt > editedAt) ? actors[bill.id]?.checkedBy || '' : '',
+        statusTimeline: timelineByBill.get(bill.id) || [],
+      };
+    }));
   } catch (error) {
     console.error('Error fetching RA bills:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -57,7 +105,8 @@ export async function POST(request) {
     const data = await request.json();
     const {
       workOrderId, date, measuredValue, retentionPercent,
-      advanceRecovery, otherDeductions, tdsPercent, remarks, taskLines = []
+      advanceRecovery, otherDeductions, tdsPercent, remarks, taskLines = [],
+      contractorBillNo, contractorBillDate, buildingNo,
     } = data;
 
     if (!workOrderId) {
@@ -65,8 +114,22 @@ export async function POST(request) {
     }
 
     // Fetch the work order
-    const wo = await prisma.workOrder.findUnique({ where: { id: workOrderId } });
+    const wo = await prisma.workOrder.findUnique({
+      where: { id: workOrderId },
+      include: { project: { select: { name: true } } },
+    });
     if (!wo) return NextResponse.json({ error: 'Work Order not found' }, { status: 404 });
+
+    const completionData = await getWorkOrderCompletionData(prisma, {
+      projectName: wo.project?.name,
+      workOrderId,
+      workOrderNo: wo.woNo,
+    });
+    if (!completionData.approvedTasks?.length) {
+      return NextResponse.json({
+        error: 'At least one Work Completion task must be Approved before generating an RA bill.',
+      }, { status: 409 });
+    }
 
     // Get previous bills to compute cumulative (only certified/paid bills count)
     const prevBills = await prisma.workOrderRABill.findMany({
@@ -97,11 +160,11 @@ export async function POST(request) {
     const tdsAmt = (beforeTds * tdsPct) / 100;
     const netPayable = beforeTds - tdsAmt;
 
-    const taskMetadata = Array.isArray(taskLines) && taskLines.length > 0
-      ? `__TASK_LINES__:${JSON.stringify(taskLines)}\n`
-      : '';
-
-    const combinedRemarks = `${taskMetadata}${remarks || ''}`;
+    const combinedRemarks = serializeRABillRemarks({
+      taskLines,
+      metadata: { contractorBillNo, contractorBillDate, buildingNo },
+      remarks,
+    });
 
     const bill = await prisma.workOrderRABill.create({
       data: {
@@ -188,8 +251,13 @@ export async function PUT(request) {
     }
     if (action === 'approve' && existing.status !== 'Submitted') return NextResponse.json({ error: 'Only submitted RA bills can be approved.' }, { status: 409 });
     if (action === 'approve') {
-      const checkRecord = await prisma.auditLog.findFirst({ where: { entityType: 'WorkOrderRABill', entityId: id, action: 'CHECK' }, select: { id: true } });
-      if (!checkRecord) return NextResponse.json({ error: 'Check the RA bill before approving it.' }, { status: 409 });
+      const [checkRecord, latestEdit] = await Promise.all([
+        prisma.auditLog.findFirst({ where: { entityType: 'WorkOrderRABill', entityId: id, action: 'CHECK' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+        prisma.auditLog.findFirst({ where: { entityType: 'WorkOrderRABill', entityId: id, action: 'EDIT' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+      ]);
+      if (!checkRecord || (latestEdit && checkRecord.createdAt <= latestEdit.createdAt)) {
+        return NextResponse.json({ error: 'Check the edited RA bill again before approving it.' }, { status: 409 });
+      }
     }
     if (action === 'unapprove' && existing.status !== 'Approved') return NextResponse.json({ error: 'Only approved RA bills can be unapproved.' }, { status: 409 });
     if (action === 'unapprove') {
@@ -199,23 +267,29 @@ export async function PUT(request) {
       }
     }
     if (status === 'Approved' && action !== 'approve') return NextResponse.json({ error: 'Use the approval action to approve an RA bill.' }, { status: 400 });
-    const nextStatus = action === 'approve' ? 'Approved' : action === 'unapprove' ? 'Submitted' : status;
+    const hasBillEdits = action !== 'check' && action !== 'approve' && action !== 'unapprove'
+      && ['date', 'measuredValue', 'retentionPercent', 'advanceRecovery', 'otherDeductions', 'tdsPercent', 'remarks', 'taskLines', 'contractorBillNo', 'contractorBillDate', 'buildingNo'].some(field => data[field] !== undefined);
+    const nextStatus = action === 'approve' ? 'Approved' : action === 'unapprove' ? 'Submitted' : hasBillEdits ? 'Submitted' : status;
 
-    // Preserve task metadata in remarks when task lines are edited.
-    let savedRemarks = remarks !== undefined ? (remarks || '') : (existing.remarks || '');
-    if (Array.isArray(taskLines)) {
-      const newline = savedRemarks.indexOf('\n');
-      if (savedRemarks.startsWith('__TASK_LINES__:')) {
-        savedRemarks = newline >= 0 ? savedRemarks.slice(newline + 1) : '';
-      }
-      if (taskLines.length) {
-        savedRemarks = `__TASK_LINES__:${JSON.stringify(taskLines)}\n${savedRemarks}`;
-      }
-    }
+    const existingBillData = parseRABillRemarks(existing.remarks);
+    const hasBillMetadata = ['contractorBillNo', 'contractorBillDate', 'buildingNo']
+      .some(field => data[field] !== undefined);
+    const shouldSaveRemarks = remarks !== undefined || Array.isArray(taskLines) || hasBillMetadata;
+    const savedRemarks = shouldSaveRemarks
+      ? serializeRABillRemarks({
+          taskLines: Array.isArray(taskLines) ? taskLines : existingBillData.taskLines,
+          metadata: {
+            contractorBillNo: data.contractorBillNo !== undefined ? data.contractorBillNo : existingBillData.metadata.contractorBillNo,
+            contractorBillDate: data.contractorBillDate !== undefined ? data.contractorBillDate : existingBillData.metadata.contractorBillDate,
+            buildingNo: data.buildingNo !== undefined ? data.buildingNo : existingBillData.metadata.buildingNo,
+          },
+          remarks: remarks !== undefined ? remarks : existingBillData.remarks,
+        })
+      : existing.remarks || '';
 
     const updateData = {
       ...(nextStatus && { status: nextStatus }),
-      ...(remarks !== undefined || Array.isArray(taskLines)
+      ...(shouldSaveRemarks
         ? { remarks: savedRemarks || null }
         : {}),
     };
@@ -257,11 +331,27 @@ export async function PUT(request) {
       },
     });
 
-    await recordDocumentEdit(prisma, {
-      entityType: 'WorkOrderRABill', entityId: updated.id, module: 'Contracting', editorName: data.editedBy,
-    });
-    if (nextStatus === 'Approved' || action === 'unapprove') {
-      await recordDocumentAction(prisma, { entityType: 'WorkOrderRABill', entityId: updated.id, module: 'Contracting', action: action === 'unapprove' ? 'UNAPPROVE' : 'APPROVE', actorName: data.approvalActor || data.editedBy });
+    if (hasBillEdits) {
+      await recordDocumentEdit(prisma, {
+        entityType: 'WorkOrderRABill', entityId: updated.id, module: 'Contracting', editorName: data.editedBy,
+      });
+    }
+    if (existing.status !== nextStatus) {
+      const statusAction = action === 'unapprove' ? 'UNAPPROVE'
+        : nextStatus === 'Approved' ? 'APPROVE'
+          : nextStatus === 'Rejected' ? 'REJECT'
+            : nextStatus === 'Paid' ? 'PAID'
+              : nextStatus === 'Submitted' ? 'RESUBMIT'
+              : null;
+      if (statusAction) {
+        await recordDocumentAction(prisma, {
+          entityType: 'WorkOrderRABill',
+          entityId: updated.id,
+          module: 'Contracting',
+          action: statusAction,
+          actorName: data.approvalActor || data.approvedBy || data.editedBy || 'Unknown user',
+        });
+      }
     }
 
     return NextResponse.json({ ...updated, editedBy: data.editedBy || null });

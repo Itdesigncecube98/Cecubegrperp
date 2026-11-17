@@ -130,7 +130,6 @@ model Employee {
   locationRequests         LocationRequest[]
   marketingFollowups       MarketingFollowup[]
   marketingLeads           MarketingLead[]               @relation("LeadOwner")
-  marketingOpportunities   MarketingOpportunity[]        @relation("OpportunityOwner")
   orgChartNode             OrgChartNode?
   positionIndentRaises     PositionIndent[]              @relation("PositionIndentRaiser")
   positionIndentApprovals  PositionIndentApproval[]
@@ -1512,6 +1511,7 @@ model WbsTask {
   materialRate      Float?   @default(0.0)
   totalAmount       Float?   @default(0.0)
   materials         Json     @default("[]")
+  labours           Json     @default("[]")
   group             WbsGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -1954,7 +1954,6 @@ model MarketingLead {
   followups             MarketingFollowup[]
   client                MarketingClient?       @relation(fields: [clientId], references: [id])
   leadOwner             Employee               @relation("LeadOwner", fields: [leadOwnerId], references: [id])
-  opportunities         MarketingOpportunity[]
 }
 
 model MarketingClient {
@@ -1973,13 +1972,11 @@ model MarketingClient {
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
   leads                   MarketingLead[]
-  opportunities           MarketingOpportunity[]
 }
 
 model MarketingFollowup {
   id               String                @id @default(cuid())
   leadId           String?
-  opportunityId    String?
   activityType     String
   discussion       String
   commitment       String?
@@ -1991,71 +1988,6 @@ model MarketingFollowup {
   createdAt        DateTime              @default(now())
   createdBy        Employee              @relation(fields: [createdById], references: [id])
   lead             MarketingLead?        @relation(fields: [leadId], references: [id])
-  opportunity      MarketingOpportunity? @relation(fields: [opportunityId], references: [id])
-}
-
-model MarketingOpportunity {
-  id                  String              @id @default(cuid())
-  leadId              String
-  clientId            String
-  estimatedValue      Float
-  probabilityPercent  Float
-  expectedClosingDate DateTime
-  salesStage          String
-  ownerId             String
-  competitor          String?
-  status              String              @default("Open")
-  lostReason          String?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  documents           Json?
-  followups           MarketingFollowup[]
-  client              MarketingClient     @relation(fields: [clientId], references: [id])
-  lead                MarketingLead       @relation(fields: [leadId], references: [id])
-  owner               Employee            @relation("OpportunityOwner", fields: [ownerId], references: [id])
-  proposals           MarketingProposal[]
-  tenders             MarketingTender[]
-}
-
-model MarketingProposal {
-  id            String                 @id @default(cuid())
-  opportunityId String
-  estimatedCost Float
-  quotedAmount  Float
-  margin        Float?
-  discount      Float?
-  finalAmount   Float
-  paymentTerms  String?
-  deliveryTerms String?
-  validity      DateTime?
-  status        String                 @default("Draft")
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
-  negotiations  MarketingNegotiation[]
-  opportunity   MarketingOpportunity   @relation(fields: [opportunityId], references: [id])
-}
-
-model MarketingNegotiation {
-  id           String            @id @default(cuid())
-  proposalId   String
-  round        Int
-  clientOffer  Float
-  companyOffer Float
-  discount     Float?
-  finalOffer   Float?
-  status       String
-  createdAt    DateTime          @default(now())
-  proposal     MarketingProposal @relation(fields: [proposalId], references: [id])
-}
-
-model MarketingTender {
-  id            String               @id @default(cuid())
-  opportunityId String
-  referenceNo   String
-  status        String
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  opportunity   MarketingOpportunity @relation(fields: [opportunityId], references: [id])
 }
 
 model Tender {
@@ -2932,10 +2864,24 @@ model SiteGTN {
   grns             SiteGRN[]
   project          ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
   items            SiteGTNItem[]
+  statusHistory    SiteGTNStatusHistory[]
 
   @@index([projectId])
   @@index([supplierId])
   @@index([gtnDate])
+}
+
+model SiteGTNStatusHistory {
+  id        String   @id @default(cuid())
+  gtnId     String
+  fromStatus String?
+  toStatus  String
+  changedAt DateTime @default(now())
+  actorName String?
+  note      String?
+  gtn       SiteGTN @relation(fields: [gtnId], references: [id], onDelete: Cascade)
+
+  @@index([gtnId, changedAt])
 }
 
 model SiteGTNItem {
@@ -2992,6 +2938,7 @@ model SiteGRN {
   gtn                   SiteGTN?      @relation(fields: [gtnId], references: [id])
   project               ProjectMaster @relation(fields: [projectId], references: [id], onDelete: Cascade)
   items                 SiteGRNItem[]
+  statusHistory         SiteGRNStatusHistory[]
 
   @@index([projectId])
   @@index([gtnId])
@@ -3000,7 +2947,7 @@ model SiteGRN {
 model SiteGRNItem {
   id            String                  @id @default(cuid())
   grnId         String
-  requisitionId String
+  requisitionId String?
   materialName  String
   quantity      Float                   @default(0)
   unit          String?
@@ -3016,7 +2963,19 @@ model SiteGRNItem {
   gtnSrNo       String?
   document      String?
   grn           SiteGRN                 @relation(fields: [grnId], references: [id], onDelete: Cascade)
-  requisition   SiteMaterialRequisition @relation(fields: [requisitionId], references: [id])
+  requisition   SiteMaterialRequisition? @relation(fields: [requisitionId], references: [id])
+}
+
+model SiteGRNStatusHistory {
+  id        String   @id @default(cuid())
+  grnId     String
+  fromStatus String?
+  toStatus  String
+  changedAt DateTime @default(now())
+  note      String?
+  grn       SiteGRN  @relation(fields: [grnId], references: [id], onDelete: Cascade)
+
+  @@index([grnId, changedAt])
 }
 
 model SiteMaterialRequisition {
@@ -3395,10 +3354,24 @@ model VendorBill {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   voucher     Voucher? @relation(fields: [voucherId], references: [id])
+  statusHistory VendorBillStatusHistory[]
 
   @@index([companyId])
   @@index([vendorId])
   @@index([status])
+}
+
+model VendorBillStatusHistory {
+  id        String    @id @default(cuid())
+  billId    String
+  fromStatus String?
+  toStatus  String
+  changedAt DateTime  @default(now())
+  actorName String?
+  note      String?
+  bill      VendorBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId, changedAt])
 }
 
 model PurchaseOrder {
@@ -3459,10 +3432,24 @@ model PurchaseOrder {
   status            POStatus            @default(DRAFT)
   grns              GoodsReceiptNote[]
   items             PurchaseOrderItem[]
+  statusHistory     PurchaseOrderStatusHistory[]
 
   @@index([companyId, status])
   @@index([supplierId])
   @@index([poDate])
+}
+
+model PurchaseOrderStatusHistory {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  fromStatus      String?
+  toStatus        String
+  changedAt       DateTime      @default(now())
+  actorName       String?
+  note            String?
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseOrderId, changedAt])
 }
 
 model PurchaseOrderItem {
@@ -3557,9 +3544,23 @@ model WorkOrder {
   updatedAt        DateTime          @updatedAt
   project          ProjectMaster     @relation(fields: [projectId], references: [id])
   raBills          WorkOrderRABill[]
+  statusHistory    WorkOrderStatusHistory[]
 
   @@index([projectId])
   @@index([status])
+}
+
+model WorkOrderStatusHistory {
+  id           String     @id @default(cuid())
+  workOrderId  String
+  fromStatus   String?
+  toStatus     String
+  changedAt    DateTime   @default(now())
+  actorName    String?
+  note         String?
+  workOrder    WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId, changedAt])
 }
 
 model WorkOrderRABill {

@@ -18,7 +18,8 @@ export async function GET(request) {
     const bills = await prisma.vendorBill.findMany({
       where,
       include: {
-        voucher: true
+        voucher: true,
+        statusHistory: { orderBy: { changedAt: 'asc' } },
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -75,6 +76,12 @@ export async function POST(request) {
         remarks: remarks || null
       }
     });
+    await prisma.vendorBillStatusHistory.create({ data: {
+      billId: bill.id,
+      toStatus: bill.status,
+      actorName: body.createdBy || body.actorName || 'Accounts User',
+      note: 'Purchase bill created',
+    } });
 
     return NextResponse.json(bill, { status: 201 });
   } catch (error) {

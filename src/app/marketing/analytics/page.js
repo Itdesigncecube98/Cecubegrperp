@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { BarChart3, TrendingUp, Clock3, Users, Target, Trophy, Activity } from 'lucide-react';
+import { BarChart3, Clock3, Users, Target, Trophy, Activity } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const COLORS = ['#4f46e5', '#8b5cf6', '#ec4899', '#14b8a6', '#f59e0b', '#ef4444', '#10b981'];
@@ -68,7 +68,7 @@ export default function MarketingAnalyticsPage() {
         </div>
       </div>
 
-      <div className="mkt-grid-4">
+      <div className="mkt-grid-3">
         <div className="mkt-card mkt-kpi-card">
           <div className="mkt-kpi-icon" style={{ background: '#e0f2fe', color: '#0284c7' }}>
             <Users size={22} />
@@ -80,32 +80,22 @@ export default function MarketingAnalyticsPage() {
         </div>
 
         <div className="mkt-card mkt-kpi-card">
-          <div className="mkt-kpi-icon" style={{ background: '#e0e7ff', color: '#4f46e5' }}>
-            <TrendingUp size={22} />
-          </div>
-          <div className="mkt-kpi-info">
-            <p className="mkt-kpi-label">Opportunities</p>
-            <h3 className="mkt-kpi-value">{data.totals?.opportunities ?? 0}</h3>
-          </div>
-        </div>
-
-        <div className="mkt-card mkt-kpi-card">
           <div className="mkt-kpi-icon" style={{ background: '#d1fae5', color: '#059669' }}>
-            <Activity size={22} />
+            <Clock3 size={22} />
           </div>
           <div className="mkt-kpi-info">
-            <p className="mkt-kpi-label">Avg Lead Duration</p>
-            <h3 className="mkt-kpi-value">{data.metrics?.avgLeadDuration ?? '0d 0h'}</h3>
+            <p className="mkt-kpi-label">Follow-ups Logged</p>
+            <h3 className="mkt-kpi-value">{data.totals?.followups ?? 0}</h3>
           </div>
         </div>
 
         <div className="mkt-card mkt-kpi-card">
           <div className="mkt-kpi-icon" style={{ background: '#fef3c7', color: '#d97706' }}>
-            <Clock3 size={22} />
+            <Activity size={22} />
           </div>
           <div className="mkt-kpi-info">
-            <p className="mkt-kpi-label">Avg Close Time</p>
-            <h3 className="mkt-kpi-value">{data.metrics?.avgCloseTime ?? '0d 0h'}</h3>
+            <p className="mkt-kpi-label">Avg Lead Duration</p>
+            <h3 className="mkt-kpi-value">{data.metrics?.avgLeadDuration ?? '0d 0h'}</h3>
           </div>
         </div>
       </div>
@@ -184,16 +174,12 @@ export default function MarketingAnalyticsPage() {
             <h3 className="mkt-section-title"><Clock3 size={18} color="#f59e0b" /> Timing metrics</h3>
             <div style={{ display: 'grid', gap: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#f8fafc', borderRadius: '10px' }}>
-                <span>Avg lead duration</span>
+                <span>Avg lead duration to first follow-up</span>
                 <strong>{data.metrics?.avgLeadDuration ?? '0d 0h'}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#f8fafc', borderRadius: '10px' }}>
-                <span>Avg opportunity duration</span>
-                <strong>{data.metrics?.avgOpportunityDuration ?? '0d 0h'}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#f8fafc', borderRadius: '10px' }}>
-                <span>Avg close time</span>
-                <strong>{data.metrics?.avgCloseTime ?? '0d 0h'}</strong>
+                <span>Follow-ups logged</span>
+                <strong>{data.totals?.followups ?? 0}</strong>
               </div>
             </div>
           </div>

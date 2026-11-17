@@ -21,7 +21,7 @@ export async function GET(request) {
         where = { OR: [{ projectId: { in: projects.map(project => project.id) } }, { projectId: null, projectName: { in: projects.map(project => project.name) } }] };
       }
     }
-    const rows = await prisma.marketingLead.findMany({ where, include: { leadOwner: { select: { id: true, name: true } }, client: true, opportunities: true }, orderBy: { createdAt: 'desc' } });
+    const rows = await prisma.marketingLead.findMany({ where, include: { leadOwner: { select: { id: true, name: true } }, client: true }, orderBy: { createdAt: 'desc' } });
     const projectIds = [...new Set(rows.filter(row => !row.projectId).map(row => row.projectName).filter(Boolean))];
     const projects = projectIds.length ? await prisma.project.findMany({ where: { name: { in: projectIds } }, select: { id: true, name: true } }) : [];
     const projectByName = new Map(projects.map(project => [project.name, project.id]));

@@ -26,7 +26,8 @@ export async function GET(request) {
           include: {
             requisition: true
           }
-        }
+        },
+        statusHistory: { orderBy: { changedAt: 'asc' } }
       },
       orderBy: { grnDate: 'desc' }
     });
@@ -78,9 +79,9 @@ export async function POST(request) {
         ewayBillDate: body.ewayBillDate ? new Date(body.ewayBillDate) : null,
         status: body.status || 'Draft',
         remarks: body.remarks || null,
+        statusHistory: { create: { fromStatus: null, toStatus: body.status || 'Draft', note: 'GRN created' } },
         items: {
           create: (body.items || []).map(item => ({
-            requisitionId: item.requisitionId,
             materialName: item.materialName,
             quantity: parseFloat(item.quantity) || 0,
             unit: item.unit || null,
@@ -101,7 +102,8 @@ export async function POST(request) {
       include: {
         project: true,
         gtn: true,
-        items: true
+        items: true,
+        statusHistory: { orderBy: { changedAt: 'asc' } }
       }
     });
 

@@ -47,7 +47,8 @@ export async function GET(request) {
         where: { id },
         include: {
           project: { select: { id: true, projectId: true, name: true } },
-          items: { include: { requisition: { select: { reqNo: true, materialName: true } } } }
+          items: { include: { requisition: { select: { reqNo: true, materialName: true } } } },
+          statusHistory: { orderBy: { changedAt: 'asc' } },
         }
       });
       if (!gtn) return NextResponse.json({ error: 'GTN not found' }, { status: 404 });
@@ -78,7 +79,8 @@ export async function GET(request) {
               }
             }
           }
-        }
+        },
+        statusHistory: { orderBy: { changedAt: 'asc' } },
       },
       orderBy: { gtnDate: 'desc' }
     });
@@ -190,6 +192,8 @@ export async function POST(request) {
         include: { project: true, items: true },
       });
     });
+
+    await prisma.siteGTNStatusHistory.create({ data: { gtnId: gtn.id, toStatus: 'Draft', actorName: body.actorName || body.createdBy || 'Site User', note: 'GTN created' } });
 
     return NextResponse.json(gtn, { status: 201 });
   } catch (error) {

@@ -26,7 +26,7 @@ function findSubgroup(group, name) {
   return (group.subgroups || []).find(subgroup => subgroup.name === name);
 }
 
-export function addTaskMasterTask(projectId, { groupName, subgroupName, taskName, description = '', source, quantity = 0, unit = 'Job', rate = 0, workOrderId = null, contractorName = '' }) {
+export function addTaskMasterTask(projectId, { groupName, subgroupName, taskName, description = '', source, quantity = 0, unit = 'Job', rate = 0, workOrderId = null, contractorName = '', sourceId = null }) {
   if (!projectId || !taskName?.trim()) return null;
   const data = read(projectId);
   const groupLabel = groupName?.trim() || 'Imported Tasks';
@@ -43,7 +43,11 @@ export function addTaskMasterTask(projectId, { groupName, subgroupName, taskName
     group.subgroups.push(subgroup);
   }
   const normalizedName = taskName.trim().toLowerCase();
-  const existing = (subgroup.tasks || []).find(task => task.name.trim().toLowerCase() === normalizedName);
+  const tasks = subgroup.tasks || [];
+  const existing = sourceId
+    ? tasks.find(task => task.sourceId === sourceId)
+      || tasks.find(task => !task.sourceId && task.name.trim().toLowerCase() === normalizedName)
+    : tasks.find(task => task.name.trim().toLowerCase() === normalizedName);
   if (existing) {
     existing.description = description || existing.description || '';
     existing.source = source || existing.source;
@@ -53,6 +57,7 @@ export function addTaskMasterTask(projectId, { groupName, subgroupName, taskName
     existing.rate = Number(rate) || existing.rate || 0;
     existing.workOrderId = workOrderId || existing.workOrderId || null;
     existing.contractorName = contractorName || existing.contractorName || '';
+    existing.sourceId = sourceId || existing.sourceId || null;
     existing.cumulativeQty = Number(existing.cumulativeQty ?? existing.completedQty ?? 0);
     existing.completedQty = existing.cumulativeQty;
     existing.remainingQty = Math.max(0, existing.plannedQty - existing.cumulativeQty);
@@ -76,6 +81,7 @@ export function addTaskMasterTask(projectId, { groupName, subgroupName, taskName
     rate: Number(rate) || 0,
     workOrderId,
     contractorName,
+    sourceId,
     status: 'Tentative',
     updatedAt: now,
     history: [{ status: 'Tentative', changedAt: now, description: description?.trim() || '' }]
@@ -94,6 +100,12 @@ function findTask(groups, taskId) {
     if (nested) return nested;
   }
   return null;
+}
+
+export function getTaskMasterTask(projectId, taskId) {
+  if (!projectId || !taskId) return null;
+  const data = read(projectId);
+  return findTask(data.groups, taskId);
 }
 
 export function updateTaskMasterTask(projectId, taskUpdate) {

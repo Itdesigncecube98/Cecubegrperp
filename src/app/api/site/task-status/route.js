@@ -116,7 +116,8 @@ export async function GET(request) {
         unit: item.unit || 'Job',
         rate: item.rate,
         workOrderId: order.woNo,
-        contractorName: order.contractorName
+        contractorName: order.contractorName,
+        sourceId: item.id ? String(item.id) : null
       }));
     });
   }

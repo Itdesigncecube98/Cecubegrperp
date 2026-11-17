@@ -1,4 +1,5 @@
 export const dynamic = 'force-dynamic';
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { addTaskMasterTask } from '@/lib/siteTaskMaster';
@@ -11,6 +12,32 @@ function readScopeMetadata(scope) {
     const parsed = scope ? JSON.parse(scope) : {};
     return parsed?.audit && typeof parsed.audit === 'object' ? parsed.audit : {};
   } catch { return {}; }
+}
+
+async function getWorkOrderStatusHistory(client, workOrderIds) {
+  if (!workOrderIds.length) return [];
+  const placeholders = workOrderIds.map((_, index) => `$${index + 1}`).join(', ');
+  return client.$queryRawUnsafe(
+    `SELECT "id", "workOrderId", "fromStatus", "toStatus", "changedAt", "actorName", "note"
+     FROM "WorkOrderStatusHistory"
+     WHERE "workOrderId" IN (${placeholders})
+     ORDER BY "changedAt" ASC`,
+    ...workOrderIds,
+  );
+}
+
+function recordWorkOrderStatus(client, { workOrderId, fromStatus = null, toStatus, actorName = null, note = null }) {
+  return client.$executeRawUnsafe(
+    `INSERT INTO "WorkOrderStatusHistory"
+      ("id", "workOrderId", "fromStatus", "toStatus", "changedAt", "actorName", "note")
+     VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6)`,
+    randomUUID(),
+    workOrderId,
+    fromStatus,
+    toStatus,
+    actorName,
+    note,
+  );
 }
 
 // GET /api/contracting/work-orders
@@ -32,15 +59,28 @@ export async function GET(request) {
       where,
       include: {
         project: { select: { id: true, name: true, projectId: true } },
-        raBills: { select: { id: true, billNo: true, status: true, netPayable: true, date: true } }
+        raBills: { select: { id: true, billNo: true, status: true, netPayable: true, date: true } },
       },
       orderBy: { createdAt: 'desc' }
     });
-    const [editors, actors] = await Promise.all([
+    const [statusHistory, editors, actors] = await Promise.all([
+      getWorkOrderStatusHistory(prisma, workOrders.map(order => order.id)),
       getDocumentEditors(prisma, 'WorkOrder', workOrders.map(order => order.id)),
       getDocumentActors(prisma, 'WorkOrder', workOrders.map(order => order.id)),
     ]);
-    return NextResponse.json(workOrders.map(order => ({ ...order, ...readScopeMetadata(order.scope), ...actors[order.id], ...editors[order.id] })));
+    const historyByWorkOrder = new Map();
+    for (const entry of statusHistory) {
+      const entries = historyByWorkOrder.get(entry.workOrderId) || [];
+      entries.push(entry);
+      historyByWorkOrder.set(entry.workOrderId, entries);
+    }
+    return NextResponse.json(workOrders.map(order => ({
+      ...order,
+      statusHistory: historyByWorkOrder.get(order.id) || [],
+      ...readScopeMetadata(order.scope),
+      ...actors[order.id],
+      ...editors[order.id],
+    })));
   } catch (error) {
     console.error('Error fetching work orders:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -103,6 +143,12 @@ export async function POST(request) {
         project: { select: { id: true, name: true, projectId: true } }
       }
     });
+    await recordWorkOrderStatus(prisma, {
+      workOrderId: workOrder.id,
+      toStatus: 'Draft',
+      actorName: data.madeBy || data.editedBy || 'System',
+      note: 'Work order created',
+    });
 
     const legacyProject = await prisma.project.findFirst({ where: { name: project.name }, select: { id: true } });
     await autoGrantCreatorProjectTools(prisma, request, {
@@ -123,7 +169,8 @@ export async function POST(request) {
           source: 'Work Order',
           quantity: item.qty,
           unit: item.unit || 'Job',
-          rate: item.rate
+          rate: item.rate,
+          sourceId: item.id ? String(item.id) : null
         });
       });
     }
@@ -144,6 +191,30 @@ export async function PUT(request) {
     const existing = await prisma.workOrder.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: 'Work order not found' }, { status: 404 });
     if (!data.action && existing.status === 'Approved') return NextResponse.json({ error: 'Unapprove this work order within 2 days before editing it.' }, { status: 409 });
+    if (data.action === 'send-to-accounts') {
+      if (existing.status !== 'Approved') return NextResponse.json({ error: 'Only approved work orders can be sent to Accounts.' }, { status: 409 });
+      const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Contracting', toolName: 'Approve Work Order', projectId: existing.projectId });
+      if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+      const actor = access.session.type === 'admin' ? 'Administrator' : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      const priorScope = (() => { try { return existing.scope ? JSON.parse(existing.scope) : {}; } catch { return {}; } })();
+      const accountsSentAt = new Date().toISOString();
+      const updated = await prisma.$transaction(async tx => {
+        const result = await tx.workOrder.update({
+          where: { id },
+          data: { scope: JSON.stringify({ ...priorScope, audit: { ...(priorScope.audit || {}), accountsSentBy: actor, accountsSentAt } }) },
+          include: { project: { select: { id: true, name: true } } },
+        });
+        await recordWorkOrderStatus(tx, {
+          workOrderId: id,
+          fromStatus: existing.status,
+          toStatus: 'Sent to Accounts',
+          actorName: actor,
+          note: 'Work order sent to Accounts',
+        });
+        return result;
+      });
+      return NextResponse.json({ ...updated, accountsSentBy: actor, accountsSentAt });
+    }
     if (data.action === 'approve' || data.action === 'unapprove') {
       const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Contracting', toolName: 'Approve Work Order', projectId: existing.projectId });
       if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
@@ -155,7 +226,18 @@ export async function PUT(request) {
       }
       const actor = access.session.type === 'admin' ? 'Administrator' : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
       const audit = { ...(priorScope.audit || {}), approvedBy: data.action === 'approve' ? actor : null, approvedAt: data.action === 'approve' ? new Date().toISOString() : null };
-      const updated = await prisma.workOrder.update({ where: { id }, data: { status: data.action === 'approve' ? 'Approved' : 'Draft', scope: JSON.stringify({ ...priorScope, audit }) }, include: { project: { select: { id: true, name: true } } } });
+      const nextStatus = data.action === 'approve' ? 'Approved' : 'Draft';
+      const updated = await prisma.$transaction(async tx => {
+        const result = await tx.workOrder.update({ where: { id }, data: { status: nextStatus, scope: JSON.stringify({ ...priorScope, audit }) }, include: { project: { select: { id: true, name: true } } } });
+        await recordWorkOrderStatus(tx, {
+          workOrderId: id,
+          fromStatus: existing.status,
+          toStatus: nextStatus,
+          actorName: actor,
+          note: data.action === 'approve' ? 'Work order approved' : 'Work order approval removed',
+        });
+        return result;
+      });
       await recordDocumentAction(prisma, { entityType: 'WorkOrder', entityId: updated.id, module: 'Contracting', action: data.action === 'approve' ? 'APPROVE' : 'UNAPPROVE', actorName: actor });
       return NextResponse.json({ ...updated, ...audit, approvedBy: audit.approvedBy });
     }
@@ -186,10 +268,20 @@ export async function PUT(request) {
     if (fields.contractorGst !== undefined) updateData.contractorGst = fields.contractorGst;
     if (fields.contractorPan !== undefined) updateData.contractorPan = fields.contractorPan;
 
-    const updated = await prisma.workOrder.update({
-      where: { id },
-      data: updateData,
-      include: { project: { select: { id: true, name: true } } }
+    const updated = await prisma.$transaction(async tx => {
+      const result = await tx.workOrder.update({
+        where: { id },
+        data: updateData,
+        include: { project: { select: { id: true, name: true } } }
+      });
+      if (status && status !== existing.status) await recordWorkOrderStatus(tx, {
+        workOrderId: id,
+        fromStatus: existing.status,
+        toStatus: status,
+        actorName: fields.editedBy || data.actorName || 'System',
+        note: `Work order status changed to ${status}`,
+      });
+      return result;
     });
 
     await recordDocumentEdit(prisma, {

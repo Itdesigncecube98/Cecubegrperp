@@ -6,11 +6,9 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const leadId = searchParams.get('leadId');
-    const opportunityId = searchParams.get('opportunityId');
 
     let where = {};
     if (leadId) where.leadId = leadId;
-    if (opportunityId) where.opportunityId = opportunityId;
 
     const followups = await prisma.marketingFollowup.findMany({
       where,
@@ -34,14 +32,13 @@ export async function POST(req) {
     if (!body.createdById) {
       return NextResponse.json({ error: 'Created By ID is required' }, { status: 400 });
     }
-    if (!body.leadId && !body.opportunityId) {
-      return NextResponse.json({ error: 'Either Lead ID or Opportunity ID is required' }, { status: 400 });
+    if (!body.leadId) {
+      return NextResponse.json({ error: 'Lead ID is required' }, { status: 400 });
     }
 
     const followup = await prisma.marketingFollowup.create({
       data: {
         leadId: body.leadId || null,
-        opportunityId: body.opportunityId || null,
         activityType: body.activityType,
         discussion: body.discussion,
         commitment: body.commitment,

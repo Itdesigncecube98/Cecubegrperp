@@ -47,6 +47,7 @@ export async function GET(req) {
       where,
       include: {
         items: true,
+        statusHistory: { orderBy: { changedAt: 'asc' } },
         grns: {
           select: {
             id: true,
@@ -246,6 +247,15 @@ export async function POST(req) {
       }
     });
 
+    await prisma.purchaseOrderStatusHistory.create({
+      data: {
+        purchaseOrderId: po.id,
+        toStatus: 'DRAFT',
+        actorName: body.preparedByName || body.preparedBy || body.createdBy || 'Purchase Manager',
+        note: 'Purchase order drafted',
+      },
+    });
+
     await autoGrantCreatorProjectTools(prisma, req, {
       requestedEmployeeId: body.createdById,
       projectId: body.projectId,
@@ -270,7 +280,7 @@ export async function PUT(req) {
     const VALID_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'SENT', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED', 'CLOSED', 'CANCELLED'];
 
     if (!action && !status) {
-      const existingForEdit = await prisma.purchaseOrder.findUnique({ where: { id }, select: { id: true, approvedAt: true } });
+      const existingForEdit = await prisma.purchaseOrder.findUnique({ where: { id }, select: { id: true, status: true, approvedAt: true } });
       if (!existingForEdit) return NextResponse.json({ error: 'Purchase order not found.' }, { status: 404 });
       if (existingForEdit.approvedAt) return NextResponse.json({ error: 'Unapprove this purchase order within 2 days before editing it.' }, { status: 409 });
       const vendor = await getVendorFallback(body.supplierId);
@@ -299,6 +309,10 @@ export async function PUT(req) {
           where: { id },
           data: {
             poDate: body.poDate ? new Date(body.poDate) : undefined,
+            status: 'PENDING_APPROVAL',
+            approvedBy: null,
+            approvedByName: '',
+            approvedAt: null,
             deliveryDate: body.deliveryDate ? new Date(body.deliveryDate) : null,
             supplierId: body.supplierId || null,
             supplierName: body.supplierName || vendor?.name || '', supplierAddress: body.supplierAddress || vendor?.address || '',
@@ -324,6 +338,18 @@ export async function PUT(req) {
             })) }
           }, include: { items: true }
         });
+        if (existingForEdit.status !== 'PENDING_APPROVAL') {
+          await tx.purchaseOrderStatusHistory.create({
+            data: {
+              purchaseOrderId: id,
+              fromStatus: existingForEdit.status,
+              toStatus: 'PENDING_APPROVAL',
+              actorName: body.editedBy || 'System',
+              note: 'Purchase order edited and resubmitted for approval',
+            },
+          });
+        }
+        return updated;
       });
       await recordDocumentEdit(prisma, {
         entityType: 'PurchaseOrder', entityId: updated.id, module: 'Purchase', editorName: body.editedBy,
@@ -367,13 +393,34 @@ export async function PUT(req) {
       updateData.approvedAt = new Date();
     } else if (action === 'unapprove') {
       updateData.approvedBy = null;
-      updateData.approvedByName = null;
+      updateData.approvedByName = '';
       updateData.approvedAt = null;
     }
-    const po = await prisma.purchaseOrder.update({
-      where: { id },
-      data: updateData,
-      include: { items: true }
+    const po = await prisma.$transaction(async tx => {
+      const updated = await tx.purchaseOrder.update({
+        where: { id },
+        data: updateData,
+        include: { items: true }
+      });
+      if (existing.status !== newStatus) {
+        const actorName = body.approvalActor || body.editedBy || body.actorName || 'System';
+        const actionNotes = {
+          approve: 'Purchase order approved',
+          unapprove: 'Approval removed',
+          submit: 'Purchase order submitted for approval',
+          reject: body.remarks || 'Purchase order rejected',
+        };
+        await tx.purchaseOrderStatusHistory.create({
+          data: {
+            purchaseOrderId: id,
+            fromStatus: existing.status,
+            toStatus: newStatus,
+            actorName,
+            note: actionNotes[action] || 'Purchase order status updated',
+          },
+        });
+      }
+      return updated;
     });
 
     if (action === 'approve' || action === 'unapprove') await recordDocumentAction(prisma, { entityType: 'PurchaseOrder', entityId: po.id, module: 'Purchase', action: action === 'approve' ? 'APPROVE' : 'UNAPPROVE', actorName: body.approvalActor });

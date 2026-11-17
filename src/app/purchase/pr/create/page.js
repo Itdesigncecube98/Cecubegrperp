@@ -10,6 +10,7 @@ export default function CreatePR() {
   const router = useRouter();
   const { activeEmployee, activeProject, hasRight } = usePermissions();
   const canCreate = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', 'Purchase Indent Create')));
+  const [isAdminSession, setIsAdminSession] = useState(false);
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -42,15 +43,26 @@ export default function CreatePR() {
     : filteredTasks;
 
   useEffect(() => {
+    setIsAdminSession(sessionStorage.getItem('isAdmin') === 'true');
+  }, []);
+
+  useEffect(() => {
+    if (!isAdminSession && activeEmployee?.id) {
+      setFormData(previous => ({ ...previous, requestedById: activeEmployee.id }));
+    }
+  }, [activeEmployee, isAdminSession]);
+
+  useEffect(() => {
     async function loadData() {
       try {
-        const [empRes, projRes] = await Promise.all([
-          fetch('/api/employees'),
-          fetch('/api/projects', { cache: 'no-store' })
-        ]);
-        if (empRes.ok) {
+        const projectRequest = fetch('/api/projects', { cache: 'no-store' });
+        const employeeRequest = isAdminSession ? fetch('/api/employees') : Promise.resolve(null);
+        const [empRes, projRes] = await Promise.all([employeeRequest, projectRequest]);
+        if (empRes?.ok) {
           const data = await empRes.json();
           setEmployees(Array.isArray(data) ? data : data.employees || []);
+        } else if (activeEmployee) {
+          setEmployees([activeEmployee]);
         }
         if (projRes.ok) {
           const projs = await projRes.json();
@@ -63,7 +75,7 @@ export default function CreatePR() {
       }
     }
     loadData();
-  }, []);
+  }, [activeEmployee, isAdminSession]);
 
   useEffect(() => {
     const selectedProject = projects.find(project => project.name === formData.project);
@@ -127,15 +139,20 @@ export default function CreatePR() {
     const task = tasks.find(entry => entry.id === taskId);
     setFormData(previous => ({ ...previous, wbsTaskId: taskId }));
     setTaskSearch(task?.name || '');
-    const taskMaterials = (task?.materials || [])
-      .filter(material => material?.name || material?.materialName)
-      .map((material, index) => ({
-        id: `${taskId}-${index}`,
-        item: material.name || material.materialName,
-        specification: material.specification || '',
-        unit: material.unit || 'Nos',
-        quantity: material.quantity ?? ''
-      }));
+    const taskMaterials = (task?.materials || []).flatMap((material, materialIndex) => {
+      const components = Array.isArray(material.components) && material.components.length
+        ? material.components
+        : [material];
+      return components
+        .filter(component => component?.name || component?.materialName)
+        .map((component, componentIndex) => ({
+          id: `${taskId}-${material.id || materialIndex}-${component.sourceId || component.id || componentIndex}`,
+          item: component.name || component.materialName,
+          specification: component.specification || '',
+          unit: component.unit || 'Nos',
+          quantity: component.quantity ?? ''
+        }));
+    });
     setItems(taskMaterials.length ? taskMaterials : [{ id: `${taskId}-empty`, item: '', specification: '', unit: 'Nos', quantity: '' }]);
   };
 
@@ -149,6 +166,7 @@ export default function CreatePR() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          requestedById: isAdminSession ? formData.requestedById : (activeEmployee?.id || formData.requestedById),
           purpose: formData.purpose || (selectedTask ? `WBS Task: ${selectedTask.name}` : ''),
           items
         })
@@ -246,12 +264,24 @@ export default function CreatePR() {
             <div className="pur-grid-3">
               <div className="pur-form-group">
                 <label className="pur-label">Requested By *</label>
-                <select name="requestedById" required value={formData.requestedById} onChange={handleHeaderChange} className="pur-select">
-                  <option value="">-- Select Employee --</option>
-                  {employees.map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.name}</option>
-                  ))}
-                </select>
+                {isAdminSession ? (
+                  <select name="requestedById" required value={formData.requestedById} onChange={handleHeaderChange} className="pur-select">
+                    <option value="">-- Select Employee --</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={activeEmployee?.name || activeEmployee?.firstName || ''}
+                    readOnly
+                    required
+                    placeholder="Loading your employee account..."
+                    className="pur-input"
+                    style={{ background: '#f8fafc' }}
+                  />
+                )}
               </div>
               <div className="pur-form-group">
                 <label className="pur-label">Overall Required Date</label>

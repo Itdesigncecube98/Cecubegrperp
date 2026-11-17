@@ -69,7 +69,6 @@ const LEGACY_ADMIN_TOOLS = {
     { name: 'Site Dashboard', code: 'SITE_DASHBOARD' },
     { name: 'Daily Progress (DPR)', code: 'SITE_DPR' },
     { name: 'Work Completion', code: 'SITE_WORK_COMPLETION' },
-    { name: 'Material Requisition', code: 'SITE_MATERIAL_REQUISITION' },
     { name: 'GTN (Testing Note)', code: 'SITE_GTN' },
     { name: 'GRN Register', code: 'SITE_GRN' },
     { name: 'Site Store', code: 'SITE_STORE' },
@@ -81,8 +80,6 @@ const LEGACY_ADMIN_TOOLS = {
     { name: 'Analytics', code: 'MARKETING_ANALYTICS' },
     { name: 'Lead Register', code: 'MARKETING_LEAD_REGISTER' },
     { name: 'Customer Master', code: 'MARKETING_CUSTOMER_MASTER' },
-    { name: 'Opportunity Pipeline', code: 'MARKETING_OPP_PIPELINE' },
-    { name: 'Tender & Proposal', code: 'MARKETING_TENDER_PROPOSAL' },
     { name: 'Handover to Project', code: 'MARKETING_HANDOVER' },
   ]
 };

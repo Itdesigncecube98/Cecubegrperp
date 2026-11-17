@@ -3,46 +3,31 @@ import React, { useState, useEffect } from 'react';
 import { Search, Trophy, XCircle, ArrowRight } from 'lucide-react';
 
 export default function WonLostPage() {
-  const [opportunities, setOpportunities] = useState([]);
+  const [closedLeads, setClosedLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [oppRes, leadRes] = await Promise.all([
-          fetch('/api/marketing/opportunities'),
-          fetch('/api/marketing/leads')
-        ]);
-        
-        let combined = [];
-
-        if (oppRes.ok) {
-          const data = await oppRes.json();
-          combined = [...combined, ...data.filter(o => o.status === 'Won' || o.status === 'Lost')];
-        }
-
-        if (leadRes.ok) {
-          const leads = await leadRes.json();
-          const closedLeads = leads.filter(l => 
-            l.leadStatus === 'Won converted to customer' || 
-            l.leadStatus === 'Lost rejected'
-          ).map(l => ({
-            id: l.id,
-            status: l.leadStatus === 'Won converted to customer' ? 'Won' : 'Lost',
-            lead: { projectName: l.projectName },
-            client: { companyName: l.companyName },
-            estimatedValue: l.estimatedProjectValue,
-            updatedAt: l.updatedAt || l.createdAt,
-            lostReason: l.remarks,
-            isLead: true,
-            originalData: l
-          }));
-          combined = [...combined, ...closedLeads];
-        }
-
-        combined.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-        setOpportunities(combined);
+        const response = await fetch('/api/marketing/leads');
+        if (!response.ok) throw new Error('Failed to load lead history');
+        const leads = await response.json();
+        const closed = leads.filter(lead =>
+          lead.leadStatus === 'Won converted to customer' ||
+          lead.leadStatus === 'Lost rejected'
+        ).map(lead => ({
+          id: lead.id,
+          status: lead.leadStatus === 'Won converted to customer' ? 'Won' : 'Lost',
+          projectName: lead.projectName,
+          companyName: lead.companyName,
+          estimatedValue: lead.estimatedProjectValue,
+          updatedAt: lead.updatedAt || lead.createdAt,
+          lostReason: lead.remarks,
+          originalData: lead,
+        }));
+        closed.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        setClosedLeads(closed);
       } catch (err) {
         console.error(err);
       } finally {
@@ -52,9 +37,9 @@ export default function WonLostPage() {
     fetchData();
   }, []);
 
-  const filteredOpps = opportunities.filter(o => 
-    o.lead?.projectName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    o.client?.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredLeads = closedLeads.filter(lead =>
+    lead.projectName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    lead.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const formatCurrency = (val) => {
@@ -64,18 +49,18 @@ export default function WonLostPage() {
     return `₹${val.toLocaleString('en-IN')}`;
   };
 
-  const handlePushToProject = async (opp) => {
+  const handlePushToProject = async (lead) => {
     if (!confirm('Are you sure you want to push this to the Project module?')) return;
     try {
-      const data = opp.isLead ? opp.originalData : (opp.lead || {});
+      const data = lead.originalData;
       const projectRes = await fetch('/api/engineering/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: data.projectName || opp.lead?.projectName || 'New Project',
-          clientName: data.companyName || opp.client?.companyName || '',
+          name: data.projectName || lead.projectName || 'New Project',
+          clientName: data.companyName || lead.companyName || '',
           location: data.projectLocation || data.location || '',
-          contractValue: data.estimatedProjectValue || opp.estimatedValue || 0,
+          contractValue: data.estimatedProjectValue || lead.estimatedValue || 0,
           projectType: data.projectType || 'EPC',
           status: 'Planning'
         })
@@ -110,7 +95,7 @@ export default function WonLostPage() {
             />
           </div>
           <div className="mkt-text-muted">
-            Total: {filteredOpps.length} records
+            Total: {filteredLeads.length} records
           </div>
         </div>
 
@@ -129,10 +114,10 @@ export default function WonLostPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredOpps.map(opp => (
-                  <tr key={opp.id}>
+                {filteredLeads.map(lead => (
+                  <tr key={lead.id}>
                     <td>
-                      {opp.status === 'Won' ? (
+                      {lead.status === 'Won' ? (
                         <div className="mkt-badge mkt-badge-emerald" style={{ padding: '6px 12px', fontSize: '0.875rem' }}>
                           <Trophy size={16} /> Won
                         </div>
@@ -143,23 +128,23 @@ export default function WonLostPage() {
                       )}
                     </td>
                     <td>
-                      <div className="mkt-font-semibold">{opp.lead?.projectName || 'Unknown Project'}</div>
-                      <div className="mkt-text-muted mkt-text-xs mkt-mt-1">{opp.client?.companyName || 'Unknown Client'}</div>
+                      <div className="mkt-font-semibold">{lead.projectName || 'Unknown Project'}</div>
+                      <div className="mkt-text-muted mkt-text-xs mkt-mt-1">{lead.companyName || 'Unknown Client'}</div>
                     </td>
                     <td className="mkt-font-semibold text-slate-800">
-                      {formatCurrency(opp.estimatedValue)}
+                      {formatCurrency(lead.estimatedValue)}
                     </td>
                     <td className="mkt-text-muted">
-                      {opp.status === 'Lost' ? (
-                         <span className="mkt-text-xs">Reason: {opp.lostReason || 'Not specified'}</span>
+                      {lead.status === 'Lost' ? (
+                         <span className="mkt-text-xs">Reason: {lead.lostReason || 'Not specified'}</span>
                       ) : (
-                         <span className="mkt-text-xs">Closed on: {new Date(opp.updatedAt).toLocaleDateString()}</span>
+                         <span className="mkt-text-xs">Closed on: {new Date(lead.updatedAt).toLocaleDateString()}</span>
                       )}
                     </td>
                     <td className="mkt-text-right">
-                      {opp.status === 'Won' ? (
+                      {lead.status === 'Won' ? (
                         <button 
-                          onClick={() => handlePushToProject(opp)}
+                          onClick={() => handlePushToProject(lead)}
                           className="mkt-btn mkt-btn-outline mkt-ml-auto" 
                           style={{ color: '#4f46e5', borderColor: '#c7d2fe', backgroundColor: '#eef2ff' }}
                         >
@@ -171,10 +156,10 @@ export default function WonLostPage() {
                     </td>
                   </tr>
                 ))}
-                {filteredOpps.length === 0 && (
+                {filteredLeads.length === 0 && (
                   <tr>
                     <td colSpan="5" className="mkt-text-center mkt-text-muted" style={{ padding: '32px' }}>
-                      No won or lost opportunities found.
+                      No won or lost leads found.
                     </td>
                   </tr>
                 )}

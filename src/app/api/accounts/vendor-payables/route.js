@@ -55,13 +55,26 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid action. Use APPROVE or REJECT' }, { status: 400 });
     }
 
-    const po = await prisma.purchaseOrder.update({
-      where: { id: poId },
-      data: updateData,
-      include: {
-        items: true,
-        grns: true
+    const po = await prisma.$transaction(async tx => {
+      const current = await tx.purchaseOrder.findUnique({ where: { id: poId }, select: { id: true, status: true, preparedByName: true } });
+      if (!current) throw new Error('Purchase order not found');
+      const updated = await tx.purchaseOrder.update({
+        where: { id: poId },
+        data: updateData,
+        include: { items: true, grns: true }
+      });
+      if (current.status !== updateData.status) {
+        await tx.purchaseOrderStatusHistory.create({
+          data: {
+            purchaseOrderId: poId,
+            fromStatus: current.status,
+            toStatus: updateData.status,
+            actorName: body.approvedByName || body.actorName || approvedById || 'Accounts User',
+            note: action === 'APPROVE' ? 'Approved by accounts' : (remarks || 'Rejected by accounts'),
+          },
+        });
       }
+      return updated;
     });
 
     return NextResponse.json(po);

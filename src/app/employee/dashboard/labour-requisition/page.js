@@ -1,5 +1,5 @@
-import LabourRequestForm from '../LabourRequestForm';
+import EmployeeRequestForm from '../RequestForm';
 
 export default function EmployeeLabourRequisitionPage() {
-  return <LabourRequestForm />;
+  return <EmployeeRequestForm type="labour" />;
 }

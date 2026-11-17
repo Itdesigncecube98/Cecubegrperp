@@ -73,26 +73,23 @@ export default function EnquiryGenerationForm({ embedded = false, onSaved }) {
         ...next[rowIndex], selectedTaskId: task.id, taskName: task.name,
         description: task.description || '', unit: task.unit || '', qty: task.quantity || 1,
       };
-      const resourceRows = [
-        ...(task.materials || []).map((material, index) => ({
-          id: `${rowId}-material-${material.id || index}-${Date.now()}`,
-          selectedTaskId: task.id,
-          resourceType: 'Material',
-          taskName: `${task.name} - ${material.name}`,
-          description: material.specification || material.name,
-          unit: material.unit || 'Nos',
-          qty: material.quantity || 1,
-        })),
-        ...(task.labours || []).map((labour, index) => ({
-          id: `${rowId}-labour-${labour.id || index}-${Date.now()}`,
-          selectedTaskId: task.id,
-          resourceType: 'Labour',
-          taskName: `${task.name} - ${labour.name}`,
-          description: labour.specification || labour.name,
-          unit: labour.unit || 'Manday',
-          qty: labour.quantity || 1,
-        })),
-      ];
+      const resourceRows = (task.labours || []).flatMap((labour, labourIndex) => {
+          const components = Array.isArray(labour.components) && labour.components.length
+            ? labour.components
+            : [labour];
+          return components.map((component, componentIndex) => {
+            const labourName = component.name || labour.name;
+            return {
+              id: `${rowId}-labour-${labour.id || labourIndex}-${component.sourceId || component.id || componentIndex}-${Date.now()}`,
+              selectedTaskId: task.id,
+              resourceType: 'Labour',
+              taskName: `${task.name} - ${labourName}`,
+              description: component.specification || labour.specification || labourName,
+              unit: component.unit || labour.unit || 'Manday',
+              qty: component.quantity ?? labour.quantity ?? 1,
+            };
+          });
+        });
       next.splice(rowIndex, 1, taskRow, ...resourceRows);
       return next;
     });

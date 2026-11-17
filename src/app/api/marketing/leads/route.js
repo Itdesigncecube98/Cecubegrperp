@@ -17,7 +17,6 @@ export async function GET(req) {
       include: {
         leadOwner: { select: { id: true, name: true } },
         client: true,
-        opportunities: true,
       },
       orderBy: { createdAt: 'desc' }
     });

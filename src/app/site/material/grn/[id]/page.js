@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Edit2, PackageCheck } from 'lucide-react';
+import { ArrowLeft, Edit2, History, PackageCheck } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 
 const labelStyle = { color: '#64748b', fontSize: 12, fontWeight: 600 };
@@ -58,9 +58,26 @@ export default function GRNDetailsPage() {
           {grn.remarks && <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #f1f5f9' }}><div style={labelStyle}>Remarks</div><div style={{ marginTop: 4, color: '#334155', fontSize: 14 }}>{grn.remarks}</div></div>}
         </section>
 
+        <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 24, marginBottom: 16 }}>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 18px', color: '#0f172a', fontSize: 17 }}><History size={18} color="#0284c7" /> Status Timeline</h2>
+          {grn.statusHistory?.length ? (
+            <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 12 }}>
+              {grn.statusHistory.map(entry => (
+                <li key={entry.id} style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 12, padding: 12, border: '1px solid #e2e8f0', borderRadius: 8, background: '#f8fafc' }}>
+                  <time style={{ color: '#64748b', fontSize: 13 }}>{formatDateTime(entry.changedAt)}</time>
+                  <div>
+                    <strong style={{ color: '#1e293b' }}>{entry.fromStatus ? `${entry.fromStatus} → ` : ''}{entry.toStatus}</strong>
+                    {entry.note && <div style={{ marginTop: 3, color: '#64748b', fontSize: 13 }}>{entry.note}</div>}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : <div style={{ color: '#64748b', fontSize: 14 }}>No status changes recorded yet.</div>}
+        </section>
+
         <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 24 }}>
           <h2 style={{ margin: '0 0 18px', color: '#0f172a', fontSize: 17 }}>Received Materials</h2>
-          <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', minWidth: 1000, borderCollapse: 'collapse' }}><thead><tr style={{ background: '#f1f5f9' }}>{['#', 'Material', 'Requisition', 'Challan Qty', 'Received Qty', 'Accepted Qty', 'Retained Qty', 'Rejected Qty', 'Unit', 'Store', 'Brand', 'Testing'].map(header => <th key={header} style={{ ...cellStyle, textAlign: 'left', color: '#475569', fontWeight: 700, fontSize: 12 }}>{header}</th>)}</tr></thead><tbody>{(grn.items || []).map((item, index) => <tr key={item.id || index}><td style={cellStyle}>{index + 1}</td><td style={{ ...cellStyle, fontWeight: 600 }}>{item.materialName}</td><td style={cellStyle}>{item.requisition?.reqNo || '-'}</td><td style={cellStyle}>{item.challanQty || 0}</td><td style={cellStyle}>{item.quantity || 0}</td><td style={cellStyle}>{item.acceptedQty || 0}</td><td style={cellStyle}>{item.retainedQty || 0}</td><td style={cellStyle}>{item.rejectedQty || 0}</td><td style={cellStyle}>{item.unit || '-'}</td><td style={cellStyle}>{item.storeName || '-'}</td><td style={cellStyle}>{item.brand || '-'}</td><td style={cellStyle}>{item.testRequired ? 'Sent to GTN' : 'Not required'}</td></tr>)}</tbody></table></div>
+          <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse' }}><thead><tr style={{ background: '#f1f5f9' }}>{['#', 'Material', 'Challan Qty', 'Received Qty', 'Accepted Qty', 'Retained Qty', 'Rejected Qty', 'Unit', 'Store', 'Brand', 'Testing'].map(header => <th key={header} style={{ ...cellStyle, textAlign: 'left', color: '#475569', fontWeight: 700, fontSize: 12 }}>{header}</th>)}</tr></thead><tbody>{(grn.items || []).map((item, index) => <tr key={item.id || index}><td style={cellStyle}>{index + 1}</td><td style={{ ...cellStyle, fontWeight: 600 }}>{item.materialName}</td><td style={cellStyle}>{item.challanQty || 0}</td><td style={cellStyle}>{item.quantity || 0}</td><td style={cellStyle}>{item.acceptedQty || 0}</td><td style={cellStyle}>{item.retainedQty || 0}</td><td style={cellStyle}>{item.rejectedQty || 0}</td><td style={cellStyle}>{item.unit || '-'}</td><td style={cellStyle}>{item.storeName || '-'}</td><td style={cellStyle}>{item.brand || '-'}</td><td style={cellStyle}>{item.testRequired ? 'Sent to GTN' : 'Not required'}</td></tr>)}</tbody></table></div>
           {!grn.items?.length && <div style={{ padding: 30, textAlign: 'center', color: '#64748b' }}>No material items recorded.</div>}
         </section>
       </div>

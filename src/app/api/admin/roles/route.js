@@ -39,7 +39,7 @@ export const MODULE_MAP = {
     'Vouchers', 'Ledger', 'Reports', 'TDS', 'Bank',
   ],
   Marketing: [
-    'Leads', 'Opportunities', 'Clients',
+    'Leads', 'Clients',
   ],
   Tender: [
     'Bids', 'Awards', 'Documents',

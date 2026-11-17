@@ -4,11 +4,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { 
   CheckCircle, Clock, AlertCircle, FileText, Printer, Plus,
   Layers, Filter, Search, Download, Award, ChevronRight,
-  ShieldCheck, RefreshCw, X, Calendar, Package, ArrowUpRight
+  ShieldCheck, RefreshCw, X, Calendar, Package, ArrowUpRight, History
 } from 'lucide-react';
 import '../planning.css';
 import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
+import { getClientActor } from '@/lib/clientActor';
 
 export default function WorkCompletionTask() {
   const { activeEmployee, hasRight } = usePermissions();
@@ -37,6 +38,7 @@ export default function WorkCompletionTask() {
   // Modals state
   const [showLogModal, setShowLogModal] = useState(false);
   const [selectedTaskForLog, setSelectedTaskForLog] = useState(null);
+  const [selectedTaskForTimeline, setSelectedTaskForTimeline] = useState(null);
   const [logForm, setLogForm] = useState({
     date: new Date().toISOString().slice(0, 16),
     shift: 'Day',
@@ -52,6 +54,7 @@ export default function WorkCompletionTask() {
   const [showCertModal, setShowCertModal] = useState(false);
   const [selectedTaskForCert, setSelectedTaskForCert] = useState(null);
   const [certificateActionId, setCertificateActionId] = useState('');
+  const [statusActionId, setStatusActionId] = useState('');
   const canApproveCertificate = !activeEmployee || (!!selectedProjectId && hasRight(employeeToolCode('Site', 'Work Completion Certificate Approve'), selectedProjectId));
 
   // Toast state
@@ -169,6 +172,15 @@ export default function WorkCompletionTask() {
 
   // Open Log Modal
   const handleOpenLogModal = (task) => {
+    if (task.verificationStatus === 'Approved' || task.certificateApproved) {
+      showToast(
+        task.verificationStatus === 'Approved'
+          ? 'Unapprove this Work Completion task before logging quantity.'
+          : 'Unapprove the Work Completion certificate before logging quantity.',
+        'error'
+      );
+      return;
+    }
     setSelectedTaskForLog(task);
     setLogForm({
       date: new Date().toISOString().slice(0, 16),
@@ -221,6 +233,7 @@ export default function WorkCompletionTask() {
       percentComplete: newPercent,
       mbRef: logForm.mbRef || selectedTaskForLog.mbRef,
       verificationStatus: finalStatus,
+      statusChangedBy: getClientActor(),
       actualDate: newPercent >= 100 ? logForm.date : selectedTaskForLog.actualDate,
       logs: [newLogEntry, ...(selectedTaskForLog.logs || [])]
     };
@@ -245,27 +258,25 @@ export default function WorkCompletionTask() {
           taskUpdate: updatedTask
         })
       });
-
-      if (res.ok) {
-        setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-        showToast('Work completion progress recorded successfully!');
-        setShowLogModal(false);
-      } else {
-        showToast('Failed to update progress', 'error');
-      }
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to update progress');
+      setTasks(prev => prev.map(t => t.id === updatedTask.id ? result.updatedTask : t));
+      showToast('Work completion progress recorded successfully!');
+      setShowLogModal(false);
     } catch (err) {
       console.error(err);
-      showToast('Error recording progress', 'error');
+      showToast(err.message || 'Error recording progress', 'error');
     }
   };
 
-  // Quick Status Toggle (Quality Approval)
-  const handleQuickApprove = async (task) => {
-    const updated = {
-      ...task,
-      verificationStatus: task.verificationStatus === 'Quality Approved' ? 'Pending Verification' : 'Quality Approved'
-    };
+  const handleVerificationStatusChange = async (task, verificationStatus) => {
+    if (verificationStatus === task.verificationStatus) return;
+    if (['Approved', 'Rejected'].includes(verificationStatus) && !canApproveCertificate) {
+      showToast('You do not have permission to approve or reject Work Completion.', 'error');
+      return;
+    }
 
+    setStatusActionId(task.id);
     try {
       const res = await fetch('/api/engineering/planning/work-completion', {
         method: 'POST',
@@ -273,17 +284,22 @@ export default function WorkCompletionTask() {
         body: JSON.stringify({
           projectId: selectedProjectId,
           action: 'UPDATE_TASK',
-          taskUpdate: updated
+          taskUpdate: {
+            id: task.id,
+            verificationStatus,
+            statusChangedBy: getClientActor(),
+          }
         })
       });
-
-      if (res.ok) {
-        setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
-        showToast(`Task status updated to ${updated.verificationStatus}!`);
-      }
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to update status');
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...result.updatedTask } : t));
+      showToast(`Task status updated to ${verificationStatus}.`);
     } catch (err) {
       console.error(err);
-      showToast('Failed to update status', 'error');
+      showToast(err.message || 'Failed to update status', 'error');
+    } finally {
+      setStatusActionId('');
     }
   };
 
@@ -493,6 +509,8 @@ export default function WorkCompletionTask() {
               >
                 <option value="ALL">All Statuses</option>
                 <option value="Quality Approved">Quality Approved</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
                 <option value="Site Incharge Signed">Site Incharge Signed</option>
                 <option value="Pending Verification">Pending Verification</option>
                 <option value="Ready for Inspection">Ready for Inspection</option>
@@ -560,7 +578,7 @@ export default function WorkCompletionTask() {
               paddingBottom: '8px'
             }}
           >
-            <table className="wc-data-table" style={{ width: '100%', minWidth: '1380px' }}>
+            <table className="wc-data-table" style={{ width: '100%', minWidth: '1460px' }}>
               <thead>
                 <tr>
                   <th style={{ width: '60px' }}>WBS</th>
@@ -575,14 +593,21 @@ export default function WorkCompletionTask() {
                   <th style={{ textAlign: 'right' }}>Balance Amount</th>
                   <th>MB Reference</th>
                   <th>Verification Status</th>
-                  <th style={{ textAlign: 'center', width: '170px' }}>Actions</th>
+                  <th style={{ textAlign: 'center', width: '250px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredTasks.map((task) => {
-                  const isApproved = task.verificationStatus === 'Quality Approved';
-                  const isIncharge = task.verificationStatus === 'Site Incharge Signed';
-                  const isPending = task.verificationStatus === 'Pending Verification';
+                  const quantityLogBlocked = task.verificationStatus === 'Approved' || task.certificateApproved;
+                  const verificationStatusStyle = task.verificationStatus === 'Rejected'
+                    ? { background: '#fee2e2', borderColor: '#fecaca', color: '#991b1b' }
+                    : ['Quality Approved', 'Approved'].includes(task.verificationStatus)
+                      ? { background: '#dcfce7', borderColor: '#bbf7d0', color: '#166534' }
+                      : task.verificationStatus === 'Site Incharge Signed'
+                        ? { background: '#ede9fe', borderColor: '#ddd6fe', color: '#6d28d9' }
+                        : task.verificationStatus === 'Ready for Inspection'
+                          ? { background: '#dbeafe', borderColor: '#bfdbfe', color: '#1d4ed8' }
+                          : { background: '#fef3c7', borderColor: '#fde68a', color: '#92400e' };
 
                   return (
                     <tr key={task.id}>
@@ -645,29 +670,52 @@ export default function WorkCompletionTask() {
                         </span>
                       </td>
                       <td>
-                        <span 
-                          className={`status-badge ${isApproved ? 'approved' : (isIncharge ? 'incharge' : (isPending ? 'pending' : 'approved'))}`}
-                          onClick={() => handleQuickApprove(task)}
-                          style={{ cursor: 'pointer' }}
-                          title="Click to toggle approval"
+                        <select
+                          value={task.verificationStatus}
+                          onChange={event => handleVerificationStatusChange(task, event.target.value)}
+                          disabled={statusActionId === task.id || (task.verificationStatus === 'Approved' && !canApproveCertificate)}
+                          aria-label={`Verification status for ${task.taskName || task.materialName}`}
+                          title={task.verificationStatus === 'Approved' && !canApproveCertificate
+                            ? 'Only an approver can unapprove this task'
+                            : 'Change verification status'}
+                          style={{
+                            ...verificationStatusStyle,
+                            border: `1px solid ${verificationStatusStyle.borderColor}`,
+                            borderRadius: '999px',
+                            padding: '4px 8px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            maxWidth: '170px',
+                            cursor: statusActionId === task.id ? 'wait' : 'pointer',
+                            opacity: statusActionId === task.id ? 0.65 : 1,
+                          }}
                         >
-                          {isApproved && <ShieldCheck size={12} />}
-                          {isIncharge && <CheckCircle size={12} />}
-                          {isPending && <Clock size={12} />}
-                          <span>{task.verificationStatus}</span>
-                        </span>
+                          <option value="Pending Verification">Pending Verification</option>
+                          <option value="Ready for Inspection">Ready for Inspection</option>
+                          <option value="Site Incharge Signed">Site Incharge Signed</option>
+                          <option value="Quality Approved">Quality Approved</option>
+                          <option value="Approved" disabled={!canApproveCertificate}>Approved</option>
+                          <option value="Rejected" disabled={!canApproveCertificate}>Rejected</option>
+                        </select>
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                           <button 
                             type="button"
                             onClick={() => handleOpenLogModal(task)}
+                            disabled={quantityLogBlocked}
                             style={{
                               background: '#3b82f6', border: 'none', color: 'white',
                               padding: '5px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
-                              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                              cursor: quantityLogBlocked ? 'not-allowed' : 'pointer',
+                              opacity: quantityLogBlocked ? 0.55 : 1,
+                              display: 'flex', alignItems: 'center', gap: '4px'
                             }}
-                            title="Log today's site work progress"
+                            title={quantityLogBlocked
+                              ? task.verificationStatus === 'Approved'
+                                ? 'Unapprove this Work Completion task before logging quantity'
+                                : 'Unapprove the Work Completion certificate before logging quantity'
+                              : "Log today's site work progress"}
                           >
                             <Plus size={12} /> Log Qty
                           </button>
@@ -684,6 +732,18 @@ export default function WorkCompletionTask() {
                           >
                             <FileText size={12} color="#6366f1" /> WCC
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTaskForTimeline(task)}
+                            style={{
+                              background: '#f8fafc', border: '1px solid #cbd5e1', color: '#334155',
+                              padding: '5px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                            title="View verification status timeline"
+                          >
+                            <History size={12} /> History
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -694,6 +754,63 @@ export default function WorkCompletionTask() {
           </div>
         )}
       </div>
+
+      {selectedTaskForTimeline && (
+        <div className="planning-modal-backdrop" onClick={() => setSelectedTaskForTimeline(null)}>
+          <div
+            className="planning-modal-content"
+            style={{ maxWidth: '640px' }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Status timeline for ${selectedTaskForTimeline.taskName || selectedTaskForTimeline.materialName}`}
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="planning-modal-header">
+              <div>
+                <h3 style={{ margin: 0 }}>Work Completion Status Timeline</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
+                  {selectedTaskForTimeline.wbsCode} · {selectedTaskForTimeline.taskName || selectedTaskForTimeline.materialName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTaskForTimeline(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#94a3b8' }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="planning-modal-body">
+              <div style={{ marginBottom: 14, color: '#475569', fontSize: 13 }}>
+                <div>Current status: <strong>{selectedTaskForTimeline.verificationStatus}</strong></div>
+                <div style={{ marginTop: 4 }}>
+                  Certificate approval: <strong>
+                    {selectedTaskForTimeline.certificateApproved
+                      ? `Approved${selectedTaskForTimeline.certificateApprovedBy ? ` by ${selectedTaskForTimeline.certificateApprovedBy}` : ''}`
+                      : 'Pending Approval'}
+                  </strong>
+                </div>
+              </div>
+              {selectedTaskForTimeline.statusTimeline?.length ? (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {[...selectedTaskForTimeline.statusTimeline].reverse().map((entry, index) => (
+                    <div key={`${entry.changedAt}-${index}`} style={{ borderLeft: '2px solid #cbd5e1', paddingLeft: 12, marginLeft: 4 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>
+                        {entry.fromStatus ? `${entry.fromStatus} → ` : ''}{entry.toStatus}
+                      </div>
+                      <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+                        {entry.actorName || 'Unknown user'} · {entry.changedAt ? new Date(entry.changedAt).toLocaleString('en-IN') : 'No date recorded'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: '#64748b', fontSize: 13 }}>No status changes recorded.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Log Progress Modal */}
       {showLogModal && selectedTaskForLog && (
@@ -865,6 +982,8 @@ export default function WorkCompletionTask() {
                       <option value="Ready for Inspection">Ready for Inspection</option>
                       <option value="Site Incharge Signed">Site Incharge Signed</option>
                       <option value="Quality Approved">Quality Approved</option>
+                      <option value="Approved" disabled={!canApproveCertificate}>Approved</option>
+                      <option value="Rejected" disabled={!canApproveCertificate}>Rejected</option>
                     </select>
                   </div>
 

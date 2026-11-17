@@ -228,68 +228,6 @@ function AddContractorForm() {
           </div>
         </FormSection>
 
-        <FormSection title="Legal & Tax Details">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
-            <FormGroup label="PAN / PIN No" required>
-              <input 
-                type="text" 
-                className="contracting-input" 
-                style={{ width: '100%', padding: '10px' }} 
-                value={formData.pan}
-                onChange={(e) => setFormData({...formData, pan: e.target.value})}
-              />
-            </FormGroup>
-            <FormGroup label="GST No">
-              <input 
-                type="text" 
-                className="contracting-input" 
-                style={{ width: '100%', padding: '10px' }} 
-                value={formData.gst}
-                onChange={(e) => setFormData({...formData, gst: e.target.value})}
-              />
-            </FormGroup>
-            <FormGroup label="TDS Category">
-              <select className="contracting-input" style={{ width: '100%', padding: '10px' }}>
-                <option>- Select -</option>
-                <option>Company</option>
-                <option>Individual/HUF</option>
-              </select>
-            </FormGroup>
-          </div>
-        </FormSection>
-
-        <FormSection title="Statutory Details" defaultOpen={false}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-            <FormGroup label="LBT No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="ST No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="Nature Of Service (Category)"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="Type Of Service (Classification)"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            
-            <FormGroup label="ServiceTaxExemption Availed">
-              <select className="contracting-input" style={{ width: '100%' }}><option>-Select-</option></select>
-            </FormGroup>
-            <FormGroup label="ST Notification/Serial No"><input type="text" className="contracting-input" style={{ width: '100%', background: '#e9ecef' }} disabled /></FormGroup>
-            <FormGroup label="Service Tax Assesse No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="Premises/ECC Code No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            
-            <FormGroup label="Excise Commisionarate And Division"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="ESIC No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="Labour Welfare No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="PTRC No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            
-            <FormGroup label="PTEC No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="Firm Type">
-              <select className="contracting-input" style={{ width: '100%' }}><option>-Select-</option></select>
-            </FormGroup>
-            <FormGroup label="Contractor labour Licence No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            <FormGroup label="BOCW Reg No"><input type="text" className="contracting-input" style={{ width: '100%' }} /></FormGroup>
-            
-            <FormGroup label="Organization Type">
-              <select className="contracting-input" style={{ width: '100%' }}><option>-Select-</option></select>
-            </FormGroup>
-          </div>
-        </FormSection>
-
         <FormSection title="Category" defaultOpen={false}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
             <FormGroup label="Library">

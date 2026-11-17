@@ -16,7 +16,7 @@ const STATES = [
   'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Puducherry'
 ];
 const emptyItem = () => ({
-  requisitionId: '', materialName: '', quantity: '', unit: '', acceptedQty: '', retainedQty: '', rejectedQty: '',
+  materialName: '', quantity: '', unit: '', acceptedQty: '', retainedQty: '', rejectedQty: '',
   challanQty: '', storeName: '', brand: '', testRequired: false, remarks: ''
 });
 
@@ -24,10 +24,8 @@ function CreateGRNForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('id');
-  const requisitionId = searchParams.get('requisitionId');
   const [projects, setProjects] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [requisitions, setRequisitions] = useState([]);
   const [saving, setSaving] = useState(false);
   const [poLoading, setPoLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -48,33 +46,12 @@ function CreateGRNForm() {
       console.error('Failed to load suppliers:', error);
       setSuppliers([]);
     });
-    fetch('/api/engineering/requisitions').then(response => response.json()).then(data => {
-      const available = Array.isArray(data) ? data.filter(item => item.status !== 'Issued') : [];
-      setRequisitions(previous => {
-        const merged = new Map(previous.map(item => [String(item.id), item]));
-        available.forEach(item => merged.set(String(item.id), item));
-        return Array.from(merged.values());
-      });
-      const requisition = available.find(item => item.id === requisitionId);
-      if (requisition) {
-        setForm(previous => ({ ...previous, projectId: requisition.projectId || previous.projectId }));
-        setItems([{ ...emptyItem(), requisitionId: requisition.id, materialName: requisition.materialName || requisition.itemDescription || '', quantity: requisition.quantityReq || '', acceptedQty: requisition.quantityReq || '', unit: requisition.unit || '' }]);
-      }
-    }).catch(() => {});
     if (!editId) return;
     fetch(`/api/engineering/site/grn?id=${encodeURIComponent(editId)}`)
       .then(response => response.json())
       .then(data => {
         const grn = Array.isArray(data) ? data[0] : data;
         if (!grn?.id) return;
-        const linkedRequisitions = (grn.items || []).map(item => item.requisition).filter(Boolean);
-        if (linkedRequisitions.length) {
-          setRequisitions(previous => {
-            const merged = new Map(previous.map(item => [String(item.id), item]));
-            linkedRequisitions.forEach(item => merged.set(String(item.id), item));
-            return Array.from(merged.values());
-          });
-        }
         setForm({
           projectId: grn.projectId || '', supplierId: grn.supplierId || '', supplierName: grn.supplierName || '',
           grnDate: grn.grnDate?.slice(0, 10) || '', grnType: grn.grnType || 'WITHOUT_PO', poNo: grn.poNo || '',
@@ -84,12 +61,11 @@ function CreateGRNForm() {
           state: grn.state || '', ewayBillNo: grn.ewayBillNo || '', ewayBillDate: grn.ewayBillDate?.slice(0, 10) || '',
           status: grn.status || 'Draft', remarks: grn.remarks || ''
         });
-        setItems(grn.items?.length ? grn.items.map(item => ({ ...emptyItem(), ...item, requisitionId: item.requisitionId ? String(item.requisitionId) : '' })) : [emptyItem()]);
+        setItems(grn.items?.length ? grn.items.map(item => ({ ...emptyItem(), ...item })) : [emptyItem()]);
       }).catch(() => {});
-  }, [editId, requisitionId]);
+  }, [editId]);
 
   const setField = (key, value) => setForm(previous => ({ ...previous, [key]: value }));
-  const normalizeMaterial = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const loadPurchaseOrder = async poNumber => {
     const number = String(poNumber || '').trim();
     if (!number) return;
@@ -109,12 +85,9 @@ function CreateGRNForm() {
       );
       const supplier = suppliers.find(item => item.id === purchaseOrder.supplierId);
       const matchedItems = (purchaseOrder.items || []).map(poItem => {
-        const key = normalizeMaterial(poItem.description);
-        const requisition = requisitions.find(item => normalizeMaterial(item.materialName || item.itemDescription) === key && (!project || item.projectId === project.id));
         const quantity = Number(poItem.quantity) || 0;
         return {
           ...emptyItem(),
-          requisitionId: requisition?.id || '',
           materialName: poItem.description || '',
           quantity,
           acceptedQty: quantity,
@@ -196,7 +169,7 @@ function CreateGRNForm() {
           </section>
           <section style={{ background: '#fff', padding: 24, border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}><h2 style={{ margin: 0, fontSize: 17, color: '#0f172a' }}>Received Materials</h2><button type="button" onClick={() => setItems(previous => [...previous, emptyItem()])} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#0284c7', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}><Plus size={14} /> Add Item</button></div>
-            <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', minWidth: 1450, borderCollapse: 'collapse' }}><thead><tr style={{ background: '#f1f5f9' }}>{['#', 'Requisition *', 'Material *', 'Challan Qty', 'Received Qty', 'Accepted Qty', 'Retained Qty', 'Rejected Qty', 'Unit', 'Store', 'Brand', 'Send to GTN', 'Remarks', ''].map(header => <th key={header} style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0' }}>{header}</th>)}</tr></thead><tbody>{items.map((item, index) => <tr key={index} style={{ borderBottom: '1px solid #f1f5f9' }}><td style={{ padding: '8px', color: '#64748b', fontSize: 13 }}>{index + 1}</td><td style={{ padding: '6px 4px' }}><select required value={item.requisitionId} onChange={event => { const requisition = requisitions.find(entry => entry.id === event.target.value); updateItem(index, 'requisitionId', event.target.value); if (requisition) setItems(previous => previous.map((entry, itemIndex) => itemIndex === index ? { ...entry, requisitionId: requisition.id, materialName: requisition.materialName || requisition.itemDescription || '', quantity: requisition.quantityReq || '', acceptedQty: requisition.quantityReq || '', unit: requisition.unit || '' } : entry)); }} style={{ ...inputStyle, padding: '8px 7px', minWidth: 220 }}><option value="">Select requisition</option>{requisitions.map(requisition => <option key={requisition.id} value={requisition.id}>{requisition.reqNo} - {requisition.materialName || requisition.itemDescription}</option>)}</select></td>{[['materialName', 'Material name', 'text'], ['challanQty', 'Qty', 'number'], ['quantity', 'Qty', 'number'], ['acceptedQty', 'Qty', 'number'], ['retainedQty', 'Qty', 'number'], ['rejectedQty', 'Qty', 'number'], ['unit', 'Unit', 'text'], ['storeName', 'Store', 'text'], ['brand', 'Brand', 'text']].map(([key, placeholder, type]) => <td key={key} style={{ padding: '6px 4px' }}><input required={key === 'materialName'} type={type} value={item[key] || ''} onChange={event => updateItem(index, key, event.target.value)} placeholder={placeholder} style={{ ...inputStyle, padding: '8px 7px', minWidth: key === 'materialName' ? 150 : 80 }} /></td>)}<td style={{ padding: '6px 4px', textAlign: 'center' }}><input type="checkbox" checked={Boolean(item.testRequired)} onChange={event => updateItem(index, 'testRequired', event.target.checked)} /></td><td style={{ padding: '6px 4px' }}><input value={item.remarks || ''} onChange={event => updateItem(index, 'remarks', event.target.value)} placeholder="Remarks" style={{ ...inputStyle, padding: '8px 7px', minWidth: 120 }} /></td><td style={{ padding: '6px 4px' }}>{items.length > 1 && <button type="button" onClick={() => setItems(previous => previous.filter((_, itemIndex) => itemIndex !== index))} style={{ padding: 7, border: '1px solid #fecaca', background: '#fff', color: '#ef4444', borderRadius: 5, cursor: 'pointer' }}><Trash2 size={14} /></button>}</td></tr>)}</tbody></table></div>
+            <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', minWidth: 1250, borderCollapse: 'collapse' }}><thead><tr style={{ background: '#f1f5f9' }}>{['#', 'Material *', 'Challan Qty', 'Received Qty', 'Accepted Qty', 'Retained Qty', 'Rejected Qty', 'Unit', 'Store', 'Brand', 'Send to GTN', 'Remarks', ''].map(header => <th key={header} style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#475569', borderBottom: '1px solid #e2e8f0' }}>{header}</th>)}</tr></thead><tbody>{items.map((item, index) => <tr key={index} style={{ borderBottom: '1px solid #f1f5f9' }}><td style={{ padding: '8px', color: '#64748b', fontSize: 13 }}>{index + 1}</td>{[['materialName', 'Material name', 'text'], ['challanQty', 'Qty', 'number'], ['quantity', 'Qty', 'number'], ['acceptedQty', 'Qty', 'number'], ['retainedQty', 'Qty', 'number'], ['rejectedQty', 'Qty', 'number'], ['unit', 'Unit', 'text'], ['storeName', 'Store', 'text'], ['brand', 'Brand', 'text']].map(([key, placeholder, type]) => <td key={key} style={{ padding: '6px 4px' }}><input required={key === 'materialName'} type={type} value={item[key] || ''} onChange={event => updateItem(index, key, event.target.value)} placeholder={placeholder} style={{ ...inputStyle, padding: '8px 7px', minWidth: key === 'materialName' ? 150 : 80 }} /></td>)}<td style={{ padding: '6px 4px', textAlign: 'center' }}><input type="checkbox" checked={Boolean(item.testRequired)} onChange={event => updateItem(index, 'testRequired', event.target.checked)} /></td><td style={{ padding: '6px 4px' }}><input value={item.remarks || ''} onChange={event => updateItem(index, 'remarks', event.target.value)} placeholder="Remarks" style={{ ...inputStyle, padding: '8px 7px', minWidth: 120 }} /></td><td style={{ padding: '6px 4px' }}>{items.length > 1 && <button type="button" onClick={() => setItems(previous => previous.filter((_, itemIndex) => itemIndex !== index))} style={{ padding: 7, border: '1px solid #fecaca', background: '#fff', color: '#ef4444', borderRadius: 5, cursor: 'pointer' }}><Trash2 size={14} /></button>}</td></tr>)}</tbody></table></div>
           </section>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button type="button" onClick={() => router.push('/site/material/grn')} style={{ padding: '10px 20px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>Cancel</button><button type="submit" disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 24px', border: 0, background: saving ? '#94a3b8' : '#0284c7', color: '#fff', borderRadius: 6, cursor: saving ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600 }}><Save size={15} />{saving ? 'Saving...' : 'Create GRN'}</button></div>
         </form>

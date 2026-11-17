@@ -344,14 +344,14 @@ export default function TaskLibrary() {
     return groups.find(g => g.id === selectedGroupId) || null;
   }, [groups, selectedGroupId]);
 
-  const selectedTask = (() => {
+  const selectedTask = useMemo(() => {
     if (!selectedTaskId) return null;
     for (const g of groups) {
       const task = (g.tasks || []).find(t => t.id === selectedTaskId);
       if (task) return { ...task, groupName: g.name, parentGroupId: g.id };
     }
     return null;
-  })();
+  }, [groups, selectedTaskId]);
 
   useEffect(() => {
     if (!selectedTask) {

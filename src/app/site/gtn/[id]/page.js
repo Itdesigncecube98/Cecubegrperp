@@ -58,6 +58,15 @@ export default function GTNDetailsPage() {
           {gtn.remarks && <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #f1f5f9' }}><div style={labelStyle}>Remarks</div><div style={{ marginTop: 4, color: '#334155', fontSize: 14, whiteSpace: 'pre-wrap' }}>{gtn.remarks}</div></div>}
         </section>
 
+        <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 24, marginBottom: 16 }}>
+          <h2 style={{ margin: '0 0 16px', color: '#0f172a', fontSize: 17 }}>GTN Status Timeline</h2>
+          {gtn.statusHistory?.length ? <div style={{ display: 'grid', gap: 12 }}>{gtn.statusHistory.map(entry => <div key={entry.id} style={{ display: 'grid', gridTemplateColumns: '12px 1fr', gap: 10 }}>
+            <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#0284c7', marginTop: 4 }} />
+            <div><div style={{ fontSize: 13, color: '#1e293b', fontWeight: 700 }}>{entry.fromStatus ? `${entry.fromStatus} → ` : ''}{entry.toStatus}</div>
+              <div style={{ marginTop: 3, fontSize: 12, color: '#64748b' }}>{entry.actorName || 'Unknown user'} · {new Date(entry.changedAt).toLocaleString('en-IN')}{entry.note ? ` · ${entry.note}` : ''}</div></div>
+          </div>)}</div> : <div style={{ fontSize: 13, color: '#64748b' }}>No status changes recorded.</div>}
+        </section>
+
         <section style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 24 }}>
           <h2 style={{ margin: '0 0 18px', color: '#0f172a', fontSize: 17 }}>Test Items</h2>
           <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', minWidth: 850, borderCollapse: 'collapse' }}><thead><tr style={{ background: '#f1f5f9' }}>{['#', 'Material', 'Quantity', 'Unit', 'Test', 'Result', 'Status', 'Remarks'].map(label => <th key={label} style={{ ...cellStyle, color: '#475569', fontWeight: 700 }}>{label}</th>)}</tr></thead><tbody>{(gtn.items || []).map((item, index) => <tr key={item.id}><td style={cellStyle}>{index + 1}</td><td style={cellStyle}>{item.materialName}</td><td style={cellStyle}>{item.quantity ?? '-'}</td><td style={cellStyle}>{item.unit || '-'}</td><td style={cellStyle}>{item.testName || item.testDescription || '-'}</td><td style={cellStyle}>{item.testResult || '-'}</td><td style={cellStyle}>{item.testStatus || 'Pending'}</td><td style={cellStyle}>{item.testRemark || '-'}</td></tr>)}</tbody></table></div>

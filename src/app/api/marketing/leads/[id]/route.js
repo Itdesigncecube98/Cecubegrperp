@@ -10,7 +10,6 @@ export async function GET(req, { params }) {
       include: {
         leadOwner: { select: { id: true, name: true } },
         client: true,
-        opportunities: true,
         followups: {
           include: { createdBy: { select: { id: true, name: true } } },
           orderBy: { createdAt: 'desc' }

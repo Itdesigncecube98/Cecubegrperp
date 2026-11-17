@@ -36,6 +36,9 @@ const emptyTaskLine = () => ({ description: '', qty: '', rate: '', amount: '' })
 const emptyForm = () => ({
   workOrderId: '',
   date: new Date().toISOString().substring(0, 10),
+  contractorBillNo: '',
+  contractorBillDate: '',
+  buildingNo: '',
   measuredValue: '',
   retentionPercent: '',
   advanceRecovery: '',
@@ -330,6 +333,7 @@ export default function RABillsPage() {
   // ── UI feedback ───────────────────────────────────────────────────────────
   const [error, setError]     = useState('');
   const [success, setSuccess] = useState('');
+  const [timelineBill, setTimelineBill] = useState(null);
 
   // ── Filters ───────────────────────────────────────────────────────────────
   const [filterStatus, setFilterStatus]           = useState('');
@@ -425,6 +429,7 @@ export default function RABillsPage() {
     updateField('workOrderId', woId);
     setSyncedFromWC(false);
     setWorkCompletionTasks([]);
+    setForm(f => ({ ...f, measuredValue: '', taskLines: [emptyTaskLine()] }));
     if (!woId) return;
 
     setLoadingWCTasks(true);
@@ -435,16 +440,11 @@ export default function RABillsPage() {
         const tasks = Array.isArray(data.tasks) ? data.tasks : [];
         setWorkCompletionTasks(tasks);
 
-        // Use all tasks with progress — not just Quality Approved
-        const billableTasks = tasks.filter(t => (t.qty || 0) > 0);
-        const sourceTasks = billableTasks.length > 0 ? billableTasks : tasks;
+        const approvedTasks = tasks.filter(t => t.verificationStatus === 'Approved' && Number(t.qty) > 0);
 
-        if (sourceTasks.length > 0) {
-          const approvedAmt = (data.approvedTasks || []).reduce((s, t) => s + (t.amount || 0), 0);
-          const allAmt = sourceTasks.reduce((s, t) => s + (t.amount || 0), 0);
-          const totalMeasured = approvedAmt > 0 ? approvedAmt : allAmt;
-
-          const taskLines = sourceTasks.map(t => ({
+        if (approvedTasks.length > 0) {
+          const totalMeasured = approvedTasks.reduce((sum, task) => sum + Number(task.amount || 0), 0);
+          const taskLines = approvedTasks.map(t => ({
             description: t.description || '',
             qty:         String(t.qty || ''),
             rate:        String(t.rate || ''),
@@ -453,10 +453,12 @@ export default function RABillsPage() {
 
           setForm(f => ({
             ...f,
-            measuredValue: totalMeasured > 0 ? String(totalMeasured.toFixed(2)) : f.measuredValue,
+            measuredValue: String(totalMeasured.toFixed(2)),
             taskLines: taskLines.length > 0 ? taskLines : [emptyTaskLine()],
           }));
           setSyncedFromWC(true);
+        } else {
+          setForm(f => ({ ...f, measuredValue: '', taskLines: [emptyTaskLine()] }));
         }
         if (data.message) console.warn('Work completion sync:', data.message);
       }
@@ -542,6 +544,10 @@ export default function RABillsPage() {
     setSuccess('');
 
     if (!form.workOrderId) { setError('Please select a work order.'); return; }
+    if (approvedCount === 0) {
+      setError('At least one Work Completion task must be Approved before generating an RA bill.');
+      return;
+    }
     if (!form.measuredValue || parseFloat(form.measuredValue) <= 0) {
       setError('Measured value must be greater than zero.'); return;
     }
@@ -667,7 +673,7 @@ export default function RABillsPage() {
 
   // ─── Work-completion summary (inside modal) ───────────────────────────────
 
-  const approvedCount = workCompletionTasks.filter(t => t.verificationStatus === 'Quality Approved').length;
+  const approvedCount = workCompletionTasks.filter(t => t.verificationStatus === 'Approved' && Number(t.qty) > 0).length;
   const tasksWithProgress = workCompletionTasks.filter(t => t.qty > 0);
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -799,13 +805,20 @@ export default function RABillsPage() {
 
                   <td style={s.td}>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', flexWrap: 'wrap' }}>
-                      {canView && <button
+                      {canView && ['Approved', 'Paid'].includes(b.status) && <button
                         type="button"
                         style={{ ...s.actionBtn, color: '#475569' }}
                         onClick={() => window.open(`/contracting/ra-bills/${b.id}/print`, '_blank')}
                       >
                         Print
                       </button>}
+                      <button
+                        type="button"
+                        style={{ ...s.actionBtn, color: '#0f766e' }}
+                        onClick={() => setTimelineBill(b)}
+                      >
+                        Timeline
+                      </button>
                       {canEdit && !['Approved', 'Paid'].includes(b.status) && <a href={`/contracting/ra-bills/${b.id}/edit`} style={{ ...s.actionBtn, color: '#1d4ed8', textDecoration: 'none' }}>Edit</a>}
                       {b.status === 'Submitted' && canCheck && !b.checkedBy && <button
                         type="button"
@@ -863,6 +876,57 @@ export default function RABillsPage() {
         </table>
       </div>}
 
+      {timelineBill && (
+        <div style={s.overlay} role="presentation" onClick={() => setTimelineBill(null)}>
+          <div
+            style={{ ...s.modal, maxWidth: 620 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Status timeline for ${timelineBill.billNo}`}
+            onClick={event => event.stopPropagation()}
+          >
+            <div style={s.modalHeader}>
+              <h2 style={s.modalTitle}>{timelineBill.billNo} — Status Timeline</h2>
+              <button type="button" style={s.closeBtn} onClick={() => setTimelineBill(null)}>✕</button>
+            </div>
+            <div style={{ padding: 20, maxHeight: '65vh', overflowY: 'auto' }}>
+              <div style={{ marginBottom: 16, color: '#475569', fontSize: 13 }}>
+                Current status: <strong>{timelineBill.status || 'Unknown'}</strong>
+              </div>
+              {timelineBill.statusTimeline?.length ? (
+                <div style={{ display: 'grid', gap: 14 }}>
+                  {timelineBill.statusTimeline.map(entry => {
+                    const labels = {
+                      CREATE: 'Created — Submitted',
+                      EDIT: 'Edited',
+                      CHECK: 'Checked',
+                      APPROVE: 'Approved',
+                      UNAPPROVE: 'Approval removed — Submitted',
+                      REJECT: 'Rejected',
+                      PAID: 'Marked Paid',
+                      RESUBMIT: 'Resubmitted — Submitted',
+                    };
+                    return (
+                      <div key={entry.id} style={{ display: 'grid', gridTemplateColumns: '12px 1fr', gap: 10 }}>
+                        <span style={{ width: 9, height: 9, marginTop: 4, borderRadius: '50%', background: '#0f766e' }} />
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{labels[entry.action] || entry.action}</div>
+                          <div style={{ marginTop: 2, fontSize: 12, color: '#64748b' }}>
+                            {entry.actorName || 'Unknown user'} · {new Date(entry.createdAt).toLocaleString('en-IN')}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ color: '#64748b', fontSize: 13 }}>No timeline events recorded.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Generate RA Bill modal ── */}
       {showForm && (
         <div style={s.overlay}>
@@ -914,8 +978,8 @@ export default function RABillsPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span style={{ fontSize: '13px', fontWeight: 600, color: approvedCount > 0 ? '#166534' : '#92400e' }}>
                       {approvedCount > 0
-                        ? `✅ ${approvedCount} Quality Approved task${approvedCount !== 1 ? 's' : ''} — auto-filled`
-                        : `⚠️ ${tasksWithProgress.length} task${tasksWithProgress.length !== 1 ? 's' : ''} with progress — none yet Quality Approved`}
+                        ? `✅ ${approvedCount} Approved task${approvedCount !== 1 ? 's' : ''} — auto-filled`
+                        : `⚠️ ${tasksWithProgress.length} task${tasksWithProgress.length !== 1 ? 's' : ''} with progress — none yet Approved`}
                     </span>
                     {syncedFromWC && (
                       <span style={{ fontSize: '11px', background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '999px' }}>
@@ -947,8 +1011,8 @@ export default function RABillsPage() {
                               fontSize: '10px',
                               padding: '1px 6px',
                               borderRadius: '999px',
-                              background: t.verificationStatus === 'Quality Approved' ? '#dcfce7' : '#fef3c7',
-                              color:      t.verificationStatus === 'Quality Approved' ? '#166534' : '#92400e',
+                              background: t.verificationStatus === 'Approved' ? '#dcfce7' : '#fef3c7',
+                              color:      t.verificationStatus === 'Approved' ? '#166534' : '#92400e',
                             }}>
                               {t.verificationStatus}
                             </span>
@@ -963,14 +1027,19 @@ export default function RABillsPage() {
               {/* Sync summary badge (when auto-filled) */}
               {syncedFromWC && (
                 <div style={{ fontSize: '12px', color: '#166534', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '6px 10px', marginBottom: '16px' }}>
-                  🔄 Synced from Work Completion — {approvedCount} tasks · Total Measured Value auto-filled from Quality Approved tasks
+                  🔄 Synced from Work Completion — {approvedCount} tasks · Total Measured Value auto-filled from Approved tasks
                 </div>
               )}
 
               {/* No tasks found notice */}
               {!loadingWCTasks && workCompletionTasks.length === 0 && form.workOrderId && (
                 <div style={{ fontSize: '12px', color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px 12px', marginBottom: '16px' }}>
-                  ℹ️ No work completion tasks found for this work order. You can enter task lines manually below.
+                  ⚠️ No Work Completion tasks are available. An approved Work Completion task is required before an RA Bill can be generated.
+                </div>
+              )}
+              {!loadingWCTasks && workCompletionTasks.length > 0 && approvedCount === 0 && (
+                <div style={{ fontSize: '12px', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '10px 12px', marginBottom: '16px' }}>
+                  ⚠️ An RA Bill cannot be generated until at least one Work Completion task has status Approved.
                 </div>
               )}
 
@@ -984,6 +1053,21 @@ export default function RABillsPage() {
                   value={form.date}
                   onChange={e => updateField('date', e.target.value)}
                 />
+              </div>
+
+              <div style={{ ...s.grid2, marginBottom: '16px' }}>
+                <div>
+                  <label style={s.label}>Cont. Bill No</label>
+                  <input style={s.input} value={form.contractorBillNo} onChange={e => updateField('contractorBillNo', e.target.value)} />
+                </div>
+                <div>
+                  <label style={s.label}>Cont. Bill Date</label>
+                  <input type="date" style={s.input} value={form.contractorBillDate} onChange={e => updateField('contractorBillDate', e.target.value)} />
+                </div>
+                <div>
+                  <label style={s.label}>Building No</label>
+                  <input style={s.input} value={form.buildingNo} onChange={e => updateField('buildingNo', e.target.value)} />
+                </div>
               </div>
 
               {/* Measured value */}
@@ -1007,7 +1091,7 @@ export default function RABillsPage() {
                   placeholder="0.00"
                 />
                 {syncedFromWC && (
-                  <div style={s.hint}>Auto-filled from Quality Approved tasks. You can override this value.</div>
+                  <div style={s.hint}>Auto-filled from Approved tasks. You can override this value.</div>
                 )}
               </div>
 
@@ -1168,7 +1252,7 @@ export default function RABillsPage() {
                 <button
                   type="submit"
                   style={{ ...s.submitBtn, opacity: submitting ? 0.6 : 1 }}
-                  disabled={submitting}
+                  disabled={submitting || loadingWCTasks || approvedCount === 0}
                 >
                   {submitting ? 'Generating…' : 'Generate RA Bill'}
                 </button>

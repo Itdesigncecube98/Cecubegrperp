@@ -15,7 +15,8 @@ export async function GET(request, { params }) {
           include: {
             requisition: true
           }
-        }
+        },
+        statusHistory: { orderBy: { changedAt: 'asc' } },
       }
     });
 
@@ -42,6 +43,8 @@ export async function PUT(request, { params }) {
       items
     } = body;
 
+    const current = await prisma.siteGTN.findUnique({ where: { id }, select: { status: true } });
+    if (!current) return NextResponse.json({ error: 'GTN not found' }, { status: 404 });
     const updateData = {};
     if (status) updateData.status = status;
     if (remarks !== undefined) updateData.remarks = remarks;
@@ -54,6 +57,15 @@ export async function PUT(request, { params }) {
         items: true
       }
     });
+    if (status && status !== current.status) {
+      await prisma.siteGTNStatusHistory.create({ data: {
+        gtnId: id,
+        fromStatus: current.status,
+        toStatus: status,
+        actorName: body.actorName || body.updatedBy || body.editedBy || 'Site User',
+        note: `GTN status changed to ${status}`,
+      } });
+    }
 
     // Update items if provided
     if (items && items.length > 0) {

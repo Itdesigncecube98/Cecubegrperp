@@ -14,7 +14,11 @@ export default function EmployeeRequestForm({ type }) {
   const [employee, setEmployee] = useState(null);
   const [projects, setProjects] = useState([]);
   const [materials, setMaterials] = useState([]);
-  const [materialItems, setMaterialItems] = useState([{ selectedMaterialId: '', item: '', specification: '', unit: 'Nos', quantity: '' }]);
+  const [materialItems, setMaterialItems] = useState([]);
+  const [labourItems, setLabourItems] = useState([]);
+  const [wbsTasks, setWbsTasks] = useState([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [loadingWbsTasks, setLoadingWbsTasks] = useState(false);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -63,6 +67,31 @@ export default function EmployeeRequestForm({ type }) {
       .catch(() => setMaterials([]));
   }, [type, form.projectId]);
 
+  useEffect(() => {
+    if (type === 'dpr' || !form.projectId) {
+      setWbsTasks([]);
+      setSelectedTaskIds([]);
+      setMaterialItems([]);
+      setLabourItems([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingWbsTasks(true);
+    setWbsTasks([]);
+    setSelectedTaskIds([]);
+    setMaterialItems([]);
+    setLabourItems([]);
+    fetch(`/api/employee/requisition-tasks?projectId=${encodeURIComponent(form.projectId)}`, { cache: 'no-store' })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to load WBS tasks.');
+        if (!cancelled) setWbsTasks(Array.isArray(data) ? data : []);
+      })
+      .catch(fetchError => { if (!cancelled) setError(fetchError.message || 'Unable to load WBS tasks.'); })
+      .finally(() => { if (!cancelled) setLoadingWbsTasks(false); });
+    return () => { cancelled = true; };
+  }, [type, form.projectId]);
+
   const update = (key, value) => setForm(previous => ({ ...previous, [key]: value }));
   const field = (label, key, placeholder, options = {}) => (
     <label key={key} style={{ display: 'block', color: '#334155', fontWeight: 600, fontSize: '0.9rem' }}>
@@ -84,6 +113,8 @@ export default function EmployeeRequestForm({ type }) {
       <span style={{ display: 'block', marginBottom: '8px' }}>Project *</span>
       <select required value={form.projectId} onChange={event => {
         const project = projects.find(entry => entry.id === event.target.value);
+        setMaterialItems([]);
+        setLabourItems([]);
         setForm(previous => ({ ...previous, projectId: event.target.value, site: project?.location || project?.address || project?.state || '' }));
       }} style={inputStyle}>
         <option value="">{loadingProjects ? 'Loading assigned projects…' : '-- Select your project --'}</option>
@@ -91,6 +122,78 @@ export default function EmployeeRequestForm({ type }) {
       </select>
       {!loadingProjects && projects.length === 0 && <span style={{ display: 'block', marginTop: '6px', color: '#b45309', fontWeight: 400 }}>No projects are assigned to your account.</span>}
     </label>
+  );
+
+  const toggleWbsTask = (task, checked) => {
+    setSelectedTaskIds(previous => checked
+      ? [...new Set([...previous, task.id])]
+      : previous.filter(id => id !== task.id));
+
+    if (type === 'material') {
+      if (!checked) {
+        setMaterialItems(previous => previous.filter(item => item.wbsTaskId !== task.id));
+        return;
+      }
+      const taskMaterials = (task.materials || []).flatMap((material, materialIndex) => {
+        const components = Array.isArray(material.components) && material.components.length
+          ? material.components
+          : [material];
+        return components.map((component, componentIndex) => ({
+          selectedMaterialId: component.sourceId || component.id || material.id || '',
+          item: component.name || component.materialName || material.name || material.materialName || '',
+          specification: component.specification || '',
+          unit: component.unit || material.unit || 'Nos',
+          quantity: String(component.quantity ?? material.quantity ?? ''),
+          wbsTaskId: task.id,
+          taskName: task.name,
+          rowId: `${task.id}-${material.id || materialIndex}-${component.sourceId || component.id || componentIndex}`,
+        }));
+      });
+      setMaterialItems(previous => [...previous.filter(item => item.wbsTaskId !== task.id), ...taskMaterials]);
+      return;
+    }
+
+    if (!checked) {
+      setLabourItems(previous => previous.filter(item => item.wbsTaskId !== task.id));
+      return;
+    }
+    const taskLabours = task.labours?.length
+      ? task.labours.flatMap(labour => Array.isArray(labour.components) && labour.components.length ? labour.components : [labour])
+      : Number(task.volOfWorkLabour) > 0
+        ? [{ id: `wbs-${task.id}`, name: task.name, quantity: task.volOfWorkLabour, unit: 'Day', rate: task.labourRate || 0 }]
+        : [];
+    setLabourItems(previous => [
+      ...previous.filter(item => item.wbsTaskId !== task.id),
+      ...taskLabours.map((labour, index) => ({
+        rowId: `${task.id}-${labour.sourceId || labour.id || index}`,
+        wbsTaskId: task.id,
+        taskName: task.name,
+        designation: labour.name,
+        quantity: String(labour.quantity ?? 1),
+        unit: labour.unit || 'Day',
+        rate: String(labour.rate || 0),
+      })),
+    ]);
+  };
+
+  const wbsTaskField = type !== 'dpr' && (
+    <section style={{ border: '1px solid #dbeafe', borderRadius: 10, padding: 18, background: '#f8fbff' }}>
+      <h2 style={{ margin: '0 0 6px', color: '#172b4d', fontSize: '1.05rem' }}>Select WBS Tasks *</h2>
+      <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '0.85rem' }}>Select one or more tasks. Their {type === 'material' ? 'materials' : 'labour resources'} will be added below.</p>
+      {loadingWbsTasks ? <div style={{ color: '#64748b' }}>Loading WBS tasks…</div> : wbsTasks.length ? (
+        <div style={{ maxHeight: 240, overflowY: 'auto', display: 'grid', gap: 8 }}>
+          {wbsTasks.map(task => {
+            const resourceCount = type === 'material'
+              ? (task.materials || []).reduce((count, material) => count + (material.components?.length || 1), 0)
+              : (task.labours || []).reduce((count, labour) => count + (labour.components?.length || 1), 0);
+            return <label key={task.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: 10, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={event => toggleWbsTask(task, event.target.checked)} style={{ marginTop: 3 }} />
+              <span><strong style={{ color: '#1e293b' }}>{task.name}</strong><small style={{ display: 'block', color: '#64748b', marginTop: 3 }}>{task.groupName} · {resourceCount || (type === 'labour' && Number(task.volOfWorkLabour) > 0 ? 'WBS labour quantity' : 'No linked resources')}</small></span>
+            </label>;
+          })}
+        </div>
+      ) : <div style={{ color: '#b45309' }}>No WBS tasks found for this project.</div>}
+    </section>
   );
 
   const fields = type === 'dpr' ? [
@@ -118,13 +221,9 @@ export default function EmployeeRequestForm({ type }) {
     field('Remarks', 'remarks', 'Add any additional notes…', { multiline: true }),
   ] : [
     projectField,
-    field('Labour Category', 'category', '', { select: ['Labour', 'Skilled', 'Unskilled', 'Other'].map(value => ({ value, label: value })) }),
-    field('Designation / Labour Type', 'designation', 'e.g. Electrician, Mason, Helper', { required: true }),
-    field('Quantity Required', 'quantity', 'Enter number of workers', { type: 'number', min: 1, required: true }),
-    field('Unit', 'labourUnit', '', { select: ['Day', 'Shift', 'Month'].map(value => ({ value, label: value })) }),
-    field('Rate (optional)', 'rate', 'Enter rate per unit', { type: 'number', min: 0, step: 'any' }),
+    <label key="requested-by" style={{ display: 'block', color: '#334155', fontWeight: 600, fontSize: '0.9rem' }}><span style={{ display: 'block', marginBottom: '8px' }}>Requested By</span><input value={employee?.name || ''} readOnly placeholder="Employee name" style={{ ...inputStyle, background: '#f8fafc' }} /><span style={{ display: 'block', marginTop: '6px', color: '#64748b', fontWeight: 400 }}>This request will be submitted under your employee account.</span></label>,
     field('Required By Date', 'requiredDate', '', { type: 'date', required: true }),
-    field('Purpose / Work Details', 'purpose', 'Describe the work requiring labour…', { multiline: true }),
+    field('Purpose / Work Details', 'purpose', 'Describe the labour required…', { multiline: true }),
   ];
 
   const handleSubmit = async event => {
@@ -141,20 +240,45 @@ export default function EmployeeRequestForm({ type }) {
         const selectedProject = projects.find(project => project.id === form.projectId);
         const validItems = materialItems.filter(item => item.item.trim() && Number(item.quantity) > 0);
         if (!selectedProject) throw new Error('Select a permitted project.');
+        if (!selectedTaskIds.length) throw new Error('Select at least one WBS task.');
         if (!validItems.length) throw new Error('Add at least one material with a quantity greater than zero.');
         endpoint = '/api/purchase/pr';
+        const taskNames = wbsTasks.filter(task => selectedTaskIds.includes(task.id)).map(task => task.name);
         payload = {
           department: form.department, project: selectedProject.name, site: form.site,
           requiredDate: form.requiredDate || undefined, priority: form.priority,
-          purpose: form.purpose, remarks: form.remarks, requestedById: employee?.id,
-          items: validItems
+          purpose: [form.purpose, `WBS Tasks: ${taskNames.join(', ')}`].filter(Boolean).join('\n'),
+          remarks: form.remarks, requestedById: employee?.id,
+          items: validItems.map(item => ({
+            ...item,
+            specification: [item.specification, item.taskName ? `WBS Task: ${item.taskName}` : ''].filter(Boolean).join('\n'),
+          }))
         };
       } else {
-        endpoint = '/api/contracting/labour/requisitions';
-        payload = {
-          projectId: form.projectId, category: form.category, designation: form.designation,
-          quantity: form.quantity, unit: form.labourUnit, rate: form.rate, requiredDate: form.requiredDate, purpose: form.purpose
-        };
+        const validLabour = labourItems.filter(item => item.designation.trim() && Number(item.quantity) > 0);
+        if (!form.projectId) throw new Error('Select a permitted project.');
+        if (!selectedTaskIds.length) throw new Error('Select at least one WBS task.');
+        if (!validLabour.length) throw new Error('The selected WBS tasks have no labour resources to request.');
+        const response = await fetch('/api/contracting/labour/requisitions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId: form.projectId,
+            requiredDate: form.requiredDate,
+            items: validLabour.map(item => ({
+              category: 'Labour',
+              designation: item.designation,
+              quantity: item.quantity,
+              unit: item.unit,
+              rate: item.rate,
+              wbsTaskId: item.wbsTaskId,
+              purpose: form.purpose || '',
+            })),
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Could not submit labour requisitions.');
+        router.push('/employee/dashboard');
+        return;
       }
       const response = await fetch(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -180,10 +304,20 @@ export default function EmployeeRequestForm({ type }) {
           </header>
           <form onSubmit={handleSubmit} style={{ padding: '26px 28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {fields}
+            {wbsTaskField}
+            {type === 'labour' && <section style={{ borderTop: '1px solid #e7edf4', paddingTop: 20, display: 'grid', gap: 12 }}>
+              <h2 style={{ margin: 0, color: '#172b4d', fontSize: '1.05rem' }}>Labour from Selected Tasks</h2>
+              {labourItems.length ? labourItems.map((item, index) => <div key={item.rowId} style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 2fr) 1fr 1fr 1fr', gap: 10, padding: 12, border: '1px solid #e2e8f0', borderRadius: 8, background: '#f8fafc' }}>
+                <label style={{ color: '#475569', fontSize: 12 }}>Labour / Task<input readOnly value={`${item.designation} · ${item.taskName}`} style={{ ...inputStyle, marginTop: 5, padding: 9, fontSize: 13 }} /></label>
+                <label style={{ color: '#475569', fontSize: 12 }}>Quantity<input type="number" min="1" step="1" value={item.quantity} onChange={event => setLabourItems(previous => previous.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row))} style={{ ...inputStyle, marginTop: 5, padding: 9, fontSize: 13 }} /></label>
+                <label style={{ color: '#475569', fontSize: 12 }}>Unit<input readOnly value={item.unit} style={{ ...inputStyle, marginTop: 5, padding: 9, fontSize: 13 }} /></label>
+                <label style={{ color: '#475569', fontSize: 12 }}>Rate<input type="number" min="0" step="any" value={item.rate} onChange={event => setLabourItems(previous => previous.map((row, rowIndex) => rowIndex === index ? { ...row, rate: event.target.value } : row))} style={{ ...inputStyle, marginTop: 5, padding: 9, fontSize: 13 }} /></label>
+              </div>) : <div style={{ color: '#64748b', fontSize: 13 }}>Select WBS tasks with linked labour resources.</div>}
+            </section>}
             {type === 'material' && <section style={{ borderTop: '1px solid #e7edf4', paddingTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                 <h2 style={{ margin: 0, color: '#172b4d', fontSize: '1.05rem' }}>Item Details</h2>
-                <button type="button" onClick={() => setMaterialItems(previous => [...previous, { selectedMaterialId: '', item: '', specification: '', unit: 'Nos', quantity: '' }])} style={{ border: '1px solid #bfdbfe', borderRadius: '8px', color: '#2563eb', background: '#eff6ff', padding: '8px 12px', cursor: 'pointer', fontWeight: 600 }}>+ Add Item</button>
+                <button type="button" onClick={() => setMaterialItems(previous => [...previous, { selectedMaterialId: '', item: '', specification: '', unit: 'Nos', quantity: '', taskName: '' }])} style={{ border: '1px solid #bfdbfe', borderRadius: '8px', color: '#2563eb', background: '#eff6ff', padding: '8px 12px', cursor: 'pointer', fontWeight: 600 }}>+ Add Item</button>
               </div>
               {materialItems.map((item, index) => {
                 const chooseMaterial = materialId => {

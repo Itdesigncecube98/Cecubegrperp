@@ -55,7 +55,7 @@ export async function GET(request) {
     }
 
     if (id) {
-      const bill = await prisma.vendorBill.findUnique({ where: { id } });
+      const bill = await prisma.vendorBill.findUnique({ where: { id }, include: { statusHistory: { orderBy: { changedAt: 'asc' } } } });
       if (!bill) return NextResponse.json({ error: 'Bill not found' }, { status: 404 });
       const editors = await getDocumentEditors(prisma, 'PurchaseBill', [bill.id]);
       let meta = {};
@@ -78,7 +78,7 @@ export async function GET(request) {
 
     const bills = await prisma.vendorBill.findMany({
       where,
-      include: { voucher: true },
+      include: { voucher: true, statusHistory: { orderBy: { changedAt: 'asc' } } },
       orderBy: { createdAt: 'desc' }
     });
 
@@ -179,6 +179,9 @@ export async function POST(request) {
 
           const { billNo, invoiceNo } = await getNextBillNumbers(tx, billYear);
           const meta = {
+            approvalStatus: 'PENDING',
+            approvedBy: null,
+            approvedAt: null,
             taxableAmount: taxable,
             cgstAmount: cgst,
             sgstAmount: sgst,
@@ -207,7 +210,24 @@ export async function POST(request) {
               remarks: remarksText
             }
           });
-          await tx.purchaseOrder.update({ where: { id: latestPo.id }, data: { status: 'SENT' } });
+          await tx.vendorBillStatusHistory.create({ data: {
+            billId: bill.id,
+            toStatus: 'UNPAID',
+            actorName: body.createdBy || body.editedBy || 'Purchase User',
+            note: `Purchase bill ${billNo} created and sent to accounts`,
+          } });
+          if (latestPo.status !== 'SENT') {
+            await tx.purchaseOrder.update({ where: { id: latestPo.id }, data: { status: 'SENT' } });
+            await tx.purchaseOrderStatusHistory.create({
+              data: {
+                purchaseOrderId: latestPo.id,
+                fromStatus: latestPo.status,
+                toStatus: 'SENT',
+                actorName: body.createdBy || body.editedBy || 'Purchase Bills',
+                note: 'Purchase bill generated',
+              },
+            });
+          }
           return { bill: { ...bill, ...meta, remarks: remarks || `Bill for PO ${poNumber}` } };
         });
         await autoGrantCreatorProjectTools(prisma, request, {
@@ -269,6 +289,13 @@ export async function PUT(request) {
       const nextMeta = { ...existingMeta, approvalStatus: approved ? 'APPROVED' : 'PENDING', approvedBy: approved ? approvalActor : null, approvedAt: approved ? new Date().toISOString() : null };
       const metaRemarks = `__META__:${JSON.stringify(nextMeta)}\n${existingRemarks}`;
       const savedBill = await prisma.vendorBill.update({ where: { id: body.id }, data: { remarks: metaRemarks } });
+      await prisma.vendorBillStatusHistory.create({ data: {
+        billId: body.id,
+        fromStatus: approvalMeta.approvalStatus || 'PENDING_APPROVAL',
+        toStatus: approved ? 'APPROVED' : 'PENDING_APPROVAL',
+        actorName: approvalActor,
+        note: approved ? 'Purchase bill approved' : 'Purchase bill approval removed',
+      } });
       return NextResponse.json({ ...savedBill, ...nextMeta });
     }
 
@@ -277,8 +304,14 @@ export async function PUT(request) {
       const match = String(current.remarks || '').match(/^__META__:(\{.*?\})\n?/);
       if (match) existingMeta = JSON.parse(match[1]);
     } catch { /* Preserve any audit fields that can still be read. */ }
+    if (current.status !== 'UNPAID' || current.voucherId || Number(current.paidAmount || 0) > 0) {
+      return NextResponse.json({ error: 'Only unpaid purchase bills without payment processing can be edited.' }, { status: 409 });
+    }
     const meta = {
       ...existingMeta,
+      approvalStatus: 'PENDING',
+      approvedBy: null,
+      approvedAt: null,
       taxableAmount: Number(body.taxableAmount) || 0,
       cgstAmount: Number(body.cgstAmount) || 0,
       sgstAmount: Number(body.sgstAmount) || 0,
@@ -303,6 +336,22 @@ export async function PUT(request) {
         remarks: `__META__:${JSON.stringify(meta)}\n${remarks}`,
       }
     });
+    await prisma.vendorBillStatusHistory.create({ data: {
+      billId: bill.id,
+      fromStatus: approvalMeta.approvalStatus || 'PENDING_APPROVAL',
+      toStatus: 'PENDING_APPROVAL',
+      actorName: body.editedBy || body.actorName || 'Purchase User',
+      note: 'Purchase bill edited and resubmitted for approval',
+    } });
+    if (body.status && body.status !== current.status) {
+      await prisma.vendorBillStatusHistory.create({ data: {
+        billId: bill.id,
+        fromStatus: current.status,
+        toStatus: body.status,
+        actorName: body.editedBy || body.actorName || 'Accounts User',
+        note: `Payment status changed to ${body.status}`,
+      } });
+    }
 
     await recordDocumentEdit(prisma, {
       entityType: 'PurchaseBill', entityId: bill.id, module: 'Purchase', editorName: body.editedBy,

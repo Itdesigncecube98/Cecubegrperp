@@ -15,7 +15,8 @@ export async function GET(request, { params }) {
           include: {
             requisition: true
           }
-        }
+        },
+        statusHistory: { orderBy: { changedAt: 'asc' } }
       }
     });
 
@@ -54,15 +55,25 @@ export async function PUT(request, { params }) {
       if (updateData[key] === undefined) delete updateData[key];
     });
 
-    const grn = await prisma.siteGRN.update({
-      where: { id },
-      data: updateData,
-      include: {
-        project: true,
-        gtn: true,
-        items: true
+    const grn = await prisma.$transaction(async tx => {
+      const current = await tx.siteGRN.findUnique({ where: { id }, select: { status: true } });
+      if (!current) return null;
+      const updated = await tx.siteGRN.update({
+        where: { id },
+        data: updateData,
+        include: { project: true, gtn: true, items: true, statusHistory: { orderBy: { changedAt: 'asc' } } }
+      });
+      if (updateData.status && updateData.status !== current.status) {
+        await tx.siteGRNStatusHistory.create({ data: {
+          grnId: id,
+          fromStatus: current.status,
+          toStatus: updateData.status,
+          note: 'GRN status updated',
+        } });
       }
+      return updated;
     });
+    if (!grn) return NextResponse.json({ error: 'GRN not found' }, { status: 404 });
 
     // Update items if provided
     if (body.items && body.items.length > 0) {

@@ -2,6 +2,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PackageCheck, ArrowLeft, Save, Plus, Trash2 } from 'lucide-react';
+import { getClientActor } from '@/lib/clientActor';
 
 const inputStyle = {
   width: '100%', boxSizing: 'border-box', padding: '10px 12px',
@@ -156,12 +157,10 @@ function CreateGTNContent() {
       .filter(item => item.testRequired && Number(item.acceptedQty) > 0)
       .filter(item => !previouslyRecordedItems.some(existing =>
         String(existing.grnSrNo || '').trim().toLowerCase() === String(grn.grnNo || '').trim().toLowerCase()
-        && String(existing.requisitionId || '') === String(item.requisitionId || '')
         && String(existing.materialName || '').trim().toLowerCase() === String(item.materialName || '').trim().toLowerCase()
       ))
       .map(item => ({
         grnSrNo: grn.grnNo,
-        requisitionId: item.requisitionId,
         materialName: item.materialName || '',
         quantity: Number(item.acceptedQty) || 0,
         unit: item.unit || '',
@@ -188,7 +187,7 @@ function CreateGTNContent() {
       const res = await fetch(url, {
         method: editId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, id: editId, items })
+        body: JSON.stringify({ ...form, id: editId, items, actorName: getClientActor() })
       });
       const data = await readApiJson(res, 'Save GTN');
       setMessage(`GTN ${editId ? 'updated' : 'created'} successfully: ${data.gtnNo || data.gtnSrNo || ''}`);

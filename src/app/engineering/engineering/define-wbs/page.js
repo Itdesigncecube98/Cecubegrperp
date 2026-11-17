@@ -419,7 +419,8 @@ export default function DefineWBS() {
             volOfWorkLabour: parseFloat(taskForm.volOfWorkLabour) || 0,
             description: taskForm.description ? taskForm.description.trim() : null,
             reraStage: taskForm.reraStage || null,
-            materials: selectedLibraryTask?.materials || []
+            materials: selectedLibraryTask?.materials || [],
+            labours: selectedLibraryTask?.labours || []
           }
         : {
             type: 'task',
@@ -430,7 +431,8 @@ export default function DefineWBS() {
             volOfWorkLabour: parseFloat(taskForm.volOfWorkLabour) || 0,
             description: taskForm.description ? taskForm.description.trim() : null,
             reraStage: taskForm.reraStage || null,
-            materials: selectedLibraryTask?.materials || []
+            materials: selectedLibraryTask?.materials || [],
+            labours: selectedLibraryTask?.labours || []
           };
 
       const res = await fetch('/api/engineering/wbs', {
@@ -774,7 +776,7 @@ export default function DefineWBS() {
                                 {task.name}
                               </span>
                               <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                                M: {task.volOfWorkMaterial || 0} | L: {task.volOfWorkLabour || 0}
+                                M: {task.volOfWorkMaterial || 0} ({task.materials?.length || 0}) | L: {task.volOfWorkLabour || 0} ({task.labours?.length || 0})
                               </span>
                             </div>
                           ))}
@@ -1100,10 +1102,11 @@ export default function DefineWBS() {
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 9999
+          zIndex: 9999, padding: '12px', boxSizing: 'border-box'
         }}>
           <div style={{
-            background: 'white', borderRadius: '12px', width: '560px', maxWidth: '92%',
+            background: 'white', borderRadius: '12px', width: '560px', maxWidth: '100%',
+            maxHeight: 'calc(100dvh - 24px)', display: 'flex', flexDirection: 'column',
             boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', overflow: 'hidden'
           }}>
             <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1118,8 +1121,8 @@ export default function DefineWBS() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveTask}>
-              <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleSaveTask} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', minHeight: 0 }}>
                 
                 {/* Target Group Selector */}
                 <div>
@@ -1216,6 +1219,46 @@ export default function DefineWBS() {
                     <div style={{ fontSize: '0.72rem', color: '#881337', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Sparkles size={11} />
                       <span>Loaded from {selectedLibraryTask.libraryGroupName} (Standard Qty: {selectedLibraryTask.quantity} {selectedLibraryTask.unit})</span>
+                    </div>
+                  )}
+                  {selectedLibraryTask && (
+                    <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      {[['Materials', selectedLibraryTask.materials, '#166534'], ['Labour', selectedLibraryTask.labours, '#854d0e']].map(([label, resources, color]) => (
+                        <div key={label} style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px', fontSize: '0.72rem', color: '#475569', minWidth: 0 }}>
+                          {(() => {
+                            const rows = (resources || []).flatMap(resource =>
+                              resource.components?.length ? resource.components : [resource]
+                            );
+                            return <>
+                              <strong style={{ color }}>{label} ({rows.length})</strong>
+                              {rows.length ? (
+                                <div style={{ overflowX: 'auto', marginTop: '6px' }}>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '480px', textAlign: 'left' }}>
+                                    <thead>
+                                      <tr style={{ background: '#f8fafc' }}>
+                                        {['Name', 'Qty', 'Unit', 'Rate', 'Specification'].map(heading => (
+                                          <th key={heading} style={{ padding: '6px', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{heading}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {rows.map((row, index) => (
+                                        <tr key={row.sourceId || row.id || `${row.name}-${index}`}>
+                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9' }}>{row.name || '—'}</td>
+                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{row.quantity ?? '—'}</td>
+                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{row.unit || '—'}</td>
+                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{row.rate ?? '—'}</td>
+                                          <td style={{ padding: '6px', borderBottom: '1px solid #f1f5f9' }}>{row.specification || '—'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : <div style={{ marginTop: '4px' }}>No {label.toLowerCase()} linked</div>}
+                            </>;
+                          })()}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1377,7 +1420,7 @@ export default function DefineWBS() {
                 </div>
               </div>
 
-              <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: '12px', flexShrink: 0 }}>
                 <button type="button" className="btn-outline" onClick={() => setShowTaskModal(false)}>
                   Cancel
                 </button>

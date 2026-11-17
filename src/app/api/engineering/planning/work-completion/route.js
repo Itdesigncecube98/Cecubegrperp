@@ -1,12 +1,74 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { addTaskMasterTask, updateTaskMasterTask } from '@/lib/siteTaskMaster';
+import { addTaskMasterTask, getTaskMasterTask, updateTaskMasterTask } from '@/lib/siteTaskMaster';
 import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 import fs from 'fs';
 import path from 'path';
 
 const STORAGE_DIR = path.join(process.cwd(), '.planning_data');
+const VALID_VERIFICATION_STATUSES = [
+  'Pending Verification',
+  'Ready for Inspection',
+  'Site Incharge Signed',
+  'Quality Approved',
+  'Approved',
+  'Rejected',
+];
+
+function getVerificationStatus(task) {
+  if (VALID_VERIFICATION_STATUSES.includes(task.verificationStatus)) return task.verificationStatus;
+  if (VALID_VERIFICATION_STATUSES.includes(task.status)) return task.status;
+  if (task.status === 'Completed' || task.status === 'Closed') return 'Quality Approved';
+  if (task.status === 'Started') return 'Site Incharge Signed';
+  return 'Pending Verification';
+}
+
+function getWorkCompletionStatusTimeline(task) {
+  const statusMap = new Map([
+    ['Tentative', 'Pending Verification'],
+    ['Started', 'Site Incharge Signed'],
+    ['Completed', 'Quality Approved'],
+    ['Closed', 'Quality Approved'],
+  ]);
+  const legacyHistory = [];
+  let previousStatus = '';
+
+  (Array.isArray(task.history) ? task.history : []).forEach(entry => {
+    const rawStatus = entry.status || entry.toStatus;
+    const toStatus = statusMap.get(rawStatus) || (VALID_VERIFICATION_STATUSES.includes(rawStatus) ? rawStatus : null);
+    if (!toStatus) return;
+    legacyHistory.push({
+      fromStatus: entry.fromStatus || previousStatus,
+      toStatus,
+      changedAt: entry.changedAt || entry.date || null,
+      actorName: entry.actorName || entry.changedBy || '',
+    });
+    previousStatus = toStatus;
+  });
+
+  const combined = [...legacyHistory, ...(Array.isArray(task.statusTimeline) ? task.statusTimeline : [])];
+  if (
+    task.certificateApproved === true &&
+    !combined.some(entry => entry.toStatus === 'Certificate Approved')
+  ) {
+    combined.push({
+      fromStatus: 'Certificate Pending Approval',
+      toStatus: 'Certificate Approved',
+      changedAt: task.certificateApprovedAt || null,
+      actorName: task.certificateApprovedBy || '',
+    });
+  }
+  const seen = new Set();
+  return combined
+    .filter((entry, index) => {
+      const key = `${entry.toStatus}|${entry.changedAt || `entry-${index}`}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => new Date(a.changedAt || 0) - new Date(b.changedAt || 0));
+}
 
 function getWorkCompletionStoragePath(projectId) {
   if (!fs.existsSync(STORAGE_DIR)) {
@@ -47,7 +109,8 @@ function mapSiteTasks(groups, parentNames = []) {
         actualDate: task.completedDate || '',
         // Work completion has its own verification state. Keep it when quantity
         // logs or status changes are saved; derive a legacy default only for old tasks.
-        verificationStatus: task.verificationStatus || (task.status === 'Completed' || task.status === 'Closed' ? 'Quality Approved' : task.status === 'Started' ? 'Site Incharge Signed' : 'Pending Verification'),
+        verificationStatus: getVerificationStatus(task),
+        statusTimeline: getWorkCompletionStatusTimeline(task),
         mbRef: task.mbRef || '',
         siteRemarks: task.description || '',
         logs: Array.isArray(task.logs) ? task.logs : [],
@@ -246,7 +309,8 @@ export async function GET(req) {
           unit: item.unit || 'Job',
           rate: item.rate,
           workOrderId: order.woNo,
-          contractorName: order.contractorName
+          contractorName: order.contractorName,
+          sourceId: item.id ? String(item.id) : null
         }));
       });
     }
@@ -289,20 +353,86 @@ export async function POST(req) {
       const actor = access.session.type === 'admin'
         ? 'Administrator'
         : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      const existingTask = getTaskMasterTask(projectId, taskUpdate.id);
+      if (!existingTask) return NextResponse.json({ error: 'Task not found in Site Task Master' }, { status: 404 });
+      const statusTimeline = Array.isArray(existingTask.statusTimeline) ? existingTask.statusTimeline : [];
+      const certificateStatusChanged = (existingTask.certificateApproved === true) !== taskUpdate.certificateApproved;
+      const changedAt = new Date().toISOString();
+      const nextStatusTimeline = certificateStatusChanged
+        ? [
+            ...statusTimeline,
+            {
+              fromStatus: existingTask.certificateApproved ? 'Certificate Approved' : 'Certificate Pending Approval',
+              toStatus: taskUpdate.certificateApproved ? 'Certificate Approved' : 'Certificate Approval Removed',
+              changedAt,
+              actorName: actor,
+            },
+          ]
+        : statusTimeline;
       const updatedTask = updateTaskMasterTask(projectId, {
         id: taskUpdate.id,
         certificateApproved: taskUpdate.certificateApproved,
         certificateApprovedBy: taskUpdate.certificateApproved ? actor : null,
-        certificateApprovedAt: taskUpdate.certificateApproved ? new Date().toISOString() : null,
+        certificateApprovedAt: taskUpdate.certificateApproved ? changedAt : null,
+        statusTimeline: nextStatusTimeline,
       });
       if (!updatedTask) return NextResponse.json({ error: 'Task not found in Site Task Master' }, { status: 404 });
       return NextResponse.json({ success: true, updatedTask: mapSiteTasks([{ name: 'task', tasks: [updatedTask] }])[0] });
     }
 
     if (taskUpdate?.id) {
-      const updatedTask = updateTaskMasterTask(projectId, taskUpdate);
+      const update = { ...taskUpdate };
+      const requestedStatus = update.verificationStatus;
+      const statusChangedBy = String(update.statusChangedBy || '').trim() || 'Unknown user';
+      delete update.statusChangedBy;
+
+      if (requestedStatus !== undefined && !VALID_VERIFICATION_STATUSES.includes(requestedStatus)) {
+        return NextResponse.json({ error: `Invalid verification status. Choose one of: ${VALID_VERIFICATION_STATUSES.join(', ')}` }, { status: 400 });
+      }
+      const existingTask = getTaskMasterTask(projectId, update.id);
+      if (!existingTask) return NextResponse.json({ error: 'Task not found in Site Task Master' }, { status: 404 });
+      const currentStatus = getVerificationStatus(existingTask);
+      const changesQuantity = ['completedQty', 'cumulativeQty', 'progressQty', 'logs']
+        .some(field => update[field] !== undefined);
+      if (changesQuantity && (currentStatus === 'Approved' || existingTask.certificateApproved === true)) {
+        return NextResponse.json({
+          error: currentStatus === 'Approved'
+            ? 'Unapprove this Work Completion task before logging quantity.'
+            : 'Unapprove the Work Completion certificate before logging quantity.',
+        }, { status: 409 });
+      }
+
+      if (requestedStatus !== undefined) {
+        const statusTimeline = Array.isArray(existingTask.statusTimeline) ? existingTask.statusTimeline : [];
+
+        if (requestedStatus !== currentStatus) {
+          let actorName = statusChangedBy;
+          if (['Approved', 'Rejected'].includes(requestedStatus) || currentStatus === 'Approved') {
+            const access = await checkDocumentApprovalAccess(req, prisma, {
+              module: 'Site', toolName: 'Work Completion Certificate Approve', projectId,
+            });
+            if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+            actorName = access.session.type === 'admin'
+              ? 'Administrator'
+              : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+          }
+          update.statusTimeline = [
+            ...statusTimeline,
+            {
+              fromStatus: currentStatus,
+              toStatus: requestedStatus,
+              changedAt: new Date().toISOString(),
+              actorName,
+            },
+          ];
+        } else {
+          update.statusTimeline = statusTimeline;
+        }
+      }
+
+      const updatedTask = updateTaskMasterTask(projectId, update);
       if (!updatedTask) return NextResponse.json({ error: 'Task not found in Site Task Master' }, { status: 404 });
-      return NextResponse.json({ success: true, updatedTask });
+      return NextResponse.json({ success: true, updatedTask: mapSiteTasks([{ name: 'task', tasks: [updatedTask] }])[0] });
     }
 
     const filePath = getWorkCompletionStoragePath(projectId);
