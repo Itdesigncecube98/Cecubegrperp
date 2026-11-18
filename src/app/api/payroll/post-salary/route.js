@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { amount, postJournal } from '@/lib/accounting';
+import { amount, getNextSalaryVoucherNo, postJournal } from '@/lib/accounting';
 
 function ltaIdsFromMessage(message) {
   try {
@@ -138,7 +138,7 @@ export async function POST(request) {
     const body = await request.json();
     const { updates, action } = body;
     
-    if (!updates || !updates.length) {
+    if (!Array.isArray(updates) || updates.length === 0) {
       return NextResponse.json({ error: 'No records provided' }, { status: 400 });
     }
 
@@ -147,9 +147,11 @@ export async function POST(request) {
       await prisma.$transaction(async (tx) => {
         for (const update of updates) {
           const record = await tx.payrollRecord.findUnique({ where: { id: update.id }, include: { employee: true, payCycle: true } });
-          if (!record) continue;
+          if (!record) {
+            conflict(`Salary record ${update.id} was not found. Refresh the list and try again.`);
+          }
           if (record.status !== 'APPROVED') {
-            throw new Error(`Salary record ${record.id} must be approved by HR/admin before posting to Accounts`);
+            conflict(`Salary for ${record.employee.name} is ${record.status.toLowerCase()} and cannot be posted. Refresh the list and select only approved, unposted salaries.`);
           }
 
           const ltaAddition = await tx.bonusIncentive.findUnique({
@@ -199,7 +201,13 @@ export async function POST(request) {
             }
           }
 
-          await tx.payrollRecord.update({ where: { id: update.id }, data: { status: 'POSTED' } });
+          const postedRecord = await tx.payrollRecord.updateMany({
+            where: { id: record.id, status: 'APPROVED' },
+            data: { status: 'POSTED' },
+          });
+          if (postedRecord.count !== 1) {
+            conflict(`Salary for ${record.employee.name} changed while posting. Refresh the list and try again.`);
+          }
           await tx.leaveEncashment.updateMany({
             where: {
               employeeId: record.employeeId,
@@ -209,7 +217,7 @@ export async function POST(request) {
             data: { isProcessed: true },
           });
           await postJournal(tx, {
-            voucherNo: `SALARY-${record.payCycleId}-${record.employeeId}`,
+            voucherNo: await getNextSalaryVoucherNo(tx, record.payCycleId, record.employeeId),
             type: 'Payment',
             narration: `Salary paid to ${record.employee.name} for ${record.payCycle.name}`,
             entries: [

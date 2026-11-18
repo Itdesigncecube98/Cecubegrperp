@@ -3,7 +3,17 @@ import React, { useState, useEffect } from 'react';
 import { X, Printer, Save, CheckCircle2, AlertCircle, RefreshCw, Sparkles, Download } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { classifyStandardEarningHead, resolveSpecialAllowance } from '@/lib/payrollSalaryHeads';
+import { classifyStandardEarningHead, isEmployerContributionHead, resolveSpecialAllowance } from '@/lib/payrollSalaryHeads';
+
+const EMPLOYER_CONTRIBUTION_ARREAR_KEYS = [
+  'Employer PF Arrears',
+  'Employer ESIC Arrears',
+];
+const NON_EMPLOYEE_SALARY_ARREAR_KEYS = [
+  ...EMPLOYER_CONTRIBUTION_ARREAR_KEYS,
+  'Employer LWF Arrears',
+  'Employee PF Arrears',
+];
 
 function numberToWords(num) {
   if (isNaN(num) || num <= 0) return 'Zero Rupees Only';
@@ -36,6 +46,7 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
   if (arrearsRecord?.message) {
     try { initialArrearsBreakdown = JSON.parse(arrearsRecord.message); } catch(e) {}
   }
+  const initialArrearEmployeePf = Number(initialArrearsBreakdown?.['Employee PF Arrears']) || 0;
 
   const existingBonus = salaryAdditions.find(b => b.type === 'bonus')?.amount || 0;
   const existingIncentive = salaryAdditions.find(b => b.type === 'incentive')?.amount || 0;
@@ -69,7 +80,7 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
   const savedTotalDeductions = Number.isFinite(Number(record?.totalDeductions))
     ? Number(record.totalDeductions)
     : savedDeductionFieldsTotal;
-  savedDeductionTotals.other += savedTotalDeductions - savedDeductionFieldsTotal;
+  savedDeductionTotals.other += savedTotalDeductions - savedDeductionFieldsTotal - initialArrearEmployeePf;
 
   // Attendance, shifts & offs
   const existingWOff = empBonusIncentives.find(b => b.type === 'woff')?.amount ?? record?.attendanceSummary?.wOff ?? 0;
@@ -90,6 +101,16 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
   const [arrearsBreakdown, setArrearsBreakdown] = useState(initialArrearsBreakdown);
   const [calculatingArrears, setCalculatingArrears] = useState(false);
   const [downloadingArrearsPDF, setDownloadingArrearsPDF] = useState(false);
+  const arrearsBreakdownEntries = Object.entries(arrearsBreakdown || {}).filter(([key, value]) =>
+    !['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds'].includes(key) &&
+    value !== null &&
+    value !== '' &&
+    Number.isFinite(Number(value))
+  );
+  const employerContributionArrearsEntries = arrearsBreakdownEntries
+    .filter(([key]) => EMPLOYER_CONTRIBUTION_ARREAR_KEYS.includes(key));
+  const salaryArrearsBreakdownEntries = arrearsBreakdownEntries
+    .filter(([key]) => !NON_EMPLOYEE_SALARY_ARREAR_KEYS.includes(key));
 
   const [bonus, setBonus] = useState(initialBonus);
   const [incentive, setIncentive] = useState(initialIncentive);
@@ -102,6 +123,7 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
   const [salaryHeadDeductionValues, setSalaryHeadDeductionValues] = useState({});
   const [salaryHeadsLoading, setSalaryHeadsLoading] = useState(true);
   const [salaryHeadsError, setSalaryHeadsError] = useState('');
+  const salaryEmployerContributions = salaryBreakdown?.employerContributions || [];
 
   const [leaveEncashmentState, setLeaveEncashmentState] = useState(initialLeaveEncashment);
   const [gratuity, setGratuity] = useState(existingGratuity);
@@ -142,6 +164,8 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+  const arrearsRecordId = arrearsRecord?.id || '';
+  const employeePfArrearsInBreakdown = Number(arrearsBreakdown?.['Employee PF Arrears']) || 0;
 
   useEffect(() => {
     let active = true;
@@ -179,8 +203,35 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
     return () => { active = false; };
   }, [record.id, record.employeeId, bonusIncentives]);
 
+  useEffect(() => {
+    if (!arrearsRecordId || Math.abs(employeePfArrearsInBreakdown) > 0.01) return;
+
+    let active = true;
+    fetch(`/api/payroll/records/${record.id}/calculate-arrears`, { method: 'POST' })
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Could not refresh Employee PF arrears.');
+        }
+        const employeePfArrears = Number(data.breakdown?.['Employee PF Arrears']) || 0;
+        if (active && Math.abs(employeePfArrears) > 0.01) {
+          setArrearsBreakdown(current => (
+            Math.abs(Number(current?.['Employee PF Arrears']) || 0) > 0.01
+              ? current
+              : { ...(current || {}), 'Employee PF Arrears': employeePfArrears }
+          ));
+        }
+      })
+      .catch(refreshError => {
+        if (active) console.error('Failed to refresh Employee PF arrears:', refreshError);
+      });
+
+    return () => { active = false; };
+  }, [record.id, arrearsRecordId, employeePfArrearsInBreakdown]);
+
   // Live Calculations
   const numArrears = parseFloat(arrears) || 0;
+  const numEmployeePfArrears = employeePfArrearsInBreakdown;
   const numBonus = parseFloat(bonus) || 0;
   const numIncentive = parseFloat(incentive) || 0;
 
@@ -188,7 +239,8 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
   const numGratuity = parseFloat(gratuity) || 0;
   const numLta = parseFloat(leaveTravelAllowance) || 0;
 
-  const configuredDeductions = salaryBreakdown?.deductions || [];
+  const configuredDeductions = (salaryBreakdown?.deductions || [])
+    .filter(head => !isEmployerContributionHead(head.name));
   const classifyDeduction = (name) => {
     const normalized = String(name || '').toLowerCase();
     if (normalized.includes('provident') || normalized === 'pf' || normalized.includes('(pf)')) return 'pf';
@@ -208,7 +260,7 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
   const salaryBreakdownMismatch =
     (configuredEarnings.length > 0 && !earningsBreakdownMatches) ||
     (configuredDeductions.length > 0 && !deductionsBreakdownMatches) ||
-    (!hasConfiguredDeductions && Math.abs(savedTotalDeductions - savedDeductionFieldsTotal) > 0.01);
+    (!hasConfiguredDeductions && Math.abs(savedTotalDeductions - savedDeductionFieldsTotal - initialArrearEmployeePf) > 0.01);
   const numPf = hasConfiguredDeductions ? configuredDeductionTotal('pf') : (parseFloat(pfEmployee) || 0);
   const numPt = hasConfiguredDeductions ? configuredDeductionTotal('pt') : (parseFloat(professionalTax) || 0);
   const numTds = hasConfiguredDeductions ? configuredDeductionTotal('tds') : (parseFloat(tds) || 0);
@@ -216,7 +268,7 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
 
   const baseEarnings = hasConfiguredEarnings ? configuredEarningsTotal : basicPay + hra + conveyance + medical + specialAllow;
   const grossPay = Math.round((baseEarnings + numLeaveEncashment + numArrears + numBonus + numIncentive + numGratuity + numLta) * 100) / 100;
-  const totalDeductions = Math.round((numPf + numPt + numTds + numOtherDed) * 100) / 100;
+  const totalDeductions = Math.round((numPf + numPt + numTds + numOtherDed + numEmployeePfArrears) * 100) / 100;
   const netPay = Math.round((grossPay - totalDeductions) * 100) / 100;
 
   const handleDownloadPDF = async () => {
@@ -245,7 +297,8 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
     try {
       const res = await fetch(`/api/payroll/records/${record.id}/calculate-arrears`, { method: 'POST' });
       const data = await res.json();
-      if (data.success && data.total > 0) {
+      const hasEmployeePfArrears = Math.abs(Number(data.breakdown?.['Employee PF Arrears']) || 0) > 0.01;
+      if (data.success && (data.total > 0 || hasEmployeePfArrears)) {
         setArrears(data.total);
         setArrearsBreakdown({
           ...data.breakdown,
@@ -984,9 +1037,15 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
                       <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#0369a1', padding: '6px', background: 'rgba(2, 132, 199, 0.08)', borderRadius: '4px', border: '1px solid rgba(2, 132, 199, 0.15)' }}>
                         <strong style={{ display: 'block', marginBottom: '4px' }}>Arrears Breakdown:</strong> 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '4px' }}>
-                          {Object.entries(arrearsBreakdown).filter(([k]) => !['fromDate', 'toDate'].includes(k)).map(([k, v]) => (
-                            <span key={k}>{k}: ₹{v}</span>
+                          {salaryArrearsBreakdownEntries.map(([k, v]) => (
+                            <span key={k}>{k}: ₹{Number(v).toFixed(2)}</span>
                           ))}
+                          {employerContributionArrearsEntries.length > 0 && (
+                            <strong>Employer contributions (not included in net salary): {employerContributionArrearsEntries.map(([key, value]) => `${key.replace(' Arrears', '')} ₹${Number(value).toFixed(2)}`).join(' · ')}</strong>
+                          )}
+                          {Math.abs(numEmployeePfArrears) > 0.01 && (
+                            <strong>Employee PF Arrear (deduction): ₹{numEmployeePfArrears.toFixed(2)}</strong>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1169,6 +1228,12 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
                     </div>
                   </div>
                   </>}
+                  {Math.abs(numEmployeePfArrears) > 0.01 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', alignItems: 'center', background: '#fff7ed', padding: '4px 6px', borderRadius: '4px', border: '1px solid #fdba74' }}>
+                      <div style={{ color: '#9a3412', fontWeight: 700 }}>Employee PF Arrear</div>
+                      <div style={{ textAlign: 'right', color: '#9a3412', fontWeight: 700 }}>₹{numEmployeePfArrears.toFixed(2)}</div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Total Deductions */}
@@ -1194,6 +1259,26 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
                 ₹{netPay.toFixed(2)}
               </div>
             </div>
+
+            {(salaryEmployerContributions.length > 0 || employerContributionArrearsEntries.length > 0) && (
+              <div style={{ marginTop: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#f8fafc', padding: '10px 14px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  Employer Contributions (not included in take-home / net payable)
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px 12px', fontSize: '0.82rem', color: '#475569' }}>
+                  {salaryEmployerContributions.map(contribution => (
+                    <div key={contribution.id}>
+                      {contribution.name}: ₹{(Number(contribution.amount) || 0).toFixed(2)}
+                    </div>
+                  ))}
+                  {employerContributionArrearsEntries.map(([key, value]) => (
+                    <div key={key} style={{ fontWeight: 600, color: '#9a3412' }}>
+                      {key.replace(' Arrears', ' Arrear')}: ₹{(Number(value) || 0).toFixed(2)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Amount In Words */}
             <div style={{ marginTop: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '10px 14px', fontSize: '0.85rem', background: '#ffffff' }}>
@@ -1332,10 +1417,10 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
                 <div style={{ textAlign: 'right' }}>Amount (₹)</div>
               </div>
               <div style={{ padding: '10px', flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {arrearsBreakdown && Object.entries(arrearsBreakdown).filter(([k]) => !['fromDate', 'toDate'].includes(k)).map(([k, v]) => (
+                {salaryArrearsBreakdownEntries.map(([k, v]) => (
                   <div key={k} style={{ display: 'grid', gridTemplateColumns: '1fr 100px', fontWeight: 'bold' }}>
                     <div>{k}</div>
-                    <div style={{ textAlign: 'right' }}>{v.toFixed(2)}</div>
+                    <div style={{ textAlign: 'right' }}>{Number(v).toFixed(2)}</div>
                   </div>
                 ))}
               </div>
@@ -1352,27 +1437,45 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
                 <div style={{ textAlign: 'right' }}>Amount (₹)</div>
               </div>
               <div style={{ padding: '10px', flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {/* Normally arrears payslips only show earnings unless there are specific arrears deductions */}
+                {Math.abs(numEmployeePfArrears) > 0.01 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', fontWeight: 'bold' }}>
+                    <div>Employee PF Arrear</div>
+                    <div style={{ textAlign: 'right' }}>{numEmployeePfArrears.toFixed(2)}</div>
+                  </div>
+                )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', fontWeight: 'bold', padding: '6px 10px', borderTop: '1px solid black' }}>
                 <div>Total Deductions</div>
-                <div style={{ textAlign: 'right' }}>0.00</div>
+                <div style={{ textAlign: 'right' }}>{numEmployeePfArrears.toFixed(2)}</div>
               </div>
             </div>
           </div>
+
+          {employerContributionArrearsEntries.length > 0 && (
+            <div style={{ border: '2px solid black', marginTop: '10px', padding: '10px', fontSize: '13px' }}>
+              <strong>Employer Contribution Arrears (not included in employee net salary)</strong>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginTop: '8px' }}>
+                {employerContributionArrearsEntries.map(([key, value]) => (
+                  <div key={key}>{key.replace(' Arrears', '')}: ₹{Number(value).toFixed(2)}</div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Net Payable Row */}
           <div style={{ border: '2px solid black', borderTop: 'none', display: 'grid', gridTemplateColumns: '1fr 1fr', fontSize: '14px', fontWeight: 'bold', padding: '8px 10px' }}>
             <div></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px' }}>
               <div>Net Payable :</div>
-              <div style={{ textAlign: 'right' }}>{numArrears.toFixed(2)}</div>
+              <div style={{ textAlign: 'right' }}>{(numArrears - numEmployeePfArrears).toFixed(2)}</div>
             </div>
           </div>
 
           {/* Words Row */}
           <div style={{ border: '2px solid black', borderTop: 'none', padding: '10px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>
-            Net Salary (In Words): {numberToWords(Math.round(numArrears))}
+            Net Salary (In Words): {numArrears - numEmployeePfArrears < 0
+              ? `Employee PF deduction of ${numberToWords(Math.round(Math.abs(numArrears - numEmployeePfArrears)))}`
+              : numberToWords(Math.round(numArrears - numEmployeePfArrears))}
           </div>
 
           {/* Footer */}

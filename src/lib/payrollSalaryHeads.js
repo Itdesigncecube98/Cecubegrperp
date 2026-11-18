@@ -11,6 +11,16 @@ const STANDARD_EARNING_HEADS = {
   ]),
 };
 
+export function isEmployerContributionHead(name) {
+  const normalizedName = String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+  return /\bemployer\b/.test(normalizedName) &&
+    /\b(?:pf|epf|eps|provident fund|esic|esi|lwf|labour welfare fund|labor welfare fund)\b/.test(normalizedName);
+}
+
 export function classifyStandardEarningHead(name) {
   const normalizedName = String(name || '')
     .toLowerCase()

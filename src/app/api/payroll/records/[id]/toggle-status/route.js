@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { amount, postJournal } from '@/lib/accounting';
+import { amount, getNextSalaryVoucherNo, postJournal } from '@/lib/accounting';
 
 export async function POST(request, { params }) {
   try {
@@ -15,10 +15,26 @@ export async function POST(request, { params }) {
     const updated = await prisma.$transaction(async (tx) => {
       const record = await tx.payrollRecord.findUnique({ where: { id }, include: { employee: true, payCycle: true } });
       if (!record) throw new Error('Payroll record not found');
+      if (record.status === 'POSTED') {
+        const error = new Error('Posted salary cannot be unapproved.');
+        error.statusCode = 409;
+        throw error;
+      }
+      if (status === 'PENDING' && record.status === 'APPROVED') {
+        const error = new Error('Use Unpost to Salary Calculation to reverse approval and reopen the record.');
+        error.statusCode = 409;
+        throw error;
+      }
+      if (status === 'APPROVED' && record.payCycle.status === 'COMPLETED') {
+        const error = new Error('Completed pay cycle salaries cannot be approved again.');
+        error.statusCode = 409;
+        throw error;
+      }
+      if (status === record.status) return record;
       const result = await tx.payrollRecord.update({ where: { id }, data: { status } });
       if (status === 'APPROVED') {
         await postJournal(tx, {
-          voucherNo: `SALARY-${record.payCycleId}-${record.employeeId}`,
+          voucherNo: await getNextSalaryVoucherNo(tx, record.payCycleId, record.employeeId),
           type: 'Payment',
           narration: `Approved salary for ${record.employee.name} for ${record.payCycle.name}`,
           entries: [
@@ -33,6 +49,6 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: true, record: updated });
   } catch (error) {
     console.error('Error updating payroll record status:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message }, { status: error.statusCode || 500 });
   }
 }

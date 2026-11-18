@@ -3,6 +3,7 @@ import { prisma } from '../../../../../../lib/prisma';
 import { classifyStandardEarningHead } from '@/lib/payrollSalaryHeads';
 import { findApplicableSalaryRevision } from '@/lib/payrollDates';
 import { getLeaveCategory } from '@/lib/leavePolicy';
+import { isEmployerContributionHead } from '@/lib/payrollSalaryHeads';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,17 +83,22 @@ export async function POST(request, { params }) {
       where: { status: 'APPROVED', startDate: { lte: cycle.endDate }, endDate: { gte: cycle.startDate } }
     });
 
+    const existingRecordEmployeeIds = new Set(existingRecords.map(record => record.employeeId));
+    const cycleEmployeeIds = new Set([
+      ...(cycle.selectedEmployees || []),
+      ...existingRecordEmployeeIds,
+    ]);
+
     // Fetch employees (attendance only, no salary relations)
     if (requestedEmployeeIds && cycle.selectedEmployees?.length > 0) {
-      const selectedForCycle = new Set(cycle.selectedEmployees);
-      if (requestedEmployeeIds.some(employeeId => !selectedForCycle.has(employeeId))) {
+      if (requestedEmployeeIds.some(employeeId => !cycleEmployeeIds.has(employeeId))) {
         return NextResponse.json({ error: 'One or more employees are not selected for this pay cycle.' }, { status: 400 });
       }
     }
     const whereClause = requestedEmployeeIds
       ? { id: { in: requestedEmployeeIds } }
       : cycle.selectedEmployees && cycle.selectedEmployees.length > 0
-        ? { id: { in: cycle.selectedEmployees } }
+        ? { id: { in: [...cycleEmployeeIds] } }
         : {};
 
     const employees = await prisma.employee.findMany({
@@ -196,13 +202,16 @@ export async function POST(request, { params }) {
       let unpaidDays = 0, pCount = 0, aCount = 0, halfDayCount = 0;
       dateCols.forEach(col => {
         const att = emp.attendances.find(a => a.date === col.fullDate);
+        const isHoliday = holidays.some(h => h.date === col.fullDate);
         let s = att?.status;
 
         const leave = approvedLeaves.find(l =>
           l.employeeId === emp.id && col.fullDate >= l.startDate && col.fullDate <= l.endDate
         );
 
-        if (leave) {
+        if (isHoliday) {
+          s = 'H';
+        } else if (leave) {
           const leaveCategory = getLeaveCategory(leave.leaveType);
           if (leaveCategory === 'CL') s = 'CL';
           else if (leaveCategory === 'EL') s = 'EL';
@@ -212,9 +221,7 @@ export async function POST(request, { params }) {
           else s = 'CL';
         } else if (!s) {
           const isWorkingAnn = workingAnnouncements.some(a => a.date === col.fullDate);
-          if (holidays.some(h => h.date === col.fullDate)) {
-            s = 'H';
-          } else if (isWorkingAnn) {
+          if (isWorkingAnn) {
             s = 'A';
           } else if (col.isSunday) {
             s = 'W-off';
@@ -225,8 +232,9 @@ export async function POST(request, { params }) {
         if (s === 'Present') s = 'P';
         if (s === 'Absent') s = 'A';
         if (s === 'Leave' || s === 'L') s = 'CL';
+        if (['COFF', 'C-OFF', 'C OFF'].includes(String(s || '').trim().toUpperCase())) s = 'C-off';
 
-        if (leave?.isHalfDay) {
+        if (!isHoliday && leave?.isHalfDay) {
           const leaveCategory = getLeaveCategory(leave.leaveType);
           halfDayCount++;
           if (leaveCategory === 'LWP') {
@@ -276,10 +284,9 @@ export async function POST(request, { params }) {
           const typeName = String(comp.salaryHead?.headType?.name || '').trim().toLowerCase();
           const headName = String(comp.salaryHead?.description || '').trim().toLowerCase();
           const amount = parseFloat(comp.amount) || 0;
+          if (isEmployerContributionHead(headName)) return;
 
           if (typeName === 'earning') {
-            // Employer PF contributes to CTC but is not an employee take-home earning.
-            if (['employer pf', 'employer provident fund'].includes(headName)) return;
             const prorated = amount * prorationFactor;
             totalEarnings += prorated;
             const earningCategory = classifyStandardEarningHead(headName);
@@ -290,7 +297,7 @@ export async function POST(request, { params }) {
             else specialAllow += prorated;
           } else if (typeName === 'deduction') {
             totalDeductions += amount;
-            if (['provident fund', 'employer pf', 'provident fund (pf)', 'pf'].includes(headName)) pfEmployee += amount;
+            if (/\b(?:employee\s+)?(?:provident fund|pf|epf)\b|\b(?:pf|epf)\s+employee\b/.test(headName)) pfEmployee += amount;
             else if (['professional tax', 'professional tax (pt)'].includes(headName)) professionalTax += amount;
             else if (['tds', 'tds / income tax', 'income tax'].includes(headName)) {
               if (considerTds) tds += amount;

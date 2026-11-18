@@ -84,6 +84,7 @@ export default function PayrollAttendance() {
   const [department, setDepartment] = useState('');
   const [branch, setBranch] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
+  const [focusedEmployeeIds, setFocusedEmployeeIds] = useState([]);
 
   // MultiSelect states
   const [selectedBranches, setSelectedBranches] = useState([]);
@@ -108,7 +109,17 @@ export default function PayrollAttendance() {
       .then(d => {
         if (Array.isArray(d)) {
           setCycles(d);
-          if (d.length > 0) setSelectedCycleId(d[0].id);
+          const query = new URLSearchParams(window.location.search);
+          const requestedCycleId = query.get('cycleId');
+          const requestedEmployeeIds = query.get('employeeIds') || query.get('employeeId');
+          const requestedAttendanceMode = query.get('attendanceMode');
+          if (requestedEmployeeIds) {
+            setFocusedEmployeeIds(requestedEmployeeIds.split(',').filter(Boolean));
+          }
+          if (requestedAttendanceMode === 'approved') setIsApprovedMode(true);
+          else if (requestedAttendanceMode === 'pending') setIsApprovedMode(false);
+          const requestedCycle = d.find(cycle => cycle.id === requestedCycleId);
+          if (requestedCycle || d.length > 0) setSelectedCycleId(requestedCycle?.id || d[0].id);
         }
       });
 
@@ -134,6 +145,9 @@ export default function PayrollAttendance() {
       const res = await fetch(`/api/payroll/attendance?${q}`, { cache: 'no-store' });
       const json = await res.json();
       setData(json);
+      setSelectedEmps((json.employees || [])
+        .filter(employee => focusedEmployeeIds.includes(employee.id))
+        .map(employee => employee.id));
     } catch (error) {
       console.error(error);
     } finally {
@@ -224,6 +238,17 @@ export default function PayrollAttendance() {
 
     return true;
   }).sort((a, b) => String(a.empId || '').localeCompare(String(b.empId || ''), undefined, { numeric: true, sensitivity: 'base' }));
+  const finalizedPayrollEmployeeIds = new Set(
+    (data?.payrollRecords || [])
+      .filter(record => record.status !== 'PENDING')
+      .map(record => record.employeeId)
+  );
+  const pushableEmployeeCount = (filteredEmployees || [])
+    .filter(emp => !finalizedPayrollEmployeeIds.has(emp.id))
+    .length;
+  const pushToSalaryDisabled = isPushingToSalary ||
+    pushableEmployeeCount === 0 ||
+    data?.cycle?.status === 'COMPLETED';
 
   const calculateAggregates = (emp) => {
     const counts = { P: 0, A: 0, L: 0, H: 0, W: 0, U: 0 };
@@ -392,11 +417,38 @@ export default function PayrollAttendance() {
 
     setIsPushingToSalary(true);
     try {
+      const cycleResponse = await fetch(`/api/payroll/cycles/${encodeURIComponent(selectedCycleId)}`, { cache: 'no-store' });
+      const cycleData = await cycleResponse.json();
+      if (!cycleResponse.ok || !Array.isArray(cycleData.payrollRecords)) {
+        throw new Error(cycleData.error || 'Could not check the existing salary records for this cycle.');
+      }
+      if (cycleData.status === 'COMPLETED') {
+        throw new Error('This pay cycle is completed and cannot be reprocessed.');
+      }
+
+      const finalizedPayrollEmployeeIds = new Set(
+        cycleData.payrollRecords
+          .filter(record => record.status !== 'PENDING')
+          .map(record => record.employeeId)
+      );
+      const eligibleEmployeeIds = employeeIds.filter(employeeId => !finalizedPayrollEmployeeIds.has(employeeId));
+      const skippedCount = employeeIds.length - eligibleEmployeeIds.length;
+
+      if (eligibleEmployeeIds.length === 0) {
+        if (skippedCount > 0) {
+          alert('Selected employees already have approved or posted salary records. They were not pushed again.');
+          router.push(`/dashboard/payroll/salary-calculation?cycleId=${encodeURIComponent(selectedCycleId)}`);
+          return;
+        }
+        alert('No salary records need to be created or updated for the selected employees.');
+        return;
+      }
+
       const response = await fetch(`/api/payroll/cycles/${encodeURIComponent(selectedCycleId)}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          employeeIds,
+          employeeIds: eligibleEmployeeIds,
           considerBonus: false,
           considerLeaveEncash: true,
           considerTds: true,
@@ -408,6 +460,9 @@ export default function PayrollAttendance() {
         throw new Error(attendanceReview ? `${result.error} Employees: ${attendanceReview}` : result.error || 'Could not push attendance to salary calculation.');
       }
 
+      if (skippedCount > 0) {
+        alert(`${skippedCount} employee(s) with approved or posted salary records were skipped. Other eligible employees were pushed.`);
+      }
       router.push(`/dashboard/payroll/salary-calculation?cycleId=${encodeURIComponent(selectedCycleId)}`);
     } catch (error) {
       alert(error.message || 'Could not push attendance to salary calculation.');
@@ -456,7 +511,10 @@ export default function PayrollAttendance() {
               type="text" 
               placeholder="Name or ID" 
               value={employeeSearch} 
-              onChange={e => setEmployeeSearch(e.target.value)} 
+              onChange={e => {
+                setEmployeeSearch(e.target.value);
+                setFocusedEmployeeIds([]);
+              }}
               style={{ padding: '0.4rem', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.85rem' }} 
             />
           </div>
@@ -491,10 +549,21 @@ export default function PayrollAttendance() {
           <button
             className="btn-primary"
             onClick={handlePushToSalaryCalculation}
-            disabled={isPushingToSalary}
-            style={{ padding: '8px 24px', background: isPushingToSalary ? '#94a3b8' : '#7c3aed', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: isPushingToSalary ? 'wait' : 'pointer' }}
+            disabled={pushToSalaryDisabled}
+            title={data?.cycle?.status === 'COMPLETED'
+              ? 'This pay cycle is completed.'
+              : pushableEmployeeCount === 0
+                ? 'Selected employees already have approved or posted salary records.'
+                : ''}
+            style={{ padding: '8px 24px', background: pushToSalaryDisabled ? '#94a3b8' : '#7c3aed', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: isPushingToSalary ? 'wait' : pushToSalaryDisabled ? 'not-allowed' : 'pointer' }}
           >
-            {isPushingToSalary ? 'Pushing...' : 'Push to Salary Calculation'}
+            {isPushingToSalary
+              ? 'Pushing...'
+              : data?.cycle?.status === 'COMPLETED'
+                ? 'Cycle Completed'
+                : pushableEmployeeCount === 0
+                  ? 'Already Pushed to Salary Calculation'
+                  : 'Push to Salary Calculation'}
           </button>
         )}
         <button className="btn-primary" onClick={handleSave} disabled={isSaving || selectedEmps.length === 0} style={{ padding: '8px 24px', background: '#10b981', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: (isSaving || selectedEmps.length === 0) ? 'not-allowed' : 'pointer' }}>

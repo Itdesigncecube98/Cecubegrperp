@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { calculateSalaryRevisionArrears } from '@/lib/payrollArrears';
+
 export async function POST(request, { params }) {
   try {
     const { id } = await params; // This is the current PayrollRecord ID
@@ -26,10 +28,6 @@ export async function POST(request, { params }) {
       }
     });
 
-    if (approvedArrears.length === 0) {
-      return NextResponse.json({ success: true, message: 'No approved arrears found.', breakdown: {}, total: 0 });
-    }
-
     let totalArrears = 0;
     let finalBreakdown = {};
     let fromDate = null;
@@ -48,7 +46,7 @@ export async function POST(request, { params }) {
           
           Object.keys(breakdown).forEach(key => {
             if (
-              !['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds'].includes(key) &&
+              !['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds', 'Employer LWF Arrears'].includes(key) &&
               typeof breakdown[key] === 'number' &&
               Number.isFinite(breakdown[key])
             ) {
@@ -58,6 +56,14 @@ export async function POST(request, { params }) {
         } catch (e) {}
       }
     });
+
+    if (Math.abs(Number(finalBreakdown['Employee PF Arrears']) || 0) <= 0.01) {
+      const currentCalculation = await calculateSalaryRevisionArrears(prisma, currentRecord.employeeId);
+      const calculatedEmployeePfArrears = Number(currentCalculation.breakdown?.['Employee PF Arrears']) || 0;
+      if (Math.abs(calculatedEmployeePfArrears) > 0.01) {
+        finalBreakdown['Employee PF Arrears'] = calculatedEmployeePfArrears;
+      }
+    }
 
     return NextResponse.json({
       success: true,

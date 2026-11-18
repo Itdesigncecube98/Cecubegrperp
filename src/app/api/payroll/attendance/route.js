@@ -20,15 +20,25 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Pay cycle not found' }, { status: 404 });
     }
 
+    const cyclePayrollRecords = await prisma.payrollRecord.findMany({
+      where: { payCycleId: cycleId },
+      select: { employeeId: true, status: true },
+    });
+
     // Build employee filter
     const empWhere = {};
     if (department) empWhere.department = department;
     if (branch) empWhere.branch = branch;
     if (location) empWhere.siteOffice = location;
     
-    // If cycle has selectedEmployees, filter by them
+    // Keep existing payroll-record employees visible if a cycle's employee selection changed later.
     if (cycle.selectedEmployees && cycle.selectedEmployees.length > 0) {
-      empWhere.id = { in: cycle.selectedEmployees };
+      empWhere.id = {
+        in: [...new Set([
+          ...cycle.selectedEmployees,
+          ...cyclePayrollRecords.map(record => record.employeeId),
+        ])],
+      };
     }
 
     // Fetch employees with their attendance records within the cycle's date range
@@ -76,8 +86,10 @@ export async function GET(request) {
       prisma.workWeek.findMany({ select: { day: true, isWorking: true } }),
       prisma.weekoffType.findMany({ select: { name: true, days: true, assignedTo: true } }),
     ]);
+    const visibleEmployeeIds = new Set(employees.map(employee => employee.id));
+    const payrollRecords = cyclePayrollRecords.filter(record => visibleEmployeeIds.has(record.employeeId));
 
-    return NextResponse.json({ cycle, employees, holidays, approvedLeaves, announcements, workWeeks, weekoffTypes });
+    return NextResponse.json({ cycle, employees, holidays, approvedLeaves, announcements, workWeeks, weekoffTypes, payrollRecords });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

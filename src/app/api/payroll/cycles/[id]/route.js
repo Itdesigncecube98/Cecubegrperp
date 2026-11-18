@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
-import { amount, postJournal } from '../../../../../lib/accounting';
+import { amount, getSalaryVoucherAttempts, postJournal } from '../../../../../lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,6 +96,7 @@ export async function GET(request, { params }) {
 
       return {
         ...rec,
+        attendanceReviewRequired: empAtts.length === 0 || empAtts.some(attendance => !attendance.isApproved),
         attendanceSummary: {
           wOff,
           holidays: hCount,
@@ -157,16 +158,22 @@ export async function DELETE(request, { params }) {
       const journalsToReverse = [];
 
       for (const record of records) {
-        const journal = await tx.accountsJournal.findUnique({
-          where: { voucherNo: `SALARY-${record.payCycleId}-${record.employeeId}` },
-          include: { details: { include: { ledger: { include: { group: true } } } } }
-        });
-        if (journal) {
-          if (journal.status === 'Reversed') continue;
-          if (!journal.details.length) {
-            throw new Error(`Salary voucher ${journal.voucherNo} has no entries, so the cycle cannot be safely deleted.`);
+        const attempts = await getSalaryVoucherAttempts(tx, record.payCycleId, record.employeeId, true);
+        const activeJournals = attempts.filter(journal => journal.status !== 'Reversed');
+        for (const attempt of attempts.filter(journal => journal.status === 'Reversed')) {
+          const reversalVoucherNo = `SALARY-REVERSAL-${attempt.voucherNo.replace(/^SALARY-/, '')}`;
+          const reversal = await tx.accountsJournal.findUnique({ where: { voucherNo: reversalVoucherNo } });
+          if (reversal && reversal.status !== 'Reversed') {
+            await tx.accountsJournal.update({ where: { id: reversal.id }, data: { status: 'Reversed' } });
           }
-          journalsToReverse.push(journal);
+        }
+        if (activeJournals.length) {
+          for (const journal of activeJournals) {
+            if (!journal.details.length) {
+              throw new Error(`Salary voucher ${journal.voucherNo} has no entries, so the cycle cannot be safely deleted.`);
+            }
+            journalsToReverse.push(journal);
+          }
         } else if (['APPROVED', 'POSTED'].includes(String(record.status).toUpperCase())) {
           throw new Error(`Posted salary record for employee ${record.employeeId} has no accounting voucher. The cycle was not deleted.`);
         }

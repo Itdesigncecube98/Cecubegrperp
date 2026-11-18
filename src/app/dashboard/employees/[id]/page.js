@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Save, User, Eye, EyeOff, CalendarCheck, Plus, Edit2, Trash2, X, PanelLeft, PanelLeftClose, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { createWorker } from 'tesseract.js';
+import { isEmployerContributionHead } from '@/lib/payrollSalaryHeads';
 
 const TABS = [
   { key: 'basic', label: 'Basic Details' },
@@ -52,7 +53,7 @@ const calculateSalaryRuleAmount = (rule, components, salaryHeads) => {
   if (!rule || rule === FIXED_SALARY_RULE || rule === '(None)') return null;
   if (rule.startsWith('ESIC_')) {
     const esiWages = salaryHeads
-      .filter(head => head.isActive && ['Earning', 'Other'].includes(head.category) && !/\b(?:pf|epf|eps|esi|esic)\b|provident fund/i.test(head.description || ''))
+      .filter(head => head.isActive && ['Earning', 'Other'].includes(head.category) && !isEmployerContributionHead(head.description) && !/\b(?:pf|epf|eps|esi|esic)\b|provident fund/i.test(head.description || ''))
       .reduce((sum, head) => sum + (Number(components[head.id]) || 0), 0);
     const ceiling = rule.endsWith('25000') ? 25000 : 21000;
     if (esiWages > ceiling) return 0;
@@ -84,16 +85,29 @@ const calculateRevisionCtc = (revision) => {
 
   const earningTotal = revision.components.reduce((total, component) => {
     const headType = component.salaryHead?.headType?.name?.toLowerCase() || '';
-    return headType === 'earning' ? total + (Number(component.amount) || 0) : total;
+    return headType === 'earning' && !isEmployerContributionHead(component.salaryHead?.description)
+      ? total + (Number(component.amount) || 0)
+      : total;
   }, 0);
-  const employerPf = revision.components.reduce((total, component) => {
-    const headName = component.salaryHead?.description?.toLowerCase() || '';
-    return headName === 'employer pf' ? total + (Number(component.amount) || 0) : total;
+  const otherTotal = revision.components.reduce((total, component) => {
+    const headType = component.salaryHead?.headType?.name?.toLowerCase() || '';
+    return headType === 'other' && !isEmployerContributionHead(component.salaryHead?.description)
+      ? total + (Number(component.amount) || 0)
+      : total;
   }, 0);
-  const monthlyCtc = earningTotal + employerPf;
+  const employerContributions = revision.components.reduce((total, component) => {
+    const headName = component.salaryHead?.description || '';
+    return isEmployerContributionHead(headName) ? total + (Number(component.amount) || 0) : total;
+  }, 0);
+  const ctcComponents = revision.components.filter(component =>
+    component.salaryHead?.headType?.name?.toLowerCase() === 'ctc'
+  );
+  const monthlyCtc = ctcComponents.length > 0
+    ? ctcComponents.reduce((total, component) => total + (Number(component.amount) || 0), 0)
+    : earningTotal + otherTotal + employerContributions;
 
   return monthlyCtc > 0
-    ? { monthlyCtc: monthlyCtc.toFixed(2), annualCtc: (monthlyCtc * 12).toFixed(2), earningTotal, employerPf }
+    ? { monthlyCtc: monthlyCtc.toFixed(2), annualCtc: (monthlyCtc * 12).toFixed(2), earningTotal, employerContributions }
     : null;
 };
 
@@ -127,6 +141,11 @@ export default function EmployeeProfilePage({ initialId }) {
   const [salaryArrearsPreview, setSalaryArrearsPreview] = useState(null);
   const [loadingSalaryArrears, setLoadingSalaryArrears] = useState(false);
   const [pushingSalaryArrears, setPushingSalaryArrears] = useState(false);
+  const salaryArrearsEmployerContributions = [
+    ['Employer PF', Number(salaryArrearsPreview?.breakdown?.['Employer PF Arrears']) || 0],
+    ['Employer ESIC', Number(salaryArrearsPreview?.breakdown?.['Employer ESIC Arrears']) || 0],
+  ].filter(([, amount]) => Math.abs(amount) > 0.01);
+  const salaryArrearsEmployeePf = Number(salaryArrearsPreview?.breakdown?.['Employee PF Arrears']) || 0;
   const [activeRevisionIndex, setActiveRevisionIndex] = useState(0);
   const [newRevisionForm, setNewRevisionForm] = useState({ effectiveFrom: '', remark: '', components: {}, rules: {} });
   const [editingRevisionId, setEditingRevisionId] = useState(null);
@@ -713,15 +732,22 @@ export default function EmployeeProfilePage({ initialId }) {
 
   const getSalaryRule = (head, rules = newRevisionForm.rules || {}) => {
     if (rules[head.id] !== undefined) return rules[head.id];
+
+    if (isEmployerContributionHead(head.description)) {
+      return FIXED_SALARY_RULE;
+    }
+
     return String(head.calculationType || '').includes('Fixed Amount') ? FIXED_SALARY_RULE : '';
   };
 
   const getSalaryAmount = (head, components = newRevisionForm.components || {}, rules = newRevisionForm.rules || {}) => {
     const rule = getSalaryRule(head, rules);
     const computed = calculateSalaryRuleAmount(rule, components, salaryHeads);
+
     if (computed !== null) return computed;
+
     if (rule === FIXED_SALARY_RULE) {
-      const amount = components[head.id] ?? head.fixedAmount;
+      const amount = components[head.id] ?? head.fixedAmount ?? 0;
       return Number(amount) || 0;
     }
     return Number(components[head.id]) || 0;
@@ -845,7 +871,7 @@ export default function EmployeeProfilePage({ initialId }) {
   };
 
   const handlePushSalaryArrears = async () => {
-    if (!employee?.id || salaryArrearsPreview?.status !== 'calculated' || salaryArrearsPreview.amount <= 0) return;
+    if (!employee?.id || salaryArrearsPreview?.status !== 'calculated') return;
 
     setPushingSalaryArrears(true);
     try {
@@ -864,13 +890,13 @@ export default function EmployeeProfilePage({ initialId }) {
   };
 
   const handleEditRevision = (rev) => {
-    // Pre-fill the form with existing revision data
     const comps = {};
     const rules = {};
-    rev.components.forEach(c => {
-      comps[c.salaryHeadId] = c.amount;
-      rules[c.salaryHeadId] = c.rule || FIXED_SALARY_RULE;
+    (rev.components || []).forEach(component => {
+      comps[component.salaryHeadId] = Number(component.amount) || 0;
+      rules[component.salaryHeadId] = component.rule || FIXED_SALARY_RULE;
     });
+
     setNewRevisionForm({
       effectiveFrom: rev.effectiveFrom || '',
       remark: rev.remark || '',
@@ -878,6 +904,7 @@ export default function EmployeeProfilePage({ initialId }) {
       rules
     });
     setEditingRevisionId(rev.id);
+    setSalaryArrearsPreview(null);
     setShowAddSalaryModal(true);
   };
 
@@ -2503,7 +2530,7 @@ export default function EmployeeProfilePage({ initialId }) {
                   <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>Salary Info</h3>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => { setNewRevisionForm({ effectiveFrom: new Date().toISOString().split('T')[0], remark: '', components: {} }); setShowAddSalaryModal(true); }} style={{ padding: '8px 18px', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: 'white', border: 'none', borderRadius: '7px', cursor: 'pointer', fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(14,165,233,0.3)' }}>
+                  <button onClick={() => { setNewRevisionForm({ effectiveFrom: new Date().toISOString().split('T')[0], remark: '', components: {}, rules: {} }); setEditingRevisionId(null); setShowAddSalaryModal(true); }} style={{ padding: '8px 18px', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: 'white', border: 'none', borderRadius: '7px', cursor: 'pointer', fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(14,165,233,0.3)' }}>
                     + Add Revision
                   </button>
                   <button onClick={() => window.print()} style={{ padding: '8px 16px', background: '#f8fafc', color: '#475569', border: '1.5px solid #e2e8f0', borderRadius: '7px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>
@@ -2554,18 +2581,18 @@ export default function EmployeeProfilePage({ initialId }) {
                   onClick={() => {
                     const calculatedCtc = calculateRevisionCtc(salaryRevisions[0]);
                     if (!calculatedCtc) {
-                      showToast('Add an earning salary revision with Employer PF before calculating CTC.', 'error');
+                      showToast('Add salary revision details before calculating CTC.', 'error');
                       return;
                     }
                     queueCtcAutoSave({
                       monthlyCtc: calculatedCtc.monthlyCtc,
                       annualCtc: calculatedCtc.annualCtc
                     });
-                    showToast(`Monthly CTC = ₹${calculatedCtc.earningTotal.toLocaleString('en-IN')} + ₹${calculatedCtc.employerPf.toLocaleString('en-IN')} Employer PF. Saving automatically.`);
+                    showToast('Monthly CTC includes gross earnings, other details, and employer contributions. Saving automatically.');
                   }}
                   style={{ marginTop: '12px', padding: '8px 14px', background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}
                 >
-                  Calculate: Gross Earnings + Employer PF
+                  Calculate CTC from Salary Revision
                 </button>
               </div>
 
@@ -2575,7 +2602,7 @@ export default function EmployeeProfilePage({ initialId }) {
                   <CalendarCheck size={48} color="#cbd5e1" style={{ marginBottom: '12px' }} />
                   <div style={{ fontSize: '16px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>No Salary Revision Added</div>
                   <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '20px' }}>Click &quot;Add Revision&quot; to create the first salary revision for this employee.</div>
-                  <button onClick={() => { setNewRevisionForm({ effectiveFrom: new Date().toISOString().split('T')[0], remark: '', components: {} }); setShowAddSalaryModal(true); }} style={{ padding: '10px 24px', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}>
+                  <button onClick={() => { setNewRevisionForm({ effectiveFrom: new Date().toISOString().split('T')[0], remark: '', components: {}, rules: {} }); setEditingRevisionId(null); setShowAddSalaryModal(true); }} style={{ padding: '10px 24px', background: 'linear-gradient(135deg,#0ea5e9,#6366f1)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}>
                     + Add First Revision
                   </button>
                 </div>
@@ -2664,9 +2691,20 @@ export default function EmployeeProfilePage({ initialId }) {
                               Period: {salaryArrearsPreview.breakdown?.fromDate || '—'} to {salaryArrearsPreview.breakdown?.toDate || '—'}
                               {salaryArrearsPreview.breakdown?.overlapDays ? ` (${salaryArrearsPreview.breakdown.overlapDays} days)` : ''}
                             </div>
+                            {salaryArrearsEmployerContributions.length > 0 && (
+                              <div style={{ marginTop: '8px', color: '#475569', fontSize: '12px' }}>
+                                <strong>Employer contribution arrears (not included in employee salary): </strong>
+                                {salaryArrearsEmployerContributions.map(([label, amount]) => `${label} ₹${amount.toFixed(2)}`).join(' · ')}
+                              </div>
+                            )}
+                            {Math.abs(salaryArrearsEmployeePf) > 0.01 && (
+                              <div style={{ marginTop: '8px', color: '#9a3412', fontSize: '12px' }}>
+                                <strong>Employee PF Arrear (deduction): ₹{salaryArrearsEmployeePf.toFixed(2)}</strong>
+                              </div>
+                            )}
                           </>
                         ) : (
-                          <span style={{ color: '#64748b', fontSize: '13px' }}>No positive salary revision arrears were found for this employee.</span>
+                          <span style={{ color: '#64748b', fontSize: '13px' }}>No salary or employer-contribution arrears were found for this employee.</span>
                         )}
                       </div>
                     )}
@@ -2722,14 +2760,20 @@ export default function EmployeeProfilePage({ initialId }) {
                   {(() => {
                     const rev = salaryRevisions[activeRevisionIndex];
                     if (!rev) return null;
-                    const earnings = rev.components.filter(c => c.salaryHead?.headType?.name === 'Earning').reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
-                    const others = rev.components.filter(c => c.salaryHead?.headType?.name === 'Other').reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
-                    const deductions = rev.components.filter(c => c.salaryHead?.headType?.name === 'Deduction').reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+                    const earnings = rev.components
+                      .filter(c => c.salaryHead?.headType?.name === 'Earning' && !isEmployerContributionHead(c.salaryHead?.description))
+                      .reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+                    const others = rev.components
+                      .filter(c => c.salaryHead?.headType?.name === 'Other' && !isEmployerContributionHead(c.salaryHead?.description))
+                      .reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
+                    const deductions = rev.components
+                      .filter(c => c.salaryHead?.headType?.name === 'Deduction' && !isEmployerContributionHead(c.salaryHead?.description))
+                      .reduce((s, c) => s + (parseFloat(c.amount) || 0), 0);
                     const net = (earnings + others) - deductions;
                     return (
                       <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
                         <div style={{ background: 'linear-gradient(135deg,#7c3aed,#9333ea)', color: 'white', padding: '14px 32px', borderRadius: '10px', fontWeight: 700, fontSize: '16px', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
-                          Net Salary: ₹{net.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          Net Take-Home Salary: ₹{net.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </div>
                       </div>
                     );
@@ -2866,15 +2910,11 @@ export default function EmployeeProfilePage({ initialId }) {
                                   const val = e.target.value;
                                   let comps = { ...newRevisionForm.components, [headObj.id]: val };
                                   
-                                  const earningTotal = salaryHeads.filter(h => h.category === 'Earning' && h.isActive).reduce((sum, h) => sum + getSalaryAmount(h, comps), 0);
-                                  const otherTotal = salaryHeads.filter(h => h.category === 'Other' && h.isActive).reduce((sum, h) => sum + getSalaryAmount(h, comps), 0);
-                                  const deductionTotal = salaryHeads.filter(h => h.category === 'Deduction' && h.isActive).reduce((sum, h) => sum + getSalaryAmount(h, comps), 0);
-                                  
+                                  const earningTotal = salaryHeads.filter(h => h.category === 'Earning' && h.isActive && !isEmployerContributionHead(h.description)).reduce((sum, h) => sum + getSalaryAmount(h, comps), 0);
+                                  const otherTotal = salaryHeads.filter(h => h.category === 'Other' && h.isActive && !isEmployerContributionHead(h.description)).reduce((sum, h) => sum + getSalaryAmount(h, comps), 0);
                                   const grossHead = salaryHeads.find(h => h.category === 'CTC' && h.isActive && h.description.toLowerCase().includes('gross'));
-                                  const empPfHead = salaryHeads.find(h => h.category === 'CTC' && h.isActive && (h.description.toLowerCase().includes('employer pf') || h.description.toLowerCase() === 'pf'));
                                   
                                   if (grossHead) comps[grossHead.id] = (earningTotal + otherTotal).toString();
-                                  if (empPfHead) comps[empPfHead.id] = deductionTotal.toString();
                                   
                                   setNewRevisionForm({ ...newRevisionForm, components: comps });
                                 }}

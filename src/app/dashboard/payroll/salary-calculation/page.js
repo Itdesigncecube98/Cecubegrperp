@@ -1,11 +1,13 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Search, RefreshCw, Calculator, Printer, FileDown, FileText } from 'lucide-react';
 import MultiSelect from '@/components/MultiSelect';
 import SalarySlipModal from './SalarySlipModal';
 import Dialog from '@/components/Dialog';
 
 export default function SalaryCalculation() {
+  const router = useRouter();
   const [cycles, setCycles] = useState([]);
   const [selectedCycleId, setSelectedCycleId] = useState('');
   const [records, setRecords] = useState([]);
@@ -130,7 +132,7 @@ export default function SalaryCalculation() {
     const isApproving = newStatus === 'APPROVED';
     const msg = isApproving 
       ? 'Are you sure you want to approve this salary record? Once approved, it cannot be modified.' 
-      : 'Are you sure you want to unapprove? This will allow modifications again.';
+      : 'Move this approved salary back to Salary Calculation? The approval voucher will be reversed. You can then reopen Attendance and unapprove attendance for reconsideration.';
       
     setDialogConfig({
       isOpen: true,
@@ -141,13 +143,18 @@ export default function SalaryCalculation() {
       onConfirm: async () => {
         setDialogConfig(prev => ({ ...prev, isOpen: false }));
         try {
-          const res = await fetch(`/api/payroll/records/${id}/toggle-status`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: newStatus })
-          });
+          const res = await fetch(
+            isApproving
+              ? `/api/payroll/records/${id}/toggle-status`
+              : '/api/payroll/records/unpost-to-salary-calculation',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(isApproving ? { status: newStatus } : { recordIds: [id] })
+            }
+          );
           const json = await res.json();
-          if (json.success) {
+          if (res.ok && json.success) {
             setRecords(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
           } else {
             alert(json.error || 'Failed to update status');
@@ -178,6 +185,9 @@ export default function SalaryCalculation() {
   const visibleRecordIds = filteredRecords.map(record => record.id);
   const selectedVisibleCount = visibleRecordIds.filter(id => selectedRecordIds.includes(id)).length;
   const selectedPendingRecords = records.filter(record => selectedRecordIds.includes(record.id) && record.status === 'PENDING');
+  const approvedRecords = filteredRecords.filter(record => record.status === 'APPROVED');
+  const selectedCycle = cycles.find(cycle => cycle.id === selectedCycleId);
+  const cycleCanBeChanged = selectedCycle?.status !== 'COMPLETED';
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -189,6 +199,16 @@ export default function SalaryCalculation() {
     setSelectedRecordIds(previous => checked
       ? (previous.includes(id) ? previous : [...previous, id])
       : previous.filter(recordId => recordId !== id));
+  };
+
+  const openAttendanceForEmployees = salaryRecords => {
+    if (!selectedCycleId || salaryRecords.length === 0) return;
+    const query = new URLSearchParams({
+      cycleId: selectedCycleId,
+      employeeIds: salaryRecords.map(record => record.employeeId).join(','),
+      attendanceMode: salaryRecords.every(record => !record.attendanceReviewRequired) ? 'approved' : 'pending',
+    });
+    router.push(`/dashboard/payroll/attendance?${query.toString()}`);
   };
 
   const handleApproveSelected = () => {
@@ -294,8 +314,26 @@ export default function SalaryCalculation() {
         <div className="summary-badge green">Salary Processed : {totalProcessed}</div>
         <div className="summary-badge blue">Pending: {filteredRecords.length - totalProcessed}</div>
         {selectedRecordIds.length > 0 && <div className="summary-badge" style={{ backgroundColor: '#eff6ff', color: '#1d4ed8' }}>{selectedRecordIds.length} selected</div>}
-        <button className="btn-primary" onClick={handleApproveSelected} disabled={approvingSelected || selectedPendingRecords.length === 0} style={{ marginLeft: 'auto', backgroundColor: approvingSelected || selectedPendingRecords.length === 0 ? '#94a3b8' : '#10b981' }}>
+        <button className="btn-primary" onClick={handleApproveSelected} disabled={approvingSelected || selectedPendingRecords.length === 0 || !cycleCanBeChanged} style={{ marginLeft: 'auto', backgroundColor: approvingSelected || selectedPendingRecords.length === 0 || !cycleCanBeChanged ? '#94a3b8' : '#10b981' }}>
           {approvingSelected ? 'Approving...' : `Approve selected${selectedPendingRecords.length ? ` (${selectedPendingRecords.length})` : ''}`}
+        </button>
+        <button
+          className="btn-primary"
+          onClick={() => openAttendanceForEmployees(selectedPendingRecords)}
+          disabled={selectedPendingRecords.length === 0 || !cycleCanBeChanged}
+          title={selectedPendingRecords.length === 0 ? 'Select pending salaries to review their attendance.' : 'Open the selected employees in Attendance. Previously approved attendance remains approved until you unapprove it there.'}
+          style={{ backgroundColor: selectedPendingRecords.length === 0 || !cycleCanBeChanged ? '#94a3b8' : '#0284c7' }}
+        >
+          Push to Attendance{selectedPendingRecords.length > 0 ? ` (${selectedPendingRecords.length})` : ''}
+        </button>
+        <button
+          className="btn-primary"
+          onClick={() => router.push(`/dashboard/payroll/post-salary?payCycleId=${encodeURIComponent(selectedCycleId)}`)}
+          disabled={approvedRecords.length === 0}
+          title={approvedRecords.length === 0 ? 'Approve salary records before sending them to Post Salary.' : `Open ${approvedRecords.length} approved salary record(s) in Post Salary.`}
+          style={{ backgroundColor: approvedRecords.length === 0 ? '#94a3b8' : '#7c3aed' }}
+        >
+          Push to Post Salary{approvedRecords.length > 0 ? ` (${approvedRecords.length})` : ''}
         </button>
       </div>
 
@@ -385,16 +423,17 @@ export default function SalaryCalculation() {
                     >
                       Approve
                     </button>
+                  ) : row.status === 'APPROVED' ? (
+                    <button
+                      onClick={() => handleToggleApprove(row.id, 'PENDING')}
+                      disabled={!cycleCanBeChanged}
+                      title={!cycleCanBeChanged ? 'Completed pay cycle salaries cannot be unapproved.' : 'Reverse approval and return this salary to Salary Calculation.'}
+                      style={{ background: !cycleCanBeChanged ? '#94a3b8' : '#dc2626', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: !cycleCanBeChanged ? 'not-allowed' : 'pointer' }}
+                    >
+                      Unapprove
+                    </button>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 700 }}>APPROVED</span>
-                      <button 
-                        onClick={() => handleToggleApprove(row.id, 'PENDING')}
-                        style={{ background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer' }}
-                      >
-                        Unapprove
-                      </button>
-                    </div>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700 }}>POSTED</span>
                   )}
                 </td>
               </tr>

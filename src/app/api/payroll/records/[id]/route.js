@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { findApplicableSalaryRevision } from '@/lib/payrollDates';
+import { isEmployerContributionHead } from '@/lib/payrollSalaryHeads';
 
 function ltaIdsFromMessage(message) {
   try {
@@ -88,13 +89,18 @@ export async function GET(request, { params }) {
     const applicableRevision = findApplicableSalaryRevision(revisions, record.payCycle?.endDate);
     const periodDays = (record.workingDays || 0) + (record.absentDays || 0);
     const prorationFactor = periodDays > 0 ? (record.workingDays || 0) / periodDays : 0;
-    const salaryBreakdown = { earnings: [], deductions: [] };
+    const salaryBreakdown = { earnings: [], deductions: [], employerContributions: [] };
     for (const component of applicableRevision?.components || []) {
       const type = String(component.salaryHead?.headType?.name || '').trim().toLowerCase();
       const name = String(component.salaryHead?.description || '').trim();
-      const normalizedName = name.toLowerCase();
       const amount = Number(component.amount) || 0;
-      if (type === 'earning' && !['employer pf', 'employer provident fund'].includes(normalizedName)) {
+      if (isEmployerContributionHead(name)) {
+        salaryBreakdown.employerContributions.push({
+          id: component.salaryHeadId,
+          name,
+          amount: Math.round(amount * 100) / 100
+        });
+      } else if (type === 'earning') {
         salaryBreakdown.earnings.push({
           id: component.salaryHeadId,
           name,
@@ -214,7 +220,14 @@ export async function PUT(request, { params }) {
       const upsertAddition = async (type, amount, message) => {
         const where = { employeeId_payCycleId_type: { employeeId, payCycleId, type } };
         const current = await tx.bonusIncentive.findUnique({ where });
-        if (amount > 0) {
+        let hasEmployeePfArrears = false;
+        if (type === 'arrears' && message) {
+          try {
+            const breakdown = JSON.parse(message);
+            hasEmployeePfArrears = Math.abs(Number(breakdown?.['Employee PF Arrears']) || 0) > 0.01;
+          } catch {}
+        }
+        if (amount > 0 || hasEmployeePfArrears) {
           return tx.bonusIncentive.upsert({
             where,
             update: { amount, status: 'ADDED_TO_SALARY', ...(message !== undefined ? { message } : {}) },
@@ -227,7 +240,8 @@ export async function PUT(request, { params }) {
         return current;
       };
 
-      if (arrears > 0) {
+      const employeePfArrears = Number(body.arrearsBreakdown?.['Employee PF Arrears']) || 0;
+      if (arrears > 0 || Math.abs(employeePfArrears) > 0.01) {
         await tx.bonusIncentive.deleteMany({
           where: { employeeId, type: 'arrears', status: 'APPROVED', payCycleId: { not: payCycleId } }
         });

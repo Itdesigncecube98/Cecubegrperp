@@ -50,3 +50,33 @@ export async function postJournal(tx, { voucherNo, type, narration, entries, com
 export function amount(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
+
+export async function getSalaryVoucherAttempts(tx, payCycleId, employeeId, includeDetails = false) {
+  const baseVoucherNo = `SALARY-${payCycleId}-${employeeId}`;
+  const escapedBase = baseVoucherNo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const attemptPattern = new RegExp(`^${escapedBase}(?:-\\d+)?$`);
+  const candidates = await tx.accountsJournal.findMany({
+    where: { voucherNo: { startsWith: baseVoucherNo } },
+    ...(includeDetails
+      ? { include: { details: { include: { ledger: { include: { group: true } } } } } }
+      : {}),
+    orderBy: { createdAt: 'desc' },
+  });
+  return candidates.filter(journal => attemptPattern.test(journal.voucherNo));
+}
+
+export async function getNextSalaryVoucherNo(tx, payCycleId, employeeId) {
+  const baseVoucherNo = `SALARY-${payCycleId}-${employeeId}`;
+  const attempts = await getSalaryVoucherAttempts(tx, payCycleId, employeeId);
+  const active = attempts.find(journal => journal.status !== 'Reversed');
+  if (active) return active.voucherNo;
+  if (attempts.length === 0) return baseVoucherNo;
+
+  const highestAttempt = attempts.reduce((highest, journal) => {
+    const suffix = journal.voucherNo === baseVoucherNo
+      ? 1
+      : Number(journal.voucherNo.slice(baseVoucherNo.length + 1));
+    return Math.max(highest, Number.isFinite(suffix) ? suffix : 0);
+  }, 0);
+  return `${baseVoucherNo}-${highestAttempt + 1}`;
+}

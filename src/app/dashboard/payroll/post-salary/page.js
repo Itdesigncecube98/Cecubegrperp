@@ -1,12 +1,15 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Search, RefreshCw, Save, Printer } from 'lucide-react';
 import MultiSelect from '@/components/MultiSelect';
 
 export default function PostSalary() {
+  const router = useRouter();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [unposting, setUnposting] = useState(false);
   const [filters, setFilters] = useState({ department: 'Select Here', location: 'Select Here', employeeId: 'Select Here', payCycleId: 'Select Here' });
   
   const [departments, setDepartments] = useState([]);
@@ -54,7 +57,21 @@ export default function PostSalary() {
         const json = await cyclesRes.json();
         setCycles(json);
         if (json.length > 0) {
-          setFilters(prev => ({ ...prev, payCycleId: json[0].id }));
+          const requestedCycleId = new URLSearchParams(window.location.search).get('payCycleId');
+          const requestedCycle = json.find(cycle => cycle.id === requestedCycleId);
+          const cycleId = requestedCycle?.id || json[0].id;
+          setFilters(prev => ({ ...prev, payCycleId: cycleId }));
+
+          if (requestedCycle) {
+            const params = new URLSearchParams({ payCycleId: cycleId, status: 'Unposted' });
+            const response = await fetch(`/api/payroll/post-salary?${params.toString()}`);
+            const records = await response.json();
+            if (!response.ok || !Array.isArray(records)) {
+              throw new Error(records.error || 'Failed to load approved salaries for posting.');
+            }
+            setData(records);
+            setSelectedRows(new Set());
+          }
         }
       }
     } catch (err) {
@@ -85,6 +102,11 @@ export default function PostSalary() {
     }
   };
 
+  const postableRows = data.filter(row => row.status === 'APPROVED');
+  const selectedPostableCount = postableRows.filter(row => selectedRows.has(row.id)).length;
+  const selectedPostableRows = postableRows.filter(row => selectedRows.has(row.id));
+  const selectedPostableCycleIds = [...new Set(selectedPostableRows.map(row => row.payCycleId))];
+
   const handleRowChange = (id, field, value) => {
     setData(prev => prev.map(row => {
       if (row.id === id) {
@@ -96,13 +118,14 @@ export default function PostSalary() {
 
   const toggleAllRows = (e) => {
     if (e.target.checked) {
-      setSelectedRows(new Set(data.map(r => r.id)));
+      setSelectedRows(new Set(postableRows.map(row => row.id)));
     } else {
       setSelectedRows(new Set());
     }
   };
 
   const toggleRow = (id) => {
+    if (!postableRows.some(row => row.id === id)) return;
     const newSelected = new Set(selectedRows);
     if (newSelected.has(id)) {
       newSelected.delete(id);
@@ -113,14 +136,15 @@ export default function PostSalary() {
   };
 
   const handleSave = async () => {
-    if (selectedRows.size === 0) {
-      alert("Please select at least one record to post.");
+    const recordsToPost = postableRows.filter(row => selectedRows.has(row.id));
+    if (recordsToPost.length === 0) {
+      alert("Select at least one approved, unposted salary record.");
       return;
     }
     
     setSaving(true);
     try {
-      const updates = data.filter(r => selectedRows.has(r.id)).map(r => ({
+      const updates = recordsToPost.map(r => ({
         id: r.id,
         employeeId: r.employeeId,
         creditAccount: r.creditAccount,
@@ -147,6 +171,32 @@ export default function PostSalary() {
       alert("An error occurred while posting salary.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUnpostToSalaryCalculation = async () => {
+    if (selectedPostableRows.length === 0 || selectedPostableCycleIds.length !== 1) return;
+    const confirmed = window.confirm(
+      `Move ${selectedPostableRows.length} approved, unposted salary record${selectedPostableRows.length === 1 ? '' : 's'} back to Salary Calculation? The approval voucher will be reversed. Attendance approval will remain unchanged.`
+    );
+    if (!confirmed) return;
+
+    setUnposting(true);
+    try {
+      const response = await fetch('/api/payroll/records/unpost-to-salary-calculation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordIds: selectedPostableRows.map(row => row.id) }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Could not unpost salary to Salary Calculation.');
+      }
+      router.push(`/dashboard/payroll/salary-calculation?cycleId=${encodeURIComponent(result.payCycleId)}`);
+    } catch (error) {
+      alert(error.message || 'Could not unpost salary to Salary Calculation.');
+    } finally {
+      setUnposting(false);
     }
   };
 
@@ -211,12 +261,24 @@ export default function PostSalary() {
           </button>
           <button 
             className="btn-primary" 
-            style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: saving ? '#94a3b8' : '#0ea5e9' }}
+            style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: saving || selectedPostableCount === 0 ? '#94a3b8' : '#0ea5e9' }}
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || selectedPostableCount === 0}
+            title={selectedPostableCount === 0 ? 'Select at least one approved, unposted salary record.' : 'Post selected approved salaries.'}
           >
             {saving ? <RefreshCw className="spin" size={16} /> : <Save size={16} />} 
             {saving ? 'Posting...' : 'Post Selected'}
+          </button>
+          <button
+            className="btn-primary"
+            onClick={handleUnpostToSalaryCalculation}
+            disabled={unposting || selectedPostableCount === 0 || selectedPostableCycleIds.length !== 1}
+            title={selectedPostableCycleIds.length > 1
+              ? 'Select approved salaries from one pay cycle at a time.'
+              : 'Reverse selected salary approvals and return them to Salary Calculation.'}
+            style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: unposting || selectedPostableCount === 0 || selectedPostableCycleIds.length !== 1 ? '#94a3b8' : '#dc2626' }}
+          >
+            {unposting ? 'Unposting...' : 'Unpost to Salary Calculation'}
           </button>
         </div>
       </div>
@@ -228,7 +290,8 @@ export default function PostSalary() {
               <th style={{ width: '40px', padding: '0.75rem' }}>
                 <input 
                   type="checkbox" 
-                  checked={data.length > 0 && selectedRows.size === data.length}
+                  aria-label="Select all approved unposted salaries"
+                  checked={postableRows.length > 0 && selectedPostableCount === postableRows.length}
                   onChange={toggleAllRows}
                 />
               </th>
@@ -241,13 +304,14 @@ export default function PostSalary() {
               <th style={{ padding: '0.75rem', fontWeight: '500' }}>Net Salary</th>
               <th style={{ padding: '0.75rem', fontWeight: '500' }}>Credit A/C</th>
               <th style={{ padding: '0.75rem', fontWeight: '500' }}>Debit A/C</th>
+              <th style={{ padding: '0.75rem', fontWeight: '500' }}>Status</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="10" style={{ textAlign: 'center', padding: '2rem' }}>Loading records...</td></tr>
+              <tr><td colSpan="11" style={{ textAlign: 'center', padding: '2rem' }}>Loading records...</td></tr>
             ) : data.length === 0 ? (
-              <tr><td colSpan="10" style={{ textAlign: 'center', padding: '2rem' }}>No approved records found</td></tr>
+              <tr><td colSpan="11" style={{ textAlign: 'center', padding: '2rem' }}>No approved records found</td></tr>
             ) : (
               data.slice().sort((a, b) => String(a.empId || '').localeCompare(String(b.empId || ''), undefined, { numeric: true, sensitivity: 'base' })).map((row, index) => (
                 <tr key={row.id} style={{ borderBottom: '1px solid #e2e8f0', backgroundColor: index % 2 === 0 ? '#f8fafc' : 'white', fontSize: '0.9rem' }}>
@@ -255,6 +319,8 @@ export default function PostSalary() {
                     <input 
                       type="checkbox" 
                       checked={selectedRows.has(row.id)}
+                      disabled={row.status !== 'APPROVED'}
+                      aria-label={`${row.status === 'APPROVED' ? 'Select' : 'Cannot post'} ${row.name} salary`}
                       onChange={() => toggleRow(row.id)}
                     />
                   </td>
@@ -285,6 +351,9 @@ export default function PostSalary() {
                     >
                       <option value={row.debitAccount || ''}>{row.debitAccount || 'Select Account'}</option>
                     </select>
+                  </td>
+                  <td style={{ padding: '0.75rem', fontWeight: 600, color: row.status === 'APPROVED' ? '#15803d' : '#64748b' }}>
+                    {row.status === 'APPROVED' ? 'UNPOSTED' : row.status}
                   </td>
                 </tr>
               ))

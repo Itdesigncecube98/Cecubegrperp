@@ -1,7 +1,43 @@
-import { classifyStandardEarningHead } from '@/lib/payrollSalaryHeads';
-import { parsePayrollDate } from '@/lib/payrollDates';
+import { classifyStandardEarningHead, isEmployerContributionHead } from './payrollSalaryHeads';
+import { parsePayrollDate } from './payrollDates';
 
 const roundCurrency = value => Math.round(value * 100) / 100;
+const employerContributionArrearKeys = [
+  'Employer PF Arrears',
+  'Employer ESIC Arrears',
+];
+const employeePfArrearKey = 'Employee PF Arrears';
+
+function getEmployerContributionKey(name) {
+  if (!isEmployerContributionHead(name)) return null;
+  const normalizedName = String(name || '').toLowerCase();
+  if (/\b(?:esic|esi)\b/.test(normalizedName)) return 'Employer ESIC Arrears';
+  if (/\b(?:pf|epf|eps|provident fund)\b/.test(normalizedName)) return 'Employer PF Arrears';
+  return null;
+}
+
+function getEmployerContributionTotals(revision) {
+  const totals = Object.fromEntries(employerContributionArrearKeys.map(key => [key, 0]));
+  for (const component of revision?.components || []) {
+    const key = getEmployerContributionKey(component.salaryHead?.description || component.salaryHead?.name);
+    if (key) totals[key] += Number(component.amount) || 0;
+  }
+  return totals;
+}
+
+function getEmployeePfTotal(revision) {
+  return (revision?.components || []).reduce((total, component) => {
+    const name = String(component.salaryHead?.description || component.salaryHead?.name || '');
+    const normalizedName = name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+    const headType = String(component.salaryHead?.headType?.name || '').trim().toLowerCase();
+    const explicitlyEmployeePfHead = /\bemployee\s+(?:pf|epf|provident fund)\b|\b(?:pf|epf|provident fund)\s+employee\b/.test(normalizedName);
+    const deductionPfHead = headType === 'deduction' && /\b(?:pf|epf|provident fund)\b/.test(normalizedName);
+    return !isEmployerContributionHead(name) &&
+      (explicitlyEmployeePfHead || deductionPfHead)
+      ? total + (Number(component.amount) || 0)
+      : total;
+  }, 0);
+}
 
 export async function calculateSalaryRevisionArrears(tx, employeeId) {
   const revisions = await tx.salaryRevision.findMany({
@@ -23,6 +59,19 @@ export async function calculateSalaryRevisionArrears(tx, employeeId) {
   if (!latestRevision) return { status: 'no_revision' };
 
   const revisionStart = parsePayrollDate(latestRevision.effectiveFrom);
+  const previousRevision = revisions
+    .filter(revision => {
+      const effectiveFrom = parsePayrollDate(revision.effectiveFrom);
+      return effectiveFrom && effectiveFrom < revisionStart;
+    })
+    .sort((a, b) => (
+      parsePayrollDate(b.effectiveFrom).getTime() - parsePayrollDate(a.effectiveFrom).getTime() ||
+      b.createdAt.getTime() - a.createdAt.getTime()
+    ))[0];
+  const latestEmployerContributions = getEmployerContributionTotals(latestRevision);
+  const previousEmployerContributions = getEmployerContributionTotals(previousRevision);
+  const latestEmployeePf = getEmployeePfTotal(latestRevision);
+  const previousEmployeePf = getEmployeePfTotal(previousRevision);
   const allRecords = await tx.payrollRecord.findMany({
     where: { employeeId },
     include: { payCycle: true },
@@ -41,6 +90,9 @@ export async function calculateSalaryRevisionArrears(tx, employeeId) {
     Medical: 0,
     Conveyance: 0,
     'Special Allowance': 0,
+    'Employer PF Arrears': 0,
+    'Employer ESIC Arrears': 0,
+    [employeePfArrearKey]: 0,
   };
   let fromDate = null;
   let toDate = null;
@@ -95,18 +147,34 @@ export async function calculateSalaryRevisionArrears(tx, employeeId) {
     };
 
     for (const key of Object.keys(breakdown)) {
+      if (employerContributionArrearKeys.includes(key) || key === employeePfArrearKey) continue;
       const oldExpected = pastProrate > 0 ? (oldMonthly[key] / pastProrate) * prorate : 0;
       breakdown[key] += revised[key] - oldExpected;
+    }
+    if (previousRevision) {
+      for (const key of employerContributionArrearKeys) {
+        breakdown[key] += (latestEmployerContributions[key] - previousEmployerContributions[key]) * prorate;
+      }
+      const recordedEmployeePf = Number(record.pfEmployee) || previousEmployeePf;
+      breakdown[employeePfArrearKey] += (latestEmployeePf - recordedEmployeePf) * prorate;
     }
     totalOverlapDays += overlapDays;
   }
 
   const finalBreakdown = {};
   let totalArrears = 0;
+  let hasEmployerContributionArrears = false;
+  let hasEmployeePfArrears = false;
   for (const [key, value] of Object.entries(breakdown)) {
     if (value > 0.01 || value < -0.01) {
       finalBreakdown[key] = roundCurrency(value);
-      totalArrears += finalBreakdown[key];
+      if (employerContributionArrearKeys.includes(key)) {
+        hasEmployerContributionArrears = true;
+      } else if (key === employeePfArrearKey) {
+        hasEmployeePfArrears = true;
+      } else {
+        totalArrears += finalBreakdown[key];
+      }
     }
   }
   finalBreakdown.fromDate = fromDate;
@@ -114,11 +182,13 @@ export async function calculateSalaryRevisionArrears(tx, employeeId) {
   finalBreakdown.overlapDays = totalOverlapDays;
   totalArrears = roundCurrency(totalArrears);
 
-  if (totalArrears <= 0) return { status: 'no_arrears' };
+  if (totalArrears <= 0 && !hasEmployerContributionArrears && !hasEmployeePfArrears) {
+    return { status: 'no_arrears' };
+  }
 
   return {
     status: 'calculated',
-    amount: totalArrears,
+    amount: Math.max(totalArrears, 0),
     breakdown: finalBreakdown,
   };
 }

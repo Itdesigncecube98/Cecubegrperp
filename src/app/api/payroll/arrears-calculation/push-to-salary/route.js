@@ -12,8 +12,9 @@ function parseBreakdown(message) {
 
 function mergeBreakdowns(existing, incoming) {
   const merged = { ...existing };
+  delete merged['Employer LWF Arrears'];
   for (const [key, value] of Object.entries(incoming)) {
-    if (['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds'].includes(key)) continue;
+    if (['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds', 'Employer LWF Arrears'].includes(key)) continue;
     if (typeof value === 'number' && Number.isFinite(value)) {
       merged[key] = (Number(merged[key]) || 0) + value;
     } else if (merged[key] === undefined) {
@@ -44,7 +45,12 @@ export async function POST(request) {
       if (!source || source.type !== 'arrears') {
         return { error: 'Arrears history item not found.', status: 404 };
       }
-      if (source.status !== 'APPROVED' || money(source.amount) <= 0) {
+      const sourceBreakdown = parseBreakdown(source.message);
+      const sourceEmployeePfArrears = money(sourceBreakdown['Employee PF Arrears']);
+      if (
+        source.status !== 'APPROVED' ||
+        (money(source.amount) <= 0 && Math.abs(sourceEmployeePfArrears) <= 0.01)
+      ) {
         return { error: 'Only approved arrears can be pushed to salary.', status: 409 };
       }
 
@@ -87,7 +93,7 @@ export async function POST(request) {
       const totalAmount = money(previousAmount + money(source.amount));
       const mergedBreakdown = mergeBreakdowns(
         current?.status === 'ADDED_TO_SALARY' ? currentBreakdown : {},
-        parseBreakdown(source.message)
+        sourceBreakdown
       );
       mergedBreakdown.pushedArrearsIds = [...new Set([...pushedArrearsIds, source.id])];
       const message = JSON.stringify(mergedBreakdown);
@@ -111,14 +117,19 @@ export async function POST(request) {
         });
       }
 
-      const delta = money(totalAmount - previousAmount);
-      const updatedRecord = delta === 0
+      const grossDelta = money(totalAmount - previousAmount);
+      const previousEmployeePfArrears = money(currentBreakdown['Employee PF Arrears']);
+      const totalEmployeePfArrears = money(mergedBreakdown['Employee PF Arrears']);
+      const employeePfArrearsDelta = money(totalEmployeePfArrears - previousEmployeePfArrears);
+      const netDelta = money(grossDelta - employeePfArrearsDelta);
+      const updatedRecord = grossDelta === 0 && employeePfArrearsDelta === 0
         ? record
         : await tx.payrollRecord.update({
           where: { id: record.id },
           data: {
-            grossPay: money(Number(record.grossPay) + delta),
-            netPay: money(Number(record.netPay) + delta),
+            grossPay: money((Number(record.grossPay) || 0) + grossDelta),
+            totalDeductions: money((Number(record.totalDeductions) || 0) + employeePfArrearsDelta),
+            netPay: money((Number(record.netPay) || 0) + netDelta),
           },
         });
 

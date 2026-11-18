@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { getLedgerBalances, getGroupedBalances } from "@/lib/ledger-utils";
 
 export async function GET(request) {
@@ -17,6 +18,24 @@ export async function GET(request) {
 
     const ledgerBalances = await getLedgerBalances({ companyId, fromDate: fDate, toDate: tDate });
     const grouped = await getGroupedBalances(companyId, ledgerBalances);
+    const postedSalaryRecords = await prisma.payrollRecord.findMany({
+      where: {
+        status: 'POSTED',
+      },
+      include: { employee: true, payCycle: true },
+      orderBy: [
+        { payCycle: { startDate: 'asc' } },
+        { employee: { name: 'asc' } },
+      ],
+    });
+    const postedSalaryAdditions = postedSalaryRecords.length
+      ? await prisma.bonusIncentive.findMany({
+        where: {
+          payCycleId: { in: [...new Set(postedSalaryRecords.map(record => record.payCycleId))] },
+          employeeId: { in: [...new Set(postedSalaryRecords.map(record => record.employeeId))] },
+        },
+      })
+      : [];
 
     // Filter Assets and Liabilities
     // Note: Since grouped returns roots, we filter root groups by nature
@@ -41,6 +60,12 @@ export async function GET(request) {
       data: {
         liabilities: flatLiabilities.map(l => ({ name: l.ledgerName, group: l.groupName, amount: l.closingSigned < 0 ? Math.abs(l.closingSigned) : -l.closingSigned })),
         assets: flatAssets.map(a => ({ name: a.ledgerName, group: a.groupName, amount: a.closingSigned })),
+        postedSalaryRecords: postedSalaryRecords.map(record => ({
+          ...record,
+          bonusIncentives: postedSalaryAdditions.filter(addition =>
+            addition.payCycleId === record.payCycleId && addition.employeeId === record.employeeId
+          ),
+        })),
         groupedLiabilities: liabilitiesGroups,
         groupedAssets: assetsGroups,
         netProfit,

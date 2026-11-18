@@ -52,7 +52,7 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'No open pay cycle exists to attach the arrears to.' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: false, error: 'No positive arrears calculated.' }, { status: 400 });
+    return NextResponse.json({ success: false, error: 'No salary, employee PF, employer PF, or employer ESIC arrears calculated.' }, { status: 400 });
   } catch (error) {
     console.error('[ARREARS GENERATE ERROR]', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -14,6 +14,17 @@ function pushedArrearsIdsFromMessage(message) {
   }
 }
 
+function employerContributionArrearsFromBreakdown(breakdown) {
+  return {
+    pf: Number(breakdown?.['Employer PF Arrears']) || 0,
+    esic: Number(breakdown?.['Employer ESIC Arrears']) || 0,
+  };
+}
+
+function employeePfArrearFromBreakdown(breakdown) {
+  return Number(breakdown?.['Employee PF Arrears']) || 0;
+}
+
 async function fetchEmployeeArrearsHistory(employeeId) {
   const response = await fetch(`/api/payroll/arrears-calculation?employeeId=${encodeURIComponent(employeeId)}`, { cache: 'no-store' });
   const data = await response.json();
@@ -157,13 +168,20 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
   };
 
   const handleDownloadPDF = async (row) => {
-    let breakdown = null;
+    let breakdown = {};
     try {
       if (row.message) breakdown = JSON.parse(row.message);
     } catch(e) {}
 
     // Prepare print data
-    setCurrentPrintData({ row, breakdown });
+    setCurrentPrintData({
+      row: {
+        ...row,
+        employerContributionArrears: row.employerContributionArrears || employerContributionArrearsFromBreakdown(breakdown),
+        employeePfArrears: row.employeePfArrears ?? employeePfArrearFromBreakdown(breakdown),
+      },
+      breakdown,
+    });
     setDownloadingId(row.id);
   };
 
@@ -307,13 +325,14 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
                   <th style={{ textAlign: 'right' }}>Total Earning</th>
                   <th style={{ textAlign: 'right' }}>Total Deduction</th>
                   <th style={{ textAlign: 'right' }}>Net Salary</th>
+                  <th>PF / ESIC Arrears Details</th>
                   <th style={{ textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {history.length === 0 ? (
                   <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '4rem 2rem', color: '#64748b' }}>
+                    <td colSpan="10" style={{ textAlign: 'center', padding: '4rem 2rem', color: '#64748b' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#cbd5e1' }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="15" x2="15" y2="15"></line></svg>
                         <span style={{ fontSize: '1rem', fontWeight: 600, color: '#334155' }}>No Arrears Found</span>
@@ -326,7 +345,19 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
                     let breakdownObj = {};
                     try { if (row.message) breakdownObj = JSON.parse(row.message); } catch (e) {}
                     const isDayWise = !!breakdownObj.overlapDays;
-                    const arrearsTypeDisplay = isDayWise ? 'Day-wise' : 'Month-wise';
+                    const employerContributionArrears = row.employerContributionArrears || {};
+                    const hasEmployerContributionArrears = Object.values(employerContributionArrears)
+                      .some(amount => Math.abs(Number(amount) || 0) > 0.01);
+                    const hasEmployeePfArrears = Math.abs(Number(row.employeePfArrears ?? row.deduction) || 0) > 0.01;
+                    const isEmployerContributionOnly = hasEmployerContributionArrears &&
+                      !hasEmployeePfArrears &&
+                      Number(row.earning) <= 0;
+                    const isEmployeePfOnly = hasEmployeePfArrears && Number(row.earning) <= 0 && !hasEmployerContributionArrears;
+                    const arrearsTypeDisplay = isEmployeePfOnly
+                      ? 'Employee PF Deduction'
+                      : isEmployerContributionOnly
+                        ? 'Employer Cost'
+                      : isDayWise ? 'Day-wise' : 'Month-wise';
                     const arrearsDaysDisplay = breakdownObj.overlapDays ? breakdownObj.overlapDays : row.workingDays;
                     const currentArrearsItem = cycleArrears.find(item =>
                       item.employeeId === row.employeeId && item.status === 'ADDED_TO_SALARY'
@@ -348,6 +379,18 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
                         <td style={{ fontWeight: 600, color: '#16a34a', textAlign: 'right' }}>₹{row.earning?.toFixed(2)}</td>
                         <td style={{ color: '#ef4444', textAlign: 'right' }}>₹{row.deduction?.toFixed(2)}</td>
                         <td style={{ fontWeight: 700, color: '#0f172a', textAlign: 'right' }}>₹{row.net?.toFixed(2)}</td>
+                        <td style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                          {[
+                            ['Employee PF', row.employeePfArrears ?? row.deduction],
+                            ['PF', employerContributionArrears.pf],
+                            ['ESIC', employerContributionArrears.esic],
+                          ].map(([label, amount]) => (
+                            <div key={label}>{label}: ₹{(Number(amount) || 0).toFixed(2)}</div>
+                          ))}
+                          {isEmployerContributionOnly && (
+                            <strong style={{ color: '#64748b' }}>Employer cost only</strong>
+                          )}
+                        </td>
                         <td style={{ textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
                             {row.status === 'PENDING' ? (
@@ -373,7 +416,8 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
                                 {row.status === 'TRANSFERRED_TO_SALARY' ? 'Transferred to Salary' : row.status === 'ADDED_TO_SALARY' ? 'Added to Salary' : row.status}
                               </span>
                             )}
-                            {row.status === 'APPROVED' && (
+                            {row.status === 'APPROVED' &&
+                              (Number(row.earning) > 0 || hasEmployeePfArrears) && (
                               <button
                                 type="button"
                                 onClick={() => handlePushArrearsToSalary(row)}
@@ -481,10 +525,17 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
                   <div style={{ textAlign: 'right' }}>Amount (₹)</div>
                 </div>
                 <div style={{ padding: '10px', flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {currentPrintData.breakdown && Object.entries(currentPrintData.breakdown).filter(([k]) => !['fromDate', 'toDate'].includes(k)).map(([k, v]) => (
+                  {Object.entries(currentPrintData.breakdown || {})
+                    .filter(([key, value]) =>
+                      !['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds', 'Employer PF Arrears', 'Employer ESIC Arrears', 'Employer LWF Arrears', 'Employee PF Arrears'].includes(key) &&
+                      value !== null &&
+                      value !== '' &&
+                      Number.isFinite(Number(value))
+                    )
+                    .map(([k, v]) => (
                     <div key={k} style={{ display: 'grid', gridTemplateColumns: '1fr 100px', fontWeight: 'bold' }}>
                       <div>{k}</div>
-                      <div style={{ textAlign: 'right' }}>{v.toFixed(2)}</div>
+                      <div style={{ textAlign: 'right' }}>{Number(v).toFixed(2)}</div>
                     </div>
                   ))}
                 </div>
@@ -501,26 +552,45 @@ export default function ArrearsHistoryModal({ employee, onClose }) {
                   <div style={{ textAlign: 'right' }}>Amount (₹)</div>
                 </div>
                 <div style={{ padding: '10px', flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {Math.abs(Number(currentPrintData.row.employeePfArrears ?? currentPrintData.row.deduction) || 0) > 0.01 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', fontWeight: 'bold' }}>
+                      <div>Arrear Employee PF</div>
+                      <div style={{ textAlign: 'right' }}>{Number(currentPrintData.row.employeePfArrears ?? currentPrintData.row.deduction).toFixed(2)}</div>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', fontWeight: 'bold', padding: '6px 10px', borderTop: '1px solid black' }}>
                   <div>Total Deductions</div>
-                  <div style={{ textAlign: 'right' }}>0.00</div>
+                  <div style={{ textAlign: 'right' }}>{Number(currentPrintData.row.deduction || 0).toFixed(2)}</div>
                 </div>
               </div>
             </div>
+
+            {currentPrintData.row.employerContributionArrears &&
+              Object.values(currentPrintData.row.employerContributionArrears).some(amount => Math.abs(Number(amount) || 0) > 0.01) && (
+                <div style={{ border: '2px solid black', marginTop: '10px', padding: '10px', fontSize: '13px' }}>
+                  <strong>Employer Contribution Arrears (not included in employee net salary)</strong>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginTop: '8px' }}>
+                    <div>Employer PF: ₹{(Number(currentPrintData.row.employerContributionArrears.pf) || 0).toFixed(2)}</div>
+                    <div>Employer ESIC: ₹{(Number(currentPrintData.row.employerContributionArrears.esic) || 0).toFixed(2)}</div>
+                  </div>
+                </div>
+              )}
 
             {/* Net Payable Row */}
             <div style={{ border: '2px solid black', borderTop: 'none', display: 'grid', gridTemplateColumns: '1fr 1fr', fontSize: '14px', fontWeight: 'bold', padding: '8px 10px' }}>
               <div></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px' }}>
                 <div>Net Payable :</div>
-                <div style={{ textAlign: 'right' }}>{currentPrintData.row.earning.toFixed(2)}</div>
+                <div style={{ textAlign: 'right' }}>{Number(currentPrintData.row.net || 0).toFixed(2)}</div>
               </div>
             </div>
 
             {/* Words Row */}
             <div style={{ border: '2px solid black', borderTop: 'none', padding: '10px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold' }}>
-              Net Salary (In Words): {numberToWords(Math.round(currentPrintData.row.earning))}
+              Net Salary (In Words): {currentPrintData.row.net < 0
+                ? `Employee PF deduction of ${numberToWords(Math.round(Math.abs(currentPrintData.row.net)))}`
+                : numberToWords(Math.round(currentPrintData.row.net))}
             </div>
 
             {/* Footer */}
