@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, UserCircle, Layers } from 'lucide-react';
+import { LogOut, UserCircle, Layers, ClipboardCheck } from 'lucide-react';
 import Dialog from '../../../components/Dialog';
 import './employee.css';
 
@@ -84,6 +84,20 @@ export default function EmployeeLayout({ children }) {
         </div>
         
         <div className="nav-profile">
+          <button
+            type="button"
+            onClick={() => router.push('/employee/procurement-approvals')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              background: '#ecfeff', border: '1px solid #a5f3fc',
+              padding: '7px 12px', borderRadius: '8px',
+              fontSize: '13px', fontWeight: 600, color: '#0e7490',
+              cursor: 'pointer', marginRight: '8px',
+            }}
+          >
+            <ClipboardCheck size={16} />
+            <span>PO/WO Approvals</span>
+          </button>
           {!isMobileApp && (
             <button 
               type="button"

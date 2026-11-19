@@ -81,7 +81,7 @@ async function syncProjectsWithTasks() {
   const validTaskIds = new Set();
 
   for (const p of projects) {
-    const builtUp = parseFloat(p.builtUpArea) || 1;
+    const builtUp = 1;
 
     // 1. ALWAYS ensure the Project Row exists
     let pRow = await prisma.projectWbsTask.findFirst({
@@ -261,7 +261,6 @@ export async function GET(req) {
             id: true,
             name: true,
             company: true,
-            builtUpArea: true,
             status: true
           }
         }
@@ -280,7 +279,6 @@ export async function GET(req) {
               id: true,
               name: true,
               company: true,
-              builtUpArea: true,
               status: true
             }
           }
@@ -315,7 +313,7 @@ export async function POST(req) {
         orderBy: { createdAt: 'asc' },
         include: {
           project: {
-            select: { id: true, name: true, company: true, builtUpArea: true, status: true }
+            select: { id: true, name: true, company: true, status: true }
           }
         }
       });
@@ -404,7 +402,7 @@ export async function PUT(req) {
         data: sanitizedData,
         include: {
           project: {
-            select: { id: true, name: true, company: true, builtUpArea: true, status: true }
+            select: { id: true, name: true, company: true, status: true }
           }
         }
       });

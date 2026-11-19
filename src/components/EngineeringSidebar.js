@@ -33,6 +33,7 @@ const menuConfig = [
       { name: 'Material Library',  path: '/engineering/library/material',             permissionCode: 'ENGG_MATERIAL_LIBRARY' },
       { name: 'Labour Library',    path: '/engineering/library/labour',               permissionCode: 'ENGG_LABOUR_LIBRARY' },
       { name: 'Unit Master',       path: '/engineering/master/unit-master',           permissionCode: 'ENGG_UNIT_MASTER' },
+      { name: 'Company Library',   path: '/engineering/library/company',              permissionCode: ['ENGG_COMPANY_LIBRARY_CREATE', 'ENGG_COMPANY_LIBRARY_VIEW', 'ENGG_COMPANY_LIBRARY_EDIT', 'ENGG_COMPANY_LIBRARY_DELETE'] },
       { name: 'Project Category 1',path: '/engineering/library/project-category-1',  permissionCode: 'ENGG_PROJECT_CATEGORY_1' },
       { name: 'Project Category 2',path: '/engineering/library/project-category-2',  permissionCode: 'ENGG_PROJECT_CATEGORY_2' },
     ],

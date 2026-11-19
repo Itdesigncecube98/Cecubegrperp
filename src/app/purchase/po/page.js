@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, FileText, Download, Mail, Trash2 } from 'lucide-react';
+import { Search, Filter, Plus, Download, Mail, Trash2, Clock, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
@@ -16,9 +16,16 @@ export default function PORegister() {
   const [sendingId, setSendingId] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const [approvalId, setApprovalId] = useState('');
+  const [timelinePO, setTimelinePO] = useState(null);
   const { activeEmployee, activeProject, hasRight } = usePermissions();
   const can = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Purchase', name)));
-  const canList = can('Purchase Orders View') || can('Purchase Orders Edit') || can('Purchase Orders Approve') || can('Purchase Orders Delete') || can('Purchase Orders Create') || can('Send Purchase Order by Email');
+  const isAssignedApprover = po => !!activeEmployee?.id && po.approvalWorkflow?.currentApproverIds?.includes(activeEmployee.id);
+  const canApprovePO = po => po.approvalWorkflow?.currentStage === 0
+    ? can('Purchase Orders Approve')
+    : po.approvalWorkflow?.required
+      ? isAssignedApprover(po)
+      : can('Purchase Orders Approve');
+  const canList = can('Purchase Orders View') || can('Purchase Orders Edit') || can('Purchase Orders Approve') || can('Purchase Orders Delete') || can('Purchase Orders Create') || can('Send Purchase Order by Email') || pos.some(isAssignedApprover);
 
   const sendPOEmail = async po => {
     setSendingId(po.id);
@@ -171,7 +178,11 @@ export default function PORegister() {
                     <td className="pur-font-semibold">{formatCurrency(po.totalAmount)}</td>
                     <td>{po.deliveryDate ? new Date(po.deliveryDate).toLocaleDateString() : '—'}</td>
                     <td>{po.preparedByName || po.preparedBy || '—'}</td>
-                    <td>{po.approvedByName || po.approvedBy || '—'}</td>
+                    <td>{po.approvalWorkflow?.required && !po.approvalWorkflow.complete
+                      ? po.approvalWorkflow.currentStage === 0
+                        ? `Purchase Manager · ${po.approvalWorkflow.currentStageApprovedCount}/${po.approvalWorkflow.currentStageApproverCount}`
+                        : `Level ${po.approvalWorkflow.currentStage}/${po.approvalWorkflow.stageCount} · ${po.approvalWorkflow.currentStageApprovedCount}/${po.approvalWorkflow.currentStageApproverCount}`
+                      : po.approvedByName || po.approvedBy || '—'}</td>
                     <td style={{ fontSize: 12, color: '#64748b' }}>{po.editedBy ? <>{po.editedBy}<div>{po.editedAt ? new Date(po.editedAt).toLocaleString('en-IN') : ''}</div></> : '—'}</td>
                     <td>
                       <span className={`pur-badge ${
@@ -186,13 +197,16 @@ export default function PORegister() {
                       </span>
                     </td>
                     <td className="pur-text-right pur-flex" style={{ justifyContent: 'flex-end', gap: '8px' }}>
-                      {['DRAFT', 'PENDING_APPROVAL'].includes(po.status) && can('Purchase Orders Approve') && <button className="pur-btn pur-btn-outline" disabled={approvalId === po.id} onClick={() => togglePOApproval(po)}>{approvalId === po.id ? 'Saving…' : 'Approve'}</button>}
+                      <button type="button" className="pur-icon-btn" aria-label="View PO status history" title="View PO status history" onClick={() => setTimelinePO(po)}><Clock size={16} /></button>
+                      {['DRAFT', 'PENDING_APPROVAL'].includes(po.status)
+                        && canApprovePO(po)
+                        && <button className="pur-btn pur-btn-outline" disabled={approvalId === po.id} onClick={() => togglePOApproval(po)}>{approvalId === po.id ? 'Saving…' : po.approvalWorkflow?.currentStage === 0 ? 'Purchase Manager Approve' : po.approvalWorkflow?.required ? `Approve L${po.approvalWorkflow.currentStage}` : 'Approve'}</button>}
                       {po.status === 'APPROVED' && withinApprovalWindow(po.approvedAt) && can('Purchase Orders Approve') && <button className="pur-btn pur-btn-outline" disabled={approvalId === po.id} onClick={() => togglePOApproval(po)}>{approvalId === po.id ? 'Saving…' : 'Unapprove (2 day window)'}</button>}
                       {can('Purchase Orders View') && po.approvedAt && <Link href={`/purchase/po/print?id=${po.id}`} target="_blank" className="pur-icon-btn pur-text-indigo-600" title="Download PDF">
                         <Download size={16} />
                       </Link>}
                       {can('Purchase Orders Edit') && !po.approvedAt && <Link href={`/purchase/po/create?id=${po.id}`} className="pur-btn pur-btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }}>Edit</Link>}
-                      {can('Purchase Orders Delete') && po.status === 'DRAFT' && <button type="button" className="pur-icon-btn" title="Delete draft purchase order" disabled={deletingId === po.id} onClick={() => deletePO(po)}><Trash2 size={15} /></button>}
+                      {can('Purchase Orders Delete') && (po.status === 'DRAFT' || (po.status === 'PENDING_APPROVAL' && po.approvalWorkflow?.currentStage === 0)) && <button type="button" className="pur-icon-btn" title="Delete purchase order before approval" disabled={deletingId === po.id} onClick={() => deletePO(po)}><Trash2 size={15} /></button>}
                       {can('Send Purchase Order by Email') && <button className="pur-icon-btn" title="Email purchase order" disabled={sendingId === po.id || !po.supplierEmail} onClick={() => sendPOEmail(po)}><Mail size={15} /></button>}
                     </td>
                   </tr>
@@ -209,6 +223,23 @@ export default function PORegister() {
           )}
         </div>
       </div>
+      {timelinePO && <div role="presentation" onClick={() => setTimelinePO(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'rgba(15, 23, 42, .45)' }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="po-timeline-title" onClick={event => event.stopPropagation()} style={{ width: '100%', maxWidth: 620, maxHeight: '80vh', overflowY: 'auto', padding: 22, borderRadius: 12, background: '#fff', boxShadow: '0 20px 50px rgba(15,23,42,.25)' }}>
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
+            <h2 id="po-timeline-title" style={{ margin: 0, color: '#0f172a', fontSize: 18 }}>PO Status History · {timelinePO.poNumber}</h2>
+            <button type="button" aria-label="Close timeline" onClick={() => setTimelinePO(null)} style={{ display: 'inline-flex', padding: 6, border: 0, borderRadius: 6, background: 'transparent', color: '#64748b', cursor: 'pointer' }}><X size={18} /></button>
+          </header>
+          {timelinePO.statusHistory?.length ? <div style={{ display: 'grid', gap: 13 }}>
+            {timelinePO.statusHistory.map(entry => <div key={entry.id} style={{ display: 'grid', gridTemplateColumns: '12px 1fr', gap: 11 }}>
+              <span style={{ width: 10, height: 10, marginTop: 5, borderRadius: '50%', background: '#2563eb' }} />
+              <div>
+                <div style={{ color: '#1e293b', fontSize: 13, fontWeight: 700 }}>{entry.fromStatus ? `${entry.fromStatus.replaceAll('_', ' ')} → ` : ''}{entry.toStatus?.replaceAll('_', ' ') || 'Updated'}</div>
+                <div style={{ marginTop: 3, color: '#64748b', fontSize: 12 }}>{entry.actorName || 'Unknown user'} · {entry.changedAt ? new Date(entry.changedAt).toLocaleString('en-IN') : 'No date recorded'}{entry.note ? ` · ${entry.note}` : ''}</div>
+              </div>
+            </div>)}
+          </div> : <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>No status changes have been recorded yet.</p>}
+        </section>
+      </div>}
     </div>
   );
 }

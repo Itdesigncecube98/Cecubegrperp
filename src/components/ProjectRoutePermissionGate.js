@@ -32,7 +32,12 @@ const ROUTE_RIGHTS = [
   ['/engineering/library/material', 'ENGG_MATERIAL_LIBRARY'],
   ['/engineering/library/labour', 'ENGG_LABOUR_LIBRARY'], ['/engineering/master/unit-master', 'ENGG_UNIT_MASTER'],
   ['/engineering/library/project-category-1', 'ENGG_PROJECT_CATEGORY_1'], ['/engineering/library/project-category-2', 'ENGG_PROJECT_CATEGORY_2'],
-  ['/engineering/library/company', 'ENGG_COMPANY_LIBRARY'],
+  ['/engineering/library/company', [
+    'ENGG_COMPANY_LIBRARY_CREATE',
+    'ENGG_COMPANY_LIBRARY_VIEW',
+    'ENGG_COMPANY_LIBRARY_EDIT',
+    'ENGG_COMPANY_LIBRARY_DELETE',
+  ]],
   ['/engineering/library/project-status', 'ENGG_PROJECT_STATUS'],
   ['/engineering/engineering/manufacturing', 'ENGG_MANUFACTURING'],
   ['/engineering/quality-check/inspection-report', 'ENGG_QUALITY_INSPECTION'],

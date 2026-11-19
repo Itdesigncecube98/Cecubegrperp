@@ -127,7 +127,7 @@ export async function calculateSalaryRevisionArrears(tx, employeeId) {
     for (const component of latestRevision.components) {
       const headName = String(component.salaryHead?.description || component.salaryHead?.name || '').trim();
       const headType = String(component.salaryHead?.headType?.name || '').trim().toLowerCase();
-      if (headType !== 'earning') continue;
+      if (headType !== 'earning' || isEmployerContributionHead(headName)) continue;
 
       const category = classifyStandardEarningHead(headName);
       const amount = Number(component.amount) || 0;
@@ -135,7 +135,7 @@ export async function calculateSalaryRevisionArrears(tx, employeeId) {
       else if (category === 'hra') revised.HRA += amount * prorate;
       else if (category === 'medical') revised.Medical += amount * prorate;
       else if (category === 'conveyance') revised.Conveyance += amount * prorate;
-      else if (headName.toLowerCase().includes('special')) revised['Special Allowance'] += amount * prorate;
+      else revised['Special Allowance'] += amount * prorate;
     }
 
     const oldMonthly = {

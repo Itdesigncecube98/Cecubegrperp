@@ -29,7 +29,7 @@ export async function GET(req) {
       where: whereTask,
       include: {
         project: {
-          select: { id: true, name: true, company: true, status: true, builtUpArea: true }
+          select: { id: true, name: true, company: true, status: true }
         }
       },
       orderBy: { createdAt: 'asc' }

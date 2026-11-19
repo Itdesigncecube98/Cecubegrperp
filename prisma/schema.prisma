@@ -839,10 +839,6 @@ model Project {
   company             String
   library             String
   state               String
-  builtUpArea         String?           @default("0.0000")
-  saleableArea        String?           @default("0.0000")
-  startDate           String?           @default("01/01/2026 00:00:00")
-  endDate             String?           @default("01/01/2026 00:00:00")
   cost                String?           @default("0.0000\n01/01/1900")
   status              String?           @default("Planning")
   createdAt           DateTime          @default(now())
@@ -1943,6 +1939,7 @@ model SystemSettings {
   autoNumberingEnabled  Boolean  @default(true)
   resetNumberingYearly  Boolean  @default(true)
   maxApprovalLevels     Int      @default(3)
+  purchaseWorkOrderApprovalConfig Json?
   autoBackupEnabled     Boolean  @default(false)
   backupFrequency       String   @default("Daily")
   backupRetentionDays   Int      @default(30)
@@ -3648,6 +3645,22 @@ model WorkOrderStatusHistory {
   workOrder    WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 
   @@index([workOrderId, changedAt])
+}
+
+model DocumentApprovalStep {
+  id                  String   @id @default(cuid())
+  documentType        String
+  documentId          String
+  stage               Int
+  threshold           Float
+  approverEmployeeId  String
+  status              String   @default("PENDING")
+  approvedAt          DateTime?
+  createdAt           DateTime @default(now())
+
+  @@unique([documentType, documentId, stage, approverEmployeeId])
+  @@index([approverEmployeeId, status])
+  @@index([documentType, documentId, stage])
 }
 
 model WorkOrderRABill {

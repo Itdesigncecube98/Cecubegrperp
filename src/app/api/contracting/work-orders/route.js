@@ -6,6 +6,18 @@ import { addTaskMasterTask } from '@/lib/siteTaskMaster';
 import { getDocumentActors, getDocumentEditors, recordDocumentAction, recordDocumentEdit } from '@/lib/documentAudit';
 import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
+import { readAuthSession } from '@/lib/authSession';
+import {
+  addContractManagerApprovalRow,
+  buildWorkOrderApprovalRows,
+  buildPendingApprovalRows,
+  getApplicableApprovalStages,
+  getProcurementApprovalConfig,
+  replaceDocumentApprovalRows,
+  summarizeApprovalSteps,
+  PROCUREMENT_DOCUMENT_TYPES,
+  CONTRACT_MANAGER_APPROVER_ID,
+} from '@/lib/procurementApprovalWorkflow';
 
 function readScopeMetadata(scope) {
   try {
@@ -63,10 +75,15 @@ export async function GET(request) {
       },
       orderBy: { createdAt: 'desc' }
     });
-    const [statusHistory, editors, actors] = await Promise.all([
+    const [statusHistory, editors, actors, approvalRows, approvalConfig] = await Promise.all([
       getWorkOrderStatusHistory(prisma, workOrders.map(order => order.id)),
       getDocumentEditors(prisma, 'WorkOrder', workOrders.map(order => order.id)),
       getDocumentActors(prisma, 'WorkOrder', workOrders.map(order => order.id)),
+      prisma.documentApprovalStep.findMany({
+        where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: { in: workOrders.map(order => order.id) } },
+        select: { documentId: true, stage: true, approverEmployeeId: true, status: true },
+      }),
+      getProcurementApprovalConfig(prisma),
     ]);
     const historyByWorkOrder = new Map();
     for (const entry of statusHistory) {
@@ -74,13 +91,29 @@ export async function GET(request) {
       entries.push(entry);
       historyByWorkOrder.set(entry.workOrderId, entries);
     }
-    return NextResponse.json(workOrders.map(order => ({
-      ...order,
-      statusHistory: historyByWorkOrder.get(order.id) || [],
-      ...readScopeMetadata(order.scope),
-      ...actors[order.id],
-      ...editors[order.id],
-    })));
+    const approvalRowsByWorkOrder = new Map();
+    approvalRows.forEach(row => {
+      const rows = approvalRowsByWorkOrder.get(row.documentId) || [];
+      rows.push(row);
+      approvalRowsByWorkOrder.set(row.documentId, rows);
+    });
+    return NextResponse.json(workOrders.map(order => {
+      let approvalRowsForOrder = approvalRowsByWorkOrder.get(order.id) || [];
+      if (!approvalRowsForOrder.length && ['Draft', 'Pending Approval'].includes(order.status)) {
+        approvalRowsForOrder = buildPendingApprovalRows(getApplicableApprovalStages(approvalConfig, order.contractValue));
+      }
+      if (['Draft', 'Pending Approval'].includes(order.status)) {
+        approvalRowsForOrder = addContractManagerApprovalRow(approvalRowsForOrder);
+      }
+      return {
+        ...order,
+        statusHistory: historyByWorkOrder.get(order.id) || [],
+        approvalWorkflow: summarizeApprovalSteps(approvalRowsForOrder),
+        ...readScopeMetadata(order.scope),
+        ...actors[order.id],
+        ...editors[order.id],
+      };
+    }));
   } catch (error) {
     console.error('Error fetching work orders:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -119,7 +152,7 @@ export async function POST(request) {
     const cv = parseFloat(contractValue) || 0;
     const ap = parseFloat(advancePercent) || 0;
 
-    const workOrder = await prisma.workOrder.create({
+    let workOrder = await prisma.workOrder.create({
       data: {
         woNo,
         projectId,
@@ -148,6 +181,30 @@ export async function POST(request) {
       toStatus: 'Draft',
       actorName: data.madeBy || data.editedBy || 'System',
       note: 'Work order created',
+    });
+
+    const approvalConfig = await getProcurementApprovalConfig(prisma);
+    const approvalStages = getApplicableApprovalStages(approvalConfig, cv);
+    workOrder = await prisma.$transaction(async tx => {
+      await replaceDocumentApprovalRows(
+        tx,
+        PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER,
+        workOrder.id,
+        buildWorkOrderApprovalRows(approvalStages)
+      );
+      const updated = await tx.workOrder.update({
+        where: { id: workOrder.id },
+        data: { status: 'Pending Approval' },
+        include: { project: { select: { id: true, name: true, projectId: true } } },
+      });
+      await recordWorkOrderStatus(tx, {
+        workOrderId: workOrder.id,
+        fromStatus: 'Draft',
+        toStatus: 'Pending Approval',
+        actorName: data.madeBy || data.editedBy || 'System',
+        note: 'Submitted to Contract Manager for approval.',
+      });
+      return updated;
     });
 
     const legacyProject = await prisma.project.findFirst({ where: { name: project.name }, select: { id: true } });
@@ -215,6 +272,168 @@ export async function PUT(request) {
       });
       return NextResponse.json({ ...updated, accountsSentBy: actor, accountsSentAt });
     }
+    if (data.action === 'approve') {
+      const session = readAuthSession(request);
+      if (!session) return NextResponse.json({ error: 'Sign in to approve this work order.' }, { status: 401 });
+      if (!['Draft', 'Pending Approval'].includes(existing.status)) {
+        return NextResponse.json({ error: 'This work order is no longer awaiting approval.' }, { status: 409 });
+      }
+
+      let approvalRows = await prisma.documentApprovalStep.findMany({
+        where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: id },
+      });
+      if (!approvalRows.some(row => row.stage === 0 && row.approverEmployeeId === CONTRACT_MANAGER_APPROVER_ID)) {
+        const managerAccess = await checkDocumentApprovalAccess(request, prisma, {
+          module: 'Contracting',
+          toolName: 'Approve Work Order',
+          projectId: existing.projectId,
+          allowAnyProject: true,
+        });
+        if (!managerAccess.allowed) return NextResponse.json({ error: managerAccess.error }, { status: managerAccess.status });
+        const approvalConfig = await getProcurementApprovalConfig(prisma);
+        const stages = getApplicableApprovalStages(approvalConfig, existing.contractValue);
+        await prisma.$transaction(async tx => {
+          await tx.$queryRaw`SELECT "id" FROM "WorkOrder" WHERE "id" = ${id} FOR UPDATE`;
+          const currentRows = await tx.documentApprovalStep.findMany({
+            where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: id },
+          });
+          if (!currentRows.some(row => row.stage === 0 && row.approverEmployeeId === CONTRACT_MANAGER_APPROVER_ID)) {
+            if (currentRows.length) {
+              await tx.documentApprovalStep.updateMany({
+                where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: id },
+                data: { status: 'PENDING', approvedAt: null },
+              });
+              await tx.documentApprovalStep.createMany({
+                data: [{
+                  ...buildWorkOrderApprovalRows([])[0],
+                  documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER,
+                  documentId: id,
+                }],
+                skipDuplicates: true,
+              });
+            } else {
+              await replaceDocumentApprovalRows(
+                tx,
+                PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER,
+                id,
+                buildWorkOrderApprovalRows(stages)
+              );
+            }
+            if (existing.status !== 'Pending Approval') {
+              await tx.workOrder.update({ where: { id }, data: { status: 'Pending Approval' } });
+            }
+            await recordWorkOrderStatus(tx, {
+              workOrderId: id,
+              fromStatus: existing.status,
+              toStatus: 'Pending Approval',
+              note: 'Submitted to Contract Manager for approval.',
+            });
+          }
+        });
+        approvalRows = await prisma.documentApprovalStep.findMany({
+          where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: id },
+        });
+      }
+
+      const progress = summarizeApprovalSteps(approvalRows);
+      const isContractManagerStage = progress.currentStage === 0
+        && progress.currentApproverIds.includes(CONTRACT_MANAGER_APPROVER_ID);
+      let actorName;
+      if (isContractManagerStage) {
+        const access = await checkDocumentApprovalAccess(request, prisma, {
+          module: 'Contracting',
+          toolName: 'Approve Work Order',
+          projectId: existing.projectId,
+          allowAnyProject: true,
+        });
+        if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+        actorName = access.session.type === 'admin'
+          ? 'Administrator'
+          : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      } else {
+        if (!progress.currentApproverIds.includes(session.id)) {
+          return NextResponse.json({ error: 'This work order is waiting for its assigned approvers.' }, { status: 403 });
+        }
+        const employee = session.type === 'employee'
+          ? await prisma.employee.findUnique({ where: { id: session.id }, select: { name: true } })
+          : null;
+        actorName = employee?.name || 'Administrator';
+      }
+
+      if (approvalRows.length) {
+        const approvedAt = new Date();
+        const result = await prisma.$transaction(async tx => {
+          await tx.$queryRaw`SELECT "id" FROM "WorkOrder" WHERE "id" = ${id} FOR UPDATE`;
+          const currentOrder = await tx.workOrder.findUnique({
+            where: { id },
+            select: { status: true, scope: true },
+          });
+          if (!currentOrder || !['Draft', 'Pending Approval'].includes(currentOrder.status)) return null;
+          const currentRows = await tx.documentApprovalStep.findMany({
+            where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: id },
+          });
+          const currentProgress = summarizeApprovalSteps(currentRows);
+          const currentIsContractManagerStage = currentProgress.currentStage === 0
+            && currentProgress.currentApproverIds.includes(CONTRACT_MANAGER_APPROVER_ID);
+          if (currentIsContractManagerStage !== isContractManagerStage) return null;
+          const approverEmployeeId = currentIsContractManagerStage ? CONTRACT_MANAGER_APPROVER_ID : session.id;
+          if (!currentProgress.currentApproverIds.includes(approverEmployeeId)) return null;
+          const changed = await tx.documentApprovalStep.updateMany({
+            where: {
+              documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER,
+              documentId: id,
+              stage: currentProgress.currentStage,
+              approverEmployeeId,
+              status: 'PENDING',
+            },
+            data: { status: 'APPROVED', approvedAt },
+          });
+          if (changed.count !== 1) return null;
+
+          const updatedRows = await tx.documentApprovalStep.findMany({
+            where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: id },
+          });
+          const updatedProgress = summarizeApprovalSteps(updatedRows);
+          const finalApproval = updatedProgress.complete;
+          const nextStatus = finalApproval ? 'Approved' : 'Pending Approval';
+          const currentScope = (() => { try { return currentOrder.scope ? JSON.parse(currentOrder.scope) : {}; } catch { return {}; } })();
+          const audit = {
+            ...(currentScope.audit || {}),
+            approvedBy: finalApproval ? actorName : null,
+            approvedAt: finalApproval ? approvedAt.toISOString() : null,
+          };
+          const updated = await tx.workOrder.update({
+            where: { id },
+            data: { status: nextStatus, scope: JSON.stringify({ ...currentScope, audit }) },
+            include: { project: { select: { id: true, name: true } } },
+          });
+          await recordWorkOrderStatus(tx, {
+            workOrderId: id,
+            fromStatus: currentOrder.status,
+            toStatus: nextStatus,
+            actorName,
+            note: currentIsContractManagerStage
+              ? finalApproval
+                ? 'Contract Manager approved the work order.'
+                : 'Contract Manager approved the work order and forwarded it to the configured employee approval levels.'
+              : finalApproval
+                ? 'Work order approved after all configured approvals.'
+                : `Level ${currentProgress.currentStage} approval recorded (${updatedProgress.approvedCount} of ${updatedProgress.totalApproverCount} total approvals complete).`,
+          });
+          return { updated, audit, approvalWorkflow: updatedProgress };
+        });
+        if (!result) return NextResponse.json({ error: 'This approval was already recorded. Refresh and try again.' }, { status: 409 });
+        await recordDocumentAction(prisma, {
+          entityType: 'WorkOrder',
+          entityId: id,
+          module: 'Contracting',
+          action: result.approvalWorkflow.complete ? 'APPROVE' : 'APPROVAL_STAGE',
+          actorName,
+        });
+        return NextResponse.json({ ...result.updated, ...result.audit, approvalWorkflow: result.approvalWorkflow });
+      }
+    }
+
     if (data.action === 'approve' || data.action === 'unapprove') {
       const access = await checkDocumentApprovalAccess(request, prisma, { module: 'Contracting', toolName: 'Approve Work Order', projectId: existing.projectId });
       if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
@@ -229,6 +448,12 @@ export async function PUT(request) {
       const nextStatus = data.action === 'approve' ? 'Approved' : 'Draft';
       const updated = await prisma.$transaction(async tx => {
         const result = await tx.workOrder.update({ where: { id }, data: { status: nextStatus, scope: JSON.stringify({ ...priorScope, audit }) }, include: { project: { select: { id: true, name: true } } } });
+        if (data.action === 'unapprove') {
+          await tx.documentApprovalStep.updateMany({
+            where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: id },
+            data: { status: 'PENDING', approvedAt: null },
+          });
+        }
         await recordWorkOrderStatus(tx, {
           workOrderId: id,
           fromStatus: existing.status,
@@ -267,6 +492,17 @@ export async function PUT(request) {
     if (fields.contractorPhone !== undefined) updateData.contractorPhone = fields.contractorPhone;
     if (fields.contractorGst !== undefined) updateData.contractorGst = fields.contractorGst;
     if (fields.contractorPan !== undefined) updateData.contractorPan = fields.contractorPan;
+    if (fields.contractValue !== undefined) updateData.contractValue = Number(fields.contractValue) || 0;
+    if (fields.advancePercent !== undefined) updateData.advancePercent = Number(fields.advancePercent) || 0;
+
+    const updatedAmount = fields.contractValue !== undefined ? Number(fields.contractValue) || 0 : existing.contractValue;
+    const approvalConfig = await getProcurementApprovalConfig(prisma);
+    const approvalStages = getApplicableApprovalStages(approvalConfig, updatedAmount);
+    const approvalStatus = 'Pending Approval';
+    updateData.status = approvalStatus;
+    if (fields.advancePercent !== undefined || fields.contractValue !== undefined) {
+      updateData.advanceAmount = updatedAmount * (Number(updateData.advancePercent ?? existing.advancePercent) || 0) / 100;
+    }
 
     const updated = await prisma.$transaction(async tx => {
       const result = await tx.workOrder.update({
@@ -274,12 +510,18 @@ export async function PUT(request) {
         data: updateData,
         include: { project: { select: { id: true, name: true } } }
       });
-      if (status && status !== existing.status) await recordWorkOrderStatus(tx, {
+      await replaceDocumentApprovalRows(
+        tx,
+        PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER,
+        id,
+        buildWorkOrderApprovalRows(approvalStages)
+      );
+      await recordWorkOrderStatus(tx, {
         workOrderId: id,
         fromStatus: existing.status,
-        toStatus: status,
+        toStatus: approvalStatus,
         actorName: fields.editedBy || data.actorName || 'System',
-        note: `Work order status changed to ${status}`,
+        note: 'Work order edited and resubmitted to Contract Manager for approval.',
       });
       return result;
     });
@@ -300,9 +542,18 @@ export async function DELETE(request) {
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
     const order = await prisma.workOrder.findUnique({ where: { id }, include: { raBills: { select: { id: true } } } });
     if (!order) return NextResponse.json({ error: 'Work order not found' }, { status: 404 });
-    if (order.status !== 'Draft') return NextResponse.json({ error: 'Only draft work orders can be deleted.' }, { status: 409 });
+    if (!['Draft', 'Pending Approval'].includes(order.status)) return NextResponse.json({ error: 'Only unapproved work orders can be deleted.' }, { status: 409 });
     if (order.raBills.length) return NextResponse.json({ error: 'This work order has RA bills and cannot be deleted.' }, { status: 409 });
-    await prisma.workOrder.delete({ where: { id } });
+    const approvedSteps = await prisma.documentApprovalStep.count({
+      where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: id, status: 'APPROVED' },
+    });
+    if (approvedSteps) return NextResponse.json({ error: 'This work order has already been approved at a stage and cannot be deleted.' }, { status: 409 });
+    await prisma.$transaction(async tx => {
+      await tx.documentApprovalStep.deleteMany({
+        where: { documentType: PROCUREMENT_DOCUMENT_TYPES.WORK_ORDER, documentId: id },
+      });
+      await tx.workOrder.delete({ where: { id } });
+    });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting work order:', error);

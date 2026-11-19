@@ -17,7 +17,8 @@ export const PROJECT_TOOL_MODULES = {
     'Labour Library Create', 'Labour Library Edit', 'Labour Library Delete',
     'Unit Master Create', 'Unit Master Edit', 'Unit Master Delete',
     'Project Category 1 Create/Edit/Delete', 'Project Category 2 Create/Edit/Delete',
-    'Company Library Manage', 'Project Status Manage',
+    'Company Library Create', 'Company Library View', 'Company Library Edit', 'Company Library Delete',
+    'Project Status Manage',
   ],
   Purchase: [
     'Purchase Dashboard View',
@@ -55,13 +56,15 @@ export const PROJECT_TOOL_MODULES = {
 // These tools apply to the employee's entire workspace. Engineering's
 // operational/project tools remain scoped to a single project.
 export const EMPLOYEE_WIDE_TOOL_MODULES = {
+  Contracting: ['Approve Work Order'],
   Engineering: [
     'Task Library Create', 'Task Library Edit', 'Task Library Delete',
     'Material Library Create', 'Material Library Edit', 'Material Library Delete',
     'Labour Library Create', 'Labour Library Edit', 'Labour Library Delete',
     'Unit Master Create', 'Unit Master Edit', 'Unit Master Delete',
     'Project Category 1 Create/Edit/Delete', 'Project Category 2 Create/Edit/Delete',
-    'Company Library Manage', 'Project Status Manage',
+    'Company Library Create', 'Company Library View', 'Company Library Edit', 'Company Library Delete',
+    'Project Status Manage',
   ],
   Marketing: [...PROJECT_TOOL_MODULES.Marketing],
   Tender: [...PROJECT_TOOL_MODULES.Tender],
@@ -127,7 +130,11 @@ export const LEGACY_PERMISSION_ALIASES = {
   ENGG_UNIT_MASTER: alias('Engineering', 'Unit Master Create', 'Unit Master Edit', 'Unit Master Delete'),
   ENGG_PROJECT_CATEGORY_1: alias('Engineering', 'Project Category 1 Create/Edit/Delete'),
   ENGG_PROJECT_CATEGORY_2: alias('Engineering', 'Project Category 2 Create/Edit/Delete'),
-  ENGG_COMPANY_LIBRARY: alias('Engineering', 'Company Library Manage'),
+  ENGG_COMPANY_LIBRARY: alias('Engineering', 'Company Library View', 'Company Library Manage'),
+  ENGG_COMPANY_LIBRARY_CREATE: alias('Engineering', 'Company Library Create'),
+  ENGG_COMPANY_LIBRARY_VIEW: alias('Engineering', 'Company Library View', 'Company Library Manage'),
+  ENGG_COMPANY_LIBRARY_EDIT: alias('Engineering', 'Company Library Edit'),
+  ENGG_COMPANY_LIBRARY_DELETE: alias('Engineering', 'Company Library Delete'),
   ENGG_PROJECT_STATUS: alias('Engineering', 'Project Status Manage'),
   ENGG_MANUFACTURING: alias('Engineering', 'Manufacturing Manage'),
   ENGG_NCR_VIEW: alias('Engineering', 'NCR View'),

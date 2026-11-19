@@ -10,7 +10,7 @@ import {
 
 const EMPTY = {
   projects: [], totals: {}, budgetByHead: [], monthlyMovement: [], estimateVersions: [],
-  consumptionHistory: [], wbsGroups: [], materialPerArea: [], materialRequisitions: [], projectSummary: [],
+  consumptionHistory: [], wbsGroups: [], materialByGroup: [], materialRequisitions: [], projectSummary: [],
 };
 
 const COLORS = ['#369bb2', '#7776e8', '#df567f', '#38a3f1', '#e9aa3b', '#15a579', '#9b66cf'];
@@ -268,12 +268,10 @@ export default function EngineeringDashboard() {
           </div>
 
           <div className="eng-dash-dual">
-            <Panel title="Material Estimated Quantity per Sq. Ft." subtitle="WBS material volume divided by the project built-up area">
-              <DataTable rows={data.materialPerArea} emptyText="Material volume or built-up area is not entered for this project." columns={[
+            <Panel title="Material Quantity by WBS Group" subtitle="Estimated material volume grouped by WBS">
+              <DataTable rows={data.materialByGroup} emptyText="No WBS material quantities are available for this project." columns={[
                 { key: 'name', label: 'Material category / WBS group' },
                 { key: 'quantity', label: 'Material volume', render: value => amount(value).toLocaleString('en-IN', { maximumFractionDigits: 2 }) },
-                { key: 'area', label: 'Built-up area (sq. ft.)', render: value => amount(value).toLocaleString('en-IN', { maximumFractionDigits: 2 }) },
-                { key: 'quantityPerSqFt', label: 'Qty / sq. ft.', render: value => value == null ? 'Area missing' : Number(value).toLocaleString('en-IN', { maximumFractionDigits: 4 }) },
               ]} />
             </Panel>
             <Panel title="Top Material Requisitions" subtitle="Requested quantity compared with approved quantity (top 20 materials)">

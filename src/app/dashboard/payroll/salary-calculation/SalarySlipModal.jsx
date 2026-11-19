@@ -204,30 +204,44 @@ export default function SalarySlipModal({ record, cycleName, cycleStatus, bonusI
   }, [record.id, record.employeeId, bonusIncentives]);
 
   useEffect(() => {
-    if (!arrearsRecordId || Math.abs(employeePfArrearsInBreakdown) > 0.01) return;
+    if (!arrearsRecordId) return;
 
     let active = true;
     fetch(`/api/payroll/records/${record.id}/calculate-arrears`, { method: 'POST' })
       .then(async response => {
         const data = await response.json();
         if (!response.ok || !data.success) {
-          throw new Error(data.error || 'Could not refresh Employee PF arrears.');
+          throw new Error(data.error || 'Could not refresh salary arrears.');
         }
-        const employeePfArrears = Number(data.breakdown?.['Employee PF Arrears']) || 0;
-        if (active && Math.abs(employeePfArrears) > 0.01) {
-          setArrearsBreakdown(current => (
-            Math.abs(Number(current?.['Employee PF Arrears']) || 0) > 0.01
-              ? current
-              : { ...(current || {}), 'Employee PF Arrears': employeePfArrears }
-          ));
+        if (active) {
+          setArrearsBreakdown(current => {
+            const refreshed = { ...(current || {}) };
+            for (const [key, value] of Object.entries(data.breakdown || {})) {
+              if (
+                ['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds', 'Employer LWF Arrears'].includes(key) ||
+                typeof value !== 'number' ||
+                !Number.isFinite(value)
+              ) {
+                if (refreshed[key] === undefined && value !== undefined) refreshed[key] = value;
+                continue;
+              }
+              if (
+                Math.abs(Number(refreshed[key]) || 0) <= 0.01 &&
+                Math.abs(value) > 0.01
+              ) {
+                refreshed[key] = value;
+              }
+            }
+            return refreshed;
+          });
         }
       })
       .catch(refreshError => {
-        if (active) console.error('Failed to refresh Employee PF arrears:', refreshError);
+        if (active) console.error('Failed to refresh salary arrears:', refreshError);
       });
 
     return () => { active = false; };
-  }, [record.id, arrearsRecordId, employeePfArrearsInBreakdown]);
+  }, [record.id, arrearsRecordId]);
 
   // Live Calculations
   const numArrears = parseFloat(arrears) || 0;

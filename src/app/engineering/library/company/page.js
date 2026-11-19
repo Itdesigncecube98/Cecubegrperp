@@ -1,26 +1,42 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
-  Building2, Search, Edit, Trash2, Plus, Save, X, Home, ChevronRight
+  Building2, Search, Edit, Trash2, Save, X, Home, ChevronRight
 } from 'lucide-react';
 import '../../../../app/accounts/company/company.css';
+import { usePermissions } from '@/context/PermissionsContext';
+import { employeeToolCode } from '@/lib/employeeToolCatalog';
 
 export default function CompanyAdder() {
   const [searchQuery, setSearchQuery] = useState('');
   const [companies, setCompanies] = useState([]);
+  const [error, setError] = useState('');
+  const { activeEmployee, hasRight } = usePermissions();
+  const hasCompanyPermission = action => !activeEmployee
+    || hasRight(employeeToolCode('Engineering', `Company Library ${action}`))
+    || (action === 'View' && hasRight(employeeToolCode('Engineering', 'Company Library Manage')));
+  const canCreate = hasCompanyPermission('Create');
+  const canView = hasCompanyPermission('View');
+  const canEdit = hasCompanyPermission('Edit');
+  const canDelete = hasCompanyPermission('Delete');
+  const showActions = canEdit || canDelete;
   
-  React.useEffect(() => {
-    fetchCompanies();
-  }, []);
-
-  async function fetchCompanies() {
+  const fetchCompanies = useCallback(async () => {
     try {
-      const res = await fetch('/api/companies');
-      if (res.ok) setCompanies(await res.json());
+      const res = await fetch('/api/companies?source=company-library', { cache: 'no-store' });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Unable to load the Company Library.');
+      setCompanies(Array.isArray(result) ? result : []);
+      setError('');
     } catch (err) {
       console.error(err);
+      setError(err.message || 'Unable to load the Company Library.');
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (canView) fetchCompanies();
+  }, [canView, fetchCompanies]);
   
   // Form State
   const [isEditing, setIsEditing] = useState(false);
@@ -28,12 +44,14 @@ export default function CompanyAdder() {
   const [formData, setFormData] = useState({ name: '', code: '', type: '', status: 'Active' });
 
   const handleEdit = (company) => {
+    if (!canEdit) return;
     setIsEditing(true);
     setEditingId(company.id);
     setFormData({ name: company.name, code: company.code, type: company.type, status: company.status });
   };
 
   const handleDelete = async (id) => {
+    if (!canDelete) return;
     if (window.confirm("Are you sure you want to delete this company?")) {
       try {
         const res = await fetch('/api/companies', {
@@ -41,16 +59,17 @@ export default function CompanyAdder() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id })
         });
-        if (res.ok) {
-          setCompanies(companies.filter(c => c.id !== id));
-        }
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(result.error || 'Unable to delete company.');
+        setCompanies(current => current.filter(c => c.id !== id));
       } catch (error) {
-        console.error('Error deleting company:', error);
+        alert(error.message || 'Error deleting company.');
       }
     }
   };
 
   const handleSave = async () => {
+    if (isEditing ? !canEdit : !canCreate) return;
     if (!formData.name) {
       alert("Company Name is required!");
       return;
@@ -65,7 +84,7 @@ export default function CompanyAdder() {
         body: JSON.stringify(body)
       });
       if (res.ok) {
-        fetchCompanies();
+        if (canView) await fetchCompanies();
         setIsEditing(false);
         setEditingId(null);
         setFormData({ name: '', code: '', type: '', status: 'Active' });
@@ -99,17 +118,17 @@ export default function CompanyAdder() {
           <div style={{ background: '#e0f2fe', padding: '8px', borderRadius: '8px', display: 'flex', color: '#0ea5e9' }}>
             <Building2 size={24} />
           </div>
-          Company Master
+          Company Library
         </h2>
         <div className="breadcrumb">
-          <Home size={14} /> Home <ChevronRight size={14} /> Library <ChevronRight size={14} /> Company Master
+          <Home size={14} /> Home <ChevronRight size={14} /> Engineering Masters <ChevronRight size={14} /> Company Library
         </div>
       </div>
 
       <div className="modern-card" style={{ padding: '24px' }}>
         
         {/* Form Section */}
-        <div style={{ background: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '32px' }}>
+        {(canCreate || (isEditing && canEdit)) && <div style={{ background: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '32px' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#334155', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {isEditing ? 'Edit Company' : 'Add New Company'}
           </h3>
@@ -167,84 +186,91 @@ export default function CompanyAdder() {
                 <X size={16} /> Cancel
               </button>
             )}
-            <button className="btn-primary" style={{ background: '#0ea5e9' }} onClick={handleSave}>
+            {(isEditing ? canEdit : canCreate) && <button className="btn-primary" style={{ background: '#0ea5e9' }} onClick={handleSave}>
               <Save size={16} /> {isEditing ? 'Update Company' : 'Save Company'}
-            </button>
+            </button>}
           </div>
-        </div>
+        </div>}
 
         {/* List Section */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#334155' }}>Company List</h3>
-            <div className="search-wrapper" style={{ position: 'relative', width: '300px' }}>
-              <input 
-                type="text" 
-                className="modern-input" 
-                placeholder="Search Companies..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ paddingRight: '32px', width: '100%' }} 
-              />
-              <Search size={16} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+        {canView ? (
+          <div>
+            {error && <div role="alert" style={{ marginBottom: 14, padding: 12, borderRadius: 8, background: '#fef2f2', color: '#b91c1c', fontSize: 13 }}>{error}</div>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#334155' }}>Company List</h3>
+              <div className="search-wrapper" style={{ position: 'relative', width: '300px' }}>
+                <input
+                  type="text"
+                  className="modern-input"
+                  placeholder="Search Companies..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ paddingRight: '32px', width: '100%' }}
+                />
+                <Search size={16} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+              </div>
             </div>
-          </div>
 
-          <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
-            <table className="modern-table" style={{ width: '100%' }}>
-              <thead style={{ background: '#f8fafc' }}>
-                <tr>
-                  <th style={{ color: '#64748b', fontWeight: 600 }}>S.No</th>
-                  <th style={{ color: '#64748b', fontWeight: 600 }}>Company Name</th>
-                  <th style={{ color: '#64748b', fontWeight: 600 }}>Code</th>
-                  <th style={{ color: '#64748b', fontWeight: 600 }}>Type</th>
-                  <th style={{ color: '#64748b', fontWeight: 600 }}>Status</th>
-                  <th style={{ color: '#64748b', fontWeight: 600, textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCompanies.length === 0 ? (
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+              <table className="modern-table" style={{ width: '100%' }}>
+                <thead style={{ background: '#f8fafc' }}>
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-                      No companies found matching your search.
-                    </td>
+                    <th style={{ color: '#64748b', fontWeight: 600 }}>S.No</th>
+                    <th style={{ color: '#64748b', fontWeight: 600 }}>Company Name</th>
+                    <th style={{ color: '#64748b', fontWeight: 600 }}>Code</th>
+                    <th style={{ color: '#64748b', fontWeight: 600 }}>Type</th>
+                    <th style={{ color: '#64748b', fontWeight: 600 }}>Status</th>
+                    {showActions && <th style={{ color: '#64748b', fontWeight: 600, textAlign: 'center' }}>Actions</th>}
                   </tr>
-                ) : (
-                  filteredCompanies.map((c, index) => (
-                    <tr key={c.id}>
-                      <td style={{ color: '#64748b' }}>{index + 1}</td>
-                      <td style={{ fontWeight: 500, color: '#334155' }}>{c.name}</td>
-                      <td>{c.code}</td>
-                      <td>{c.type}</td>
-                      <td>
-                        <span style={{ 
-                          padding: '4px 8px', 
-                          borderRadius: '12px', 
-                          fontSize: '0.75rem', 
-                          fontWeight: 600,
-                          background: c.status === 'Active' ? '#dcfce7' : '#f1f5f9',
-                          color: c.status === 'Active' ? '#16a34a' : '#64748b'
-                        }}>
-                          {c.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-                          <div onClick={() => handleEdit(c)} style={{ padding: '6px', background: '#e0f2fe', borderRadius: '6px', color: '#0ea5e9', cursor: 'pointer' }}>
-                            <Edit size={16} />
-                          </div>
-                          <div onClick={() => handleDelete(c.id)} style={{ padding: '6px', background: '#fee2e2', borderRadius: '6px', color: '#ef4444', cursor: 'pointer' }}>
-                            <Trash2 size={16} />
-                          </div>
-                        </div>
+                </thead>
+                <tbody>
+                  {filteredCompanies.length === 0 ? (
+                    <tr>
+                      <td colSpan={showActions ? 6 : 5} style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
+                        No companies found matching your search.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredCompanies.map((c, index) => (
+                      <tr key={c.id}>
+                        <td style={{ color: '#64748b' }}>{index + 1}</td>
+                        <td style={{ fontWeight: 500, color: '#334155' }}>{c.name}</td>
+                        <td>{c.code}</td>
+                        <td>{c.type}</td>
+                        <td>
+                          <span style={{
+                            padding: '4px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            background: c.status === 'Active' ? '#dcfce7' : '#f1f5f9',
+                            color: c.status === 'Active' ? '#16a34a' : '#64748b'
+                          }}>
+                            {c.status}
+                          </span>
+                        </td>
+                        {showActions && <td>
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                            {canEdit && <button type="button" aria-label={`Edit ${c.name}`} onClick={() => handleEdit(c)} style={{ padding: '6px', background: '#e0f2fe', border: 0, borderRadius: '6px', color: '#0ea5e9', cursor: 'pointer' }}>
+                              <Edit size={16} />
+                            </button>}
+                            {canDelete && <button type="button" aria-label={`Delete ${c.name}`} onClick={() => handleDelete(c.id)} style={{ padding: '6px', background: '#fee2e2', border: 0, borderRadius: '6px', color: '#ef4444', cursor: 'pointer' }}>
+                              <Trash2 size={16} />
+                            </button>}
+                          </div>
+                        </td>}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ padding: 18, borderRadius: 8, background: '#f8fafc', color: '#64748b', fontSize: 13 }}>
+            Company Library View permission is required to browse existing companies.
+          </div>
+        )}
 
       </div>
     </div>

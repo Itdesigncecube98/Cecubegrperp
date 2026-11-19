@@ -1,0 +1,5 @@
+ALTER TABLE "Project"
+DROP COLUMN IF EXISTS "builtUpArea",
+DROP COLUMN IF EXISTS "saleableArea",
+DROP COLUMN IF EXISTS "startDate",
+DROP COLUMN IF EXISTS "endDate";

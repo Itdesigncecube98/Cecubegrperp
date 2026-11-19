@@ -5,6 +5,18 @@ import { getDocumentEditors, recordDocumentEdit } from '@/lib/documentAudit';
 import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 import { recordDocumentAction } from '@/lib/documentAudit';
+import { readAuthSession } from '@/lib/authSession';
+import {
+  addPurchaseManagerApprovalRow,
+  buildPendingApprovalRows,
+  buildPurchaseOrderApprovalRows,
+  getApplicableApprovalStages,
+  getProcurementApprovalConfig,
+  replaceDocumentApprovalRows,
+  summarizeApprovalSteps,
+  PROCUREMENT_DOCUMENT_TYPES,
+  PURCHASE_MANAGER_APPROVER_ID,
+} from '@/lib/procurementApprovalWorkflow';
 
 async function getVendorFallback(vendorId) {
   if (!vendorId) return null;
@@ -77,7 +89,20 @@ export async function GET(req) {
       name: item.group?.library?.name || '',
       libraryId: item.group?.libraryId || null
     })).filter(item => item.key && item.name);
-    const editors = await getDocumentEditors(prisma, 'PurchaseOrder', pos.map(po => po.id));
+    const [editors, approvalRows, approvalConfig] = await Promise.all([
+      getDocumentEditors(prisma, 'PurchaseOrder', pos.map(po => po.id)),
+      prisma.documentApprovalStep.findMany({
+        where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: { in: pos.map(po => po.id) } },
+        select: { documentId: true, stage: true, approverEmployeeId: true, status: true },
+      }),
+      getProcurementApprovalConfig(prisma),
+    ]);
+    const approvalRowsByPo = new Map();
+    approvalRows.forEach(row => {
+      const rows = approvalRowsByPo.get(row.documentId) || [];
+      rows.push(row);
+      approvalRowsByPo.set(row.documentId, rows);
+    });
 
     const resolveMaterialLibrary = description => {
       const key = normalizeMaterialName(description);
@@ -106,9 +131,17 @@ export async function GET(req) {
         materialLibrary: resolveMaterialLibrary(item.description)
       }));
       const poLibrary = resolvedItems.find(item => item.materialLibrary)?.materialLibrary || null;
+      const savedApprovalRows = approvalRowsByPo.get(po.id) || [];
+      let approvalRowsForPo = savedApprovalRows.length
+        ? savedApprovalRows
+        : buildPendingApprovalRows(getApplicableApprovalStages(approvalConfig, po.totalAmount));
+      if (['DRAFT', 'PENDING_APPROVAL'].includes(po.status)) {
+        approvalRowsForPo = addPurchaseManagerApprovalRow(approvalRowsForPo);
+      }
       return {
         ...po,
         ...editors[po.id],
+        approvalWorkflow: summarizeApprovalSteps(approvalRowsForPo),
         items: resolvedItems.map(item => ({
           ...item,
           materialLibrary: item.materialLibrary || poLibrary
@@ -171,7 +204,7 @@ export async function POST(req) {
       remarks: body.remarks || ''
     };
 
-    const po = await prisma.purchaseOrder.create({
+    let po = await prisma.purchaseOrder.create({
       data: {
         poNumber,
         poDate: body.poDate ? new Date(body.poDate) : new Date(),
@@ -256,6 +289,32 @@ export async function POST(req) {
       },
     });
 
+    const approvalConfig = await getProcurementApprovalConfig(prisma);
+    const approvalStages = getApplicableApprovalStages(approvalConfig, totalAmount);
+    po = await prisma.$transaction(async tx => {
+      await replaceDocumentApprovalRows(
+        tx,
+        PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER,
+        po.id,
+        buildPurchaseOrderApprovalRows(approvalStages)
+      );
+      const updated = await tx.purchaseOrder.update({
+        where: { id: po.id },
+        data: { status: 'PENDING_APPROVAL', approvedBy: null, approvedByName: '', approvedAt: null },
+        include: { items: true, grns: true },
+      });
+      await tx.purchaseOrderStatusHistory.create({
+        data: {
+          purchaseOrderId: po.id,
+          fromStatus: 'DRAFT',
+          toStatus: 'PENDING_APPROVAL',
+          actorName: body.preparedByName || body.preparedBy || body.createdBy || 'Purchase Manager',
+          note: 'Submitted to Purchase Manager for approval.',
+        },
+      });
+      return updated;
+    });
+
     await autoGrantCreatorProjectTools(prisma, req, {
       requestedEmployeeId: body.createdById,
       projectId: body.projectId,
@@ -302,10 +361,13 @@ export async function PUT(req) {
         otherCharges,
         remarks: body.remarks || ''
       };
+      const editedTotalAmount = subTotal - discount + totalTaxAmount + freight + otherCharges;
+      const approvalConfig = await getProcurementApprovalConfig(prisma);
+      const approvalStages = getApplicableApprovalStages(approvalConfig, editedTotalAmount);
       
       const updated = await prisma.$transaction(async tx => {
         await tx.purchaseOrderItem.deleteMany({ where: { poId: id } });
-        return tx.purchaseOrder.update({
+        const saved = await tx.purchaseOrder.update({
           where: { id },
           data: {
             poDate: body.poDate ? new Date(body.poDate) : undefined,
@@ -321,7 +383,7 @@ export async function PUT(req) {
             supplierPan: body.supplierPan || vendor?.pan || vendor?.panNumber || null, projectName: body.projectName || null, deliveryAddress: body.deliveryAddress || projectLocation,
             paymentTerms: body.paymentTerms || null, scopeOfWork: body.scopeOfWork || null,
             deliverySchedule: body.deliverySchedule || null, otherTerms: body.otherTerms || null,
-            subTotal, totalTaxAmount, totalAmount: subTotal - discount + totalTaxAmount + freight + otherCharges,
+            subTotal, totalTaxAmount, totalAmount: editedTotalAmount,
             remarks: JSON.stringify(extraData),
             roundOff: parseFloat(body.roundOff) || 0, totalAmountWords: body.totalAmountWords || null,
             items: { create: items.map((item, index) => ({
@@ -338,18 +400,22 @@ export async function PUT(req) {
             })) }
           }, include: { items: true }
         });
-        if (existingForEdit.status !== 'PENDING_APPROVAL') {
-          await tx.purchaseOrderStatusHistory.create({
-            data: {
-              purchaseOrderId: id,
-              fromStatus: existingForEdit.status,
-              toStatus: 'PENDING_APPROVAL',
-              actorName: body.editedBy || 'System',
-              note: 'Purchase order edited and resubmitted for approval',
-            },
-          });
-        }
-        return updated;
+        await replaceDocumentApprovalRows(
+          tx,
+          PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER,
+          id,
+          buildPurchaseOrderApprovalRows(approvalStages)
+        );
+        await tx.purchaseOrderStatusHistory.create({
+          data: {
+            purchaseOrderId: id,
+            fromStatus: existingForEdit.status,
+            toStatus: 'PENDING_APPROVAL',
+            actorName: body.editedBy || 'System',
+            note: 'Purchase order edited and resubmitted to Purchase Manager for approval.',
+          },
+        });
+        return saved;
       });
       await recordDocumentEdit(prisma, {
         entityType: 'PurchaseOrder', entityId: updated.id, module: 'Purchase', editorName: body.editedBy,
@@ -359,6 +425,175 @@ export async function PUT(req) {
 
     const existing = await prisma.purchaseOrder.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: 'Purchase order not found.' }, { status: 404 });
+    if (action === 'approve') {
+      const session = readAuthSession(req);
+      if (!session) return NextResponse.json({ error: 'Sign in to approve this purchase order.' }, { status: 401 });
+      if (!['DRAFT', 'PENDING_APPROVAL'].includes(existing.status)) {
+        return NextResponse.json({ error: 'This purchase order is no longer awaiting approval.' }, { status: 409 });
+      }
+
+      let approvalRows = await prisma.documentApprovalStep.findMany({
+        where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id },
+      });
+      if (!approvalRows.some(row => row.stage === 0 && row.approverEmployeeId === PURCHASE_MANAGER_APPROVER_ID)) {
+        const managerAccess = await checkDocumentApprovalAccess(req, prisma, {
+          module: 'Purchase',
+          toolName: 'Purchase Orders Approve',
+          projectId: existing.projectId,
+          projectName: existing.projectName,
+        });
+        if (!managerAccess.allowed) return NextResponse.json({ error: managerAccess.error }, { status: managerAccess.status });
+        const approvalConfig = await getProcurementApprovalConfig(prisma);
+        const stages = getApplicableApprovalStages(approvalConfig, existing.totalAmount);
+        await prisma.$transaction(async tx => {
+          await tx.$queryRaw`SELECT "id" FROM "PurchaseOrder" WHERE "id" = ${id} FOR UPDATE`;
+          const currentRows = await tx.documentApprovalStep.findMany({
+            where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id },
+          });
+          if (!currentRows.some(row => row.stage === 0 && row.approverEmployeeId === PURCHASE_MANAGER_APPROVER_ID)) {
+            if (currentRows.length) {
+              await tx.documentApprovalStep.updateMany({
+                where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id },
+                data: { status: 'PENDING', approvedAt: null },
+              });
+              await tx.documentApprovalStep.createMany({
+                data: [{
+                  ...buildPurchaseOrderApprovalRows([])[0],
+                  documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER,
+                  documentId: id,
+                }],
+                skipDuplicates: true,
+              });
+            } else {
+              await replaceDocumentApprovalRows(
+                tx,
+                PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER,
+                id,
+                buildPurchaseOrderApprovalRows(stages)
+              );
+            }
+            if (existing.status !== 'PENDING_APPROVAL') {
+              await tx.purchaseOrder.update({ where: { id }, data: { status: 'PENDING_APPROVAL' } });
+            }
+            await tx.purchaseOrderStatusHistory.create({
+              data: {
+                purchaseOrderId: id,
+                fromStatus: existing.status,
+                toStatus: 'PENDING_APPROVAL',
+                note: 'Submitted to Purchase Manager for approval.',
+              },
+            });
+          }
+        });
+        approvalRows = await prisma.documentApprovalStep.findMany({
+          where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id },
+        });
+      }
+
+      const progress = summarizeApprovalSteps(approvalRows);
+      const isPurchaseManagerStage = progress.currentStage === 0
+        && progress.currentApproverIds.includes(PURCHASE_MANAGER_APPROVER_ID);
+      let actorName;
+      if (isPurchaseManagerStage) {
+        const access = await checkDocumentApprovalAccess(req, prisma, {
+          module: 'Purchase',
+          toolName: 'Purchase Orders Approve',
+          projectId: existing.projectId,
+          projectName: existing.projectName,
+        });
+        if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
+        actorName = access.session.type === 'admin'
+          ? 'Administrator'
+          : (await prisma.employee.findUnique({ where: { id: access.session.id }, select: { name: true } }))?.name || 'Employee';
+      } else {
+        if (!progress.currentApproverIds.includes(session.id)) {
+          return NextResponse.json({ error: 'This purchase order is waiting for its assigned approvers.' }, { status: 403 });
+        }
+        const employee = session.type === 'employee'
+          ? await prisma.employee.findUnique({ where: { id: session.id }, select: { name: true } })
+          : null;
+        actorName = employee?.name || 'Administrator';
+      }
+
+      if (approvalRows.length) {
+        const approvedAt = new Date();
+        const result = await prisma.$transaction(async tx => {
+          await tx.$queryRaw`SELECT "id" FROM "PurchaseOrder" WHERE "id" = ${id} FOR UPDATE`;
+          const currentOrder = await tx.purchaseOrder.findUnique({
+            where: { id },
+            select: { status: true },
+          });
+          if (!currentOrder || !['DRAFT', 'PENDING_APPROVAL'].includes(currentOrder.status)) return null;
+          const currentRows = await tx.documentApprovalStep.findMany({
+            where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id },
+          });
+          const currentProgress = summarizeApprovalSteps(currentRows);
+          const currentIsManagerStage = currentProgress.currentStage === 0
+            && currentProgress.currentApproverIds.includes(PURCHASE_MANAGER_APPROVER_ID);
+          if (currentIsManagerStage !== isPurchaseManagerStage) return null;
+          const approverEmployeeId = currentIsManagerStage ? PURCHASE_MANAGER_APPROVER_ID : session.id;
+          if (!currentProgress.currentApproverIds.includes(approverEmployeeId)) return null;
+          const changed = await tx.documentApprovalStep.updateMany({
+            where: {
+              documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER,
+              documentId: id,
+              stage: currentProgress.currentStage,
+              approverEmployeeId,
+              status: 'PENDING',
+            },
+            data: { status: 'APPROVED', approvedAt },
+          });
+          if (changed.count !== 1) return null;
+
+          const updatedRows = await tx.documentApprovalStep.findMany({
+            where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id },
+          });
+          const updatedProgress = summarizeApprovalSteps(updatedRows);
+          const finalApproval = updatedProgress.complete;
+          const nextStatus = finalApproval ? 'APPROVED' : 'PENDING_APPROVAL';
+          await tx.purchaseOrder.update({
+            where: { id },
+            data: {
+              status: nextStatus,
+              approvedAt: finalApproval ? approvedAt : null,
+              approvedBy: finalApproval ? actorName : null,
+              approvedByName: finalApproval ? actorName : '',
+            },
+            include: { items: true },
+          });
+          await tx.purchaseOrderStatusHistory.create({
+            data: {
+              purchaseOrderId: id,
+              fromStatus: currentOrder.status,
+              toStatus: nextStatus,
+              actorName,
+              note: currentIsManagerStage
+                ? finalApproval
+                  ? 'Purchase Manager approved the purchase order.'
+                  : 'Purchase Manager approved the purchase order and forwarded it to the configured employee approval levels.'
+                : finalApproval
+                  ? 'Purchase order approved after all configured approvals.'
+                  : `Level ${currentProgress.currentStage} approval recorded (${updatedProgress.approvedCount} of ${updatedProgress.totalApproverCount} total approvals complete).`,
+            },
+          });
+          const updated = await tx.purchaseOrder.findUnique({
+            where: { id },
+            include: { items: true, statusHistory: { orderBy: { changedAt: 'asc' } } },
+          });
+          return { updated, approvalWorkflow: updatedProgress };
+        });
+        if (!result) return NextResponse.json({ error: 'This approval was already recorded. Refresh and try again.' }, { status: 409 });
+        await recordDocumentAction(prisma, {
+          entityType: 'PurchaseOrder',
+          entityId: id,
+          module: 'Purchase',
+          action: result.approvalWorkflow.complete ? 'APPROVE' : 'APPROVAL_STAGE',
+          actorName,
+        });
+        return NextResponse.json({ ...result.updated, approvalWorkflow: result.approvalWorkflow });
+      }
+    }
+
     if (action === 'approve' || action === 'unapprove' || status === 'APPROVED') {
       const access = await checkDocumentApprovalAccess(req, prisma, { module: 'Purchase', toolName: 'Purchase Orders Approve', projectId: existing.projectId, projectName: existing.projectName });
       if (!access.allowed) return NextResponse.json({ error: access.error }, { status: access.status });
@@ -397,11 +632,16 @@ export async function PUT(req) {
       updateData.approvedAt = null;
     }
     const po = await prisma.$transaction(async tx => {
-      const updated = await tx.purchaseOrder.update({
+      await tx.purchaseOrder.update({
         where: { id },
         data: updateData,
-        include: { items: true }
       });
+      if (action === 'unapprove') {
+        await tx.documentApprovalStep.updateMany({
+          where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id },
+          data: { status: 'PENDING', approvedAt: null },
+        });
+      }
       if (existing.status !== newStatus) {
         const actorName = body.approvalActor || body.editedBy || body.actorName || 'System';
         const actionNotes = {
@@ -420,6 +660,16 @@ export async function PUT(req) {
           },
         });
       }
+      const updated = await tx.purchaseOrder.findUnique({
+        where: { id },
+        include: { items: true, statusHistory: { orderBy: { changedAt: 'asc' } } },
+      });
+      if (action === 'unapprove') {
+        const approvalRows = await tx.documentApprovalStep.findMany({
+          where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id },
+        });
+        return { ...updated, approvalWorkflow: summarizeApprovalSteps(approvalRows) };
+      }
       return updated;
     });
 
@@ -437,9 +687,16 @@ export async function DELETE(req) {
     if (!id) return NextResponse.json({ error: 'PO id is required' }, { status: 400 });
     const po = await prisma.purchaseOrder.findUnique({ where: { id }, include: { grns: { select: { id: true } } } });
     if (!po) return NextResponse.json({ error: 'Purchase order not found' }, { status: 404 });
-    if (po.status !== 'DRAFT') return NextResponse.json({ error: 'Only draft purchase orders can be deleted.' }, { status: 409 });
+    if (!['DRAFT', 'PENDING_APPROVAL'].includes(po.status)) return NextResponse.json({ error: 'Only unapproved purchase orders can be deleted.' }, { status: 409 });
     if (po.grns?.length) return NextResponse.json({ error: 'This purchase order has GRN records and cannot be deleted.' }, { status: 409 });
+    const approvedSteps = await prisma.documentApprovalStep.count({
+      where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id, status: 'APPROVED' },
+    });
+    if (approvedSteps) return NextResponse.json({ error: 'This purchase order has already been approved at a stage and cannot be deleted.' }, { status: 409 });
     await prisma.$transaction(async tx => {
+      await tx.documentApprovalStep.deleteMany({
+        where: { documentType: PROCUREMENT_DOCUMENT_TYPES.PURCHASE_ORDER, documentId: id },
+      });
       await tx.purchaseOrderItem.deleteMany({ where: { poId: id } });
       await tx.purchaseOrder.delete({ where: { id } });
     });

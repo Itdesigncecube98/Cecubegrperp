@@ -146,6 +146,12 @@ export default function EmployeeProfilePage({ initialId }) {
     ['Employer ESIC', Number(salaryArrearsPreview?.breakdown?.['Employer ESIC Arrears']) || 0],
   ].filter(([, amount]) => Math.abs(amount) > 0.01);
   const salaryArrearsEmployeePf = Number(salaryArrearsPreview?.breakdown?.['Employee PF Arrears']) || 0;
+  const salaryArrearsEarnings = Object.entries(salaryArrearsPreview?.breakdown || {})
+    .filter(([key, value]) => (
+      !['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds', 'Employer PF Arrears', 'Employer ESIC Arrears', 'Employer LWF Arrears', 'Employee PF Arrears'].includes(key) &&
+      Number.isFinite(Number(value)) &&
+      Math.abs(Number(value)) > 0.01
+    ));
   const [activeRevisionIndex, setActiveRevisionIndex] = useState(0);
   const [newRevisionForm, setNewRevisionForm] = useState({ effectiveFrom: '', remark: '', components: {}, rules: {} });
   const [editingRevisionId, setEditingRevisionId] = useState(null);
@@ -2691,6 +2697,14 @@ export default function EmployeeProfilePage({ initialId }) {
                               Period: {salaryArrearsPreview.breakdown?.fromDate || '—'} to {salaryArrearsPreview.breakdown?.toDate || '—'}
                               {salaryArrearsPreview.breakdown?.overlapDays ? ` (${salaryArrearsPreview.breakdown.overlapDays} days)` : ''}
                             </div>
+                            {salaryArrearsEarnings.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: '8px', color: '#334155', fontSize: '12px' }}>
+                                <strong style={{ flexBasis: '100%' }}>Salary arrears breakdown:</strong>
+                                {salaryArrearsEarnings.map(([key, amount]) => (
+                                  <span key={key}>{key === 'Basic' ? 'Basic Salary' : key}: ₹{Number(amount).toFixed(2)}</span>
+                                ))}
+                              </div>
+                            )}
                             {salaryArrearsEmployerContributions.length > 0 && (
                               <div style={{ marginTop: '8px', color: '#475569', fontSize: '12px' }}>
                                 <strong>Employer contribution arrears (not included in employee salary): </strong>

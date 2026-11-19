@@ -257,8 +257,7 @@ export default function DefineWBS() {
       setSavingGroup(true);
       const method = editingGroupId ? 'PUT' : 'POST';
       const groupRate = Number(groupForm.rate) || 0;
-      const projectArea = Number(selectedProject?.builtUpArea) || 1;
-      const groupBudgetAmount = groupRate * projectArea;
+      const groupBudgetAmount = groupRate;
       const payload = editingGroupId 
         ? { id: editingGroupId, type: 'group', name: groupForm.name.trim(), reraStage: groupForm.reraStage, rate: groupRate, budgetAmount: groupBudgetAmount }
         : { type: 'group', projectId: selectedProjectId, name: groupForm.name.trim(), reraStage: groupForm.reraStage, rate: groupRate, budgetAmount: groupBudgetAmount };

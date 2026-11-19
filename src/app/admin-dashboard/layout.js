@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Shield, LayoutDashboard, LogOut, Users,
-  ClipboardList, Settings, ChevronLeft, ChevronRight,
+  ClipboardList, Settings, ChevronLeft, ChevronRight, ShieldCheck,
 } from 'lucide-react';
 import TopHeader from '../../components/TopHeader';
 import './admin-dashboard.css';
@@ -16,6 +16,7 @@ const NAV_SECTIONS = [
       { id: 'overview',    label: 'Overview',        icon: LayoutDashboard, href: '/admin-dashboard' },
       { id: 'employee-tools', label: 'Employee Access', icon: Users,       href: '/admin-dashboard/employee-tools' },
       { id: 'access-logs', label: 'Access Logs',     icon: ClipboardList,  href: '/admin-dashboard/access-logs' },
+      { id: 'procurement-approvals', label: 'PO/WO Approvals', icon: ShieldCheck, href: '/admin-dashboard/procurement-approvals' },
       { id: 'settings',    label: 'System Settings', icon: Settings,       href: '/admin-dashboard/settings' },
     ],
   },

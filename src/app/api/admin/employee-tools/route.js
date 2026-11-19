@@ -94,7 +94,7 @@ export async function POST(req) {
     const employeeWideScope = projectId === EMPLOYEE_WIDE_PROJECT_ID;
     const employeeWideNames = EMPLOYEE_WIDE_TOOL_MODULES[module] || [];
     if (employeeWideScope && (!module || employeeWideNames.length === 0)) {
-      return NextResponse.json({ error: 'Employee-wide access is available only for Engineering masters and Marketing.' }, { status: 400 });
+      return NextResponse.json({ error: 'Employee-wide access is not available for this module.' }, { status: 400 });
     }
     if (!employeeWideScope && module && module !== 'Purchase') {
       return NextResponse.json({ error: 'Only Purchase permissions can be saved module-wise by project.' }, { status: 400 });
@@ -188,13 +188,16 @@ export async function POST(req) {
     const projectScopedTools = await prisma.adminTool.findMany({
       where: { OR: [
         { module: { notIn: Object.keys(EMPLOYEE_WIDE_TOOL_MODULES) } },
-        { module: 'Engineering', name: { notIn: EMPLOYEE_WIDE_TOOL_MODULES.Engineering } },
+        ...Object.entries(EMPLOYEE_WIDE_TOOL_MODULES).map(([moduleName, names]) => ({
+          module: moduleName,
+          name: { notIn: names },
+        })),
       ] },
       select: { id: true, name: true },
     });
     const projectScopedIds = new Set(projectScopedTools.map(tool => tool.id));
     if (toolIds.some(toolId => !projectScopedIds.has(toolId))) {
-      return NextResponse.json({ error: 'Engineering masters and Marketing permissions must be assigned employee-wide.' }, { status: 400 });
+      return NextResponse.json({ error: 'Some permissions must be assigned through their employee-wide scope.' }, { status: 400 });
     }
 
     const [previousGrants, projectTools, project] = await Promise.all([

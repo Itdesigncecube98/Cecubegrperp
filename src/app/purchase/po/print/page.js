@@ -1,6 +1,7 @@
 'use client';
 import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 function formatIndianAmount(value) {
   const amount = Number(value) || 0;
@@ -10,6 +11,7 @@ function formatIndianAmount(value) {
 function POPrintContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
+  const viewOnly = searchParams.get('view') === '1';
   const [po, setPo] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -21,7 +23,7 @@ function POPrintContent() {
           const record = Array.isArray(data) ? data[0] : data;
           setPo(record);
           setLoading(false);
-          if (record?.approvedAt) {
+          if (record?.approvedAt && !viewOnly) {
             setTimeout(() => window.print(), 1000);
           }
         })
@@ -30,7 +32,7 @@ function POPrintContent() {
           setLoading(false);
         });
     }
-  }, [id]);
+  }, [id, viewOnly]);
 
   if (loading) {
     return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif' }}>Loading Purchase Order...</div>;
@@ -40,7 +42,7 @@ function POPrintContent() {
     return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif' }}>Purchase Order not found.</div>;
   }
 
-  if (!po.approvedAt) {
+  if (!po.approvedAt && !viewOnly) {
     return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif', color: '#b91c1c' }}>This Purchase Order must be approved before it can be printed.</div>;
   }
 
@@ -92,7 +94,10 @@ function POPrintContent() {
         .val-col { width: 120px; }
       `}</style>
       
-      <div className="no-print" style={{ marginBottom: '1rem', textAlign: 'right' }}>
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: '1rem' }}>
+        {viewOnly
+          ? <Link href="/employee/procurement-approvals" style={{ color: '#334155', fontSize: 13, textDecoration: 'none' }}>← Back to approvals</Link>
+          : <span />}
         <button onClick={() => window.print()} style={{ padding: '8px 16px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Print / Save PDF</button>
       </div>
 

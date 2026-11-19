@@ -275,7 +275,7 @@ export default function EmployeeToolsPage() {
             Employee Tool Permissions
           </h1>
           <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
-            Assign Purchase by project; assign Engineering Masters, Marketing, and Tender per employee
+            Assign Purchase by project; assign Contract Manager approvals, Engineering Masters, Marketing, and Tender per employee
           </p>
         </div>
         <button onClick={handleSeed} disabled={seeding}
@@ -376,6 +376,7 @@ export default function EmployeeToolsPage() {
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
+              { module: 'Contracting', title: 'Contract Manager Approval', detail: 'Approve Work Orders across all projects.', color: '#0891b2', bg: '#ecfeff' },
               { module: 'Engineering', title: 'Engineering Masters', detail: 'For this employee across all projects.', color: '#7c3aed', bg: '#f5f3ff' },
               { module: 'Marketing', title: 'Marketing', detail: 'For this employee across all projects.', color: '#f97316', bg: '#fff7ed' },
               { module: 'Tender', title: 'Tender', detail: 'For this employee across all projects.', color: '#0891b2', bg: '#ecfeff' },

@@ -57,17 +57,29 @@ export async function POST(request, { params }) {
       }
     });
 
-    if (Math.abs(Number(finalBreakdown['Employee PF Arrears']) || 0) <= 0.01) {
-      const currentCalculation = await calculateSalaryRevisionArrears(prisma, currentRecord.employeeId);
-      const calculatedEmployeePfArrears = Number(currentCalculation.breakdown?.['Employee PF Arrears']) || 0;
-      if (Math.abs(calculatedEmployeePfArrears) > 0.01) {
-        finalBreakdown['Employee PF Arrears'] = calculatedEmployeePfArrears;
+    const currentCalculation = await calculateSalaryRevisionArrears(prisma, currentRecord.employeeId);
+    let supplementalSalaryArrears = 0;
+    if (currentCalculation.status === 'calculated') {
+      for (const [key, value] of Object.entries(currentCalculation.breakdown || {})) {
+        if (
+          ['fromDate', 'toDate', 'overlapDays', 'pushedArrearsIds', 'Employer LWF Arrears'].includes(key) ||
+          typeof value !== 'number' ||
+          !Number.isFinite(value)
+        ) {
+          continue;
+        }
+        if (Math.abs(Number(finalBreakdown[key]) || 0) <= 0.01 && Math.abs(value) > 0.01) {
+          finalBreakdown[key] = value;
+          if (!['Employee PF Arrears', 'Employer PF Arrears', 'Employer ESIC Arrears'].includes(key)) {
+            supplementalSalaryArrears += value;
+          }
+        }
       }
     }
 
     return NextResponse.json({
       success: true,
-      total: Math.round(totalArrears * 100) / 100,
+      total: Math.max(0, Math.round((totalArrears + supplementalSalaryArrears) * 100) / 100),
       breakdown: finalBreakdown,
       fromDate,
       toDate,

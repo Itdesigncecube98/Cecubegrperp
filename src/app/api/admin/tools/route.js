@@ -142,6 +142,7 @@ export async function POST(req) {
         'Purchase||Payment Details': 'Purchase Payment Details View',
         'Purchase||Date Tracking': 'Purchase Payment Date Tracking View',
         'Purchase||Ageing': 'Purchase Payment Ageing View',
+        'Engineering||Company Library Manage': 'Company Library View',
       };
 
       // Upsert all canonical tools

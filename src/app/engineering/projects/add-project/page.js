@@ -124,10 +124,6 @@ export default function AddProject() {
       category1: formData.category1 || '',
       category2: formData.category2 || '',
       status: formData.status || 'Planning',
-      builtUpArea: '0.0000',
-      saleableArea: '0.0000',
-      startDate: '01/01/2026 00:00:00',
-      endDate: '01/01/2026 00:00:00',
       cost: formData.cost || '0.0000\n01/01/1900'
     };
 
@@ -288,114 +284,6 @@ export default function AddProject() {
                 <option value="">- Select Status -</option>
                 {statuses.map(s => <option key={s.id || s.name || s} value={s.name || s}>{s.name || s}</option>)}
               </select>
-            </FormGroup>
-          </div>
-        </FormSection>
-
-        <FormSection title="Legal Details">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-            <FormGroup label="Sanction No">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="Sanction Date">
-              <div style={{ position: 'relative' }}>
-                <input type="text" className="modern-input" defaultValue="24/08/2026" style={{ width: '100%' }} />
-                <Calendar size={16} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              </div>
-            </FormGroup>
-            <FormGroup label="Start Date">
-              <div style={{ position: 'relative' }}>
-                <input type="text" className="modern-input" defaultValue="24/08/2026" style={{ width: '100%' }} />
-                <Calendar size={16} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              </div>
-            </FormGroup>
-            <FormGroup label="Finish Date">
-              <div style={{ position: 'relative' }}>
-                <input type="text" className="modern-input" defaultValue="24/08/2026" style={{ width: '100%' }} />
-                <Calendar size={16} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              </div>
-            </FormGroup>
-            
-            <FormGroup label="VAT No.">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="ECC No.">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="CST No.">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="Legal Address">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            
-            <FormGroup label="Development Permission No">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="Development Permission Date">
-              <div style={{ position: 'relative' }}>
-                <input type="text" className="modern-input" defaultValue="24/08/2026" style={{ width: '100%' }} />
-                <Calendar size={16} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              </div>
-            </FormGroup>
-            <FormGroup label="Permitting Authority">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-          </div>
-        </FormSection>
-
-        <FormSection title="RERA Details">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-            <FormGroup label="RERA Reg. No">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="RERA Reg. Date">
-              <div style={{ position: 'relative' }}>
-                <input type="text" className="modern-input" defaultValue="24/08/2026" style={{ width: '100%' }} />
-                <Calendar size={16} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              </div>
-            </FormGroup>
-            <FormGroup label="RERA End Date">
-              <div style={{ position: 'relative' }}>
-                <input type="text" className="modern-input" defaultValue="24/08/2026" style={{ width: '100%' }} />
-                <Calendar size={16} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              </div>
-            </FormGroup>
-          </div>
-        </FormSection>
-
-        <FormSection title="Land Details (Sq. Mtr.)">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
-            <FormGroup label="Plot Area">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="Builtup Area (Sq.Ft.)">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="Carpet Area">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="Saleable Area">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            
-            <FormGroup label="FSI">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="TDR">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="Legal Advisor">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
-            </FormGroup>
-            <FormGroup label="Local Body">
-              <select className="modern-input modern-select" style={{ width: '100%' }}>
-                <option></option>
-              </select>
-            </FormGroup>
-            
-            <FormGroup label="Plot Specification">
-              <input type="text" className="modern-input" style={{ width: '100%' }} />
             </FormGroup>
           </div>
         </FormSection>

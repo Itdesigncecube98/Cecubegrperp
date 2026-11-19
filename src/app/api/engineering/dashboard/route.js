@@ -34,10 +34,6 @@ function displayProject(project) {
     company: project.company,
     location: project.state,
     status: project.status || 'Planning',
-    startDate: project.startDate,
-    completionDate: project.endDate,
-    builtUpArea: number(project.builtUpArea),
-    saleableArea: number(project.saleableArea),
   };
 }
 
@@ -59,7 +55,6 @@ export async function GET(request) {
       orderBy: { name: 'asc' },
       select: {
         id: true, name: true, company: true, state: true, status: true,
-        builtUpArea: true, saleableArea: true, startDate: true, endDate: true,
       },
     });
     if (selectedProjectId !== 'ALL' && !projects.some(project => project.id === selectedProjectId)) {
@@ -75,7 +70,7 @@ export async function GET(request) {
         projects: projects.map(displayProject), selectedProjectId, fromDate, toDate,
         totals: { approved: 0, estimated: 0, allocated: 0, expended: 0, materialRequired: 0, materialApproved: 0 },
         budgetByHead: [], monthlyMovement: [], estimateVersions: [],
-        consumptionHistory: [], wbsGroups: [], materialPerArea: [],
+        consumptionHistory: [], wbsGroups: [], materialByGroup: [],
         materialRequisitions: [], projectSummary: [],
       });
     }
@@ -212,22 +207,13 @@ export async function GET(request) {
     }
     const wbsGroupData = [...groupTotals.values()].sort((a, b) => b.estimatedCost - a.estimatedCost);
 
-    const areaByProject = new Map(selectedProjects.map(project => [project.id, number(project.builtUpArea)]));
     const materialTotals = new Map();
     for (const group of wbsGroups) {
-      const row = materialTotals.get(group.name) || { name: group.name, quantity: 0, projectIds: new Set() };
+      const row = materialTotals.get(group.name) || { name: group.name, quantity: 0 };
       row.quantity += group.tasks.reduce((sum, task) => sum + number(task.volOfWorkMaterial), 0);
-      row.projectIds.add(group.projectId);
       materialTotals.set(group.name, row);
     }
-    const materialPerArea = [...materialTotals.values()].map(item => ({
-      name: item.name,
-      quantity: item.quantity,
-      area: [...item.projectIds].reduce((sum, id) => sum + (areaByProject.get(id) || 0), 0),
-    })).map(item => ({
-      ...item,
-      quantityPerSqFt: item.area > 0 ? item.quantity / item.area : null,
-    })).sort((a, b) => b.quantity - a.quantity);
+    const materialByGroup = [...materialTotals.values()].sort((a, b) => b.quantity - a.quantity);
 
     const requisitionMap = new Map();
     let materialRequired = 0;
@@ -266,7 +252,7 @@ export async function GET(request) {
       projects: projects.map(displayProject), selectedProjectId, fromDate, toDate,
       totals: { ...totals, materialRequired, materialApproved },
       budgetByHead, monthlyMovement, estimateVersions, consumptionHistory,
-      wbsGroups: wbsGroupData, materialPerArea, materialRequisitions, projectSummary,
+      wbsGroups: wbsGroupData, materialByGroup, materialRequisitions, projectSummary,
     });
   } catch (error) {
     console.error('Error fetching engineering dashboard:', error);

@@ -19,7 +19,13 @@ export default function WorkOrderBrowse() {
   const [actionId, setActionId] = useState('');
   const { activeEmployee, activeProject, hasRight } = usePermissions();
   const can = name => !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', name)));
-  const canList = can('Create Work Order') || can('View Work Order') || can('Edit Work Order') || can('Delete Work Order') || can('Approve Work Order') || can('Send Work Order by Email');
+  const isAssignedApprover = order => !!activeEmployee?.id && order.approvalWorkflow?.currentApproverIds?.includes(activeEmployee.id);
+  const canApproveOrder = order => order.approvalWorkflow?.currentStage === 0
+    ? can('Approve Work Order')
+    : order.approvalWorkflow?.required
+      ? isAssignedApprover(order)
+      : can('Approve Work Order');
+  const canList = can('Create Work Order') || can('View Work Order') || can('Edit Work Order') || can('Delete Work Order') || can('Approve Work Order') || can('Send Work Order by Email') || workOrders.some(isAssignedApprover);
 
   const updateOrderStatus = async (order, action) => {
     setActionId(order.id);
@@ -112,16 +118,22 @@ export default function WorkOrderBrowse() {
                     <td style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 600 }}>{formatMoney(order.contractValue)}</td>
                     <td style={{ padding: '11px 12px' }}>{order.status}</td>
                     <td style={{ padding: '11px 12px' }}>{order.madeBy || '—'}</td>
-                    <td style={{ padding: '11px 12px' }}>{order.approvedBy || '—'}</td>
+                    <td style={{ padding: '11px 12px' }}>{order.approvalWorkflow?.required && !order.approvalWorkflow.complete
+                      ? order.approvalWorkflow.currentStage === 0
+                        ? `Contract Manager · ${order.approvalWorkflow.currentStageApprovedCount}/${order.approvalWorkflow.currentStageApproverCount}`
+                        : `Level ${order.approvalWorkflow.currentStage}/${order.approvalWorkflow.stageCount} · ${order.approvalWorkflow.currentStageApprovedCount}/${order.approvalWorkflow.currentStageApproverCount}`
+                      : order.approvedBy || '—'}</td>
                     <td style={{ padding: '11px 12px', fontSize: 12, color: '#64748b' }}>{order.editedBy ? <>{order.editedBy}<div>{order.editedAt ? new Date(order.editedAt).toLocaleString('en-IN') : ''}</div></> : '—'}</td>
                     <td style={{ padding: '11px 12px', display: 'flex', gap: 10 }}>
                       {can('Edit Work Order') && !order.approvedAt && <Link href={`/contracting/work-order/raise?id=${order.id}`} title="Edit work order" style={{ color: '#0369a1' }}><Pencil size={16} /></Link>}
                       {can('View Work Order') && <Link href={`/contracting/work-order/raise?id=${order.id}&view=1`} title="View work order" style={{ color: '#0369a1' }}><Eye size={16} /></Link>}
                       {can('View Work Order') && order.status === 'Approved' && <Link href={`/contracting/work-order/raise?id=${order.id}&print=1`} target="_blank" title="Print work order" style={{ color: '#b45309' }}><FileDown size={16} /></Link>}
-                      {can('Approve Work Order') && order.status === 'Draft' && <button type="button" onClick={() => updateOrderStatus(order, 'approve')} disabled={actionId === order.id} title="Approve work order" style={{ border: 0, background: 'transparent', color: '#15803d', cursor: 'pointer' }}><Check size={16} /></button>}
+                      {(order.status === 'Draft' || order.status === 'Pending Approval')
+                        && canApproveOrder(order)
+                        && <button type="button" onClick={() => updateOrderStatus(order, 'approve')} disabled={actionId === order.id} title={order.approvalWorkflow?.currentStage === 0 ? 'Contract Manager approval' : order.approvalWorkflow?.required ? `Approve level ${order.approvalWorkflow.currentStage}` : 'Approve work order'} style={{ border: 0, background: 'transparent', color: '#15803d', cursor: 'pointer' }}><Check size={16} /></button>}
                       {can('Approve Work Order') && order.status === 'Approved' && !order.accountsSentAt && <button type="button" onClick={() => updateOrderStatus(order, 'send-to-accounts')} disabled={actionId === order.id} title="Send approved work order to Accounts" style={{ border: 0, background: 'transparent', color: '#0369a1', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Send size={15} /> Accounts</button>}
                       {can('Approve Work Order') && order.status === 'Approved' && withinApprovalWindow(order.approvedAt) && <button type="button" onClick={() => updateOrderStatus(order, 'unapprove')} disabled={actionId === order.id} title="Unapprove to edit within 2 days" style={{ border: 0, background: 'transparent', color: '#c2410c', cursor: 'pointer' }}>Unapprove</button>}
-                      {can('Delete Work Order') && order.status === 'Draft' && <button type="button" onClick={() => deleteOrder(order)} disabled={actionId === order.id} title="Delete work order" style={{ border: 0, background: 'transparent', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={16} /></button>}
+                      {can('Delete Work Order') && (order.status === 'Draft' || (order.status === 'Pending Approval' && order.approvalWorkflow?.currentStage === 0)) && <button type="button" onClick={() => deleteOrder(order)} disabled={actionId === order.id} title="Delete work order before approval" style={{ border: 0, background: 'transparent', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={16} /></button>}
                       {can('Send Work Order by Email') && <button type="button" disabled={sendingId === order.id} onClick={() => sendWorkOrderEmail(order)} title="Email work order" style={{ border: 0, background: 'transparent', color: '#047857', cursor: 'pointer' }}><Mail size={16} /></button>}
                     </td>
                   </tr>

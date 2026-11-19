@@ -171,7 +171,14 @@ export default function RaiseWorkOrder() {
   const readOnlyMode = printMode || viewMode;
   const { activeEmployee, activeProject, hasRight } = usePermissions();
   const requiredTool = readOnlyMode ? 'View Work Order' : editId ? 'Edit Work Order' : 'Create Work Order';
-  const canSaveWorkOrder = !activeEmployee || (!!activeProject && hasRight(employeeToolCode('Contracting', requiredTool)));
+  const [approvalApproverIds, setApprovalApproverIds] = useState([]);
+  const canViewForApproval = readOnlyMode && (
+    hasRight(employeeToolCode('Contracting', 'Approve Work Order'))
+    || approvalApproverIds.includes(activeEmployee?.id)
+  );
+  const canSaveWorkOrder = !activeEmployee
+    || (!!activeProject && hasRight(employeeToolCode('Contracting', requiredTool)))
+    || canViewForApproval;
   const [projects, setProjects] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [quotations, setQuotations] = useState([]);
@@ -253,6 +260,7 @@ export default function RaiseWorkOrder() {
       .then(records => {
         const record = Array.isArray(records) ? records[0] : records;
         if (!record) return;
+        setApprovalApproverIds(Array.isArray(record.approvalWorkflow?.currentApproverIds) ? record.approvalWorkflow.currentApproverIds : []);
         setStatusHistory(Array.isArray(record.statusHistory) ? record.statusHistory : []);
         setWorkOrderStatus(record.status || '');
         setLastEdited(record.editedBy ? { name: record.editedBy, at: record.editedAt } : null);
@@ -261,6 +269,7 @@ export default function RaiseWorkOrder() {
         setItems(stored.items || []);
         setWoData({
           ...(stored.preview || {}),
+          projectId: stored.preview?.projectId || record.projectId,
           woNo: record.woNo,
           date: record.startDate ? new Date(record.startDate).toLocaleDateString('en-GB') : '',
           quotationTerms: stored.quotationTerms || {},
@@ -456,7 +465,6 @@ export default function RaiseWorkOrder() {
         freightCharges: selectedQuotation.freightCharges,
         otherConditions: selectedQuotation.otherConditions,
       } : {},
-      
       subject: selectedTasks.map(task => task.name).join(', ') || 'Work Order Subject'
     });
 

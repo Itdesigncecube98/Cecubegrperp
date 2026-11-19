@@ -207,7 +207,7 @@ export default function ProjectMaster() {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ background: '#fafaf9' }}>
-                  {['#', 'Project Name', 'Company', 'Library', 'Category', 'Status', 'Start Date', 'Actions'].map(h => (
+                  {['#', 'Project Name', 'Company', 'Library', 'Category', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{
                       padding: '11px 16px', fontWeight: 700, fontSize: '0.72rem',
                       color: '#7c2d12', textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -254,9 +254,6 @@ export default function ProjectMaster() {
                             <Clock3 size={14} />
                           </button>
                         </div>
-                      </td>
-                      <td style={{ padding: '13px 16px', fontSize: '0.85rem', color: '#57534e', whiteSpace: 'nowrap' }}>
-                        {proj.startDate ? proj.startDate.split(' ')[0] : '—'}
                       </td>
                       <td style={{ padding: '13px 16px' }}>
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
