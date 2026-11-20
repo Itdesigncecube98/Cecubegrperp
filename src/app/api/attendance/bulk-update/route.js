@@ -29,7 +29,9 @@ export async function POST(request) {
           ...(status && { status }), 
           ...(shiftType && { shiftType }),
           ...(timeSlots && { timeSlots }),
-          ...(typeof isApproved === 'boolean' && { isApproved })
+          ...(typeof update.isApproved === 'boolean'
+            ? { isApproved: update.isApproved }
+            : typeof isApproved === 'boolean' ? { isApproved } : {})
         },
         create: { 
           employeeId, 
@@ -37,7 +39,9 @@ export async function POST(request) {
           status: status || 'Present', 
           shiftType: shiftType || 'Day', 
           timeSlots: timeSlots || '[]',
-          isApproved: typeof isApproved === 'boolean' ? isApproved : false
+          isApproved: typeof update.isApproved === 'boolean'
+            ? update.isApproved
+            : typeof isApproved === 'boolean' ? isApproved : false
         }
       });
 

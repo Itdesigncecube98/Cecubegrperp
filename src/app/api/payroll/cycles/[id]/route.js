@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
 import { amount, getSalaryVoucherAttempts, postJournal } from '../../../../../lib/accounting';
+import { findApplicableSalaryRevision, parsePayrollDate } from '../../../../../lib/payrollDates';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +70,68 @@ export async function GET(request, { params }) {
       cur.setDate(cur.getDate() + 1);
     }
 
-    // Attach attendanceSummary to each record
+    // Show selected employees without a payroll record as salary-revision timeline rows.
+    const existingEmployeeIds = new Set(cycle.payrollRecords.map(record => record.employeeId));
+    const missingEmployeeIds = [...new Set(cycle.selectedEmployees || [])]
+      .filter(employeeId => employeeId !== '__NO_EMPLOYEES_SELECTED__' && !existingEmployeeIds.has(employeeId));
+    const missingEmployees = missingEmployeeIds.length
+      ? await prisma.employee.findMany({
+          where: { id: { in: missingEmployeeIds } },
+          select: {
+            id: true, name: true, empId: true, department: true, branch: true,
+            designation: true, grade: true, bankAccountNo: true, bankName: true,
+            pan: true, pfEmployee: true, esicNo: true, uan: true, email: true, phone: true,
+            basicSalary: true,
+          },
+        })
+      : [];
+    const missingRevisions = missingEmployees.length
+      ? await prisma.salaryRevision.findMany({
+          where: { employeeId: { in: missingEmployees.map(employee => employee.id) } },
+          include: { components: { include: { salaryHead: { include: { headType: true } } } } },
+        })
+      : [];
+    const revisionsByEmployee = new Map();
+    for (const revision of missingRevisions) {
+      const list = revisionsByEmployee.get(revision.employeeId) || [];
+      list.push(revision);
+      revisionsByEmployee.set(revision.employeeId, list);
+    }
+    const missingPayrollRows = missingEmployees.map(employee => {
+      const revisions = revisionsByEmployee.get(employee.id) || [];
+      const revision = findApplicableSalaryRevision(revisions, cycle.endDate) || revisions.sort((a, b) => {
+        const dateA = parsePayrollDate(a.effectiveFrom)?.getTime() || 0;
+        const dateB = parsePayrollDate(b.effectiveFrom)?.getTime() || 0;
+        return dateB - dateA || b.createdAt.getTime() - a.createdAt.getTime();
+      })[0];
+      const earnings = revision?.components.reduce((sum, component) => {
+        return String(component.salaryHead?.headType?.name || '').trim().toLowerCase() === 'earning'
+          ? sum + (Number(component.amount) || 0) : sum;
+      }, 0) || 0;
+      const deductions = revision?.components.reduce((sum, component) => {
+        return String(component.salaryHead?.headType?.name || '').trim().toLowerCase() === 'deduction'
+          ? sum + (Number(component.amount) || 0) : sum;
+      }, 0) || 0;
+      const grossPay = earnings || Number.parseFloat(employee.basicSalary) || 0;
+      const totalDeductions = deductions;
+      return {
+        id: `missing-${employee.id}`,
+        employeeId: employee.id,
+        employee,
+        status: 'MISSING',
+        missingPayrollRecord: true,
+        salaryRevisionId: revision?.id || null,
+        salaryRevisionEffectiveFrom: revision?.effectiveFrom || null,
+        workingDays: 0,
+        absentDays: 0,
+        leaveEncashment: 0,
+        grossPay,
+        totalDeductions,
+        netPay: grossPay - totalDeductions,
+      };
+    });
+
+    // Attach attendanceSummary to each existing record
     const enhancedRecords = cycle.payrollRecords.map(rec => {
       const empAtts = attendances.filter(a => a.employeeId === rec.employeeId);
       const empLeaves = approvedLeaves.filter(l => l.employeeId === rec.employeeId);
@@ -109,7 +171,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({
       ...cycle,
-      payrollRecords: enhancedRecords
+      payrollRecords: [...enhancedRecords, ...missingPayrollRows]
     });
   } catch (error) {
     console.error('Error fetching pay cycle:', error);

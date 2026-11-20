@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { numberToWords } from "@/lib/numberToWords";
+import { assertProjectOrderWithinAllocatedBudget, ProjectBudgetError } from "@/lib/projectAllocatedBudget";
 
 // GET /api/purchase-orders?companyId=&status=&fromDate=&toDate=
 export async function GET(request) {
@@ -153,8 +154,15 @@ export async function POST(request) {
     // Convert amount to words
     const totalAmountWords = numberToWords(finalAmount);
 
-    const po = await prisma.purchaseOrder.create({
-      data: {
+    const po = await prisma.$transaction(async tx => {
+      const budget = await assertProjectOrderWithinAllocatedBudget(tx, {
+        projectMasterId: body.projectId,
+        projectName,
+        amount: finalAmount,
+      });
+
+      return tx.purchaseOrder.create({
+        data: {
         poNumber,
         companyId,
         supplierName,
@@ -169,6 +177,7 @@ export async function POST(request) {
         deliveryPhone,
         deliveryGstin,
         deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+        projectId: budget.project.projectMasterIds[0] || null,
         projectName,
         subTotal,
         cgstPercent: cgstAmount > 0 ? 9 : 0,
@@ -197,15 +206,19 @@ export async function POST(request) {
         items: {
           create: processedItems,
         },
-      },
-      include: {
-        items: true,
-      },
+        },
+        include: {
+          items: true,
+        },
+      });
     });
 
     return NextResponse.json({ data: po }, { status: 201 });
   } catch (error) {
     console.error("Error creating purchase order:", error);
+    if (error instanceof ProjectBudgetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: "Failed to create purchase order" }, { status: 500 });
   }
 }

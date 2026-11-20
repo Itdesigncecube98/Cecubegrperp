@@ -17,6 +17,7 @@ export default function SalaryCalculation() {
   const [processing, setProcessing] = useState(false);
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [approvingSelected, setApprovingSelected] = useState(false);
+  const [removingMissing, setRemovingMissing] = useState(false);
   const selectAllRef = useRef(null);
   
   // Dialog state
@@ -76,29 +77,64 @@ export default function SalaryCalculation() {
 
   const handleCalculate = async () => {
     if (!selectedCycleId) return;
-    const employeesToCalculate = selectedRecordIds.length > 0
-      ? records.filter(record => selectedRecordIds.includes(record.id) && record.status === 'PENDING')
-      : [];
+    const employeesToCalculate = records.filter(record =>
+      ['PENDING', 'MISSING'].includes(record.status) &&
+      (selectedRecordIds.length === 0 || selectedRecordIds.includes(record.id))
+    );
     if (selectedRecordIds.length > 0 && employeesToCalculate.length === 0) {
-      alert('Select at least one pending salary record to calculate.');
+      alert('Select at least one pending or missing salary record to calculate.');
+      return;
+    }
+    if (employeesToCalculate.length === 0) {
+      alert('There are no pending or missing salary records to calculate.');
       return;
     }
 
     setProcessing(true);
     try {
-      const res = await fetch(`/api/payroll/cycles/${selectedCycleId}/process`, { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          considerBonus,
-          considerLeaveEncash,
-          considerTds,
-          ...(selectedRecordIds.length > 0
-            ? { employeeIds: employeesToCalculate.map(record => record.employeeId) }
-            : {}),
-        })
-      });
-      const json = await res.json();
+      const postCalculation = async employeeIds => {
+        const response = await fetch(`/api/payroll/cycles/${selectedCycleId}/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ employeeIds, considerBonus, considerLeaveEncash, considerTds }),
+        });
+        return { response, result: await response.json() };
+      };
+
+      let employeeIds = [...new Set(employeesToCalculate.map(record => record.employeeId))];
+      const skippedEmployees = new Map();
+      let { response: res, result: json } = await postCalculation(employeeIds);
+
+      // Validation responses happen before any payroll rows are written. Exclude those
+      // employees and retry the remaining valid employees so one bad row cannot block a batch.
+      for (let attempt = 0; attempt < 3 && !res.ok; attempt++) {
+        const attendanceIssues = json.employeesNeedingAttendanceReview || [];
+        const salaryIssues = json.employeesNeedingSalary || [];
+        const issueIds = new Set([...attendanceIssues, ...salaryIssues].map(String));
+        if (issueIds.size === 0) break;
+
+        const blockedEmployeeIds = new Set();
+        for (const record of employeesToCalculate) {
+          if (!employeeIds.includes(record.employeeId)) continue;
+          const identifiers = [record.employeeId, record.employee?.id, record.employee?.empId].filter(Boolean).map(String);
+          const matchedIssue = identifiers.find(identifier => issueIds.has(identifier));
+          if (!matchedIssue) continue;
+          blockedEmployeeIds.add(record.employeeId);
+          const reason = attendanceIssues.some(issue => String(issue) === matchedIssue)
+            ? 'attendance missing or unapproved'
+            : 'salary revision/legacy salary data missing';
+          skippedEmployees.set(record.employeeId, `${record.employee?.name || matchedIssue} (${record.employee?.empId || matchedIssue}): ${reason}`);
+        }
+        if (blockedEmployeeIds.size === 0) break;
+        employeeIds = employeeIds.filter(employeeId => !blockedEmployeeIds.has(employeeId));
+        if (employeeIds.length === 0) break;
+        ({ response: res, result: json } = await postCalculation(employeeIds));
+      }
+      if (json.success && skippedEmployees.size > 0) {
+        await fetchDetails();
+        alert(`Processed ${json.processedCount} records. Skipped ${skippedEmployees.size}: ${[...skippedEmployees.values()].join('; ')}`);
+        return;
+      }
       if (json.success) {
         await fetchDetails();
         alert(`✅ Processed ${json.processedCount} records successfully!`);
@@ -121,6 +157,29 @@ export default function SalaryCalculation() {
       console.error(e);
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const handleRemoveMissing = async () => {
+    const employeeIds = [...new Set(selectedMissingRecords.map(record => record.employeeId))];
+    if (!employeeIds.length || !selectedCycleId) return;
+    if (!window.confirm(`Remove ${employeeIds.length} selected missing employee(s) from this pay cycle? Attendance and employee records will remain untouched.`)) return;
+
+    setRemovingMissing(true);
+    try {
+      const response = await fetch(`/api/payroll/cycles/${encodeURIComponent(selectedCycleId)}/remove-missing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeIds }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Could not remove missing employees.');
+      await fetchDetails();
+      alert(`${result.removedCount} missing employee(s) removed from this pay cycle. Attendance and employee records were not deleted.`);
+    } catch (error) {
+      alert(error.message || 'Could not remove missing employees.');
+    } finally {
+      setRemovingMissing(false);
     }
   };
 
@@ -181,10 +240,15 @@ export default function SalaryCalculation() {
   }).sort((a, b) => String(a.employee?.empId || '').localeCompare(String(b.employee?.empId || ''), undefined, { numeric: true, sensitivity: 'base' }));
 
   const totalProcessed = filteredRecords.filter(r => r.status === 'PROCESSED').length;
-  const totalNetPay = filteredRecords.reduce((sum, r) => sum + (r.netPay || 0), 0).toFixed(2);
+  const missingPayrollRecordCount = filteredRecords.filter(record => record.missingPayrollRecord).length;
+  const totalNetPay = filteredRecords
+    .filter(record => !record.missingPayrollRecord)
+    .reduce((sum, record) => sum + (record.netPay || 0), 0)
+    .toFixed(2);
   const visibleRecordIds = filteredRecords.map(record => record.id);
   const selectedVisibleCount = visibleRecordIds.filter(id => selectedRecordIds.includes(id)).length;
   const selectedPendingRecords = records.filter(record => selectedRecordIds.includes(record.id) && record.status === 'PENDING');
+  const selectedMissingRecords = filteredRecords.filter(record => record.missingPayrollRecord && selectedRecordIds.includes(record.id));
   const approvedRecords = filteredRecords.filter(record => record.status === 'APPROVED');
   const selectedCycle = cycles.find(cycle => cycle.id === selectedCycleId);
   const cycleCanBeChanged = selectedCycle?.status !== 'COMPLETED';
@@ -300,6 +364,9 @@ export default function SalaryCalculation() {
             {processing ? <RefreshCw className="spin" size={16} /> : <Calculator size={16} />} 
             {processing ? 'Processing...' : 'Calculate'}
           </button>
+          <button className="btn-primary" onClick={handleRemoveMissing} disabled={removingMissing || selectedMissingRecords.length === 0 || !cycleCanBeChanged} title="Remove selected MISSING employees from this pay cycle; attendance and employee records stay intact." style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: removingMissing || selectedMissingRecords.length === 0 || !cycleCanBeChanged ? '#94a3b8' : '#dc2626' }}>
+            {removingMissing ? 'Removing...' : `Remove Missing${selectedMissingRecords.length ? ` (${selectedMissingRecords.length})` : ''}`}
+          </button>
           <button className="btn-primary" onClick={() => window.print()} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#0ea5e9' }}>
             <Printer size={16} /> Print
           </button>
@@ -337,6 +404,12 @@ export default function SalaryCalculation() {
         </button>
       </div>
 
+      {missingPayrollRecordCount > 0 && (
+        <div role="status" style={{ margin: '0.75rem 0', padding: '0.8rem 1rem', border: '1px solid #fca5a5', borderRadius: 8, background: '#fef2f2', color: '#991b1b', fontSize: '0.85rem' }}>
+          <strong>{missingPayrollRecordCount} salary calculation record(s) are missing.</strong> These rows show salary revision estimates, not saved payroll records. Attendance data remains separate. Click <strong>Calculate</strong> to rebuild valid records; employees with unapproved attendance or no salary data will be skipped and identified.
+        </div>
+      )}
+
       <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px 8px 0 0', minHeight: 300 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -367,11 +440,15 @@ export default function SalaryCalculation() {
             ) : filteredRecords.length === 0 ? (
               <tr><td colSpan={13} style={{ textAlign: 'center', padding: '2rem' }}>No records found. Click Calculate to process.</td></tr>
             ) : filteredRecords.map((row, idx) => (
-              <tr key={row.id} style={{ background: idx % 2 === 0 ? 'white' : '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.8rem' }}>
-                <td style={{ padding: '8px' }}><input type="checkbox" aria-label={`Select ${row.employee?.name || 'employee'} payroll record`} checked={selectedRecordIds.includes(row.id)} onChange={event => toggleRecordSelection(row.id, event.target.checked)} /></td>
-                <td style={{ padding: '8px', color: '#0284c7', fontWeight: 600 }}>{row.employee?.empId}</td>
+              <tr key={row.id} style={{ background: row.missingPayrollRecord ? '#fef2f2' : idx % 2 === 0 ? 'white' : '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.8rem', color: row.missingPayrollRecord ? '#b91c1c' : undefined }}>
+                <td style={{ padding: '8px' }}><input type="checkbox" aria-label={`Select ${row.employee?.name || 'employee'} payroll record`} checked={selectedRecordIds.includes(row.id)} disabled={!cycleCanBeChanged} onChange={event => toggleRecordSelection(row.id, event.target.checked)} /></td>
+                <td style={{ padding: '8px', color: row.missingPayrollRecord ? '#b91c1c' : '#0284c7', fontWeight: 600 }}>{row.employee?.empId}</td>
                 <td style={{ padding: '8px' }}>
-                  <button
+                  {row.missingPayrollRecord ? (
+                    <span title={row.salaryRevisionEffectiveFrom ? `Latest salary revision effective ${row.salaryRevisionEffectiveFrom}` : 'No salary revision found'} style={{ color: '#b91c1c', fontWeight: 700 }}>
+                      {row.employee?.name} · Payroll missing
+                    </span>
+                  ) : <button
                     type="button"
                     onClick={() => setSelectedRecordForSlip(row)}
                     style={{
@@ -404,19 +481,21 @@ export default function SalaryCalculation() {
                   >
                     <span>{row.employee?.name}</span>
                     <FileText size={13} style={{ opacity: 0.7, flexShrink: 0 }} />
-                  </button>
+                  </button>}
                 </td>
                 <td style={{ padding: '8px' }}>{row.employee?.designation}</td>
                 <td style={{ padding: '8px' }}>{row.employee?.department || '-'}</td>
                 <td style={{ padding: '8px' }}>{row.employee?.branch || '-'}</td>
                 <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#16a34a' }}>{row.workingDays}</td>
                 <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#dc2626' }}>{row.absentDays}</td>
-                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 500, color: '#d97706' }}>₹{row.leaveEncashment?.toFixed(2) || '0.00'}</td>
-                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 500 }}>₹{row.grossPay?.toFixed(2)}</td>
-                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 500, color: '#dc2626' }}>₹{row.totalDeductions?.toFixed(2)}</td>
-                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: '#059669', background: '#ecfdf5' }}>₹{row.netPay?.toFixed(2)}</td>
+                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 500, color: row.missingPayrollRecord ? '#b91c1c' : '#d97706' }}>₹{row.leaveEncashment?.toFixed(2) || '0.00'}</td>
+                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 500, color: row.missingPayrollRecord ? '#b91c1c' : undefined }}>₹{row.grossPay?.toFixed(2)}</td>
+                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 500, color: '#b91c1c' }}>₹{row.totalDeductions?.toFixed(2)}</td>
+                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: row.missingPayrollRecord ? '#b91c1c' : '#059669', background: row.missingPayrollRecord ? '#fee2e2' : '#ecfdf5' }}>₹{row.netPay?.toFixed(2)}</td>
                 <td style={{ padding: '8px', textAlign: 'center' }}>
-                  {row.status === 'PENDING' ? (
+                  {row.missingPayrollRecord ? (
+                    <span title={row.salaryRevisionEffectiveFrom ? `Salary shown from revision effective ${row.salaryRevisionEffectiveFrom}` : 'No salary revision found'} style={{ color: '#b91c1c', fontWeight: 800 }}>MISSING</span>
+                  ) : row.status === 'PENDING' ? (
                     <button 
                       onClick={() => handleToggleApprove(row.id, 'APPROVED')}
                       style={{ background: '#10b981', color: 'white', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}

@@ -14,6 +14,8 @@ export async function GET(request) {
     const records = await prisma.payrollRecord.findMany({
       where: {
         employeeId: employeeId,
+        // Employee self-service should publish a payslip only after HR posts it.
+        status: 'POSTED',
       },
       include: {
         payCycle: true,

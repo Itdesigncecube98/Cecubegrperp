@@ -6,6 +6,7 @@ import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 import { recordDocumentAction } from '@/lib/documentAudit';
 import { readAuthSession } from '@/lib/authSession';
+import { assertProjectOrderWithinAllocatedBudget, ProjectBudgetError } from '@/lib/projectAllocatedBudget';
 import {
   addPurchaseManagerApprovalRow,
   buildPendingApprovalRows,
@@ -204,8 +205,15 @@ export async function POST(req) {
       remarks: body.remarks || ''
     };
 
-    let po = await prisma.purchaseOrder.create({
-      data: {
+    let po = await prisma.$transaction(async tx => {
+      await assertProjectOrderWithinAllocatedBudget(tx, {
+        projectMasterId: body.projectId,
+        projectName: body.projectName,
+        amount: totalAmount,
+      });
+
+      return tx.purchaseOrder.create({
+        data: {
         poNumber,
         poDate: body.poDate ? new Date(body.poDate) : new Date(),
         deliveryDate: body.deliveryDate ? new Date(body.deliveryDate) : null,
@@ -273,11 +281,12 @@ export async function POST(req) {
             remarks: item.remarks || null,
           }))
         }
-      },
-      include: {
-        items: true,
-        grns: true
-      }
+        },
+        include: {
+          items: true,
+          grns: true
+        }
+      });
     });
 
     await prisma.purchaseOrderStatusHistory.create({
@@ -326,6 +335,9 @@ export async function POST(req) {
     return NextResponse.json(po, { status: 201 });
   } catch (error) {
     console.error('Error creating PO:', error);
+    if (error instanceof ProjectBudgetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: error.message || 'Failed to create PO' }, { status: 500 });
   }
 }
@@ -339,7 +351,10 @@ export async function PUT(req) {
     const VALID_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'SENT', 'PARTIALLY_RECEIVED', 'FULLY_RECEIVED', 'CLOSED', 'CANCELLED'];
 
     if (!action && !status) {
-      const existingForEdit = await prisma.purchaseOrder.findUnique({ where: { id }, select: { id: true, status: true, approvedAt: true } });
+      const existingForEdit = await prisma.purchaseOrder.findUnique({
+        where: { id },
+        select: { id: true, status: true, approvedAt: true, projectId: true, projectName: true },
+      });
       if (!existingForEdit) return NextResponse.json({ error: 'Purchase order not found.' }, { status: 404 });
       if (existingForEdit.approvedAt) return NextResponse.json({ error: 'Unapprove this purchase order within 2 days before editing it.' }, { status: 409 });
       const vendor = await getVendorFallback(body.supplierId);
@@ -366,6 +381,12 @@ export async function PUT(req) {
       const approvalStages = getApplicableApprovalStages(approvalConfig, editedTotalAmount);
       
       const updated = await prisma.$transaction(async tx => {
+        await assertProjectOrderWithinAllocatedBudget(tx, {
+          projectMasterId: body.projectId || existingForEdit.projectId,
+          projectName: body.projectName || existingForEdit.projectName,
+          amount: editedTotalAmount,
+          excludePurchaseOrderId: id,
+        });
         await tx.purchaseOrderItem.deleteMany({ where: { poId: id } });
         const saved = await tx.purchaseOrder.update({
           where: { id },
@@ -380,7 +401,10 @@ export async function PUT(req) {
             supplierName: body.supplierName || vendor?.name || '', supplierAddress: body.supplierAddress || vendor?.address || '',
             supplierContact: body.supplierContact || vendor?.contactPerson || null, supplierPhone: body.supplierPhone || vendor?.whatsappNo || vendor?.mobile || null,
             supplierEmail: body.supplierEmail || vendor?.email || null, supplierGstin: body.supplierGstin || vendor?.gstin || vendor?.gstNo || null,
-            supplierPan: body.supplierPan || vendor?.pan || vendor?.panNumber || null, projectName: body.projectName || null, deliveryAddress: body.deliveryAddress || projectLocation,
+            supplierPan: body.supplierPan || vendor?.pan || vendor?.panNumber || null,
+            projectId: body.projectId || existingForEdit.projectId,
+            projectName: body.projectName || existingForEdit.projectName || null,
+            deliveryAddress: body.deliveryAddress || projectLocation,
             paymentTerms: body.paymentTerms || null, scopeOfWork: body.scopeOfWork || null,
             deliverySchedule: body.deliverySchedule || null, otherTerms: body.otherTerms || null,
             subTotal, totalTaxAmount, totalAmount: editedTotalAmount,
@@ -677,6 +701,9 @@ export async function PUT(req) {
 
     return NextResponse.json(po);
   } catch (error) {
+    if (error instanceof ProjectBudgetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: error.message || 'Failed to update purchase order' }, { status: 500 });
   }
 }

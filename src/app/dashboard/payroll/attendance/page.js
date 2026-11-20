@@ -1,76 +1,13 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, Download, RefreshCw, Search, CheckCircle, XCircle, Save } from 'lucide-react';
 import ActionToolbar from '@/components/ActionToolbar';
 import MultiSelect from '@/components/MultiSelect';
 import Dialog from '@/components/Dialog';
 import { getEmployeeWeekoffDays } from '@/lib/attendanceCalendar';
-
-export function getLeaveAbbreviation(leaveType) {
-  if (!leaveType) return 'CL';
-  const lt = leaveType.toLowerCase().trim();
-  if (lt.includes('casual') || lt === 'cl') return 'CL';
-  if (lt.includes('earned') || lt.includes('paid') || lt === 'el' || lt === 'pl') return 'EL';
-  if (lt.includes('sick') || lt.includes('medical') || lt === 'sl') return 'SL';
-  if (lt.includes('without pay') || lt.includes('unpaid') || lt === 'lwp') return 'LWP';
-  if (lt.includes('coff') || lt.includes('compensatory') || lt === 'c-off') return 'C-off';
-  return 'CL';
-}
-
-export function resolveDayAttendance(emp, col, approvedLeaves = []) {
-  const att = emp?.attendances?.find(a => a.date === col.fullDate);
-  const rawStatus = att?.status;
-  const employeeWeekoffDays = getEmployeeWeekoffDays(col.workWeeks || []);
-  const isWeekOff = !col.isWorkingDay && employeeWeekoffDays.includes(col.dayName);
-  const isScheduledWorkingDay = col.isWorkingDay || (!col.isHoliday && !isWeekOff);
-
-  // Explicit payroll statuses must remain unchanged after saving, including on holidays and week-offs.
-  const explicitStatuses = ['P', 'HD', 'A', 'CL', 'SL', 'EL', 'C-off', 'LWP', 'W-off', 'H'];
-  if (att?.isManual || rawStatus === '-' || rawStatus === 'Not Marked' || explicitStatuses.includes(rawStatus)) {
-    return rawStatus === 'Not Marked' ? '-' : rawStatus;
-  }
-
-  let slots = [];
-  try { slots = Array.isArray(att?.timeSlots) ? att.timeSlots : JSON.parse(att?.timeSlots || '[]'); } catch { slots = []; }
-  const hasPunch = slots.some(slot => slot?.in || slot?.out);
-  const workedStatus = ['Present', 'P', 'Late', 'Half Day', 'HD', 'C-off', 'COFF', 'COff'].includes(rawStatus);
-  if (!col.isWorkingDay && (col.isHoliday || isWeekOff)) return hasPunch || workedStatus ? 'C-off' : col.isHoliday ? 'H' : 'W-off';
-
-  if (isScheduledWorkingDay && ['Holiday', 'H', 'Weekly Off', 'W-off', 'Off', 'C-off', 'COFF', 'COff'].includes(rawStatus)) {
-    return hasPunch ? 'P' : col.fullDate < new Date().toISOString().slice(0, 10) ? 'A' : '-';
-  }
-
-  // 2. Check if there is an approved leave for this employee on this date
-  const leave = approvedLeaves.find(l => 
-    l.employeeId === emp?.id && 
-    col.fullDate >= l.startDate && 
-    col.fullDate <= l.endDate
-  );
-
-  if (leave) {
-    return getLeaveAbbreviation(leave.leaveType);
-  }
-
-  // 3. Normalize raw status from database
-  if (rawStatus) {
-    if (rawStatus === 'Present') return 'P';
-    if (rawStatus === 'Absent') return 'A';
-    if (rawStatus === 'Half Day' || rawStatus === 'HD') return 'HD';
-    if (rawStatus === 'Holiday') return 'H';
-    if (rawStatus === 'Weekly Off') return 'W-off';
-    if (rawStatus === 'Leave' || rawStatus === 'L') return 'CL';
-    if (['P', 'A', 'HD', 'CL', 'SL', 'EL', 'C-off', 'LWP', 'W-off', 'H'].includes(rawStatus)) {
-      return rawStatus;
-    }
-  }
-
-  // 4. Default rules based on calendar day
-  if (col.isHoliday) return 'H';
-  if (isWeekOff) return 'W-off';
-  if (col.isWorkingDay) return col.fullDate < new Date().toISOString().slice(0, 10) ? 'A' : '-';
-  return '-';
-}
+import { resolveDayAttendance } from '@/lib/payrollAttendance';
+export { getLeaveAbbreviation, resolveDayAttendance } from '@/lib/payrollAttendance';
 
 export default function PayrollAttendance() {
   const router = useRouter();
@@ -94,10 +31,26 @@ export default function PayrollAttendance() {
 
   // New state for approval workflow
   const [isApprovedMode, setIsApprovedMode] = useState(false);
+  const [showAllAttendance, setShowAllAttendance] = useState(false);
   const [selectedEmps, setSelectedEmps] = useState([]);
   const [pendingEdits, setPendingEdits] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isPushingToSalary, setIsPushingToSalary] = useState(false);
+  const [dragFillEnabled, setDragFillEnabled] = useState(false);
+  const [dragFillStatus, setDragFillStatus] = useState('P');
+  const [salaryIssueEmployees, setSalaryIssueEmployees] = useState({});
+  const draggingFillRef = useRef(false);
+  const visitedFillCellsRef = useRef(new Set());
+
+  useEffect(() => {
+    const stopDragFill = () => { draggingFillRef.current = false; };
+    window.addEventListener('pointerup', stopDragFill);
+    window.addEventListener('pointercancel', stopDragFill);
+    return () => {
+      window.removeEventListener('pointerup', stopDragFill);
+      window.removeEventListener('pointercancel', stopDragFill);
+    };
+  }, []);
   
   // Dialog state
   const [dialogConfig, setDialogConfig] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null, onCancel: null });
@@ -116,8 +69,8 @@ export default function PayrollAttendance() {
           if (requestedEmployeeIds) {
             setFocusedEmployeeIds(requestedEmployeeIds.split(',').filter(Boolean));
           }
-          if (requestedAttendanceMode === 'approved') setIsApprovedMode(true);
-          else if (requestedAttendanceMode === 'pending') setIsApprovedMode(false);
+          if (requestedAttendanceMode === 'approved') { setIsApprovedMode(true); setShowAllAttendance(false); }
+          else if (requestedAttendanceMode === 'pending') { setIsApprovedMode(false); setShowAllAttendance(false); }
           const requestedCycle = d.find(cycle => cycle.id === requestedCycleId);
           if (requestedCycle || d.length > 0) setSelectedCycleId(requestedCycle?.id || d[0].id);
         }
@@ -160,9 +113,8 @@ export default function PayrollAttendance() {
   }, [selectedCycleId]);
 
   const handleStatusChange = (employeeId, dateStr, newStatus) => {
-    const employee = data?.employees?.find(emp => emp.id === employeeId);
-    const existingAttendance = employee?.attendances?.find(att => att.date === dateStr);
-    if (existingAttendance?.isApproved) return;
+    const currentAttendance = data?.employees?.find(emp => emp.id === employeeId)?.attendances?.find(att => att.date === dateStr);
+    if (isApprovedMode || (showAllAttendance && currentAttendance?.isApproved)) return;
 
     // Auto-select row if edited
     setSelectedEmps(prev => prev.includes(employeeId) ? prev : [...prev, employeeId]);
@@ -175,7 +127,7 @@ export default function PayrollAttendance() {
           if (emp.id !== employeeId) return emp;
           const attendances = emp.attendances || [];
           const currentAttendance = attendances.find(att => att.date === dateStr);
-          const updatedAttendance = { ...currentAttendance, employeeId, date: dateStr, status: newStatus, isManual: true };
+          const updatedAttendance = { ...currentAttendance, employeeId, date: dateStr, status: newStatus, isApproved: false, isManual: true };
           return {
             ...emp,
             attendances: currentAttendance
@@ -188,8 +140,32 @@ export default function PayrollAttendance() {
 
     setPendingEdits(previous => [
       ...previous.filter(edit => edit.employeeId !== employeeId || edit.date !== dateStr),
-      { employeeId, date: dateStr, status: newStatus },
+      { employeeId, date: dateStr, status: newStatus, isApproved: false },
     ]);
+  };
+
+  const applyDragFill = (employeeId, dateStr) => {
+    if (!dragFillEnabled || isApprovedMode) return;
+    const key = `${employeeId}|${dateStr}`;
+    if (visitedFillCellsRef.current.has(key)) return;
+    if (showAllAttendance) {
+      const attendance = data?.employees?.find(emp => emp.id === employeeId)?.attendances?.find(att => att.date === dateStr);
+      if (attendance?.isApproved) return;
+    }
+    visitedFillCellsRef.current.add(key);
+    handleStatusChange(employeeId, dateStr, dragFillStatus);
+  };
+
+  const startDragFill = (event, employeeId, dateStr) => {
+    if (!dragFillEnabled || isApprovedMode || event.button !== 0) return;
+    event.preventDefault();
+    draggingFillRef.current = true;
+    visitedFillCellsRef.current = new Set();
+    applyDragFill(employeeId, dateStr);
+  };
+
+  const continueDragFill = (employeeId, dateStr) => {
+    if (draggingFillRef.current) applyDragFill(employeeId, dateStr);
   };
 
   // Generate date range columns
@@ -226,26 +202,35 @@ export default function PayrollAttendance() {
   const dateCols = getDateColumns();
   const totalDays = dateCols.length;
 
+  const isEmployeeFullyApproved = emp => {
+    const attendances = emp.attendances || [];
+    return attendances.length > 0 && attendances.every(att => att.isApproved);
+  };
   const filteredEmployees = data?.employees?.filter(emp => {
     if (employeeSearch && !emp.name.toLowerCase().includes(employeeSearch.toLowerCase()) && !emp.empId?.toLowerCase().includes(employeeSearch.toLowerCase())) {
       return false;
     }
-    
-    const attendances = emp.attendances || [];
-    const isEmpFullyApproved = attendances.length > 0 && attendances.every(att => att.isApproved);
+    if (showAllAttendance) return true;
+    const isEmpFullyApproved = isEmployeeFullyApproved(emp);
     if (isApprovedMode && !isEmpFullyApproved) return false;
     if (!isApprovedMode && isEmpFullyApproved) return false;
 
     return true;
   }).sort((a, b) => String(a.empId || '').localeCompare(String(b.empId || ''), undefined, { numeric: true, sensitivity: 'base' }));
+  const allEmployeeCount = data?.employees?.length || 0;
+  const approvedEmployeeCount = data?.employees?.filter(isEmployeeFullyApproved).length || 0;
+  const notApprovedEmployeeCount = allEmployeeCount - approvedEmployeeCount;
   const finalizedPayrollEmployeeIds = new Set(
     (data?.payrollRecords || [])
-      .filter(record => record.status !== 'PENDING')
+      .filter(record => !['PENDING', 'MISSING'].includes(record.status))
       .map(record => record.employeeId)
   );
   const pushableEmployeeCount = (filteredEmployees || [])
-    .filter(emp => !finalizedPayrollEmployeeIds.has(emp.id))
+    .filter(emp => selectedEmps.includes(emp.id) && emp.attendances?.length > 0 && emp.attendances.every(att => att.isApproved) && !finalizedPayrollEmployeeIds.has(emp.id))
     .length;
+  const selectedApprovedEmployeeCount = (filteredEmployees || []).filter(emp =>
+    selectedEmps.includes(emp.id) && emp.attendances?.length > 0 && emp.attendances.every(att => att.isApproved)
+  ).length;
   const pushToSalaryDisabled = isPushingToSalary ||
     pushableEmployeeCount === 0 ||
     data?.cycle?.status === 'COMPLETED';
@@ -261,6 +246,7 @@ export default function PayrollAttendance() {
       if (s === 'P' || s === 'Present') counts.P++;
       else if (s === 'A' || s === 'Absent') { counts.A++; unpaidDays++; }
       else if (s === 'LWP') { counts.A++; unpaidDays++; }
+      else if (s === 'HD' || s === 'Half Day') unpaidDays += 0.5;
       else if (s === 'H' || s === 'Holiday') counts.H++;
       else if (s === 'W-off' || s === 'W') counts.W++;
       else if (['CL', 'SL', 'EL', 'C-off', 'Leave', 'L'].includes(s)) counts.L++;
@@ -392,6 +378,7 @@ export default function PayrollAttendance() {
              setPendingEdits(previous => previous.filter(edit => !selectedEmps.includes(edit.employeeId)));
              setSelectedEmps([]);
              setIsApprovedMode(targetApprovalState);
+             setShowAllAttendance(false);
              await fetchAttendance();
              alert(`Successfully ${targetApprovalState ? 'approved' : 'unapproved'} attendance!`);
           } else {
@@ -407,15 +394,17 @@ export default function PayrollAttendance() {
   };
 
   const handlePushToSalaryCalculation = async () => {
+    const checkedEmployeeIds = new Set(selectedEmps);
     const employeeIds = (filteredEmployees || [])
-      .filter(emp => emp.attendances?.length > 0 && emp.attendances.every(att => att.isApproved))
+      .filter(emp => checkedEmployeeIds.has(emp.id) && emp.attendances?.length > 0 && emp.attendances.every(att => att.isApproved))
       .map(emp => emp.id);
     if (!selectedCycleId || employeeIds.length === 0) {
-      alert('No fully approved attendance is available to push for this pay cycle.');
+      alert('Tick at least one approved employee to push to Salary Calculation.');
       return;
     }
 
     setIsPushingToSalary(true);
+    setSalaryIssueEmployees({});
     try {
       const cycleResponse = await fetch(`/api/payroll/cycles/${encodeURIComponent(selectedCycleId)}`, { cache: 'no-store' });
       const cycleData = await cycleResponse.json();
@@ -428,16 +417,41 @@ export default function PayrollAttendance() {
 
       const finalizedPayrollEmployeeIds = new Set(
         cycleData.payrollRecords
-          .filter(record => record.status !== 'PENDING')
+          .filter(record => !['PENDING', 'MISSING'].includes(record.status))
           .map(record => record.employeeId)
       );
+      const configuredCycleEmployeeIds = (cycleData.selectedEmployees || [])
+        .filter(employeeId => employeeId !== '__NO_EMPLOYEES_SELECTED__');
+      const cycleWasExplicitlyEmptied = (cycleData.selectedEmployees || []).includes('__NO_EMPLOYEES_SELECTED__');
+      const currentPayrollEmployeeIds = cycleData.payrollRecords.map(record => record.employeeId);
+      const existingCycleEmployeeIds = new Set([...configuredCycleEmployeeIds, ...currentPayrollEmployeeIds]);
       const eligibleEmployeeIds = employeeIds.filter(employeeId => !finalizedPayrollEmployeeIds.has(employeeId));
       const skippedCount = employeeIds.length - eligibleEmployeeIds.length;
+
+      // A manually emptied cycle has the sentinel above. Re-add only employees
+      // explicitly checked and pushed by the user; an empty selection remains unrestricted.
+      const employeesToRestore = eligibleEmployeeIds.filter(employeeId => !existingCycleEmployeeIds.has(employeeId));
+      if (cycleWasExplicitlyEmptied || employeesToRestore.length > 0) {
+        const selectedEmployees = [...new Set([...configuredCycleEmployeeIds, ...currentPayrollEmployeeIds, ...eligibleEmployeeIds])];
+        const updateResponse = await fetch(`/api/payroll/cycles/${encodeURIComponent(selectedCycleId)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: cycleData.name,
+            startDate: cycleData.startDate,
+            endDate: cycleData.endDate,
+            paymentDate: cycleData.paymentDate,
+            status: cycleData.status,
+            selectedEmployees,
+          }),
+        });
+        const updateResult = await updateResponse.json();
+        if (!updateResponse.ok) throw new Error(updateResult.error || 'Could not add the selected employees back to this pay cycle.');
+      }
 
       if (eligibleEmployeeIds.length === 0) {
         if (skippedCount > 0) {
           alert('Selected employees already have approved or posted salary records. They were not pushed again.');
-          router.push(`/dashboard/payroll/salary-calculation?cycleId=${encodeURIComponent(selectedCycleId)}`);
           return;
         }
         alert('No salary records need to be created or updated for the selected employees.');
@@ -456,12 +470,21 @@ export default function PayrollAttendance() {
       });
       const result = await response.json();
       if (!response.ok || !result.success) {
+        if (Array.isArray(result.salaryDiagnostics) && result.salaryDiagnostics.length > 0) {
+          const missingEmployeeIds = result.salaryDiagnostics.map(diagnostic => diagnostic.employeeId);
+          setSalaryIssueEmployees(Object.fromEntries(
+            result.salaryDiagnostics.map(diagnostic => [diagnostic.employeeId, diagnostic])
+          ));
+          setSelectedEmps(previous => previous.filter(employeeId => !missingEmployeeIds.includes(employeeId)));
+          const names = result.salaryDiagnostics.map(diagnostic => `${diagnostic.name} (${diagnostic.employeeCode})`).join(', ');
+          throw new Error(`${result.error} Red rows show affected employees: ${names}`);
+        }
         const attendanceReview = result.employeesNeedingAttendanceReview?.join(', ');
         throw new Error(attendanceReview ? `${result.error} Employees: ${attendanceReview}` : result.error || 'Could not push attendance to salary calculation.');
       }
 
       if (skippedCount > 0) {
-        alert(`${skippedCount} employee(s) with approved or posted salary records were skipped. Other eligible employees were pushed.`);
+        alert(`${eligibleEmployeeIds.length} employee(s) pushed. Skipped ${skippedCount} already approved or posted.`);
       }
       router.push(`/dashboard/payroll/salary-calculation?cycleId=${encodeURIComponent(selectedCycleId)}`);
     } catch (error) {
@@ -524,10 +547,13 @@ export default function PayrollAttendance() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#64748b', cursor: 'pointer' }}>
-              <input type="radio" name="approval" checked={!isApprovedMode} onChange={() => setIsApprovedMode(false)} style={{ transform: 'scale(1.2)' }} /> Not Approved
+              <input type="radio" name="approval" checked={showAllAttendance} onChange={() => { setIsApprovedMode(false); setShowAllAttendance(true); }} style={{ transform: 'scale(1.2)' }} /> All ({allEmployeeCount})
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#64748b', cursor: 'pointer' }}>
-              <input type="radio" name="approval" checked={isApprovedMode} onChange={() => setIsApprovedMode(true)} style={{ transform: 'scale(1.2)' }} /> Approved
+              <input type="radio" name="approval" checked={!showAllAttendance && !isApprovedMode} onChange={() => { setShowAllAttendance(false); setIsApprovedMode(false); }} style={{ transform: 'scale(1.2)' }} /> Not Approved ({notApprovedEmployeeCount})
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: '#64748b', cursor: 'pointer' }}>
+              <input type="radio" name="approval" checked={!showAllAttendance && isApprovedMode} onChange={() => { setShowAllAttendance(false); setIsApprovedMode(true); }} style={{ transform: 'scale(1.2)' }} /> Approved ({approvedEmployeeCount})
             </label>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -540,7 +566,35 @@ export default function PayrollAttendance() {
 
       <ActionToolbar onReset={fetchAttendance} shareTitle="Payroll Attendance" onSave={handleSaveEdits} />
 
-      <div style={{ marginTop: '0.5rem', marginBottom: '1rem', display: 'flex', gap: '12px' }}>
+      <div style={{ marginTop: '0.5rem', marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#334155', fontSize: 13, fontWeight: 600 }}>
+          Drag-fill status
+          <select value={dragFillStatus} onChange={event => setDragFillStatus(event.target.value)} disabled={isApprovedMode} style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 5, background: '#fff', fontWeight: 700, color: '#0369a1' }}>
+            <option value="P">P</option>
+            <option value="HD">HD</option>
+            <option value="A">A</option>
+            <option value="CL">CL</option>
+            <option value="SL">SL</option>
+            <option value="EL">EL</option>
+            <option value="C-off">C-off</option>
+            <option value="LWP">LWP</option>
+            <option value="W-off">W-off</option>
+            <option value="H">H</option>
+            <option value="-">Clear</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => { setDragFillEnabled(enabled => !enabled); draggingFillRef.current = false; visitedFillCellsRef.current = new Set(); }}
+          disabled={isApprovedMode}
+          aria-pressed={dragFillEnabled}
+          style={{ padding: '8px 14px', border: `1px solid ${dragFillEnabled ? '#0284c7' : '#cbd5e1'}`, borderRadius: 6, background: dragFillEnabled ? '#e0f2fe' : '#fff', color: dragFillEnabled ? '#0369a1' : '#475569', fontWeight: 700, cursor: isApprovedMode ? 'not-allowed' : 'pointer', opacity: isApprovedMode ? .6 : 1 }}
+        >
+          {dragFillEnabled ? 'Drag Fill: On' : 'Drag Fill: Off'}
+        </button>
+        <span style={{ alignSelf: 'center', color: '#64748b', fontSize: 12 }}>
+          {dragFillEnabled ? `Drag across this unapproved employee's dates to apply ${dragFillStatus}. Edited dates will be unapproved. Then click Save Edits.` : 'Turn on Drag Fill to change multiple attendance cells at once.'}
+        </span>
         <button className="btn-primary" onClick={handleSaveEdits} disabled={isSaving || pendingEdits.length === 0} style={{ padding: '8px 24px', background: '#0ea5e9', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: (isSaving || pendingEdits.length === 0) ? 'not-allowed' : 'pointer' }}>
           <Save size={16} />
           Save Edits
@@ -553,7 +607,9 @@ export default function PayrollAttendance() {
             title={data?.cycle?.status === 'COMPLETED'
               ? 'This pay cycle is completed.'
               : pushableEmployeeCount === 0
-                ? 'Selected employees already have approved or posted salary records.'
+                ? selectedApprovedEmployeeCount === 0
+                  ? 'Tick approved employee rows to choose who to push.'
+                  : 'The selected employees already have approved or posted salary records.'
                 : ''}
             style={{ padding: '8px 24px', background: pushToSalaryDisabled ? '#94a3b8' : '#7c3aed', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: isPushingToSalary ? 'wait' : pushToSalaryDisabled ? 'not-allowed' : 'pointer' }}
           >
@@ -562,11 +618,13 @@ export default function PayrollAttendance() {
               : data?.cycle?.status === 'COMPLETED'
                 ? 'Cycle Completed'
                 : pushableEmployeeCount === 0
-                  ? 'Already Pushed to Salary Calculation'
-                  : 'Push to Salary Calculation'}
+                  ? selectedApprovedEmployeeCount === 0
+                    ? 'Select Employees to Push'
+                    : 'Already Pushed to Salary Calculation'
+                  : `Push to Salary Calculation (${pushableEmployeeCount})`}
           </button>
         )}
-        <button className="btn-primary" onClick={handleSave} disabled={isSaving || selectedEmps.length === 0} style={{ padding: '8px 24px', background: '#10b981', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: (isSaving || selectedEmps.length === 0) ? 'not-allowed' : 'pointer' }}>
+        <button className="btn-primary" onClick={handleSave} disabled={isSaving || selectedEmps.length === 0 || showAllAttendance} title={showAllAttendance ? 'Choose Approved or Not Approved to change approval status.' : ''} style={{ padding: '8px 24px', background: '#10b981', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: (isSaving || selectedEmps.length === 0 || showAllAttendance) ? 'not-allowed' : 'pointer' }}>
           <Save size={16} />
           {isSaving ? 'Saving...' : (isApprovedMode ? `Unapprove Selected (${selectedEmps.length})` : `Approve Selected (${selectedEmps.length})`)}
         </button>
@@ -621,21 +679,28 @@ export default function PayrollAttendance() {
               ) : filteredEmployees?.map((emp, idx) => {
                 const agg = calculateAggregates(emp);
                 const isChecked = selectedEmps.includes(emp.id);
+                const salaryIssue = salaryIssueEmployees[emp.id];
                 return (
-                  <tr key={emp.id} style={{ background: isChecked ? '#f0f9ff' : (idx % 2 === 0 ? 'white' : '#f8fafc'), borderBottom: '1px solid #e2e8f0' }}>
+                  <tr key={emp.id} title={salaryIssue?.reason} style={{ background: salaryIssue ? '#fee2e2' : isChecked ? '#f0f9ff' : (idx % 2 === 0 ? 'white' : '#f8fafc'), borderBottom: salaryIssue ? '1px solid #f87171' : '1px solid #e2e8f0' }}>
                     {/* Checkbox Column */}
-                    <td style={{ padding: '8px', position: 'sticky', left: 0, background: isChecked ? '#f0f9ff' : (idx % 2 === 0 ? 'white' : '#f8fafc'), zIndex: 10, borderRight: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <td style={{ padding: '8px', position: 'sticky', left: 0, background: salaryIssue ? '#fee2e2' : isChecked ? '#f0f9ff' : (idx % 2 === 0 ? 'white' : '#f8fafc'), zIndex: 10, borderRight: '1px solid #e2e8f0', textAlign: 'center' }}>
                        <input type="checkbox" checked={isChecked} onChange={() => handleSelectEmp(emp.id)} style={{ transform: 'scale(1.2)', cursor: 'pointer' }} />
                     </td>
 
                     {/* Frozen Employee Column */}
-                    <td style={{ padding: '8px 12px', position: 'sticky', left: 35, background: isChecked ? '#f0f9ff' : (idx % 2 === 0 ? 'white' : '#f8fafc'), zIndex: 10, borderRight: '2px solid #cbd5e1' }}>
-                      <div style={{ fontWeight: 600, color: '#0369a1' }}>{emp.name}</div>
+                    <td style={{ padding: '8px 12px', position: 'sticky', left: 35, background: salaryIssue ? '#fee2e2' : isChecked ? '#f0f9ff' : (idx % 2 === 0 ? 'white' : '#f8fafc'), zIndex: 10, borderRight: '2px solid #cbd5e1' }}>
+                      <div style={{ fontWeight: 700, color: salaryIssue ? '#b91c1c' : '#0369a1' }}>
+                        {emp.name}
+                        {salaryIssue && <span title={`${salaryIssue.reason} Basic: ₹${salaryIssue.legacySalaryFields.basicSalary}, HRA: ₹${salaryIssue.legacySalaryFields.hra}, Special allowance: ₹${salaryIssue.legacySalaryFields.specialAllowance}, Conveyance: ₹${salaryIssue.legacySalaryFields.conveyance}, Medical: ₹${salaryIssue.legacySalaryFields.medical}`} style={{ display: 'inline-block', marginLeft: 8, padding: '2px 6px', borderRadius: 4, background: '#b91c1c', color: 'white', fontSize: 10, fontWeight: 800 }}>SALARY MISSING</span>}
+                      </div>
                       <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{emp.empId} | {emp.designation || 'Employee'}</div>
+                      {salaryIssue && <div style={{ marginTop: 3, color: '#991b1b', fontSize: 10, fontWeight: 700 }}>
+                        No salary revision; legacy values — Basic {salaryIssue.legacySalaryFields.basicSalary}, HRA {salaryIssue.legacySalaryFields.hra}, Special {salaryIssue.legacySalaryFields.specialAllowance}, Conveyance {salaryIssue.legacySalaryFields.conveyance}, Medical {salaryIssue.legacySalaryFields.medical}
+                      </div>}
                     </td>
                     
                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: 700, color: '#059669', borderRight: '1px solid #e2e8f0' }}>{totalDays}</td>
-                    <td style={{ padding: '8px', textAlign: 'center', fontWeight: 700, color: '#059669', borderRight: '1px solid #e2e8f0', background: isChecked ? '#d1fae5' : '#ecfdf5' }}>{agg.wageDays}</td>
+                    <td style={{ padding: '8px', textAlign: 'center', fontWeight: 700, color: salaryIssue ? '#b91c1c' : '#059669', borderRight: '1px solid #e2e8f0', background: salaryIssue ? '#fecaca' : isChecked ? '#d1fae5' : '#ecfdf5' }}>{agg.wageDays}</td>
                     
                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#16a34a' }}>{agg.P}</td>
                     <td style={{ padding: '8px', textAlign: 'center', fontWeight: 600, color: '#dc2626' }}>{agg.A}</td>
@@ -647,6 +712,8 @@ export default function PayrollAttendance() {
                     {/* Dynamic Date Cells */}
                     {dateCols.map(col => {
                       const status = resolveDayAttendance(emp, col, data?.approvedLeaves || []);
+                      const isCellApproved = Boolean(emp.attendances?.find(att => att.date === col.fullDate)?.isApproved);
+                      const isCellLocked = isApprovedMode || (showAllAttendance && isCellApproved);
                       
                       let color = '#334155';
                       let bgColor = 'transparent';
@@ -658,28 +725,51 @@ export default function PayrollAttendance() {
                       else if (['CL', 'SL', 'EL', 'C-off', 'L', 'Leave'].includes(status)) { color = '#b45309'; bgColor = '#fef3c7'; }
 
                       return (
-                        <td key={col.fullDate} style={{ padding: 0, borderRight: '1px solid #e2e8f0', textAlign: 'center', background: isApprovedMode ? '#f8fafc' : bgColor }}>
-                          <select 
-                            value={status} 
-                            disabled={isApprovedMode || Boolean(emp.attendances?.find(att => att.date === col.fullDate)?.isApproved)}
-                            onChange={(e) => handleStatusChange(emp.id, col.fullDate, e.target.value)}
-                            style={{ 
-                              width: '100%', height: '100%', padding: '8px 4px', border: 'none', 
-                              background: 'transparent', color: color, fontWeight: 700,
-                              cursor: isApprovedMode ? 'not-allowed' : 'pointer', appearance: 'none', textAlign: 'center'
-                            }}>
-                            <option value="-">-</option>
-                            <option value="P">P</option>
-                            <option value="HD">HD</option>
-                            <option value="A">A</option>
-                            <option value="CL">CL</option>
-                            <option value="SL">SL</option>
-                            <option value="EL">EL</option>
-                            <option value="C-off">C-off</option>
-                            <option value="LWP">LWP</option>
-                            <option value="W-off">W-off</option>
-                            <option value="H">H</option>
-                          </select>
+                        <td key={col.fullDate} style={{ padding: 0, borderRight: '1px solid #e2e8f0', textAlign: 'center', background: salaryIssue ? '#fee2e2' : isCellLocked ? '#f8fafc' : bgColor }}>
+                          {dragFillEnabled ? (
+                            <div
+                              role="button"
+                              aria-label={`${emp.name}, ${col.fullDate}: ${status}${isCellApproved ? ', already approved' : ''}`}
+                              title={isCellLocked ? 'Approved attendance is locked.' : `Drag to apply ${dragFillStatus}; saving will unapprove this date.`}
+                              onPointerDown={event => startDragFill(event, emp.id, col.fullDate)}
+                              onPointerEnter={() => continueDragFill(emp.id, col.fullDate)}
+                              onPointerMove={() => continueDragFill(emp.id, col.fullDate)}
+                              style={{
+                                minWidth: 39, minHeight: 34, display: 'grid', placeItems: 'center', padding: '8px 4px',
+                                color: isCellLocked ? '#94a3b8' : color,
+                                background: salaryIssue ? '#fee2e2' : isCellLocked ? '#f1f5f9' : bgColor,
+                                fontWeight: 700, cursor: isCellLocked ? 'not-allowed' : 'crosshair',
+                                userSelect: 'none', touchAction: 'none',
+                                outline: !isCellLocked && status === dragFillStatus ? '1px solid #38bdf8' : 'none',
+                              }}
+                            >
+                              {status}
+                            </div>
+                          ) : (
+                            <select
+                              value={status}
+                              title={isCellLocked ? 'Approved attendance is locked.' : isCellApproved ? 'Editing this date will remove its approval.' : ''}
+                              disabled={isCellLocked}
+                              onChange={event => handleStatusChange(emp.id, col.fullDate, event.target.value)}
+                              style={{
+                                width: '100%', height: '100%', padding: '8px 4px', border: 'none',
+                                background: 'transparent', color: isCellLocked ? '#94a3b8' : color, fontWeight: 700,
+                                cursor: isCellLocked ? 'not-allowed' : 'pointer', appearance: 'none', textAlign: 'center',
+                              }}
+                            >
+                              <option value="-">-</option>
+                              <option value="P">P</option>
+                              <option value="HD">HD</option>
+                              <option value="A">A</option>
+                              <option value="CL">CL</option>
+                              <option value="SL">SL</option>
+                              <option value="EL">EL</option>
+                              <option value="C-off">C-off</option>
+                              <option value="LWP">LWP</option>
+                              <option value="W-off">W-off</option>
+                              <option value="H">H</option>
+                            </select>
+                          )}
                         </td>
                       );
                     })}

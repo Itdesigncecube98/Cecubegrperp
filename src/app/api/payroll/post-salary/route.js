@@ -144,12 +144,23 @@ export async function POST(request) {
 
     // Expects updates: [{ id: payrollRecordId, creditAccount, debitAccount, budgetHead, remark }]
     if (action === 'POST') {
+      if (updates.some(update => !update || typeof update.id !== 'string' || !update.id)) {
+        return NextResponse.json({ error: 'Every salary posting row must include a record id.' }, { status: 400 });
+      }
+      const requestedRecordIds = [...new Set(updates.map(update => update.id).filter(Boolean))];
+      const records = await prisma.payrollRecord.findMany({
+        where: { id: { in: requestedRecordIds } },
+        include: { employee: true, payCycle: true },
+      });
+      const recordsById = new Map(records.map(record => [record.id, record]));
+      const missingRecordId = requestedRecordIds.find(recordId => !recordsById.has(recordId));
+      if (missingRecordId) {
+        conflict(`Salary record ${missingRecordId} was not found. Refresh the list and try again.`);
+      }
+
       await prisma.$transaction(async (tx) => {
         for (const update of updates) {
-          const record = await tx.payrollRecord.findUnique({ where: { id: update.id }, include: { employee: true, payCycle: true } });
-          if (!record) {
-            conflict(`Salary record ${update.id} was not found. Refresh the list and try again.`);
-          }
+          const record = recordsById.get(update.id);
           if (record.status !== 'APPROVED') {
             conflict(`Salary for ${record.employee.name} is ${record.status.toLowerCase()} and cannot be posted. Refresh the list and select only approved, unposted salaries.`);
           }
@@ -232,7 +243,7 @@ export async function POST(request) {
             });
           }
         }
-      });
+      }, { maxWait: 10000, timeout: 60000 });
       
       return NextResponse.json({ success: true });
     }

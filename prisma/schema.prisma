@@ -879,6 +879,7 @@ model ProjectWbsTask {
   approvedAmount          Float                     @default(0)
   allocatedRate           Float                     @default(0)
   allocatedAmount         Float                     @default(0)
+  directAllocatedAmount   Float                     @default(0)
   allocatedEstimateRate   Float                     @default(0)
   allocatedEstimateAmount Float                     @default(0)
   unallocatedRate         Float                     @default(0)

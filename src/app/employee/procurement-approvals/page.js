@@ -13,6 +13,7 @@ export default function ProcurementApprovalsPage() {
   const [approvals, setApprovals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState('');
+  const [previewDocumentKey, setPreviewDocumentKey] = useState('');
   const [error, setError] = useState('');
 
   const loadApprovals = useCallback(async () => {
@@ -100,13 +101,21 @@ export default function ProcurementApprovalsPage() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 }}>
-                      <Link href={viewHref} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 11px', border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff', color: '#334155', textDecoration: 'none', fontSize: 13, fontWeight: 650, whiteSpace: 'nowrap' }}>
-                        <Eye size={15} /> View
+                      <button type="button" onClick={() => setPreviewDocumentKey(previous => previous === key ? '' : key)} aria-expanded={previewDocumentKey === key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 11px', border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff', color: '#334155', cursor: 'pointer', fontSize: 13, fontWeight: 650, whiteSpace: 'nowrap' }}>
+                        <Eye size={15} /> {previewDocumentKey === key ? 'Hide Copy' : `View ${document.documentType === 'PURCHASE_ORDER' ? 'PO' : 'WO'} Copy`}
+                      </button>
+                      <Link href={viewHref} target="_blank" rel="noopener noreferrer" aria-label={`Open ${label} copy in a new tab`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 11px', border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff', color: '#334155', textDecoration: 'none', fontSize: 13, fontWeight: 650, whiteSpace: 'nowrap' }}>
+                        Open Copy
                       </Link>
                       <button type="button" onClick={() => approve(document)} disabled={actionId === key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 13px', border: 0, borderRadius: 7, background: '#0f766e', color: '#fff', fontWeight: 700, cursor: actionId === key ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
                         <Check size={15} /> {actionId === key ? 'Approving…' : 'Approve'}
                       </button>
                     </div>
+                    {previewDocumentKey === key && (
+                      <div style={{ gridColumn: '1 / -1', overflow: 'hidden', border: '1px solid #cbd5e1', borderRadius: 8, background: '#f8fafc' }}>
+                        <iframe title={`${label} ${document.documentNumber} copy`} src={viewHref} style={{ display: 'block', width: '100%', height: 720, border: 0, background: '#fff' }} />
+                      </div>
+                    )}
                     <details style={{ gridColumn: '1 / -1', borderTop: '1px solid #e2e8f0', paddingTop: 10 }}>
                       <summary style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#475569', fontSize: 12, fontWeight: 650, cursor: 'pointer' }}>
                         <Clock size={14} /> Approval history

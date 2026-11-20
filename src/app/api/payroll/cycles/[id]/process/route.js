@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
 import { classifyStandardEarningHead } from '@/lib/payrollSalaryHeads';
-import { findApplicableSalaryRevision } from '@/lib/payrollDates';
-import { getLeaveCategory } from '@/lib/leavePolicy';
+import { findApplicableSalaryRevision, parsePayrollDate } from '@/lib/payrollDates';
 import { isEmployerContributionHead } from '@/lib/payrollSalaryHeads';
+import { resolveDayAttendance } from '@/lib/payrollAttendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +45,9 @@ export async function POST(request, { params }) {
     if (cycle.status === 'COMPLETED') {
       return NextResponse.json({ error: 'Cannot reprocess a completed pay cycle' }, { status: 400 });
     }
+    if ((cycle.selectedEmployees || []).includes('__NO_EMPLOYEES_SELECTED__')) {
+      return NextResponse.json({ error: 'No employees are selected for this pay cycle.' }, { status: 400 });
+    }
     const cycleMonth = String(cycle.endDate).slice(0, 7);
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(cycleMonth)) {
       return NextResponse.json({ error: 'Pay cycle end date must be a valid ISO date.' }, { status: 400 });
@@ -67,7 +70,8 @@ export async function POST(request, { params }) {
     const dateCols = [];
     let cur = new Date(start);
     while (cur <= end) {
-      dateCols.push({ fullDate: cur.toISOString().split('T')[0], isSunday: cur.getDay() === 0 });
+      const fullDate = cur.toISOString().split('T')[0];
+      dateCols.push({ fullDate, isSunday: cur.getDay() === 0, dayName: cur.toLocaleDateString('en-US', { weekday: 'long' }) });
       cur.setDate(cur.getDate() + 1);
     }
     const totalDays = dateCols.length;
@@ -76,9 +80,21 @@ export async function POST(request, { params }) {
     const holidays = await prisma.holiday.findMany({
       where: { date: { gte: cycle.startDate, lte: cycle.endDate } }
     });
-    const workingAnnouncements = await prisma.announcement.findMany({
-      where: { isWorkingDay: true, date: { gte: cycle.startDate, lte: cycle.endDate } }
-    });
+    const [announcements, workWeeks] = await Promise.all([
+      prisma.announcement.findMany({
+        where: { date: { gte: cycle.startDate, lte: cycle.endDate }, OR: [{ isWorkingDay: true }, { isHoliday: true }] },
+        select: { date: true, isHoliday: true, isWorkingDay: true },
+      }),
+      prisma.workWeek.findMany({ select: { day: true, isWorking: true } }),
+    ]);
+    const holidaysByDate = new Set(holidays.map(holiday => holiday.date));
+    const announcementsByDate = new Map(announcements.map(announcement => [announcement.date, announcement]));
+    for (const col of dateCols) {
+      const announcement = announcementsByDate.get(col.fullDate);
+      col.isWorkingDay = announcement?.isWorkingDay === true;
+      col.isHoliday = !col.isWorkingDay && (holidaysByDate.has(col.fullDate) || announcement?.isHoliday === true);
+      col.workWeeks = workWeeks;
+    }
     const approvedLeaves = await prisma.leaveRequest.findMany({
       where: { status: 'APPROVED', startDate: { lte: cycle.endDate }, endDate: { gte: cycle.startDate } }
     });
@@ -166,7 +182,12 @@ export async function POST(request, { params }) {
       (revisionMap[rev.employeeId] ||= []).push(rev);
     }
     for (const employeeId of employeeIds) {
-      revisionMap[employeeId] = findApplicableSalaryRevision(revisionMap[employeeId] || [], cycle.endDate);
+      const revisions = revisionMap[employeeId] || [];
+      revisionMap[employeeId] = findApplicableSalaryRevision(revisions, cycle.endDate) || revisions.sort((a, b) => {
+        const dateA = parsePayrollDate(a.effectiveFrom)?.getTime() || 0;
+        const dateB = parsePayrollDate(b.effectiveFrom)?.getTime() || 0;
+        return dateB - dateA || b.createdAt.getTime() - a.createdAt.getTime();
+      })[0] || null;
     }
 
     console.log(`[PAYROLL] Processing ${employees.length} employees, ${allRevisions.length} revisions found`);
@@ -191,6 +212,19 @@ export async function POST(request, { params }) {
       return NextResponse.json({
         error: 'Payroll was not processed because salary data is missing for one or more selected employees.',
         employeesNeedingSalary: employeesWithoutSalary.map(emp => emp.empId || emp.id),
+        salaryDiagnostics: employeesWithoutSalary.map(emp => ({
+          employeeId: emp.id,
+          employeeCode: emp.empId || emp.id,
+          name: emp.name,
+          reason: 'No salary revision was found; legacy salary fields are empty or zero.',
+          legacySalaryFields: {
+            basicSalary: Number.parseFloat(emp.basicSalary) || 0,
+            hra: Number.parseFloat(emp.hra) || 0,
+            specialAllowance: Number.parseFloat(emp.specialAllowance) || 0,
+            conveyance: Number.parseFloat(emp.conveyance) || 0,
+            medical: Number.parseFloat(emp.medical) || 0,
+          },
+        })),
         count: employeesWithoutSalary.length
       }, { status: 409 });
     }
@@ -199,65 +233,22 @@ export async function POST(request, { params }) {
 
     for (const emp of employees) {
       // ── Attendance ──────────────────────────────────────────────
-      let unpaidDays = 0, pCount = 0, aCount = 0, halfDayCount = 0;
+      let unpaidDays = 0, unmarkedDays = 0, aCount = 0, pCount = 0;
       dateCols.forEach(col => {
-        const att = emp.attendances.find(a => a.date === col.fullDate);
-        const isHoliday = holidays.some(h => h.date === col.fullDate);
-        let s = att?.status;
-
-        const leave = approvedLeaves.find(l =>
-          l.employeeId === emp.id && col.fullDate >= l.startDate && col.fullDate <= l.endDate
-        );
-
-        if (isHoliday) {
-          s = 'H';
-        } else if (leave) {
-          const leaveCategory = getLeaveCategory(leave.leaveType);
-          if (leaveCategory === 'CL') s = 'CL';
-          else if (leaveCategory === 'EL') s = 'EL';
-          else if (leaveCategory === 'SL') s = 'SL';
-          else if (leaveCategory === 'LWP') s = 'LWP';
-          else if (leaveCategory === 'COFF') s = 'C-off';
-          else s = 'CL';
-        } else if (!s) {
-          const isWorkingAnn = workingAnnouncements.some(a => a.date === col.fullDate);
-          if (isWorkingAnn) {
-            s = 'A';
-          } else if (col.isSunday) {
-            s = 'W-off';
-          } else {
-            s = 'A';
-          }
-        }
-        if (s === 'Present') s = 'P';
-        if (s === 'Absent') s = 'A';
-        if (s === 'Leave' || s === 'L') s = 'CL';
-        if (['COFF', 'C-OFF', 'C OFF'].includes(String(s || '').trim().toUpperCase())) s = 'C-off';
-
-        if (!isHoliday && leave?.isHalfDay) {
-          const leaveCategory = getLeaveCategory(leave.leaveType);
-          halfDayCount++;
-          if (leaveCategory === 'LWP') {
-            aCount += 0.5;
-            unpaidDays += 0.5;
-            return;
-          }
-          if (['CL', 'EL', 'COFF'].includes(leaveCategory)) {
-            pCount += 0.5;
-            return;
-          }
-        }
-
-        if (s === 'P' || s === 'C-off') pCount++;
-        else if (s === 'Half Day' || s === 'HD') {
-          halfDayCount++;
-          pCount += 0.5;
+        const status = resolveDayAttendance(emp, col, approvedLeaves);
+        if (status === 'P' || status === 'Present') pCount++;
+        else if (status === 'A' || status === 'Absent' || status === 'LWP') {
+          aCount++;
+          unpaidDays++;
+        } else if (status === 'HD' || status === 'Half Day') {
           unpaidDays += 0.5;
+        } else if (status === '-') {
+          unmarkedDays++;
         }
-        else if (s === 'A' || s === 'LWP') { aCount++; unpaidDays++; }
       });
 
-      const wageDays = totalDays - unpaidDays;
+      // Use the same resolved attendance statuses and wage-day rules as the Attendance grid.
+      const wageDays = totalDays - unpaidDays - unmarkedDays;
       const prorationFactor = totalDays > 0 ? wageDays / totalDays : 0;
 
       const revision = revisionMap[emp.id];

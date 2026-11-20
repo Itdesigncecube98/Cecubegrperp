@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Shield, ChevronDown, Check, X, User } from 'lucide-react';
 import { EMPLOYEE_WIDE_PROJECT_ID, LEGACY_PERMISSION_ALIASES, PROJECT_EMPLOYEE_TOOLS } from '../lib/employeeToolCatalog';
 
@@ -30,6 +30,86 @@ export function PermissionsProvider({ children }) {
   const [projects, setProjects] = useState([]);
   
   const [isOpen, setIsOpen] = useState(false);
+  const [widgetPosition, setWidgetPosition] = useState(null);
+  const [isDraggingWidget, setIsDraggingWidget] = useState(false);
+  const activeWidgetRef = useRef(null);
+  const widgetDragRef = useRef(null);
+  const suppressWidgetClickRef = useRef(false);
+
+  const startWidgetDrag = (event) => {
+    const targetButton = event.target.closest('button');
+    if (targetButton && targetButton !== event.currentTarget) return;
+    const widget = activeWidgetRef.current;
+    if (!widget) return;
+    const rect = widget.getBoundingClientRect();
+    widgetDragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+  };
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      const drag = widgetDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
+      drag.moved = true;
+      setIsDraggingWidget(true);
+      const widget = activeWidgetRef.current;
+      if (!widget) return;
+      const rect = widget.getBoundingClientRect();
+      const left = Math.max(0, Math.min(window.innerWidth - rect.width, event.clientX - drag.offsetX));
+      const top = Math.max(0, Math.min(window.innerHeight - rect.height, event.clientY - drag.offsetY));
+      setWidgetPosition({ left, top });
+    };
+    const handlePointerEnd = (event) => {
+      const drag = widgetDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      widgetDragRef.current = null;
+      setIsDraggingWidget(false);
+      if (drag.moved) {
+        suppressWidgetClickRef.current = true;
+        window.setTimeout(() => { suppressWidgetClickRef.current = false; }, 0);
+      }
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerEnd);
+    window.addEventListener('pointercancel', handlePointerEnd);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerEnd);
+      window.removeEventListener('pointercancel', handlePointerEnd);
+    };
+  }, []);
+
+  useEffect(() => {
+    const constrainWidgetPosition = () => {
+      const widget = activeWidgetRef.current;
+      if (!widget) return;
+      const rect = widget.getBoundingClientRect();
+      setWidgetPosition(current => {
+        if (!current) return current;
+        const left = Math.max(0, Math.min(window.innerWidth - rect.width, current.left));
+        const top = Math.max(0, Math.min(window.innerHeight - rect.height, current.top));
+        return left === current.left && top === current.top ? current : { left, top };
+      });
+    };
+    constrainWidgetPosition();
+    window.addEventListener('resize', constrainWidgetPosition);
+    return () => window.removeEventListener('resize', constrainWidgetPosition);
+  }, [isOpen]);
+
+  const openWidget = () => {
+    if (suppressWidgetClickRef.current) {
+      suppressWidgetClickRef.current = false;
+      return;
+    }
+    setIsOpen(true);
+  };
 
   // Load state from localStorage on mount
   useEffect(() => {
@@ -157,11 +237,21 @@ export function PermissionsProvider({ children }) {
       {children}
 
       {/* Floating Active Context Widget */}
-      <div style={{ display: 'block', position: 'fixed', bottom: 20, right: 20, zIndex: 9999, fontFamily: 'var(--font-inter)' }}>
+      <div
+        ref={activeWidgetRef}
+        style={{
+          display: 'block',
+          position: 'fixed',
+          ...(widgetPosition ? { left: widgetPosition.left, top: widgetPosition.top } : { bottom: 20, right: 20 }),
+          zIndex: 9999,
+          fontFamily: 'var(--font-inter)',
+        }}
+      >
         {!isOpen && (
           <button 
-            onClick={() => setIsOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 20, boxShadow: '0 10px 25px rgba(0,0,0,0.2)', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+            onPointerDown={startWidgetDrag}
+            onClick={openWidget}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 20, boxShadow: '0 10px 25px rgba(0,0,0,0.2)', cursor: isDraggingWidget ? 'grabbing' : 'grab', touchAction: 'none', fontWeight: 600, fontSize: 13 }}
           >
             <Shield size={16} color="#6366f1" />
             Active Session
@@ -171,7 +261,7 @@ export function PermissionsProvider({ children }) {
 
         {isOpen && (
           <div style={{ width: 320, background: '#fff', borderRadius: 12, boxShadow: '0 20px 40px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', background: '#0f172a', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div onPointerDown={startWidgetDrag} style={{ padding: '12px 16px', background: '#0f172a', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: isDraggingWidget ? 'grabbing' : 'grab', touchAction: 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13 }}>
                 <Shield size={14} color="#6366f1" /> {isAdminSession ? 'Session Simulator' : 'Employee Workspace'}
               </div>

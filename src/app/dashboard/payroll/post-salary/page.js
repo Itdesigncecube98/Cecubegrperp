@@ -10,6 +10,8 @@ export default function PostSalary() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [unposting, setUnposting] = useState(false);
+  const [missingEmployees, setMissingEmployees] = useState([]);
+  const [removingMissing, setRemovingMissing] = useState(false);
   const [filters, setFilters] = useState({ department: 'Select Here', location: 'Select Here', employeeId: 'Select Here', payCycleId: 'Select Here' });
   
   const [departments, setDepartments] = useState([]);
@@ -28,6 +30,23 @@ export default function PostSalary() {
   useEffect(() => {
     fetchDropdownData();
   }, []);
+
+  const fetchMissingEmployees = async cycleId => {
+    if (!cycleId || cycleId === 'Select Here') {
+      setMissingEmployees([]);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/payroll/cycles/${encodeURIComponent(cycleId)}`, { cache: 'no-store' });
+      const cycleData = await response.json();
+      setMissingEmployees(response.ok && Array.isArray(cycleData.payrollRecords)
+        ? cycleData.payrollRecords.filter(record => record.missingPayrollRecord)
+        : []);
+    } catch (error) {
+      console.error('Could not load missing cycle employees', error);
+      setMissingEmployees([]);
+    }
+  };
 
   const fetchDropdownData = async () => {
     try {
@@ -61,6 +80,7 @@ export default function PostSalary() {
           const requestedCycle = json.find(cycle => cycle.id === requestedCycleId);
           const cycleId = requestedCycle?.id || json[0].id;
           setFilters(prev => ({ ...prev, payCycleId: cycleId }));
+          await fetchMissingEmployees(cycleId);
 
           if (requestedCycle) {
             const params = new URLSearchParams({ payCycleId: cycleId, status: 'Unposted' });
@@ -95,10 +115,35 @@ export default function PostSalary() {
         setData(json);
         setSelectedRows(new Set());
       }
+      await fetchMissingEmployees(filters.payCycleId);
     } catch (error) {
       console.error('Failed to fetch data', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRemoveMissingEmployees = async () => {
+    const employeeIds = [...new Set(missingEmployees.map(record => record.employeeId))];
+    if (!employeeIds.length || !filters.payCycleId || filters.payCycleId === 'Select Here') return;
+    if (!window.confirm(`Remove all ${employeeIds.length} missing employee(s) from this pay cycle? Attendance and employee records will remain untouched.`)) return;
+
+    setRemovingMissing(true);
+    try {
+      const response = await fetch(`/api/payroll/cycles/${encodeURIComponent(filters.payCycleId)}/remove-missing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeIds }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Could not remove missing employees.');
+      setMissingEmployees([]);
+      await fetchData();
+      alert(`${result.removedCount} missing employee(s) removed from this pay cycle. Attendance and employee records were not deleted.`);
+    } catch (error) {
+      alert(error.message || 'Could not remove missing employees.');
+    } finally {
+      setRemovingMissing(false);
     }
   };
 
@@ -221,7 +266,11 @@ export default function PostSalary() {
           <label>Pay Cycle</label>
           <select 
             value={filters.payCycleId} 
-            onChange={(e) => setFilters({...filters, payCycleId: e.target.value})}
+            onChange={(e) => {
+              const payCycleId = e.target.value;
+              setFilters(previous => ({ ...previous, payCycleId }));
+              fetchMissingEmployees(payCycleId);
+            }}
             style={{ padding: '0.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', width: '250px' }}
           >
             <option value="Select Here">-- Select Pay Cycle --</option>
@@ -256,6 +305,22 @@ export default function PostSalary() {
           <div style={{ color: '#0284c7', fontWeight: '600', backgroundColor: '#e0f2fe', padding: '0.4rem 0.8rem', borderRadius: '4px' }}>
             Total Records: {data.length}
           </div>
+          {missingEmployees.length > 0 && (
+            <>
+              <div style={{ color: '#b91c1c', fontWeight: 700, backgroundColor: '#fee2e2', padding: '0.4rem 0.8rem', borderRadius: '4px' }}>
+                Missing payroll: {missingEmployees.length}
+              </div>
+              <button
+                className="btn-primary"
+                onClick={handleRemoveMissingEmployees}
+                disabled={removingMissing || cycles.find(cycle => cycle.id === filters.payCycleId)?.status === 'COMPLETED'}
+                title="Remove missing employees from this pay cycle only; attendance and employee records are preserved."
+                style={{ backgroundColor: removingMissing ? '#94a3b8' : '#dc2626' }}
+              >
+                {removingMissing ? 'Removing...' : 'Remove Missing from Cycle'}
+              </button>
+            </>
+          )}
           <button className="btn-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#0f766e' }}>
             <Printer size={16} /> Print ▾
           </button>

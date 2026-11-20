@@ -11,7 +11,7 @@ export const PROJECT_TOOL_MODULES = {
     'Project View', 'Project Edit', 'Project Delete', 'New Project',
     'Define WBS', 'WBS Add Group', 'WBS Edit Group', 'WBS Delete Group',
     'WBS Add Task', 'WBS Edit Task', 'WBS Delete Task',
-    'WBS Budget / Estimate Allocation', 'WBS Budget Lock',
+    'WBS Budget / Estimate Allocation', 'WBS Budget Lock', 'WBS Budget Release',
     'Task Library Create', 'Task Library Edit', 'Task Library Delete',
     'Material Library Create', 'Material Library Edit', 'Material Library Delete',
     'Labour Library Create', 'Labour Library Edit', 'Labour Library Delete',
@@ -53,11 +53,11 @@ export const PROJECT_TOOL_MODULES = {
   ],
 };
 
-// These tools apply to the employee's entire workspace. Engineering's
-// operational/project tools remain scoped to a single project.
+// These tools can be granted from Engineering Masters and apply across all projects.
 export const EMPLOYEE_WIDE_TOOL_MODULES = {
   Contracting: ['Approve Work Order'],
   Engineering: [
+    'WBS Budget Lock', 'WBS Budget Release',
     'Task Library Create', 'Task Library Edit', 'Task Library Delete',
     'Material Library Create', 'Material Library Edit', 'Material Library Delete',
     'Labour Library Create', 'Labour Library Edit', 'Labour Library Delete',
@@ -122,7 +122,7 @@ export const LEGACY_PERMISSION_ALIASES = {
   ENGG_CONTRACT_SCOPE: alias('Engineering', 'Contract & Scope Save', 'Lock Baseline'),
   ENGG_TEAM_ALLOCATION: alias('Engineering', 'Project Edit'),
   ENGG_DEFINE_WBS: alias('Engineering', 'Define WBS'),
-  ENGG_WBS_BUDGET: alias('Engineering', 'WBS Budget / Estimate Allocation', 'WBS Budget Lock'),
+  ENGG_WBS_BUDGET: alias('Engineering', 'WBS Budget / Estimate Allocation', 'WBS Budget Lock', 'WBS Budget Release'),
   ENGG_LIBRARY_MANAGER: alias('Engineering', 'Task Library Create', 'Material Library Create', 'Labour Library Create'),
   ENGG_TASK_LIBRARY: alias('Engineering', 'Task Library Create', 'Task Library Edit', 'Task Library Delete'),
   ENGG_MATERIAL_LIBRARY: alias('Engineering', 'Material Library Create', 'Material Library Edit', 'Material Library Delete'),

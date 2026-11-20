@@ -24,6 +24,11 @@ export async function GET(request) {
       where: { payCycleId: cycleId },
       select: { employeeId: true, status: true },
     });
+    const attendanceEmployees = await prisma.attendance.findMany({
+      where: { date: { gte: cycle.startDate, lte: cycle.endDate } },
+      select: { employeeId: true },
+      distinct: ['employeeId'],
+    });
 
     // Build employee filter
     const empWhere = {};
@@ -31,12 +36,14 @@ export async function GET(request) {
     if (branch) empWhere.branch = branch;
     if (location) empWhere.siteOffice = location;
     
-    // Keep existing payroll-record employees visible if a cycle's employee selection changed later.
+    // Include employees who already have attendance in the cycle even when the pay cycle's
+    // selected employee list was later narrowed. Keep payroll-record employees visible too.
     if (cycle.selectedEmployees && cycle.selectedEmployees.length > 0) {
       empWhere.id = {
         in: [...new Set([
           ...cycle.selectedEmployees,
           ...cyclePayrollRecords.map(record => record.employeeId),
+          ...attendanceEmployees.map(record => record.employeeId),
         ])],
       };
     }

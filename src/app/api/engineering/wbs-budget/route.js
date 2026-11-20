@@ -3,212 +3,198 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { readAuthSession } from '@/lib/authSession';
 import { employeeHasProjectModuleTool } from '@/lib/projectAccess';
-import fs from 'fs';
-import path from 'path';
+import { getProjectExpendedAmount, getProjectOrderCommitments, isProjectBudgetLocked, lockProjectBudget, ProjectBudgetError } from '@/lib/projectAllocatedBudget';
+import { calculateWbsTaskAmounts, sumWbsTaskBudgets } from '@/lib/wbsTaskBudget';
+import { recalculateProjectWbsBudgetTotals } from '@/lib/projectWbsBudgetTotals';
 
-function isProjectBudgetLocked(projectId) {
-  try {
-    const STORAGE_DIR = path.join(process.cwd(), '.planning_data');
-    const filePath = path.join(STORAGE_DIR, `project_budget_lock_${projectId}.json`);
-    if (fs.existsSync(filePath)) {
-      const config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      return config.isLocked === true;
-    }
-  } catch (err) {
-    console.error('Error checking project lock status:', err);
-  }
-  return false;
-}
-
-async function recalculateProjectBudgetTotals(db, projectId) {
-  const [projectRow, groupRows] = await Promise.all([
-    db.projectWbsTask.findFirst({
-      where: { projectId, wbsGroupId: null, wbsTaskId: null }
-    }),
-    db.projectWbsTask.findMany({
-      where: { projectId, wbsGroupId: { not: null }, wbsTaskId: null },
-      select: {
-        approvedAmount: true,
-        allocatedAmount: true,
-        allocatedEstimateAmount: true,
-        unallocatedAmount: true,
-        estimateAmount: true,
-        expendedAmount: true
-      }
-    })
-  ]);
-
-  if (!projectRow) {
-    throw new Error(`Project budget row not found for project ${projectId}`);
-  }
-
-  const amountFields = [
-    'approvedAmount',
-    'allocatedAmount',
-    'allocatedEstimateAmount',
-    'unallocatedAmount',
-    'estimateAmount',
-    'expendedAmount'
-  ];
-  const area = Number(projectRow.approvedBuiltUpArea) || 0;
-  const totals = {};
-
-  for (const amountField of amountFields) {
-    const total = groupRows.reduce((sum, group) => sum + (Number(group[amountField]) || 0), 0);
-    const rateField = amountField.replace('Amount', 'Rate');
-    totals[amountField] = total;
-    totals[rateField] = area > 0 ? total / area : 0;
-  }
-
-  return db.projectWbsTask.update({
-    where: { id: projectRow.id },
-    data: totals
-  });
-}
-
-async function syncProjectsWithTasks() {
+async function syncProjectsWithTasks(projectId = null) {
   const projects = await prisma.project.findMany({
-    include: {
-      wbsGroups: {
-        include: {
-          tasks: true
-        }
-      }
-    },
+    where: projectId ? { id: projectId } : {},
+    select: { id: true },
     orderBy: { createdAt: 'desc' }
   });
 
-  const validTaskIds = new Set();
-
-  for (const p of projects) {
-    const builtUp = 1;
-
-    // 1. ALWAYS ensure the Project Row exists
-    let pRow = await prisma.projectWbsTask.findFirst({
-      where: { projectId: p.id, wbsGroupId: null, wbsTaskId: null }
-    });
-    
-    if (!pRow) {
-      pRow = await prisma.projectWbsTask.create({
-        data: {
-          projectId: p.id,
-          taskName: p.name,
-          approvedBuiltUpArea: builtUp,
-          approvedRate: 0, approvedAmount: 0, allocatedRate: 0, allocatedAmount: 0,
-          allocatedEstimateRate: 0, allocatedEstimateAmount: 0, unallocatedRate: 0, unallocatedAmount: 0,
-          estimateRate: 0, estimateAmount: 0, expendedRate: 0, expendedAmount: 0
-        }
+  for (const project of projects) {
+    await prisma.$transaction(async tx => {
+      await lockProjectBudget(tx, project.id);
+      const currentProject = await tx.project.findUnique({
+        where: { id: project.id },
+        include: { wbsGroups: { include: { tasks: true } } }
       });
-      validTaskIds.add(pRow.id);
-    } else {
-      if (pRow.taskName !== p.name) {
-        await prisma.projectWbsTask.update({ where: { id: pRow.id }, data: { taskName: p.name } });
-      }
-      validTaskIds.add(pRow.id);
-    }
+      if (!currentProject) return;
 
-    if (p.wbsGroups && p.wbsGroups.length > 0) {
-      for (const g of p.wbsGroups) {
-        // Sync Group Row
-        let groupRow = await prisma.projectWbsTask.findFirst({
-          where: { projectId: p.id, wbsGroupId: g.id, wbsTaskId: null }
+      const builtUp = 1;
+      const validTaskIds = new Set();
+      let projectRow = await tx.projectWbsTask.findFirst({
+        where: { projectId: currentProject.id, wbsGroupId: null, wbsTaskId: null }
+      });
+      if (!projectRow) {
+        projectRow = await tx.projectWbsTask.create({
+          data: {
+            projectId: currentProject.id,
+            taskName: currentProject.name,
+            approvedBuiltUpArea: builtUp,
+          }
         });
-        
+      } else if (projectRow.taskName !== currentProject.name) {
+        projectRow = await tx.projectWbsTask.update({
+          where: { id: projectRow.id },
+          data: { taskName: currentProject.name }
+        });
+      }
+      validTaskIds.add(projectRow.id);
+      const isProjectLocked = isProjectBudgetLocked(currentProject.id) || projectRow.isLocked;
+
+      for (const group of currentProject.wbsGroups || []) {
+        const configuredRate = Number(group.rate) || 0;
+        const taskBudget = sumWbsTaskBudgets(group.tasks || []);
+        const definedGroupBudget = Number(group.budgetAmount) || configuredRate || taskBudget;
+        let groupRow = await tx.projectWbsTask.findFirst({
+          where: { projectId: currentProject.id, wbsGroupId: group.id, wbsTaskId: null }
+        });
+        const groupBudgetLocked = isProjectLocked || groupRow?.isLocked;
+        const groupBudget = groupBudgetLocked && groupRow
+          ? Number(groupRow.approvedAmount) || 0
+          : definedGroupBudget;
+        const groupRate = groupBudgetLocked && groupRow
+          ? Number(groupRow.approvedRate) || groupBudget
+          : configuredRate || groupBudget / builtUp;
 
         if (!groupRow) {
-          const configuredRate = Number(g.rate) || 0;
-          const groupBudget = configuredRate > 0 ? configuredRate * builtUp : Number(g.budgetAmount) || 0;
-          const groupRate = configuredRate || (builtUp > 0 ? groupBudget / builtUp : 0);
-          const newTask = await prisma.projectWbsTask.create({
+          groupRow = await tx.projectWbsTask.create({
             data: {
-              projectId: p.id,
-              taskName: g.name,
-              wbsGroupId: g.id,
+              projectId: currentProject.id,
+              taskName: group.name,
+              wbsGroupId: group.id,
               approvedBuiltUpArea: builtUp,
-              approvedRate: groupRate, approvedAmount: groupBudget, allocatedRate: 0, allocatedAmount: 0,
-              allocatedEstimateRate: 0, allocatedEstimateAmount: 0, unallocatedRate: 0, unallocatedAmount: 0,
-              estimateRate: 0, estimateAmount: 0, expendedRate: 0, expendedAmount: 0
+              approvedRate: groupRate,
+              approvedAmount: groupBudget,
+              allocatedRate: groupBudget,
+              allocatedAmount: groupBudget,
+              unallocatedRate: 0,
+              unallocatedAmount: 0,
             }
           });
-          validTaskIds.add(newTask.id);
+          if (groupBudget > 0) {
+            await tx.projectWbsBudgetHistory.create({
+              data: {
+                projectWbsTaskId: groupRow.id,
+                changes: {
+                  approvedAmount: { old: 0, new: groupBudget },
+                  allocatedAmount: { old: 0, new: groupBudget },
+                  unallocatedAmount: { old: 0, new: 0 },
+                },
+              },
+            });
+          }
         } else {
-          const configuredRate = Number(g.rate) || 0;
-          const groupBudget = configuredRate > 0 ? configuredRate * builtUp : Number(g.budgetAmount) || 0;
-          const groupRate = configuredRate || (builtUp > 0 ? groupBudget / builtUp : 0);
           const updateData = {};
-          if (groupRow.taskName !== g.name) updateData.taskName = g.name;
-          if (groupRate > 0 || groupBudget > 0) {
-            if (Math.abs((Number(groupRow.approvedRate) || 0) - groupRate) > 0.01) {
-              updateData.approvedRate = groupRate;
-            }
-            if (Math.abs((Number(groupRow.approvedAmount) || 0) - groupBudget) > 0.01) {
-              updateData.approvedAmount = groupBudget;
-            }
+          const changes = {};
+          if (groupRow.taskName !== group.name) updateData.taskName = group.name;
+          if (Math.abs((Number(groupRow.approvedRate) || 0) - groupRate) > 0.01) updateData.approvedRate = groupRate;
+          if (Math.abs((Number(groupRow.approvedAmount) || 0) - groupBudget) > 0.01) {
+            updateData.approvedAmount = groupBudget;
+            changes.approvedAmount = { old: groupRow.approvedAmount, new: groupBudget };
+          }
+          if (Math.abs((Number(groupRow.allocatedAmount) || 0) - groupBudget) > 0.01) {
+            updateData.allocatedAmount = groupBudget;
+            updateData.allocatedRate = groupBudget / builtUp;
+            changes.allocatedAmount = { old: groupRow.allocatedAmount, new: groupBudget };
+          }
+          if ((Number(groupRow.unallocatedAmount) || 0) > 0.01) {
+            updateData.unallocatedAmount = 0;
+            updateData.unallocatedRate = 0;
+            changes.unallocatedAmount = { old: groupRow.unallocatedAmount, new: 0 };
           }
           if (Object.keys(updateData).length > 0) {
-            await prisma.projectWbsTask.update({ where: { id: groupRow.id }, data: updateData });
+            groupRow = await tx.projectWbsTask.update({ where: { id: groupRow.id }, data: updateData });
           }
-          validTaskIds.add(groupRow.id);
-        }
-
-        // Sync Task Rows
-        for (const t of g.tasks) {
-          const expectedTaskName = `↳ ${t.name}`;
-          let taskRow = await prisma.projectWbsTask.findFirst({
-            where: { projectId: p.id, wbsTaskId: t.id }
-          });
-
-          if (!taskRow) {
-            taskRow = await prisma.projectWbsTask.findFirst({
-              where: { projectId: p.id, taskName: expectedTaskName, wbsTaskId: null, wbsGroupId: null }
+          if (Object.keys(changes).length > 0) {
+            await tx.projectWbsBudgetHistory.create({
+              data: { projectWbsTaskId: groupRow.id, changes }
             });
-            if (taskRow) {
-              taskRow = await prisma.projectWbsTask.update({
-                where: { id: taskRow.id },
-                data: { wbsTaskId: t.id, wbsGroupId: g.id }
-              });
-            }
           }
+        }
+        validTaskIds.add(groupRow.id);
 
+        for (const wbsTask of group.tasks) {
+          const expectedTaskName = `↳ ${wbsTask.name}`;
+          let taskRow = await tx.projectWbsTask.findFirst({
+            where: { projectId: currentProject.id, wbsTaskId: wbsTask.id }
+          });
           if (!taskRow) {
-            const newTask = await prisma.projectWbsTask.create({
-              data: {
-                projectId: p.id,
+            taskRow = await tx.projectWbsTask.findFirst({
+              where: {
+                projectId: currentProject.id,
                 taskName: expectedTaskName,
-                wbsTaskId: t.id,
-                wbsGroupId: g.id,
-                approvedBuiltUpArea: builtUp,
-                approvedRate: 0, approvedAmount: 0, allocatedRate: 0, allocatedAmount: 0,
-                allocatedEstimateRate: 0, allocatedEstimateAmount: 0, unallocatedRate: 0, unallocatedAmount: 0,
-                estimateRate: 0, estimateAmount: 0, expendedRate: 0, expendedAmount: 0
+                wbsTaskId: null,
+                wbsGroupId: null,
               }
             });
-            validTaskIds.add(newTask.id);
-          } else {
-            if (taskRow.taskName !== expectedTaskName || taskRow.wbsGroupId !== g.id) {
-              await prisma.projectWbsTask.update({ 
-                where: { id: taskRow.id }, 
-                data: { taskName: expectedTaskName, wbsGroupId: g.id } 
+            if (taskRow) {
+              taskRow = await tx.projectWbsTask.update({
+                where: { id: taskRow.id },
+                data: { wbsTaskId: wbsTask.id, wbsGroupId: group.id }
               });
             }
-            validTaskIds.add(taskRow.id);
           }
+          if (!taskRow) {
+            const taskAmounts = calculateWbsTaskAmounts(wbsTask);
+            taskRow = await tx.projectWbsTask.create({
+              data: {
+                projectId: currentProject.id,
+                taskName: expectedTaskName,
+                wbsTaskId: wbsTask.id,
+                wbsGroupId: group.id,
+                approvedBuiltUpArea: builtUp,
+                approvedRate: taskAmounts.totalAmount,
+                approvedAmount: taskAmounts.totalAmount,
+              }
+            });
+            if (taskAmounts.totalAmount > 0) {
+              await tx.projectWbsBudgetHistory.create({
+                data: {
+                  projectWbsTaskId: taskRow.id,
+                  changes: { approvedAmount: { old: 0, new: taskAmounts.totalAmount } },
+                },
+              });
+            }
+          } else if (taskRow.taskName !== expectedTaskName || taskRow.wbsGroupId !== group.id) {
+            taskRow = await tx.projectWbsTask.update({
+              where: { id: taskRow.id },
+              data: { taskName: expectedTaskName, wbsGroupId: group.id }
+            });
+          }
+          const taskAmounts = calculateWbsTaskAmounts(wbsTask);
+          if (!isProjectLocked && !groupRow?.isLocked && !taskRow.isLocked
+            && Math.abs((Number(taskRow.approvedAmount) || 0) - taskAmounts.totalAmount) > 0.01) {
+            const previousAmount = Number(taskRow.approvedAmount) || 0;
+            taskRow = await tx.projectWbsTask.update({
+              where: { id: taskRow.id },
+              data: { approvedAmount: taskAmounts.totalAmount, approvedRate: taskAmounts.totalAmount },
+            });
+            await tx.projectWbsBudgetHistory.create({
+              data: {
+                projectWbsTaskId: taskRow.id,
+                changes: { approvedAmount: { old: previousAmount, new: taskAmounts.totalAmount } },
+              },
+            });
+          }
+          validTaskIds.add(taskRow.id);
         }
-
       }
-    }
-  }
 
-  // Cleanup old tasks
-  const allTasks = await prisma.projectWbsTask.findMany();
-  for (const t of allTasks) {
-    if (!validTaskIds.has(t.id)) {
-      await prisma.projectWbsTask.delete({ where: { id: t.id } }).catch(() => {});
-    }
-  }
-
-  for (const project of projects) {
-    await recalculateProjectBudgetTotals(prisma, project.id);
+      const existingRows = await tx.projectWbsTask.findMany({
+        where: { projectId: currentProject.id },
+        select: { id: true }
+      });
+      for (const row of existingRows) {
+        if (!validTaskIds.has(row.id)) {
+          await tx.projectWbsTask.delete({ where: { id: row.id } });
+        }
+      }
+      await recalculateProjectWbsBudgetTotals(tx, currentProject.id);
+    });
   }
 }
 
@@ -220,36 +206,76 @@ export async function GET(req) {
     const projectId = searchParams.get('projectId');
     const sync = searchParams.get('sync');
 
-    // Run sync only when explicitly requested
+    // Keep WBS group budgets current while limiting employee sync to granted projects.
     if (sync === 'true') {
-      if (session.type !== 'admin') return NextResponse.json({ error: 'Only admins can sync WBS budgets.' }, { status: 403 });
-      await syncProjectsWithTasks();
+      if (session.type === 'admin') {
+        await syncProjectsWithTasks(projectId && projectId !== 'ALL' ? projectId : null);
+      } else {
+        const [grants, employeeWideBudgetGrant] = await Promise.all([prisma.employeeProjectToolAccess.findMany({
+          where: {
+            employeeId: session.id,
+            granted: true,
+            projectId: { not: '__EMPLOYEE_WIDE__' },
+            tool: { is: { module: 'Engineering', name: { in: ['WBS Budget / Estimate Allocation', 'WBS Budget Lock', 'WBS Budget Release'] } } },
+          },
+          select: { projectId: true },
+          distinct: ['projectId'],
+        }), prisma.employeeProjectToolAccess.findFirst({
+          where: {
+            employeeId: session.id,
+            granted: true,
+            projectId: '__EMPLOYEE_WIDE__',
+            tool: { is: { module: 'Engineering', name: { in: ['WBS Budget Lock', 'WBS Budget Release'] } } },
+          },
+          select: { id: true },
+        })]);
+        const grantedProjectIds = grants.map(grant => grant.projectId);
+        const projectIdsToSync = projectId && projectId !== 'ALL'
+          ? (employeeWideBudgetGrant || grantedProjectIds.includes(projectId) ? [projectId] : [])
+          : employeeWideBudgetGrant ? null : grantedProjectIds;
+        if (projectId && projectId !== 'ALL' && projectIdsToSync.length === 0) {
+          return NextResponse.json({ error: 'No WBS Budget access for this project.' }, { status: 403 });
+        }
+        if (projectIdsToSync === null) await syncProjectsWithTasks();
+        else await Promise.all(projectIdsToSync.map(id => syncProjectsWithTasks(id)));
+      }
     }
 
     let where = {};
     if (projectId && projectId !== 'ALL') {
       if (session.type === 'employee') {
-        const [canView, canLock] = await Promise.all([
+        const [canView, canLock, canRelease] = await Promise.all([
           employeeHasProjectModuleTool(prisma, session.id, projectId, 'Engineering', 'WBS Budget / Estimate Allocation'),
           employeeHasProjectModuleTool(prisma, session.id, projectId, 'Engineering', 'WBS Budget Lock'),
+          employeeHasProjectModuleTool(prisma, session.id, projectId, 'Engineering', 'WBS Budget Release'),
         ]);
-        if (!canView && !canLock) return NextResponse.json({ error: 'No WBS Budget access for this project.' }, { status: 403 });
+        if (!canView && !canLock && !canRelease) return NextResponse.json({ error: 'No WBS Budget access for this project.' }, { status: 403 });
       }
       where.projectId = projectId;
     } else if (session.type === 'employee') {
-      const grants = await prisma.employeeProjectToolAccess.findMany({
+      const [grants, employeeWideBudgetGrant] = await Promise.all([prisma.employeeProjectToolAccess.findMany({
         where: {
           employeeId: session.id,
           granted: true,
           projectId: { not: '__EMPLOYEE_WIDE__' },
-          tool: { is: { module: 'Engineering', name: { in: ['WBS Budget / Estimate Allocation', 'WBS Budget Lock'] } } },
+          tool: { is: { module: 'Engineering', name: { in: ['WBS Budget / Estimate Allocation', 'WBS Budget Lock', 'WBS Budget Release'] } } },
         },
         select: { projectId: true },
         distinct: ['projectId'],
-      });
-      const projectIds = grants.map(grant => grant.projectId);
-      if (!projectIds.length) return NextResponse.json({ tasks: [], isProjectLocked: false });
-      where.projectId = { in: projectIds };
+      }), prisma.employeeProjectToolAccess.findFirst({
+        where: {
+          employeeId: session.id,
+          granted: true,
+          projectId: '__EMPLOYEE_WIDE__',
+          tool: { is: { module: 'Engineering', name: { in: ['WBS Budget Lock', 'WBS Budget Release'] } } },
+        },
+        select: { id: true },
+      })]);
+      if (!employeeWideBudgetGrant) {
+        const projectIds = grants.map(grant => grant.projectId);
+        if (!projectIds.length) return NextResponse.json({ tasks: [], isProjectLocked: false });
+        where.projectId = { in: projectIds };
+      }
     }
 
     let tasks = await prisma.projectWbsTask.findMany({
@@ -263,13 +289,43 @@ export async function GET(req) {
             company: true,
             status: true
           }
-        }
+        },
+        budgetHistories: {
+          select: { id: true, changes: true, createdAt: true },
+          orderBy: { createdAt: 'asc' }
+        },
       }
+    });
+
+    const projectIds = [...new Set(tasks.map(task => task.projectId))];
+    const projectAmounts = new Map(await Promise.all(projectIds.map(async id => {
+      const [allocatedEstimateAmount, expendedAmount, budgetLockActive] = await Promise.all([
+        getProjectOrderCommitments(prisma, id),
+        getProjectExpendedAmount(prisma, id),
+        Promise.resolve(isProjectBudgetLocked(id)),
+      ]);
+      return [id, { allocatedEstimateAmount, expendedAmount, budgetLockActive }];
+    })));
+    tasks = tasks.map(task => {
+      const isProjectRow = !task.wbsGroupId && !task.wbsTaskId;
+      const amounts = projectAmounts.get(task.projectId) || {};
+      const allocatedEstimateAmount = isProjectRow ? (amounts.allocatedEstimateAmount || 0) : 0;
+      const releasedBudgetAmount = isProjectRow ? (Number(task.directAllocatedAmount) || 0) : 0;
+      return {
+        ...task,
+        allocatedEstimateAmount,
+        releasedBudgetAmount,
+        budgetLockActive: Boolean(amounts.budgetLockActive),
+        unallocatedEstimateAmount: isProjectRow
+          ? releasedBudgetAmount - allocatedEstimateAmount
+          : 0,
+        expendedAmount: isProjectRow ? (amounts.expendedAmount || 0) : task.expendedAmount,
+      };
     });
 
     // If specific project was requested but has no task yet, sync it
     if (session.type === 'admin' && tasks.length === 0 && projectId && projectId !== 'ALL') {
-      await syncProjectsWithTasks();
+      await syncProjectsWithTasks(projectId);
       tasks = await prisma.projectWbsTask.findMany({
         where: { projectId },
         orderBy: { createdAt: 'asc' },
@@ -284,6 +340,22 @@ export async function GET(req) {
           }
         }
       });
+      const [allocatedEstimateAmount, expendedAmount] = await Promise.all([
+        getProjectOrderCommitments(prisma, projectId),
+        getProjectExpendedAmount(prisma, projectId),
+      ]);
+      tasks = tasks.map(task => {
+        const isProjectRow = !task.wbsGroupId && !task.wbsTaskId;
+        return {
+          ...task,
+          allocatedEstimateAmount: isProjectRow ? allocatedEstimateAmount : 0,
+          releasedBudgetAmount: isProjectRow ? (Number(task.directAllocatedAmount) || 0) : 0,
+          unallocatedEstimateAmount: isProjectRow
+            ? (Number(task.directAllocatedAmount) || 0) - allocatedEstimateAmount
+            : 0,
+          expendedAmount: isProjectRow ? expendedAmount : task.expendedAmount,
+        };
+      });
     }
 
     const isProjectLocked = projectId && projectId !== 'ALL'
@@ -295,6 +367,9 @@ export async function GET(req) {
     return NextResponse.json({ tasks, isProjectLocked });
   } catch (error) {
     console.error('Error fetching WBS budget tasks:', error);
+    if (error instanceof ProjectBudgetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: error?.message || String(error) }, { status: 500 });
   }
 }
@@ -323,6 +398,9 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Budgets can only be created from Define WBS groups.' }, { status: 400 });
   } catch (error) {
     console.error('Error creating WBS task:', error);
+    if (error instanceof ProjectBudgetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: error?.message || String(error) }, { status: 500 });
   }
 }
@@ -344,22 +422,36 @@ export async function PUT(req) {
     }
 
     if (session.type === 'employee') {
-      const changesBudget = Object.keys(updateData).some(field => field !== 'isLocked');
-      const [canLock, canEdit] = await Promise.all([
+      const changesLock = updateData.isLocked !== undefined;
+      const changesRelease = updateData.releaseAmount !== undefined;
+      const changesBudget = Object.keys(updateData).some(field => field !== 'isLocked' && field !== 'releaseAmount');
+      const [canLock, canRelease, canEdit] = await Promise.all([
         updateData.isLocked !== undefined
           ? employeeHasProjectModuleTool(prisma, session.id, existingTask.projectId, 'Engineering', 'WBS Budget Lock')
+          : Promise.resolve(true),
+        changesRelease
+          ? employeeHasProjectModuleTool(prisma, session.id, existingTask.projectId, 'Engineering', 'WBS Budget Release')
           : Promise.resolve(true),
         changesBudget
           ? employeeHasProjectModuleTool(prisma, session.id, existingTask.projectId, 'Engineering', 'WBS Budget / Estimate Allocation')
           : Promise.resolve(true),
       ]);
-      if (!canLock || !canEdit) return NextResponse.json({ error: 'You do not have the required WBS Budget permission for this project.' }, { status: 403 });
+      if ((changesLock && !canLock) || (changesRelease && !canRelease) || (changesBudget && !canEdit)) {
+        return NextResponse.json({ error: 'You do not have the required WBS Budget permission for this project.' }, { status: 403 });
+      }
     }
 
+    const isProjectRow = !existingTask.wbsGroupId && !existingTask.wbsTaskId;
     const isGroupRow = Boolean(existingTask.wbsGroupId && !existingTask.wbsTaskId);
     const budgetFields = Object.keys(updateData).filter(field => field !== 'isLocked');
-    if (!isGroupRow && budgetFields.length > 0) {
-      return NextResponse.json({ error: 'Budgets can only be edited on WBS group rows.' }, { status: 400 });
+    const editableFields = isProjectRow
+      ? new Set(['approvedAmount', 'releaseAmount', 'budgetHeadCategory', 'remark', 'isLocked'])
+      : isGroupRow
+        ? new Set(['budgetHeadCategory', 'remark', 'isLocked'])
+        : new Set(['isLocked']);
+    const unsupportedFields = Object.keys(updateData).filter(field => !editableFields.has(field));
+    if (unsupportedFields.length) {
+      return NextResponse.json({ error: `These WBS budget fields are calculated from Define WBS or PO/WO totals: ${unsupportedFields.join(', ')}.` }, { status: 400 });
     }
 
     if (budgetFields.length > 0) {
@@ -372,34 +464,87 @@ export async function PUT(req) {
       }
     }
 
-    // Process numeric conversions
-    const numericFields = [
-      'approvedBuiltUpArea', 'approvedRate', 'approvedAmount',
-      'allocatedRate', 'allocatedAmount',
-      'allocatedEstimateRate', 'allocatedEstimateAmount',
-      'unallocatedRate', 'unallocatedAmount',
-      'estimateRate', 'estimateAmount',
-      'expendedRate', 'expendedAmount'
-    ];
-
     const sanitizedData = { ...updateData };
-    for (const field of numericFields) {
+    for (const field of ['approvedAmount']) {
       if (sanitizedData[field] !== undefined) {
-        sanitizedData[field] = Number(sanitizedData[field]) || 0;
+        sanitizedData[field] = Number(sanitizedData[field]);
+        if (!Number.isFinite(sanitizedData[field]) || sanitizedData[field] < 0) {
+          return NextResponse.json({ error: 'Approved budget must be a non-negative number.' }, { status: 400 });
+        }
       }
     }
-
-    const changes = {};
-    for (const field of numericFields) {
-      if (sanitizedData[field] !== undefined && existingTask[field] !== sanitizedData[field]) {
-        changes[field] = { old: existingTask[field], new: sanitizedData[field] };
+    if (sanitizedData.releaseAmount !== undefined) {
+      sanitizedData.releaseAmount = Number(sanitizedData.releaseAmount);
+      if (!isProjectRow || !Number.isFinite(sanitizedData.releaseAmount) || sanitizedData.releaseAmount <= 0) {
+        return NextResponse.json({ error: 'Enter a positive release amount on the project budget row.' }, { status: 400 });
+      }
+      if (Object.keys(sanitizedData).some(field => field !== 'releaseAmount')) {
+        return NextResponse.json({ error: 'Release budget must be submitted as a separate action.' }, { status: 400 });
       }
     }
 
     const updatedTask = await prisma.$transaction(async tx => {
+      if (budgetFields.length > 0) await lockProjectBudget(tx, existingTask.projectId);
+      const currentTask = await tx.projectWbsTask.findUnique({ where: { id } });
+      if (!currentTask) throw new ProjectBudgetError('Task not found.', 404);
+
+      const amountToSave = { ...sanitizedData };
+      if (sanitizedData.releaseAmount !== undefined) {
+        const previousReleased = Number(currentTask.directAllocatedAmount) || 0;
+        const releasedBudgetAmount = previousReleased + sanitizedData.releaseAmount;
+        const approvedAmount = Number(currentTask.approvedAmount) || 0;
+        if (releasedBudgetAmount > approvedAmount + 0.005) {
+          throw new ProjectBudgetError('Total released budget cannot exceed the approved budget.', 409);
+        }
+        const committedAmount = await getProjectOrderCommitments(tx, currentTask.projectId);
+        if (releasedBudgetAmount + 0.005 < committedAmount) {
+          throw new ProjectBudgetError('Released budget cannot be lower than existing PO/WO commitments.', 409);
+        }
+        const savedTask = await tx.projectWbsTask.update({
+          where: { id },
+          data: { directAllocatedAmount: releasedBudgetAmount },
+        });
+        await tx.projectWbsBudgetHistory.create({
+          data: {
+            projectWbsTaskId: id,
+            changes: {
+              releaseBudget: {
+                old: previousReleased,
+                increment: sanitizedData.releaseAmount,
+                new: releasedBudgetAmount,
+              },
+            },
+          },
+        });
+        return savedTask;
+      }
+      if (sanitizedData.approvedAmount !== undefined) {
+        const [groupTotals, committedAmount, expendedAmount] = await Promise.all([
+          tx.projectWbsTask.aggregate({
+            where: { projectId: currentTask.projectId, wbsGroupId: { not: null }, wbsTaskId: null },
+            _sum: { allocatedAmount: true },
+          }),
+          getProjectOrderCommitments(tx, currentTask.projectId),
+          getProjectExpendedAmount(tx, currentTask.projectId),
+        ]);
+        const allocatedAmount = Number(groupTotals._sum.allocatedAmount) || 0;
+        const releasedBudgetAmount = Number(currentTask.directAllocatedAmount) || 0;
+        const minimumApprovedAmount = Math.max(allocatedAmount, releasedBudgetAmount, committedAmount, expendedAmount);
+        if (sanitizedData.approvedAmount + 0.005 < minimumApprovedAmount) {
+          throw new ProjectBudgetError('Approved budget cannot be lower than the WBS allocation, PO/WO commitments, or billed expenditure.', 409);
+        }
+      }
+
+      const changes = {};
+      for (const field of ['approvedAmount', 'budgetHeadCategory', 'remark']) {
+        if (amountToSave[field] !== undefined && Math.abs((Number(currentTask[field]) || 0) - amountToSave[field]) > 0.005) {
+          changes[field] = { old: currentTask[field], new: amountToSave[field] };
+        }
+      }
+
       const savedTask = await tx.projectWbsTask.update({
         where: { id },
-        data: sanitizedData,
+        data: amountToSave,
         include: {
           project: {
             select: { id: true, name: true, company: true, status: true }
@@ -416,80 +561,21 @@ export async function PUT(req) {
         });
       }
 
-      if (isGroupRow) {
-        await tx.wbsGroup.update({
-          where: { id: existingTask.wbsGroupId },
-          data: {
-            rate: savedTask.approvedRate,
-            budgetAmount: savedTask.approvedAmount
-          }
-        });
-        await recalculateProjectBudgetTotals(tx, existingTask.projectId);
+      if (isProjectRow && sanitizedData.approvedAmount !== undefined) {
+        await recalculateProjectWbsBudgetTotals(tx, existingTask.projectId);
       }
 
-      return savedTask;
+      return isProjectRow
+        ? tx.projectWbsTask.findUnique({ where: { id } })
+        : savedTask;
     });
-
-    // Automatically record to estimate changes log if estimate was modified
-    try {
-      const prevEstRate = existingTask.estimateRate || 0;
-      const newEstRate = sanitizedData.estimateRate !== undefined ? sanitizedData.estimateRate : prevEstRate;
-      const prevEstAmount = existingTask.estimateAmount || 0;
-      const newEstAmount = sanitizedData.estimateAmount !== undefined ? sanitizedData.estimateAmount : prevEstAmount;
-
-      if ((newEstRate !== prevEstRate || newEstAmount !== prevEstAmount) && existingTask.projectId) {
-        const STORAGE_DIR = path.join(process.cwd(), '.planning_data');
-        const estFilePath = path.join(STORAGE_DIR, `estimate_changes_${existingTask.projectId}.json`);
-        let estData = { projectId: existingTask.projectId, changes: [] };
-        if (fs.existsSync(estFilePath)) {
-          try { estData = JSON.parse(fs.readFileSync(estFilePath, 'utf-8')); } catch (_) {}
-        }
-        if (!Array.isArray(estData.changes)) estData.changes = [];
-
-        const existingRevs = estData.changes.filter(c => c.itemName === existingTask.taskName);
-        const nextRevNo = `Rev ${existingRevs.length + 1}`;
-        const nowIso = new Date().toISOString();
-
-        const rateDiff = newEstRate - prevEstRate;
-        const amtDiff = newEstAmount - prevEstAmount;
-
-        const logEntry = {
-          id: `est-chg-${Date.now()}`,
-          projectId: existingTask.projectId,
-          projectName: updatedTask.project?.name || 'Project',
-          company: updatedTask.project?.company || 'Company',
-          itemId: existingTask.id,
-          itemName: existingTask.taskName,
-          itemCategory: isGroupRow ? 'WBS Group' : 'WBS Project',
-          unit: 'Sqm',
-          previousRate: prevEstRate,
-          newRate: newEstRate,
-          rateChange: rateDiff,
-          rateChangePct: prevEstRate > 0 ? Number(((rateDiff / prevEstRate) * 100).toFixed(2)) : 0,
-          previousAmount: prevEstAmount,
-          newAmount: newEstAmount,
-          amountChange: amtDiff,
-          amountChangePct: prevEstAmount > 0 ? Number(((amtDiff / prevEstAmount) * 100).toFixed(2)) : 0,
-          changedAt: nowIso,
-          formattedDate: new Date(nowIso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + new Date(nowIso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-          changedBy: 'WBS Budget Editor',
-          reason: sanitizedData.remark || 'Estimate revision updated in WBS Budget',
-          revisionNo: nextRevNo,
-          status: 'Applied'
-        };
-
-        estData.changes.unshift(logEntry);
-        estData.lastUpdated = nowIso;
-        if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
-        fs.writeFileSync(estFilePath, JSON.stringify(estData, null, 2), 'utf-8');
-      }
-    } catch (logErr) {
-      console.warn('Failed to record estimate change audit log:', logErr);
-    }
 
     return NextResponse.json(updatedTask);
   } catch (error) {
     console.error('Error updating WBS task:', error);
+    if (error instanceof ProjectBudgetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: error?.message || String(error) }, { status: 500 });
   }
 }

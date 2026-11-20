@@ -7,6 +7,7 @@ import { getDocumentActors, getDocumentEditors, recordDocumentAction, recordDocu
 import { autoGrantCreatorProjectTools } from '@/lib/autoGrantCreatorTools';
 import { checkDocumentApprovalAccess } from '@/lib/documentApprovalAccess';
 import { readAuthSession } from '@/lib/authSession';
+import { assertProjectOrderWithinAllocatedBudget, ProjectBudgetError } from '@/lib/projectAllocatedBudget';
 import {
   addContractManagerApprovalRow,
   buildWorkOrderApprovalRows,
@@ -152,8 +153,15 @@ export async function POST(request) {
     const cv = parseFloat(contractValue) || 0;
     const ap = parseFloat(advancePercent) || 0;
 
-    let workOrder = await prisma.workOrder.create({
-      data: {
+    let workOrder = await prisma.$transaction(async tx => {
+      await assertProjectOrderWithinAllocatedBudget(tx, {
+        projectMasterId: projectId,
+        projectName: project.name,
+        amount: cv,
+      });
+
+      return tx.workOrder.create({
+        data: {
         woNo,
         projectId,
         contractorId:     contractorId || null,
@@ -171,10 +179,11 @@ export async function POST(request) {
         retentionPercent: parseFloat(retentionPercent) || 0,
         paymentTerms:     paymentTerms || quotationTerms?.paymentTerms || null,
         status:           'Draft',
-      },
-      include: {
-        project: { select: { id: true, name: true, projectId: true } }
-      }
+        },
+        include: {
+          project: { select: { id: true, name: true, projectId: true } }
+        }
+      });
     });
     await recordWorkOrderStatus(prisma, {
       workOrderId: workOrder.id,
@@ -235,6 +244,9 @@ export async function POST(request) {
     return NextResponse.json(workOrder, { status: 201 });
   } catch (error) {
     console.error('Error creating work order:', error);
+    if (error instanceof ProjectBudgetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -256,6 +268,13 @@ export async function PUT(request) {
       const priorScope = (() => { try { return existing.scope ? JSON.parse(existing.scope) : {}; } catch { return {}; } })();
       const accountsSentAt = new Date().toISOString();
       const updated = await prisma.$transaction(async tx => {
+        if (fields.contractValue !== undefined) {
+          await assertProjectOrderWithinAllocatedBudget(tx, {
+            projectMasterId: existing.projectId,
+            amount: updatedAmount,
+            excludeWorkOrderId: id,
+          });
+        }
         const result = await tx.workOrder.update({
           where: { id },
           data: { scope: JSON.stringify({ ...priorScope, audit: { ...(priorScope.audit || {}), accountsSentBy: actor, accountsSentAt } }) },
@@ -532,6 +551,9 @@ export async function PUT(request) {
     return NextResponse.json({ ...updated, ...audit, approvedBy: audit.approvedBy || null, editedBy: fields.editedBy || null });
   } catch (error) {
     console.error('Error updating work order:', error);
+    if (error instanceof ProjectBudgetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { Suspense } from 'react';
 import EngineeringSidebar from '../../components/EngineeringSidebar';
 import { Bell, User, Paintbrush } from 'lucide-react';
 import TopHeader from '../../components/TopHeader';
@@ -11,7 +11,9 @@ export default function EngineeringLayout({ children }) {
 
   return (
     <div className={`engineering-layout ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <EngineeringSidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+      <Suspense fallback={<aside className="sidebar" aria-hidden="true" />}>
+        <EngineeringSidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+      </Suspense>
       <div className={`engineering-main ${isCollapsed ? 'collapsed' : ''}`}>
         <div style={{ padding: '24px 24px 0 24px', background: 'var(--bg-primary, #f8fafc)' }}>
           <TopHeader title="Engineering Dashboard" />

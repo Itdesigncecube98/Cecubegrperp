@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import AppModal from '@/components/AppModal';
 
 const EMPTY = { cycle: '', startDate: '', endDate: '', freq: 'Monthly', employees: 'All Employees', selectedEmployeeIds: [], status: 'Open' };
+const NO_EMPLOYEES_SENTINEL = '__NO_EMPLOYEES_SELECTED__';
 
 export default function PayCycle() {
   const [data, setData] = useState([]);
@@ -30,8 +31,10 @@ export default function PayCycle() {
           ...c,
           period: `${c.startDate} to ${c.endDate}`,
           freq: 'Monthly',
-          selectedEmployeeIds: c.selectedEmployees || [],
-          employees: c.selectedEmployees?.length > 0 ? `${c.selectedEmployees.length} Selected` : 'All Employees',
+          selectedEmployeeIds: (c.selectedEmployees || []).filter(employeeId => employeeId !== NO_EMPLOYEES_SENTINEL),
+          employees: c.selectedEmployees?.includes(NO_EMPLOYEES_SENTINEL)
+            ? 'No Employees'
+            : c.selectedEmployees?.length > 0 ? `${c.selectedEmployees.length} Selected` : 'All Employees',
           cycle: c.name,
           count: c._count?.payrollRecords || 0
         }));
@@ -83,7 +86,7 @@ export default function PayCycle() {
             startDate,
             endDate,
             status: form.status || 'Open',
-            selectedEmployees: form.employees === 'All Employees' ? [] : (form.selectedEmployeeIds || [])
+            selectedEmployees: form.employees === 'All Employees' ? [] : form.employees === 'No Employees' ? [NO_EMPLOYEES_SENTINEL] : (form.selectedEmployeeIds || [])
           })
         });
       } else {
@@ -95,7 +98,7 @@ export default function PayCycle() {
             startDate,
             endDate,
             status: form.status,
-            selectedEmployees: form.employees === 'All Employees' ? [] : (form.selectedEmployeeIds || [])
+            selectedEmployees: form.employees === 'All Employees' ? [] : form.employees === 'No Employees' ? [NO_EMPLOYEES_SENTINEL] : (form.selectedEmployeeIds || [])
           })
         });
       }
@@ -232,13 +235,14 @@ export default function PayCycle() {
             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b' }}>Select Employees</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <select 
-                value={form.employees === 'All Employees' ? 'All Employees' : 'Manual Select'} 
+                value={form.employees === 'All Employees' ? 'All Employees' : form.employees === 'No Employees' ? 'No Employees' : 'Manual Select'}
                 onChange={e => {
                   setForm(p => ({ ...p, employees: e.target.value }));
                 }} 
                 style={{ flex: 1, padding: '0.4rem 0.6rem', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: '0.82rem' }}>
                 <option value="All Employees">All Employees</option>
                 <option value="Manual Select">Manual Select</option>
+                <option value="No Employees">No Employees</option>
               </select>
             </div>
             
@@ -269,7 +273,7 @@ export default function PayCycle() {
         confirmLabel="Delete" confirmColor="#ef4444" size="sm">
         <p style={{ color: '#334155', fontSize: '0.9rem', fontWeight: 600, marginTop: 0 }}>{delModal.cycle?.cycle || delModal.cycle?.name || 'this pay cycle'}</p>
         <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-          This permanently removes {delModal.cycle?.count || 0} payroll records and {delModal.cycle?._count?.bonusIncentives || 0} bonus/incentive entries. Any linked salary vouchers will be reversed in accounting first.
+          This permanently removes {delModal.cycle?.count || 0} salary calculation/Post Salary records and {delModal.cycle?._count?.bonusIncentives || 0} bonus/incentive entries. Attendance records remain, but linked salary vouchers are reversed in accounting and will no longer appear as posted payroll for this cycle. Deleting the cycle is not needed to calculate missing salary rows.
         </p>
         {deleteError && <p role="alert" style={{ marginTop: '0.75rem', color: '#b91c1c', fontSize: '0.875rem' }}>{deleteError}</p>}
       </AppModal>

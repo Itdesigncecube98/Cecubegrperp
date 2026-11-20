@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { usePermissions } from '@/context/PermissionsContext';
 import { employeeToolCode } from '@/lib/employeeToolCatalog';
+import { calculateWbsTaskAmounts, sumWbsTaskBudgets } from '@/lib/wbsTaskBudget';
 import { 
   Search, Plus, ChevronRight, ChevronDown as ExpandIcon, ChevronRight as CollapseIcon, 
   Home, Folder, Layers, Edit, Trash2, Save, X, Check, AlertCircle, Loader2,
@@ -35,20 +36,31 @@ const cloneResources = resources => Array.isArray(resources)
     }))
   : [];
 
+const normalizeLabourQuantities = resources => cloneResources(resources).map(resource => ({
+  ...resource,
+  quantity: 1,
+  ...(Array.isArray(resource.components)
+    ? { components: resource.components.map(component => ({ ...component, quantity: 1 })) }
+    : {})
+}));
+
 const serializeResources = resources => cloneResources(resources).map(resource => ({
   ...resource,
   quantity: Number.isFinite(Number(resource.quantity)) ? Number(resource.quantity) : 0,
   rate: Number.isFinite(Number(resource.rate)) ? Number(resource.rate) : 0,
+  gstPercent: Number.isFinite(Number(resource.gstPercent)) ? Number(resource.gstPercent) : 0,
   ...(Array.isArray(resource.components)
     ? {
         components: resource.components.map(component => ({
           ...component,
           quantity: Number.isFinite(Number(component.quantity)) ? Number(component.quantity) : 0,
-          rate: Number.isFinite(Number(component.rate)) ? Number(component.rate) : 0
+          rate: Number.isFinite(Number(component.rate)) ? Number(component.rate) : 0,
+          gstPercent: Number.isFinite(Number(component.gstPercent)) ? Number(component.gstPercent) : 0
         }))
       }
     : {})
 }));
+const getGroupTotalBudget = group => Number(group.budgetAmount) || Number(group.rate) || sumWbsTaskBudgets(group.tasks || []);
 
 export default function DefineWBS() {
   const { activeEmployee, hasRight } = usePermissions();
@@ -355,7 +367,7 @@ export default function DefineWBS() {
       reraStage: task.reraStage || '',
       targetGroupId: task.groupId,
       materials: cloneResources(Array.isArray(task.materials) ? task.materials : matched?.materials),
-      labours: cloneResources(Array.isArray(task.labours) ? task.labours : matched?.labours)
+      labours: normalizeLabourQuantities(Array.isArray(task.labours) ? task.labours : matched?.labours)
     });
     setShowTaskModal(true);
   };
@@ -395,7 +407,7 @@ export default function DefineWBS() {
       volOfWorkLabour: newLabourVol !== '' && newLabourVol !== null ? newLabourVol : prev.volOfWorkLabour,
       description: libTask.description ? libTask.description : prev.description,
       materials: cloneResources(libTask.materials),
-      labours: cloneResources(libTask.labours)
+      labours: normalizeLabourQuantities(libTask.labours)
     }));
   };
 
@@ -409,9 +421,10 @@ export default function DefineWBS() {
         const components = [...(resource.components || [])];
         components[componentIndex] = { ...components[componentIndex], [field]: value };
         resource.components = components;
-        if (field === 'quantity' || field === 'rate') {
+        if (field === 'quantity' || field === 'rate' || field === 'gstPercent') {
           resource.rate = components.reduce((total, component) =>
-            total + (Number(component.quantity) || 0) * (Number(component.rate) || 0), 0);
+            total + (Number(component.quantity) || 0) * (Number(component.rate) || 0)
+              * (1 + (Number(component.gstPercent) || 0) / 100), 0);
         }
       }
       resources[resourceIndex] = resource;
@@ -431,7 +444,8 @@ export default function DefineWBS() {
           resources.splice(resourceIndex, 1);
         } else {
           resource.rate = resource.components.reduce((total, component) =>
-            total + (Number(component.quantity) || 0) * (Number(component.rate) || 0), 0);
+            total + (Number(component.quantity) || 0) * (Number(component.rate) || 0)
+              * (1 + (Number(component.gstPercent) || 0) / 100), 0);
           resources[resourceIndex] = resource;
         }
       }
@@ -779,7 +793,7 @@ export default function DefineWBS() {
                         </span>
 
                         <span style={{ fontSize: '0.72rem', color: '#9f1239', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                          Rate: ₹{Number(group.rate || group.budgetAmount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          Total Budget: ₹{getGroupTotalBudget(group).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                         </span>
 
                         {/* RERA Stage Badge */}
@@ -927,7 +941,7 @@ export default function DefineWBS() {
                       color: '#991b1b',
                       border: '1px solid #fecaca'
                     }}>
-                      Group Rate: ₹{Number(selectedGroup.rate || selectedGroup.budgetAmount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      Group Budget: ₹{getGroupTotalBudget(selectedGroup).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                     </span>
                   )}
                 </div>
@@ -992,14 +1006,15 @@ export default function DefineWBS() {
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '20%' }}>Task Name</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '12%' }}>RERA Stage</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '18%', textAlign: 'right' }}>Material Vol</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '18%', textAlign: 'right' }}>Labour Vol</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '14%', textAlign: 'right' }}>Labour Vol</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '16%', textAlign: 'right' }}>Total Rate (₹)</th>
                   <th style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.85rem', width: '12%', textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {currentTasks.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8' }}>
+                    <td colSpan="7" style={{ padding: '48px 16px', textAlign: 'center', color: '#94a3b8' }}>
                       <Layers size={36} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
                       <p style={{ margin: '0 0 6px', fontWeight: 500, fontSize: '0.95rem' }}>No Tasks in this Group</p>
                       <p style={{ margin: 0, fontSize: '0.85rem' }}>Click &quot;Add Task to {selectedGroup?.name || 'Group'}&quot; to add tasks with material &amp; labour work volumes.</p>
@@ -1024,6 +1039,9 @@ export default function DefineWBS() {
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '0.88rem', fontWeight: 600, color: '#10b981' }}>
                         {parseFloat(task.volOfWorkLabour || 0).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '0.88rem', fontWeight: 600, color: '#0369a1', whiteSpace: 'nowrap' }}>
+                        ₹{calculateWbsTaskAmounts(task).totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
@@ -1060,6 +1078,9 @@ export default function DefineWBS() {
                     </td>
                     <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '0.9rem', color: '#10b981' }}>
                       {totalLabourVol.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: '0.9rem', color: '#0369a1', whiteSpace: 'nowrap' }}>
+                      ₹{sumWbsTaskBudgets(currentTasks).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                     </td>
                     <td style={{ padding: '12px 16px' }}></td>
                   </tr>
@@ -1135,17 +1156,19 @@ export default function DefineWBS() {
                 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                    Group Rate (₹)
+                    Group Total Budget (₹)
                   </label>
                   <input 
                     type="number" 
+                    min="0"
                     step="0.01"
                     className="premium-input" 
-                    placeholder="Enter group rate..."
+                    placeholder="Enter group total budget..."
                     value={groupForm.rate}
                     onChange={(e) => setGroupForm({ ...groupForm, rate: e.target.value, budgetAmount: e.target.value })}
                     style={{ width: '100%', boxSizing: 'border-box' }}
                   />
+                  <small style={{ display: 'block', marginTop: 6, color: '#64748b' }}>Leave 0 to use the sum of the WBS task budgets.</small>
                 </div>
               </div>
 
@@ -1315,10 +1338,10 @@ export default function DefineWBS() {
                             <strong style={{ color }}>{label} ({rows.length})</strong>
                             {rows.length ? (
                               <div style={{ overflowX: 'auto', marginTop: '6px' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '640px', textAlign: 'left' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px', textAlign: 'left' }}>
                                   <thead>
                                     <tr style={{ background: '#f8fafc' }}>
-                                      {['Name', 'Qty', 'Unit', 'Rate', 'Specification', ''].map((heading, index) => (
+                                      {['Name', 'Qty', 'Unit', 'Rate', 'GST %', 'Specification', ''].map((heading, index) => (
                                         <th key={`${heading}-${index}`} style={{ padding: '6px', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{heading}</th>
                                       ))}
                                     </tr>
@@ -1331,6 +1354,7 @@ export default function DefineWBS() {
                                           ['quantity', 'number', row.quantity ?? 0],
                                           ['unit', 'text', row.unit || ''],
                                           ['rate', 'number', row.rate ?? 0],
+                                          ['gstPercent', 'number', row.gstPercent ?? 0],
                                           ['specification', 'text', row.specification || '']
                                         ].map(([field, inputType, value]) => (
                                           <td key={field} style={{ padding: '4px', borderBottom: '1px solid #f1f5f9' }}>
@@ -1338,6 +1362,7 @@ export default function DefineWBS() {
                                               type={inputType}
                                               required={field === 'name' || field === 'unit'}
                                               min={inputType === 'number' ? '0' : undefined}
+                                              max={field === 'gstPercent' ? '100' : undefined}
                                               step={inputType === 'number' ? 'any' : undefined}
                                               aria-label={`${label} ${field}`}
                                               value={value}
@@ -1522,7 +1547,7 @@ export default function DefineWBS() {
 
                 <div style={{ padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', marginTop: '16px', border: '1px solid #e2e8f0' }}>
                   <span style={{ fontSize: '0.85rem', color: '#475569' }}>
-                    Task rates are not entered separately. The rate set for the selected group applies to the group; add tasks here only to define its scope and work volumes.
+                    The total budget set for this WBS group becomes its approved budget. Tasks define the scope and work volumes.
                   </span>
                 </div>
               </div>
