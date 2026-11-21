@@ -19,6 +19,7 @@ const ALL_MODULES = [
   { id: 'Marketing', name: 'Marketing', icon: TrendingUp, color: '#ec4899', route: '/marketing/dashboard' },
   { id: 'Accounts', name: 'Accounts', icon: FileText, color: '#6366f1', route: '/accounts/dashboard' },
   { id: 'Tender', name: 'Tender', icon: FileCheck, color: '#84cc16', route: '/tender/dashboard' },
+  { id: 'ClientProjectLifecycle', name: 'Client Project Lifecycle', icon: Briefcase, color: '#0f766e', route: '/client-project-lifecycle' },
 ];
 
 export default function UnifiedPortal() {

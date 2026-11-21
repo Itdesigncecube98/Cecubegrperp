@@ -10,6 +10,36 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Updates must be an array' }, { status: 400 });
     }
 
+    if (isApproved === false) {
+      const employeeIds = [...new Set(updates.map(update => update.employeeId).filter(Boolean))];
+      const cycleId = typeof data.cycleId === 'string' ? data.cycleId : '';
+      if (!cycleId) {
+        return NextResponse.json({ error: 'Pay cycle is required to unapprove attendance.' }, { status: 400 });
+      }
+      const [cycle, payrollRecords] = await Promise.all([
+        prisma.payCycle.findUnique({ where: { id: cycleId }, select: { startDate: true, endDate: true } }),
+        prisma.payrollRecord.findMany({
+          where: { payCycleId: cycleId, employeeId: { in: employeeIds } },
+          select: { employeeId: true },
+        }),
+      ]);
+      if (!cycle) return NextResponse.json({ error: 'Pay cycle not found.' }, { status: 404 });
+      if (updates.some(update => update.date < cycle.startDate || update.date > cycle.endDate)) {
+        return NextResponse.json({ error: 'Attendance dates do not match the selected pay cycle.' }, { status: 400 });
+      }
+      const lockedEmployeeIds = [...new Set(payrollRecords.map(record => record.employeeId))];
+      if (lockedEmployeeIds.length > 0) {
+        const employees = await prisma.employee.findMany({
+          where: { id: { in: lockedEmployeeIds } },
+          select: { id: true, name: true, empId: true },
+        });
+        return NextResponse.json({
+          error: 'Attendance cannot be unapproved after the salary has been pushed to Salary Calculation.',
+          lockedEmployees: employees.map(employee => ({ id: employee.id, name: employee.name, employeeCode: employee.empId })),
+        }, { status: 409 });
+      }
+    }
+
     const results = [];
     
     // Process updates sequentially to avoid race conditions with leave refunds, etc.

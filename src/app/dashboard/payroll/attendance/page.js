@@ -220,6 +220,13 @@ export default function PayrollAttendance() {
   const allEmployeeCount = data?.employees?.length || 0;
   const approvedEmployeeCount = data?.employees?.filter(isEmployeeFullyApproved).length || 0;
   const notApprovedEmployeeCount = allEmployeeCount - approvedEmployeeCount;
+  const salaryCalculationEmployeeIds = new Set((data?.payrollRecords || []).map(record => record.employeeId));
+  const selectableAttendanceEmployees = (filteredEmployees || []).filter(emp =>
+    !isApprovedMode || !salaryCalculationEmployeeIds.has(emp.id)
+  );
+  const eligibleAttendanceActionEmployeeIds = isApprovedMode
+    ? selectedEmps.filter(employeeId => !salaryCalculationEmployeeIds.has(employeeId))
+    : selectedEmps;
   const finalizedPayrollEmployeeIds = new Set(
     (data?.payrollRecords || [])
       .filter(record => !['PENDING', 'MISSING'].includes(record.status))
@@ -292,7 +299,7 @@ export default function PayrollAttendance() {
   };
 
   const handleSelectAll = (e) => {
-    if (e.target.checked) setSelectedEmps(filteredEmployees.map(emp => emp.id));
+    if (e.target.checked) setSelectedEmps(selectableAttendanceEmployees.map(emp => emp.id));
     else setSelectedEmps([]);
   };
 
@@ -330,11 +337,18 @@ export default function PayrollAttendance() {
   };
 
   const handleSave = () => {
-    if (selectedEmps.length === 0) {
+    const targetApprovalState = !isApprovedMode;
+    const employeeIdsToUpdate = targetApprovalState
+      ? selectedEmps
+      : selectedEmps.filter(employeeId => !salaryCalculationEmployeeIds.has(employeeId));
+    if (employeeIdsToUpdate.length === 0) {
+      if (!targetApprovalState && selectedEmps.length > 0) {
+        alert('These employees already have salary records in Salary Calculation, so their attendance cannot be unapproved.');
+        return;
+      }
       alert("Please select at least one employee.");
       return;
     }
-    const targetApprovalState = !isApprovedMode;
     
     const msg = targetApprovalState
       ? 'Are you sure you want to approve this attendance record? Once approved, it cannot be modified.'
@@ -352,7 +366,7 @@ export default function PayrollAttendance() {
         setIsSaving(true);
         const updates = [];
 
-        selectedEmps.forEach(empId => {
+        employeeIdsToUpdate.forEach(empId => {
           const emp = data.employees.find(e => e.id === empId);
           if (!emp) return;
           dateCols.forEach(col => {
@@ -371,16 +385,17 @@ export default function PayrollAttendance() {
           const res = await fetch('/api/attendance/bulk-update', {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ updates, isApproved: targetApprovalState })
+             body: JSON.stringify({ updates, isApproved: targetApprovalState, cycleId: selectedCycleId })
           });
           const result = await res.json();
           if (res.ok && result.success && result.count === updates.length) {
-             setPendingEdits(previous => previous.filter(edit => !selectedEmps.includes(edit.employeeId)));
+             setPendingEdits(previous => previous.filter(edit => !employeeIdsToUpdate.includes(edit.employeeId)));
              setSelectedEmps([]);
              setIsApprovedMode(targetApprovalState);
              setShowAllAttendance(false);
              await fetchAttendance();
-             alert(`Successfully ${targetApprovalState ? 'approved' : 'unapproved'} attendance!`);
+             const skippedCount = selectedEmps.length - employeeIdsToUpdate.length;
+             alert(`Successfully ${targetApprovalState ? 'approved' : 'unapproved'} attendance!${skippedCount ? ` ${skippedCount} employee(s) already pushed to Salary Calculation were skipped.` : ''}`);
           } else {
              alert(result.error || 'Some attendance records were not updated.');
           }
@@ -624,9 +639,9 @@ export default function PayrollAttendance() {
                   : `Push to Salary Calculation (${pushableEmployeeCount})`}
           </button>
         )}
-        <button className="btn-primary" onClick={handleSave} disabled={isSaving || selectedEmps.length === 0 || showAllAttendance} title={showAllAttendance ? 'Choose Approved or Not Approved to change approval status.' : ''} style={{ padding: '8px 24px', background: '#10b981', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: (isSaving || selectedEmps.length === 0 || showAllAttendance) ? 'not-allowed' : 'pointer' }}>
+        <button className="btn-primary" onClick={handleSave} disabled={isSaving || eligibleAttendanceActionEmployeeIds.length === 0 || showAllAttendance} title={showAllAttendance ? 'Choose Approved or Not Approved to change approval status.' : isApprovedMode && selectedEmps.length > 0 && eligibleAttendanceActionEmployeeIds.length === 0 ? 'Selected employees already have salary records and cannot be unapproved.' : ''} style={{ padding: '8px 24px', background: '#10b981', border: 'none', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px', cursor: (isSaving || eligibleAttendanceActionEmployeeIds.length === 0 || showAllAttendance) ? 'not-allowed' : 'pointer' }}>
           <Save size={16} />
-          {isSaving ? 'Saving...' : (isApprovedMode ? `Unapprove Selected (${selectedEmps.length})` : `Approve Selected (${selectedEmps.length})`)}
+          {isSaving ? 'Saving...' : (isApprovedMode ? `Unapprove Selected (${eligibleAttendanceActionEmployeeIds.length})` : `Approve Selected (${eligibleAttendanceActionEmployeeIds.length})`)}
         </button>
       </div>
 
@@ -652,7 +667,7 @@ export default function PayrollAttendance() {
               {/* Header Row 1 */}
               <tr style={{ background: '#0284c7', color: 'white' }}>
                 <th rowSpan={2} style={{ padding: '8px', background: '#0284c7', position: 'sticky', left: 0, zIndex: 30, borderRight: '1px solid #0369a1', textAlign: 'center' }}>
-                  <input type="checkbox" checked={filteredEmployees?.length > 0 && selectedEmps.length === filteredEmployees.length} onChange={handleSelectAll} style={{ transform: 'scale(1.2)', cursor: 'pointer' }} />
+                  <input type="checkbox" checked={selectableAttendanceEmployees.length > 0 && selectableAttendanceEmployees.every(emp => selectedEmps.includes(emp.id))} onChange={handleSelectAll} style={{ transform: 'scale(1.2)', cursor: 'pointer' }} />
                 </th>
                 <th rowSpan={2} style={{ padding: '8px 12px', textAlign: 'left', minWidth: 200, position: 'sticky', left: 35, background: '#0284c7', zIndex: 30, borderRight: '1px solid #0369a1' }}>Employee Details</th>
                 <th rowSpan={2} style={{ padding: '8px', background: '#10b981', borderRight: '1px solid #059669', width: 60 }}>Total Days</th>
@@ -679,12 +694,13 @@ export default function PayrollAttendance() {
               ) : filteredEmployees?.map((emp, idx) => {
                 const agg = calculateAggregates(emp);
                 const isChecked = selectedEmps.includes(emp.id);
+                const salaryCalculationLocked = isApprovedMode && salaryCalculationEmployeeIds.has(emp.id);
                 const salaryIssue = salaryIssueEmployees[emp.id];
                 return (
                   <tr key={emp.id} title={salaryIssue?.reason} style={{ background: salaryIssue ? '#fee2e2' : isChecked ? '#f0f9ff' : (idx % 2 === 0 ? 'white' : '#f8fafc'), borderBottom: salaryIssue ? '1px solid #f87171' : '1px solid #e2e8f0' }}>
                     {/* Checkbox Column */}
                     <td style={{ padding: '8px', position: 'sticky', left: 0, background: salaryIssue ? '#fee2e2' : isChecked ? '#f0f9ff' : (idx % 2 === 0 ? 'white' : '#f8fafc'), zIndex: 10, borderRight: '1px solid #e2e8f0', textAlign: 'center' }}>
-                       <input type="checkbox" checked={isChecked} onChange={() => handleSelectEmp(emp.id)} style={{ transform: 'scale(1.2)', cursor: 'pointer' }} />
+                       <input type="checkbox" checked={isChecked && !salaryCalculationLocked} disabled={salaryCalculationLocked} title={salaryCalculationLocked ? 'This attendance has been pushed to Salary Calculation and cannot be unapproved.' : ''} onChange={() => handleSelectEmp(emp.id)} style={{ transform: 'scale(1.2)', cursor: salaryCalculationLocked ? 'not-allowed' : 'pointer' }} />
                     </td>
 
                     {/* Frozen Employee Column */}
@@ -694,6 +710,7 @@ export default function PayrollAttendance() {
                         {salaryIssue && <span title={`${salaryIssue.reason} Basic: ₹${salaryIssue.legacySalaryFields.basicSalary}, HRA: ₹${salaryIssue.legacySalaryFields.hra}, Special allowance: ₹${salaryIssue.legacySalaryFields.specialAllowance}, Conveyance: ₹${salaryIssue.legacySalaryFields.conveyance}, Medical: ₹${salaryIssue.legacySalaryFields.medical}`} style={{ display: 'inline-block', marginLeft: 8, padding: '2px 6px', borderRadius: 4, background: '#b91c1c', color: 'white', fontSize: 10, fontWeight: 800 }}>SALARY MISSING</span>}
                       </div>
                       <div style={{ color: '#64748b', fontSize: '0.7rem' }}>{emp.empId} | {emp.designation || 'Employee'}</div>
+                      {salaryCalculationLocked && <div style={{ marginTop: 3, color: '#b45309', fontSize: 10, fontWeight: 700 }}>Pushed to Salary Calculation · attendance locked</div>}
                       {salaryIssue && <div style={{ marginTop: 3, color: '#991b1b', fontSize: 10, fontWeight: 700 }}>
                         No salary revision; legacy values — Basic {salaryIssue.legacySalaryFields.basicSalary}, HRA {salaryIssue.legacySalaryFields.hra}, Special {salaryIssue.legacySalaryFields.specialAllowance}, Conveyance {salaryIssue.legacySalaryFields.conveyance}, Medical {salaryIssue.legacySalaryFields.medical}
                       </div>}

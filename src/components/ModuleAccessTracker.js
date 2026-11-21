@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 const MODULE_ROUTES = [
   ['/admin-dashboard', 'Admin'], ['/engineering', 'Engineering'], ['/marketing', 'Marketing'],
   ['/accounts', 'Accounts'], ['/tender', 'Tender'], ['/contracting', 'Contracting'],
-  ['/site', 'Site'], ['/purchase', 'Purchase'], ['/employee', 'HRMS'], ['/employeedashboard', 'HRMS'],
+  ['/site', 'Site'], ['/purchase', 'Purchase'], ['/client-project-lifecycle', 'Client Project Lifecycle'], ['/employee', 'HRMS'], ['/employeedashboard', 'HRMS'],
   ['/hrms', 'HRMS'], ['/dashboard', 'Dashboard'],
 ];
 

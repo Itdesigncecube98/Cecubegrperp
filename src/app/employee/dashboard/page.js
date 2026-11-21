@@ -91,6 +91,7 @@ export default function EmployeeDashboard() {
       { id: 'Engineering', name: 'Engineering Dashboard', desc: 'Projects, WBS, Budgets, Unit Master & Planning', route: '/engineering', icon: Briefcase, color: '#8b5cf6' },
       { id: 'Purchase', name: 'Purchase Dashboard', desc: 'Suppliers, Purchase Orders, Items & Inward', route: '/purchase', icon: ShoppingCart, color: '#f59e0b' },
       { id: 'Contracting', name: 'Contracting Dashboard', desc: 'Work Orders, Subcontractors & Billing', route: '/contracting', icon: FileSignature, color: '#14b8a6' },
+      { id: 'ClientProjectLifecycle', name: 'Client Project Lifecycle', desc: 'Client projects, billing, procurement, documents & reports', route: '/client-project-lifecycle', icon: Briefcase, color: '#0f766e' },
       { id: 'Accounts', name: 'Accounts Dashboard', desc: 'Finance, Ledgers, Vouchers & Invoicing', route: '/accounts', icon: FileText, color: '#6366f1' },
     ];
     return available.filter(mod => 

@@ -7,6 +7,10 @@ export async function POST(request, { params }) {
     const { id } = await params;
     const data = await request.json();
 
+    if (typeof data.terminationDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.terminationDate)) {
+      return NextResponse.json({ error: 'Please provide a valid termination date.' }, { status: 400 });
+    }
+
     const employee = await prisma.employee.findUnique({
       where: { id }
     });
@@ -48,6 +52,10 @@ export async function POST(request, { params }) {
     return NextResponse.json({ success: true, employee: updatedEmployee });
   } catch (error) {
     console.error('Error terminating employee:', error);
-    return NextResponse.json({ error: 'Failed to terminate employee' }, { status: 500 });
+    return NextResponse.json({
+      error: error?.code === 'P2003'
+        ? 'Termination could not be saved because another record has an invalid employee or leaving-reason link.'
+        : error?.message || 'Failed to terminate employee',
+    }, { status: error?.code === 'P2003' ? 409 : 500 });
   }
 }
